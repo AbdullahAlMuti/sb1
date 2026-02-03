@@ -248,6 +248,12 @@ export function DashboardHeader() {
     navigate('/');
   };
 
+  const creditsTotal = limits?.credits_per_month ?? 0;
+  const creditsUsed = usage?.credits_used ?? 0;
+  const creditsRemaining = Math.max(creditsTotal - creditsUsed, 0);
+  const showCredits = Boolean(subscribed || planName !== 'free');
+  const isExpired = Boolean(subscriptionEnd && new Date(subscriptionEnd) < new Date());
+
   return (
     <header className="h-14 sm:h-16 bg-gradient-to-r from-primary/5 via-accent/10 to-transparent flex items-center justify-between px-4 sm:px-6 border-b border-border/50">
       {/* Welcome Message */}
@@ -507,10 +513,25 @@ export function DashboardHeader() {
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Credits</span>
               <span className="text-sm font-medium text-foreground">
-                {usage?.credits_remaining ?? profile?.credits ?? 0}
-                {limits?.credits_per_month ? ` / ${limits.credits_per_month}` : ''}
+                {showCredits ? (
+                  <>
+                    {creditsRemaining}
+                    {creditsTotal ? ` / ${creditsTotal}` : ''}
+                  </>
+                ) : (
+                  '—'
+                )}
               </span>
             </div>
+
+            {subscriptionEnd && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">{isExpired ? 'Expired' : 'Renews'}</span>
+                <span className="text-sm text-foreground">
+                  {format(new Date(subscriptionEnd), 'MMM d, yyyy')}
+                </span>
+              </div>
+            )}
 
             {limits?.max_listings !== undefined && (
               <div className="flex items-center justify-between">
@@ -561,7 +582,7 @@ export function DashboardHeader() {
               }}
             >
               <CreditCard className="h-4 w-4 mr-2" />
-              {subscribed ? 'Manage Subscription' : 'Upgrade Plan'}
+              {subscribed ? (isExpired ? 'Renew Subscription' : 'Manage Subscription') : 'Upgrade Plan'}
             </Button>
             <Button 
               variant="ghost" 

@@ -249,6 +249,13 @@ serve(async (req) => {
         .eq('status', 'active'),
     ]);
 
+    // Credits: derive from plan credits (total) and period usage (used).
+    // NOTE: do NOT rely on profiles.credits as "remaining" for subscription display,
+    // because new users previously got a default value which led to confusing UI.
+    const creditsTotal = planDetails?.credits_per_month ?? 0;
+    const creditsUsed = userPlan?.credits_used ?? 0;
+    const creditsRemaining = Math.max(creditsTotal - creditsUsed, 0);
+
     return new Response(
       JSON.stringify({
         subscribed: hasActiveSub,
@@ -262,10 +269,10 @@ serve(async (req) => {
             }
           : null,
         usage: {
-          credits_remaining: profile?.credits ?? 0,
+          credits_remaining: creditsRemaining,
           listings_active: listingsCount ?? 0,
           orders_used: userPlan?.orders_used ?? 0,
-          credits_used: userPlan?.credits_used ?? 0,
+          credits_used: creditsUsed,
           current_period_end: userPlan?.current_period_end ?? subscriptionEnd,
           status: userPlan?.status ?? (hasActiveSub ? 'active' : 'free'),
         },
