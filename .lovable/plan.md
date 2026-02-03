@@ -1,167 +1,108 @@
 
-## What I found (current system behavior)
+লক্ষ্য: Trial প্ল্যানে সব ফিচার আগের মতো থাকবে, কিন্তু listing creation সার্ভার-সাইডে সর্বোচ্চ ১০টি পর্যন্ত সীমাবদ্ধ থাকবে। Existing business logic / listing algorithm পরিবর্তন করা হবে না—শুধু Trial প্ল্যানের limit configuration + enforcement message + ছোট UI text update।
 
-### 1) Listing limits are **not consistently enforced**
-You currently have two main backend entry points that create listings:
+## 1) বর্তমান অবস্থা (কোডবেস থেকে যা পাওয়া গেছে)
+- Backend listing enforcement এখন `validateUserPlan(..., 'listing', 1)` দিয়ে হচ্ছে (`create-listing` এবং `sync-listing` দুটোতেই)।
+- `validateUserPlan` listing limit নেয় DB থেকে: `plans.max_listings` (এবং admin override থাকলে `user_plans.admin_override_limits.max_listings`)।
+- DB-তে Trial plan আছে:
+  - `plans.name = "Trial"`, `is_trial = true`
+  - কিন্তু `max_listings = 50` (এটা আপনার নতুন রুলের সাথে mismatch)।
+- Pricing UI (`PricingSection.tsx`) ফিচার দেখায় DB-এর `plans.features` array থেকে; তাই “Up to 10 Listings” দেখাতে হলে DB features আপডেট বা UI-তে conditional injection দরকার।
 
-- **`supabase/functions/create-listing/index.ts`**
-  - Enforces listing limit by counting active listings and comparing against `plans.max_listings`.
-  - But it **ignores**:
-    - subscription status (active/expired/canceled)
-    - `user_plans.admin_override_limits` (admin overrides)
-    - `user_plans.plan_id` when `profiles.plan_id` is missing/outdated
+আপনি নির্বাচন করেছেন: “Admin can override”  
+=> Trial এর default হবে 10, কিন্তু যদি কোনো নির্দিষ্ট user এর জন্য admin override দিয়ে বেশি সেট করা হয়, তখন সেটাই effective হবে (অর্থাৎ hard-cap 10 নয়)।
 
-- **`supabase/functions/sync-listing/index.ts`** (used by extension / batch sync)
-  - **Does not check `max_listings` at all**, only checks credits.
-  - This is a direct path for users to exceed listing limits even if the UI blocks them.
+## 2) DB change (Trial default max_listings = 10)
+### কী করব
+- `plans` টেবিলে Trial প্ল্যানের `max_listings` 10 করে দেব।
+- “Existing users handling” স্বয়ংক্রিয়ভাবে কাজ করবে, কারণ limit check active listings count দিয়ে হয়; যাদের already >10 active listings আছে তারা নতুন listing তৈরি করতে পারবে না, পুরনো listing untouched থাকবে।
 
-### 2) “Expired plans still allow listing creation” is currently true
-You already have a centralized enforcement layer:
-- **`supabase/functions/_shared/plan-middleware.ts`**
+### প্রস্তাবিত SQL (Test environment)
+Cloud View → Run SQL (Test) এ রান:
+```sql
+update public.plans
+set max_listings = 10,
+    updated_at = now()
+where name = 'Trial';
+```
 
-But:
-- Neither `create-listing` nor `sync-listing` uses it today.
-- The middleware’s expiry logic is also flawed:
+(যদি আপনার “Trial” নামটি case-sensitive ভিন্ন হয়, উপরের query adjust করা হবে; কিন্তু বর্তমানে DB-তে নাম ঠিক “Trial”.)
 
-In `getFullPlanStatus()` it currently marks expired like:
-- `current_period_end < now` **AND** `status != 'active'`
+## 3) Backend enforcement (কোনো নতুন algorithm নয়; শুধু Trial message + নিশ্চিত করা)
+### কী করব
+- Enforcement আগে থেকেই backend-only হচ্ছে `validateUserPlan` দিয়ে; তাই Trial max_listings=10 হলে hard enforcement অটোমেটিক হবে।
+- কিন্তু আপনার চাহিদা অনুযায়ী Trial limit hit করলে error message আরো specific করা হবে:
+  - “Trial plan listing limit reached (10 max)”
 
-That means if a user’s `user_plans.status` stays `"active"` (which can happen if webhook sync lags or fails), they may **never be considered expired**, even if `current_period_end` is in the past.
+### কোথায় পরিবর্তন হবে
+- `supabase/functions/_shared/plan-middleware.ts`
+  - `validateUserPlan` → `case 'listing'` অংশে:
+    - যদি `status.isTrial === true` এবং effective `limit === 10` এবং limit exceed হয়:
+      - reason string Trial-specific সেট করা হবে।
+    - Enforcement logic (current/limit হিসাব) পরিবর্তন হবে না—শুধু message।
 
-### 3) “Plans not activating after payment” likely caused by Stripe webhook configuration
-Your **`stripe-webhook`** edge function refuses to run in production unless `STRIPE_WEBHOOK_SECRET` exists:
+### Edge cases
+- Admin override থাকলে effective `limit` 10 নাও হতে পারে; সে ক্ষেত্রে generic message থাকবে (বা limit অনুযায়ী message)।
+- Extension path `sync-listing` এবং web app `create-listing` দুটোই একই middleware ব্যবহার করে, তাই Trial block সর্বত্র কাজ করবে।
 
-- In `supabase/functions/stripe-webhook/index.ts`:
-  - If `STRIPE_WEBHOOK_SECRET` is missing and `ENVIRONMENT !== "development"`, it returns **500** immediately.
-- Your configured secrets list includes `STRIPE_SECRET_KEY` but **does not show `STRIPE_WEBHOOK_SECRET`**.
-- Result: Stripe can accept payment, but the webhook update that marks the plan active may never succeed.
+## 4) UI update (Minor): Trial card এ “Up to 10 Listings”
+আপনার requirement অনুযায়ী UI-তে Trial কার্ডে ছোট করে দেখাতে হবে: “Up to 10 Listings” (কিন্তু অন্য feature hide/disable নয়)।
 
-### 4) “Listing is not showing on the user dashboard” — most likely root causes
-Based on the code and DB policies:
-- RLS is enabled and there is a listings policy: `USING (auth.uid() = user_id)` for ALL operations, which is correct for per-user data.
-- The dashboard fetch is straightforward (`select('*').eq('user_id', user.id)`).
+### অপশন A (ডেটা-ড্রিভেন, সবচেয়ে consistent)
+- `plans.features` JSON array-তে Trial প্ল্যানের feature হিসেবে “Up to 10 Listings” যোগ/আপডেট করা।
+- সুবিধা: UI code না বদলালেও pricing section এবং অন্য জায়গায় একই টেক্সট দেখাবে।
 
-So if listings “don’t show”, it’s usually one of:
-1) The listing row **never got created** (edge function failed / extension failed).
-2) The listing row was created with a **different `user_id`** than the logged-in user (token mismatch in extension, or using another account).
-3) The listing row exists but **status isn’t `active`** and the UI is filtering (less likely since default is “all”, but still possible depending on user’s filter selection).
-4) Auth session mismatch in preview (logged out / wrong user / email not verified).
+প্রস্তাবিত SQL:
+```sql
+update public.plans
+set features = (
+  case
+    when jsonb_typeof(features) = 'array' then
+      -- Trial features array-তে যদি ইতিমধ্যে “Listings” ধরনের কিছু থাকে, সেটি রেখে নতুন entry যোগ করা (simple approach)
+      (features || to_jsonb(array['Up to 10 Listings']::text[]))::jsonb
+    else
+      to_jsonb(array['Up to 10 Listings']::text[])
+  end
+),
+updated_at = now()
+where name = 'Trial';
+```
 
-This plan includes instrumentation/verification steps to pinpoint which one is happening.
+### অপশন B (কোড-সাইড injection, DB-তে features না ছুঁয়ে)
+- `src/components/PricingSection.tsx` এ render করার সময়:
+  - যদি `plan.is_trial === true` এবং `plan.max_listings === 10`:
+    - `plan.features` এর শুরুতে “Up to 10 Listings” prepend করা (duplicate guard সহ)।
+- সুবিধা: DB features untouched।
+- নোট: আপনি “Database Requirement” এ Trial max_listings=10 বলেছেন, তাই Option A-ই বেশি aligned।
 
----
+আমি Option A + (প্রয়োজনে) UI-side duplicate guard recommend করব যাতে DB features-এ একবার যোগ হলেই বারবার duplication না হয়।
 
-## Fix strategy (without changing core business logic)
-Goal: keep your current “count active listings” model (your existing core logic) but make enforcement **consistent and backend-authoritative**.
+## 5) Verification (End-to-end tests)
+1) Trial user দিয়ে 10টি active listing পর্যন্ত create করুন (web app + extension flow) → success।
+2) ১১তম listing create চেষ্টা করুন:
+   - `create-listing` → 402 response, error message: “Trial plan listing limit reached (10 max)”।
+   - `sync-listing` batch → 402 response, summary তে blocked, same reason।
+3) Existing Trial user যার active listing > 10:
+   - নতুন listing create blocked হবে, পুরনো listing থাকবে।
+4) Admin override test:
+   - কোনো Trial user এর `user_plans.admin_override_limits.max_listings = 20` দিলে 11-20 create allowed হবে (আপনার পছন্দ অনুযায়ী)।
+5) Pricing page (`/#pricing`) এ Trial card এ “Up to 10 Listings” দেখা যাচ্ছে কিনা যাচাই করুন।
 
-### A) Make backend enforcement consistent (the most important fix)
-1) **Update `create-listing`** to use the existing middleware:
-   - Before inserting a NEW listing:
-     - call `validateUserPlan(..., 'listing', 1)`
-     - call `validateUserPlan(..., 'credit', 1)` (since this endpoint deducts 1 credit on create)
-   - Ensure the returned errors preserve your current response shape (402 with `limitType`, `current`, `limit`, `upgradeRequired`).
+## 6) What will be changed (scope)
+- DB:
+  - `public.plans` row update: Trial `max_listings = 10`
+  - (optional) Trial `features` updated to include “Up to 10 Listings”
+- Code (minimal):
+  - `supabase/functions/_shared/plan-middleware.ts` → Trial listing limit exceeded হলে error message specific করা
+  - (optional) `src/components/PricingSection.tsx` → DB features না বদলালে conditional injection
 
-2) **Update `sync-listing`** (batch import) to enforce limits too:
-   - After it determines `newListingsCount`:
-     - call `validateUserPlan(..., 'listing', newListingsCount)`
-     - call `validateUserPlan(..., 'credit', newListingsCount)`
-   - This fixes “users can exceed listing limits” via extension/sync.
+## 7) Rollback plan
+- Trial max_listings আগের মানে ফিরিয়ে দিতে:
+```sql
+update public.plans
+set max_listings = 50,
+    updated_at = now()
+where name = 'Trial';
+```
+- features থেকে “Up to 10 Listings” remove করতে features array edit (manual) বা targeted jsonb অপারেশন ব্যবহার করা হবে।
 
-3) Ensure both functions use the same source of truth for plan selection:
-   - `plan-middleware` already resolves plan id using `profiles.plan_id || user_plans.plan_id`
-   - and it supports `admin_override_limits`
-   - so adopting it automatically fixes “admin changes not reflecting” for enforcement.
-
-### B) Fix expiry handling (backend-only)
-1) **Correct the expiry logic** in `supabase/functions/_shared/plan-middleware.ts`:
-   - Treat subscription as expired when:
-     - `current_period_end` exists and `< now()` (regardless of status string), OR
-     - status is `canceled`, OR
-     - trial_end exists and `< now()` (for trials)
-   - The key fix: do not allow `"active"` status to bypass a past `current_period_end`.
-
-2) Optional but recommended (still within your rules because it’s enforcement-related):
-   - When middleware detects expiry, do a best-effort update:
-     - set `user_plans.status = 'expired'` (or `'canceled'` if that’s your convention)
-   - This makes the UI and DB consistent even if Stripe webhook lags.
-
-### C) Fix “plan not activating after payment”
-1) **Add `STRIPE_WEBHOOK_SECRET` to Supabase Edge Function secrets**.
-   - This is required for reliable activation.
-2) Verify Stripe webhook endpoint is configured to hit your Supabase edge function URL.
-3) Add minimal logging improvements (no logic changes) to `stripe-webhook`:
-   - Log when it aborts due to missing secret.
-   - Log `user_id`, matched `plan_id`, and final `user_plans` write result for audit.
-
-### D) Fix listing dashboard not showing (only if it’s a logic blocker)
-This will be approached as a debug-first fix:
-1) Add targeted logs in the frontend `src/pages/dashboard/Listings.tsx` only if needed:
-   - log the Supabase query error message in the toast (currently generic “Failed to fetch listings”)
-   - this helps detect RLS/permission vs genuinely empty results
-2) Add a one-time debug panel (dev-only) if necessary:
-   - show current `user.id` and the number of rows returned
-   - (No UI redesign; purely diagnostic.)
-
----
-
-## Verification plan (how we’ll confirm each issue is fixed)
-
-### 1) Subscription activation after payment
-- Trigger a checkout
-- Confirm Stripe sends `checkout.session.completed`
-- Confirm edge function logs show:
-  - webhook signature verified
-  - plan matched by price id
-  - `user_plans.status` updated to `active`
-  - `profiles.plan_id` updated
-- Confirm app shows subscribed plan (via `useSubscription` / `check-subscription-v2`)
-
-### 2) Listing count increments correctly & shows in dashboard
-- Create a listing (web app path)
-- Confirm:
-  - row inserted in `public.listings` with correct `user_id`
-  - dashboard query returns it
-- Create a listing via extension/sync
-- Confirm the same
-
-### 3) Limit enforcement (can’t exceed limits)
-- Set `max_listings` low (e.g., 1) for a test plan
-- Create 1 listing → allowed
-- Attempt second listing:
-  - via web create-listing → blocked 402
-  - via sync-listing batch → blocked 402
-
-### 4) Expiry enforcement
-- Force `user_plans.current_period_end` to a past timestamp (test user)
-- Attempt listing creation:
-  - both endpoints return blocked with “Subscription expired…”
-
-### 5) Admin changes reflected
-- Set `user_plans.admin_override_limits.max_listings` for a user
-- Confirm middleware-based enforcement respects it immediately.
-
----
-
-## Files we will change (targeted, minimal)
-Backend (edge functions):
-- `supabase/functions/_shared/plan-middleware.ts` (fix expiry logic, ensure it’s authoritative)
-- `supabase/functions/create-listing/index.ts` (use middleware for listing + expiry + admin overrides)
-- `supabase/functions/sync-listing/index.ts` (same enforcement for batch path)
-- `supabase/functions/stripe-webhook/index.ts` (configuration + logs; no business logic change)
-
-Frontend (only if necessary to resolve “not showing”):
-- `src/pages/dashboard/Listings.tsx` (improve error visibility; no redesign)
-
-Configuration / secrets:
-- Add `STRIPE_WEBHOOK_SECRET` in Supabase function secrets (required for real activation)
-
----
-
-## Notes on your requirements (“don’t change business logic”)
-- I will **not** change your listing creation algorithm (dedupe rules, SKU/ASIN matching, payload normalization).
-- I will **not** change pricing, plan tier definitions, or replace your count-based model.
-- Fixes are strictly:
-  - consistent backend enforcement
-  - correct expiry calculation
-  - webhook activation reliability
-  - admin overrides respected by enforcement
