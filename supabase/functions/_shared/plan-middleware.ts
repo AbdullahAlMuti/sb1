@@ -296,7 +296,12 @@ export async function validateUserPlan(
       limit = getEffectiveLimit('max_listings', status.limits.max_listings);
       allowed = current + amount <= limit;
       if (!allowed) {
-        reason = `Listing limit reached (${current}/${limit}). Upgrade your plan.`;
+        // Trial-specific message for the default trial cap (admin override may exceed)
+        if (status.isTrial && limit === 10) {
+          reason = 'Trial plan listing limit reached (10 max)';
+        } else {
+          reason = `Listing limit reached (${current}/${limit}). Upgrade your plan.`;
+        }
       }
       break;
 
