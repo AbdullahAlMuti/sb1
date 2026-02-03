@@ -23,6 +23,7 @@ import Listings from "./pages/dashboard/Listings";
 import NewListing from "./pages/dashboard/NewListing";
 import ExtensionConnect from "./pages/dashboard/ExtensionConnect";
 import Subscription from "./pages/dashboard/Subscription";
+import BillingUsage from "./pages/dashboard/BillingUsage";
 import DashboardSettings from "./pages/dashboard/Settings";
 import CalculatorSettings from "./pages/dashboard/CalculatorSettings";
 import ProfitableProducts from "./pages/dashboard/ProfitableProducts";
@@ -91,6 +92,7 @@ const App = () => (
                 <Route path="alerts" element={<Alerts />} />
 
                 <Route path="subscription" element={<Subscription />} />
+                <Route path="billing" element={<BillingUsage />} />
                 <Route path="extension" element={<ExtensionConnect />} />
                 <Route path="calculator" element={<CalculatorSettings />} />
                 <Route path="best-selling" element={<BestSellingItems />} />
