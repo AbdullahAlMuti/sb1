@@ -17,7 +17,7 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
         hero: "bg-primary text-primary-foreground shadow-md hover:bg-primary/90 hover:shadow-lg hover:-translate-y-0.5",
         glass: "bg-card/80 backdrop-blur-sm text-foreground hover:bg-card border border-border",
-        glow: "bg-primary text-primary-foreground shadow-[0_0_30px_hsl(227,56%,61%,0.3)] hover:shadow-[0_0_40px_hsl(227,56%,61%,0.4)] hover:-translate-y-0.5",
+         glow: "bg-primary text-primary-foreground cta-glow hover:-translate-y-0.5",
         amazon: "bg-amazon text-primary-foreground hover:bg-amazon/90 shadow-sm",
         ebay: "bg-ebay text-foreground hover:bg-ebay/90 shadow-sm",
       },

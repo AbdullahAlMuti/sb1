@@ -56,16 +56,16 @@
     --gradient-accent: linear-gradient(135deg, hsl(16, 80%, 60%) 0%, hsl(24, 85%, 55%) 100%);
     --gradient-cta: linear-gradient(135deg, hsl(24, 85%, 55%) 0%, hsl(20, 90%, 50%) 100%);
     
-    --shadow-sm: 0 1px 2px hsl(20, 15%, 15%, 0.04);
-    --shadow-md: 0 4px 6px -1px hsl(20, 15%, 15%, 0.06), 0 2px 4px -2px hsl(20, 15%, 15%, 0.04);
-    --shadow-lg: 0 10px 15px -3px hsl(20, 15%, 15%, 0.08), 0 4px 6px -4px hsl(20, 15%, 15%, 0.04);
-    --shadow-xl: 0 20px 25px -5px hsl(20, 15%, 15%, 0.1), 0 8px 10px -6px hsl(20, 15%, 15%, 0.04);
+    --shadow-sm: 0 1px 2px hsl(20 15% 15% / 0.04);
+    --shadow-md: 0 4px 6px -1px hsl(20 15% 15% / 0.06), 0 2px 4px -2px hsl(20 15% 15% / 0.04);
+    --shadow-lg: 0 10px 15px -3px hsl(20 15% 15% / 0.08), 0 4px 6px -4px hsl(20 15% 15% / 0.04);
+    --shadow-xl: 0 20px 25px -5px hsl(20 15% 15% / 0.10), 0 8px 10px -6px hsl(20 15% 15% / 0.04);
     
-    --glow-primary: 0 4px 20px hsl(24, 85%, 55%, 0.25);
-    --glow-accent: 0 4px 15px hsl(16, 80%, 60%, 0.2);
+    --glow-primary: 0 4px 20px hsl(24 85% 55% / 0.25);
+    --glow-accent: 0 4px 15px hsl(16 80% 60% / 0.20);
     
-    --glass-bg: hsl(0, 0%, 100%, 0.9);
-    --glass-border: hsl(30, 10%, 88%, 0.8);
+    --glass-bg: hsl(0 0% 100% / 0.90);
+    --glass-border: hsl(30 10% 88% / 0.80);
 
     /* Platform brand colors */
     --amazon-orange: 33 100% 50%;
@@ -169,16 +169,16 @@
     --gradient-accent: linear-gradient(135deg, hsl(12, 76%, 55%) 0%, hsl(25, 90%, 50%) 100%);
     --gradient-cta: linear-gradient(135deg, hsl(173, 58%, 48%) 0%, hsl(173, 55%, 55%) 100%);
     
-    --shadow-sm: 0 1px 2px hsl(222, 47%, 5%, 0.3);
-    --shadow-md: 0 4px 6px -1px hsl(222, 47%, 5%, 0.4);
-    --shadow-lg: 0 10px 15px -3px hsl(222, 47%, 5%, 0.5);
-    --shadow-xl: 0 20px 25px -5px hsl(222, 47%, 5%, 0.6);
+    --shadow-sm: 0 1px 2px hsl(222 47% 5% / 0.30);
+    --shadow-md: 0 4px 6px -1px hsl(222 47% 5% / 0.40);
+    --shadow-lg: 0 10px 15px -3px hsl(222 47% 5% / 0.50);
+    --shadow-xl: 0 20px 25px -5px hsl(222 47% 5% / 0.60);
     
-    --glow-primary: 0 4px 30px hsl(173, 58%, 48%, 0.25);
-    --glow-accent: 0 4px 20px hsl(12, 76%, 55%, 0.2);
+    --glow-primary: 0 4px 30px hsl(173 58% 48% / 0.25);
+    --glow-accent: 0 4px 20px hsl(12 76% 55% / 0.20);
     
-    --glass-bg: hsl(223, 40%, 14%, 0.8);
-    --glass-border: hsl(223, 25%, 25%, 0.5);
+    --glass-bg: hsl(223 40% 14% / 0.80);
+    --glass-border: hsl(223 25% 25% / 0.50);
 
     /* Platform brand colors */
     --amazon-orange: 33 100% 50%;
