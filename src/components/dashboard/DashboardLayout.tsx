@@ -25,7 +25,10 @@ export function DashboardLayout() {
 
   const creditsTotal = usage?.credits_total ?? limits?.credits_per_month ?? 0;
   const creditsRemaining = usage?.credits_remaining ?? 0;
-  const eligibleForCreditWarning = Boolean(subscribed || (planName && planName !== 'free'));
+
+  // Only paid/trialing users (i.e. subscribed) should see low-credit warnings.
+  // Brand-new users (free / unsubscribed) must not see phantom warnings.
+  const eligibleForCreditWarning = Boolean(subscribed);
 
   // One-time toast when credits are low (<= 5)
   useEffect(() => {
