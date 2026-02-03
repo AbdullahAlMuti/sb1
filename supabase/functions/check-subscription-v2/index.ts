@@ -234,12 +234,40 @@ serve(async (req) => {
         .eq('status', 'active'),
     ]);
 
+    // If user just purchased and webhook persistence is delayed, credits can be 0 briefly.
+    // Fix: if subscription is active/trialing, planDetails exists, credits_remaining is 0/NULL,
+    // and credits_used is 0, initialize credits to the plan total.
+    const maybeProfileCredits = Math.max(profile?.credits ?? 0, 0);
+    const maybeCreditsUsed = Math.max(userPlan?.credits_used ?? 0, 0);
+    const planCredits = Math.max(planDetails?.credits_per_month ?? 0, 0);
+
+    if (hasActiveSub && planDetails?.id && planCredits > 0 && maybeProfileCredits === 0 && maybeCreditsUsed === 0) {
+      logStep('Credits appear uninitialized for active subscription; initializing', {
+        userId: user.id,
+        planId: planDetails.id,
+        planCredits,
+      });
+
+      const { error: initErr } = await supabaseServiceClient
+        .from('profiles')
+        .update({ credits: planCredits })
+        .eq('id', user.id);
+
+      if (initErr) {
+        logStep('Credits initialization failed (best-effort)', { error: initErr.message });
+      }
+    }
+
     // Credits source-of-truth:
     // - profiles.credits is the authoritative remaining balance (deducted on usage, reset on renewal)
     // - plans.credits_per_month is the monthly total
     // - credits_used is derived for display (and also tracked in user_plans for analytics)
     const creditsTotal = hasActiveSub ? (planDetails?.credits_per_month ?? 0) : 0;
-    const creditsRemaining = hasActiveSub ? Math.max(profile?.credits ?? 0, 0) : 0;
+    // Re-read remaining credits from local computed values; if we initialized above,
+    // ensure we return the plan total immediately (no "0 remaining" flicker).
+    const creditsRemaining = hasActiveSub
+      ? (maybeProfileCredits === 0 && maybeCreditsUsed === 0 && planCredits > 0 ? planCredits : maybeProfileCredits)
+      : 0;
     const creditsUsed = Math.max(creditsTotal - creditsRemaining, 0);
 
     return new Response(
