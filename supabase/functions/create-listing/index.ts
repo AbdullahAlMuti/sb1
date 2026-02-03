@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { validateUserPlan } from '../_shared/plan-middleware.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -167,20 +168,6 @@ Deno.serve(async (req) => {
       planId = created?.plan_id;
     }
 
-    // Get plan limits dynamically from database
-    let maxListings = 10; // Default free plan limit
-    if (planId) {
-      const { data: planData } = await supabase
-        .from('plans')
-        .select('max_listings')
-        .eq('id', planId)
-        .single();
-      
-      if (planData) {
-        maxListings = planData.max_listings ?? 10;
-      }
-    }
-
     // Check listing limit BEFORE credit check (for new listings only)
     const normalizedSku = body.sku?.trim().substring(0, 100) || null;
     const normalizedAsin =
@@ -210,40 +197,34 @@ Deno.serve(async (req) => {
       if (data) existingId = data.id;
     }
 
-    // Only check limits for NEW listings
+    // Only check limits for NEW listings (backend authoritative)
     if (!existingId) {
-      // Count active listings
-      const { count: listingsCount } = await supabase
-        .from('listings')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('status', 'active');
-
-      if ((listingsCount ?? 0) >= maxListings) {
-        console.log('[create-listing] Listing limit reached:', listingsCount, '/', maxListings);
+      const listingValidation = await validateUserPlan(supabase, user.id, 'listing', 1);
+      if (!listingValidation.allowed) {
+        console.log('[create-listing] Listing validation blocked:', listingValidation);
         return new Response(
           JSON.stringify({
             success: false,
-            error: 'Listing limit reached',
+            error: listingValidation.reason ?? 'Listing not allowed',
             limitType: 'listings',
-            current: listingsCount,
-            limit: maxListings,
+            current: listingValidation.current,
+            limit: listingValidation.limit,
             upgradeRequired: true,
           }),
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Credit check for new listings
-      if (userCredits < 1) {
-        console.log('[create-listing] Insufficient credits:', userCredits);
+      const creditValidation = await validateUserPlan(supabase, user.id, 'credit', 1);
+      if (!creditValidation.allowed) {
+        console.log('[create-listing] Credit validation blocked:', creditValidation);
         return new Response(
           JSON.stringify({
             success: false,
-            error: 'Insufficient credits',
+            error: creditValidation.reason ?? 'Insufficient credits',
             limitType: 'credits',
-            current: userCredits,
-            limit: 1,
+            current: creditValidation.current,
+            limit: creditValidation.limit,
             upgradeRequired: true,
           }),
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

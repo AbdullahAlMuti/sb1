@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { validateUserPlan } from '../_shared/plan-middleware.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -190,7 +191,7 @@ Deno.serve(async (req) => {
       if (newListingsCount > 0) {
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('credits')
+          .select('credits, plan_id')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -206,15 +207,23 @@ Deno.serve(async (req) => {
 
         // If the user has no profile yet (common for brand-new accounts), create it now.
         if (!profile) {
+          const { data: freePlan } = await supabase
+            .from('plans')
+            .select('id')
+            .eq('name', 'free')
+            .maybeSingle();
+
           const { data: createdProfile, error: createProfileError } = await supabase
             .from('profiles')
             .insert({
               id: user.id,
+              email: user.email ?? '',
               full_name: (user.user_metadata as any)?.full_name ?? user.email ?? null,
               credits: 5,
               is_active: true,
+              plan_id: freePlan?.id ?? null,
             })
-            .select('credits')
+            .select('credits, plan_id')
             .single();
 
           if (createProfileError) {
@@ -230,13 +239,50 @@ Deno.serve(async (req) => {
 
         console.log(`[sync-listing] User credits: ${userCredits}, new listings: ${newListingsCount}`);
 
-        if (userCredits < newListingsCount) {
-          console.log('[sync-listing] Insufficient credits');
+        // Backend authoritative plan enforcement (listing + credits)
+        const listingValidation = await validateUserPlan(supabase, user.id, 'listing', newListingsCount);
+        if (!listingValidation.allowed) {
+          console.log('[sync-listing] Listing validation blocked:', listingValidation);
           return new Response(
             JSON.stringify({
+              success: false,
+              error: listingValidation.reason ?? 'Listing limit reached',
+              limitType: 'listings',
+              current: listingValidation.current,
+              limit: listingValidation.limit,
+              upgradeRequired: true,
+            }),
+            { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const creditValidation = await validateUserPlan(supabase, user.id, 'credit', newListingsCount);
+        if (!creditValidation.allowed) {
+          console.log('[sync-listing] Credit validation blocked:', creditValidation);
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: creditValidation.reason ?? 'Insufficient credits',
+              limitType: 'credits',
+              current: creditValidation.current,
+              limit: creditValidation.limit,
+              upgradeRequired: true,
+            }),
+            { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Keep legacy credit check response for compatibility (should be redundant due to middleware)
+        if (userCredits < newListingsCount) {
+          console.log('[sync-listing] Insufficient credits (legacy check)');
+          return new Response(
+            JSON.stringify({
+              success: false,
               error: 'You do not have enough credits to create a listing.',
-              creditsRequired: newListingsCount,
-              creditsAvailable: userCredits,
+              limitType: 'credits',
+              current: userCredits,
+              limit: newListingsCount,
+              upgradeRequired: true,
             }),
             { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );

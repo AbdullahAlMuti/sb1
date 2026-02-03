@@ -41,6 +41,60 @@ serve(async (req) => {
 
   const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
+  const findUserIdByCustomer = async (customerId: string | null | undefined): Promise<string | null> => {
+    if (!customerId) return null;
+    const { data } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("stripe_customer_id", customerId)
+      .maybeSingle();
+    return data?.id ?? null;
+  };
+
+  const syncActiveSubscriptionToUser = async (subscription: Stripe.Subscription, userId: string) => {
+    const priceId = subscription.items.data[0]?.price?.id;
+    const { data: planData } = await supabase
+      .from("plans")
+      .select("id, name, credits_per_month, max_auto_orders")
+      .or(`stripe_price_id_monthly.eq.${priceId},stripe_price_id_yearly.eq.${priceId}`)
+      .maybeSingle();
+
+    if (!planData) {
+      logStep("No matching plan found for price", { priceId });
+      return;
+    }
+
+    const { data: existingPlan } = await supabase
+      .from("user_plans")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const planPayload = {
+      user_id: userId,
+      plan_id: planData.id,
+      status: subscription.status,
+      stripe_subscription_id: subscription.id,
+      current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+      current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+      orders_used: 0,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingPlan) {
+      await supabase.from("user_plans").update(planPayload).eq("user_id", userId);
+    } else {
+      await supabase.from("user_plans").insert(planPayload);
+    }
+
+    await supabase
+      .from("profiles")
+      .update({ plan_id: planData.id, credits: planData.credits_per_month })
+      .eq("id", userId);
+
+    logStep("User plan updated", { userId, planName: planData.name });
+  };
+
   try {
     logStep("Webhook received");
 
@@ -166,6 +220,29 @@ serve(async (req) => {
             logStep("No matching plan found for price", { priceId });
           }
         }
+        break;
+      }
+
+      case "customer.subscription.created": {
+        const subscription = event.data.object as Stripe.Subscription;
+        logStep("Subscription created", {
+          subscriptionId: subscription.id,
+          status: subscription.status,
+          customerId: subscription.customer,
+        });
+
+        // Best-effort user resolution:
+        // 1) profiles.stripe_customer_id == subscription.customer
+        const userId = await findUserIdByCustomer(subscription.customer as string);
+        if (!userId) {
+          logStep("No user found for subscription customer", { customerId: subscription.customer });
+          break;
+        }
+
+        if (subscription.status === "active" || subscription.status === "trialing") {
+          await syncActiveSubscriptionToUser(subscription, userId);
+        }
+
         break;
       }
 
@@ -408,6 +485,56 @@ serve(async (req) => {
             logStep("No user_plan found for subscription", { subscriptionId: invoice.subscription });
           }
         }
+        break;
+      }
+
+      // Alias (some setups still send invoice.paid)
+      case "invoice.paid": {
+        const invoice = event.data.object as Stripe.Invoice;
+        logStep("Invoice paid", { invoiceId: invoice.id, billingReason: invoice.billing_reason });
+
+        // Reuse existing renewal logic by falling through via manual invocation.
+        // We keep the same behavior as invoice.payment_succeeded.
+        if (invoice.subscription && invoice.billing_reason === "subscription_cycle") {
+          const { data: userPlan } = await supabase
+            .from("user_plans")
+            .select("user_id")
+            .eq("stripe_subscription_id", invoice.subscription as string)
+            .maybeSingle();
+
+          if (userPlan) {
+            const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string);
+            const priceId = subscription.items.data[0]?.price?.id;
+            const { data: planData } = await supabase
+              .from("plans")
+              .select("id, name, credits_per_month, max_auto_orders")
+              .or(`stripe_price_id_monthly.eq.${priceId},stripe_price_id_yearly.eq.${priceId}`)
+              .maybeSingle();
+
+            if (planData) {
+              await supabase
+                .from("profiles")
+                .update({ credits: planData.credits_per_month })
+                .eq("id", userPlan.user_id);
+
+              await supabase
+                .from("user_plans")
+                .update({
+                  orders_used: 0,
+                  current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("user_id", userPlan.user_id);
+
+              logStep("Credits and orders refreshed (invoice.paid)", {
+                userId: userPlan.user_id,
+                credits: planData.credits_per_month,
+                maxOrders: planData.max_auto_orders,
+              });
+            }
+          }
+        }
+
         break;
       }
 
