@@ -224,7 +224,7 @@ serve(async (req) => {
         .maybeSingle(),
       supabaseServiceClient
         .from('user_plans')
-        .select('orders_used, credits_used, current_period_end, status')
+        .select('orders_used, credits_used, current_period_start, current_period_end, status')
         .eq('user_id', user.id)
         .maybeSingle(),
       supabaseServiceClient
@@ -234,27 +234,89 @@ serve(async (req) => {
         .eq('status', 'active'),
     ]);
 
-    // If user just purchased and webhook persistence is delayed, credits can be 0 briefly.
-    // Fix: if subscription is active/trialing, planDetails exists, credits_remaining is 0/NULL,
-    // and credits_used is 0, initialize credits to the plan total.
-    const maybeProfileCredits = Math.max(profile?.credits ?? 0, 0);
+    // Credits initialization hardening:
+    // Sometimes Stripe says subscription is active, but profile credits remain near zero.
+    // We treat it as "not initialized" when:
+    // - active/trialing subscription
+    // - plan credits > 0
+    // - user_plans.credits_used is 0 (not tracking usage yet)
+    // - profile.credits is very low (<= 5)
+    // Then we compute minimal usage from credit_transactions (usage) in the current period
+    // and set remaining = planTotal - used.
+    let maybeProfileCredits = Math.max(profile?.credits ?? 0, 0);
     const maybeCreditsUsed = Math.max(userPlan?.credits_used ?? 0, 0);
     const planCredits = Math.max(planDetails?.credits_per_month ?? 0, 0);
 
-    if (hasActiveSub && planDetails?.id && planCredits > 0 && maybeProfileCredits === 0 && maybeCreditsUsed === 0) {
-      logStep('Credits appear uninitialized for active subscription; initializing', {
-        userId: user.id,
-        planId: planDetails.id,
-        planCredits,
-      });
+    if (hasActiveSub && planDetails?.id && planCredits > 0 && maybeCreditsUsed === 0 && maybeProfileCredits <= 5) {
+      const periodStart = userPlan?.current_period_start
+        ? new Date(userPlan.current_period_start)
+        : new Date(Date.now() - 35 * 24 * 60 * 60 * 1000);
+      const periodStartIso = periodStart.toISOString();
 
-      const { error: initErr } = await supabaseServiceClient
-        .from('profiles')
-        .update({ credits: planCredits })
-        .eq('id', user.id);
+      const [{ data: recentUsageTx }, { data: existingGrantTx }] = await Promise.all([
+        supabaseServiceClient
+          .from('credit_transactions')
+          .select('amount, created_at')
+          .eq('user_id', user.id)
+          .eq('transaction_type', 'usage')
+          .gte('created_at', periodStartIso)
+          .limit(1000),
+        supabaseServiceClient
+          .from('credit_transactions')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('transaction_type', 'plan_grant')
+          .gte('created_at', periodStartIso)
+          .limit(1),
+      ]);
 
-      if (initErr) {
-        logStep('Credits initialization failed (best-effort)', { error: initErr.message });
+      const usedFromTx = Array.isArray(recentUsageTx)
+        ? recentUsageTx.reduce((sum: number, tx: any) => sum + Math.max(-(Number(tx.amount) || 0), 0), 0)
+        : 0;
+
+      const hasGrantThisPeriod = Boolean(existingGrantTx?.length);
+
+      // Only auto-init when usage is still tiny; avoid overwriting legitimate low balances.
+      if (!hasGrantThisPeriod && usedFromTx <= 5) {
+        const desiredRemaining = Math.max(planCredits - usedFromTx, 0);
+
+        if (desiredRemaining > maybeProfileCredits) {
+          logStep('Credits appear uninitialized; backfilling from plan total', {
+            userId: user.id,
+            planId: planDetails.id,
+            planCredits,
+            usedFromTx,
+            oldRemaining: maybeProfileCredits,
+            newRemaining: desiredRemaining,
+          });
+
+          const { error: initErr } = await supabaseServiceClient
+            .from('profiles')
+            .update({ credits: desiredRemaining })
+            .eq('id', user.id);
+
+          if (initErr) {
+            logStep('Credits initialization failed (best-effort)', { error: initErr.message });
+          } else {
+            // Best-effort audit trail.
+            const delta = desiredRemaining - maybeProfileCredits;
+            await supabaseServiceClient.from('credit_transactions').insert({
+              user_id: user.id,
+              amount: delta,
+              balance_after: desiredRemaining,
+              transaction_type: 'plan_grant',
+              description: 'Plan credits initialized',
+              metadata: {
+                plan_id: planDetails.id,
+                plan_credits_total: planCredits,
+                inferred_usage: usedFromTx,
+                period_start: periodStartIso,
+              },
+            });
+
+            maybeProfileCredits = desiredRemaining;
+          }
+        }
       }
     }
 
@@ -265,9 +327,7 @@ serve(async (req) => {
     const creditsTotal = hasActiveSub ? (planDetails?.credits_per_month ?? 0) : 0;
     // Re-read remaining credits from local computed values; if we initialized above,
     // ensure we return the plan total immediately (no "0 remaining" flicker).
-    const creditsRemaining = hasActiveSub
-      ? (maybeProfileCredits === 0 && maybeCreditsUsed === 0 && planCredits > 0 ? planCredits : maybeProfileCredits)
-      : 0;
+    const creditsRemaining = hasActiveSub ? maybeProfileCredits : 0;
     const creditsUsed = Math.max(creditsTotal - creditsRemaining, 0);
 
     return new Response(
