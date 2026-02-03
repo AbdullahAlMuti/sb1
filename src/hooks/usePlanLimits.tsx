@@ -51,7 +51,7 @@ export function usePlanLimits() {
         .select('*')
         .eq('user_id', user.id)
         .maybeSingle();
-      const userPlanData = userPlan as { orders_used?: number; current_period_end?: string; plan_id?: string } | null;
+      const userPlanData = userPlan as { orders_used?: number; credits_used?: number; current_period_end?: string; plan_id?: string } | null;
 
       // Fetch the plan limits from plans table
       const planId = profile?.plan_id || userPlanData?.plan_id;
@@ -87,7 +87,8 @@ export function usePlanLimits() {
         credits_per_month: planData?.credits_per_month ?? 5,
         max_listings: planData?.max_listings ?? 10,
         max_auto_orders: planData?.max_auto_orders ?? 0,
-        current_credits: profile?.credits ?? 0,
+        // Derive remaining from plan total - used to avoid misleading defaults for new users.
+        current_credits: Math.max((planData?.credits_per_month ?? 0) - (userPlanData?.credits_used ?? 0), 0),
         orders_used: userPlanData?.orders_used ?? 0,
         listings_count: listingsCount ?? 0,
         plan_name: planData?.name ?? 'free',
