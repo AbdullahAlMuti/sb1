@@ -209,25 +209,11 @@ serve(async (req) => {
       }
     }
 
-    // If we still don't have plan details (free or unmatched price), load them by name.
-    if (!planDetails) {
-      const { data: fallbackPlan } = await supabaseServiceClient
-        .from('plans')
-        .select('id, name, display_name, credits_per_month, max_listings, max_auto_orders')
-        .eq('name', planName)
-        .maybeSingle();
-
-      if (fallbackPlan?.id) {
-        planDetails = {
-          id: fallbackPlan.id,
-          name: fallbackPlan.name,
-          display_name: fallbackPlan.display_name ?? fallbackPlan.name,
-           credits_per_month: fallbackPlan.credits_per_month ?? 0,
-          max_listings: fallbackPlan.max_listings ?? 10,
-          max_auto_orders: fallbackPlan.max_auto_orders ?? 0,
-        };
-      }
-    }
+    // IMPORTANT:
+    // For users without an active Stripe subscription, we intentionally do NOT
+    // fall back to a "free" plan row from the DB to avoid showing phantom totals
+    // (e.g. 100000) for brand-new users.
+    // Only resolve plan details via Stripe (active/trialing subscription).
 
     // Also return basic usage/limits so dashboard can render plan limits + usage.
     const [{ data: profile }, { data: userPlan }, { count: listingsCount }] = await Promise.all([
@@ -252,8 +238,8 @@ serve(async (req) => {
     // - profiles.credits is the authoritative remaining balance (deducted on usage, reset on renewal)
     // - plans.credits_per_month is the monthly total
     // - credits_used is derived for display (and also tracked in user_plans for analytics)
-    const creditsTotal = planDetails?.credits_per_month ?? 0;
-    const creditsRemaining = Math.max(profile?.credits ?? 0, 0);
+    const creditsTotal = hasActiveSub ? (planDetails?.credits_per_month ?? 0) : 0;
+    const creditsRemaining = hasActiveSub ? Math.max(profile?.credits ?? 0, 0) : 0;
     const creditsUsed = Math.max(creditsTotal - creditsRemaining, 0);
 
     return new Response(
@@ -261,7 +247,7 @@ serve(async (req) => {
         subscribed: hasActiveSub,
         plan_name: planName,
         plan: planDetails,
-        limits: planDetails
+         limits: hasActiveSub && planDetails
           ? {
               credits_per_month: planDetails.credits_per_month,
               max_listings: planDetails.max_listings,

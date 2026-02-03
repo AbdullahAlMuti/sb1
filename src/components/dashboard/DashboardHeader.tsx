@@ -248,9 +248,11 @@ export function DashboardHeader() {
     navigate('/');
   };
 
-  const creditsTotal = usage?.credits_total ?? limits?.credits_per_month ?? 0;
-  const creditsRemaining = usage?.credits_remaining ?? Math.max((profile?.credits ?? 0), 0);
-  const showCredits = Boolean(subscribed || planName !== 'free');
+  const creditsTotal = subscribed ? (usage?.credits_total ?? limits?.credits_per_month ?? 0) : 0;
+  const creditsRemaining = subscribed
+    ? (usage?.credits_remaining ?? Math.max((profile?.credits ?? 0), 0))
+    : 0;
+  const showCredits = Boolean(subscribed);
   const isExpired = Boolean(subscriptionEnd && new Date(subscriptionEnd) < new Date());
 
   return (
