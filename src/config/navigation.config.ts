@@ -18,6 +18,7 @@ import {
   Flame,
   Activity,
   Gem,
+  Coins,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -60,7 +61,8 @@ export type RouteKey =
   | 'admin-coupons'
   | 'admin-audit'
   | 'admin-settings'
-  | 'admin-ai-settings';
+  | 'admin-ai-settings'
+  | 'admin-credits';
 
 /**
  * Route definitions - maps route keys to actual paths
@@ -98,6 +100,7 @@ export const ROUTE_PATHS: Record<RouteKey, string> = {
   'admin-audit': '/admin/audit',
   'admin-settings': '/admin/settings',
   'admin-ai-settings': '/admin/ai-settings',
+  'admin-credits': '/admin/credits',
 };
 
 /**
@@ -193,6 +196,7 @@ export const ADMIN_NAV_SECTIONS: NavSectionConfig[] = [
       { key: 'admin-plans', icon: CreditCard, label: 'Plans' },
       { key: 'admin-payments', icon: DollarSign, label: 'Payments' },
       { key: 'admin-usage', icon: Activity, label: 'Usage' },
+      { key: 'admin-credits', icon: Coins, label: 'Credits Tool' },
       { key: 'admin-coupons', icon: CreditCard, label: 'Coupons' },
     ],
   },

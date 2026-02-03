@@ -46,6 +46,7 @@ import AdminCoupons from "./pages/admin/AdminCoupons";
 import AdminBestSelling from "./pages/admin/AdminBestSelling";
 import AdminMustSell from "./pages/admin/AdminMustSell";
 import AdminExtension from "./pages/admin/AdminExtension";
+import AdminCredits from "./pages/admin/AdminCredits";
 import NotFound from "./pages/NotFound";
 import Course from "./pages/Course";
 import ExtensionViewer from "./pages/ExtensionViewer";
@@ -124,6 +125,7 @@ const App = () => (
                 <Route path="audit" element={<AdminAudit />} />
                 <Route path="settings" element={<AdminSettings />} />
                 <Route path="ai-settings" element={<AdminAISettings />} />
+                <Route path="credits" element={<AdminCredits />} />
               </Route>
 
               {/* Temporary Extension Viewer - Safe to Delete */}
