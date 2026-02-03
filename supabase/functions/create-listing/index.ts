@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
         .from('plans')
         .select('id')
         .eq('name', 'free')
-        .single();
+        .maybeSingle();
 
       const { data: created, error: createErr } = await supabase
         .from('profiles')
@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
           id: user.id,
           email: user.email ?? '',
           full_name: (user.user_metadata as any)?.full_name ?? user.email ?? null,
-          credits: 5,
+          credits: 0,
           is_active: true,
           plan_id: freePlan?.id ?? null,
         })
@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      userCredits = created?.credits ?? 5;
+      userCredits = created?.credits ?? 0;
       planId = created?.plan_id;
     }
 

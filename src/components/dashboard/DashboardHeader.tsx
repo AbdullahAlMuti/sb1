@@ -39,7 +39,7 @@ interface Notice {
 export function DashboardHeader() {
   const navigate = useNavigate();
   const { user, profile, signOut, isAdmin } = useAuth();
-  const { planName, subscribed, subscriptionEnd, plan, limits, usage } = useSubscription();
+  const { planName, subscribed, subscriptionEnd, plan, limits, usage, openCustomerPortal } = useSubscription();
   const { theme, toggleTheme } = useTheme();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -248,9 +248,8 @@ export function DashboardHeader() {
     navigate('/');
   };
 
-  const creditsTotal = limits?.credits_per_month ?? 0;
-  const creditsUsed = usage?.credits_used ?? 0;
-  const creditsRemaining = Math.max(creditsTotal - creditsUsed, 0);
+  const creditsTotal = usage?.credits_total ?? limits?.credits_per_month ?? 0;
+  const creditsRemaining = usage?.credits_remaining ?? Math.max((profile?.credits ?? 0), 0);
   const showCredits = Boolean(subscribed || planName !== 'free');
   const isExpired = Boolean(subscriptionEnd && new Date(subscriptionEnd) < new Date());
 
@@ -578,11 +577,15 @@ export function DashboardHeader() {
               className="w-full justify-start h-9"
               onClick={() => {
                 setIsProfileOpen(false);
-                navigate('/dashboard/subscription');
+                if (subscribed) {
+                  openCustomerPortal();
+                } else {
+                  navigate('/dashboard/subscription');
+                }
               }}
             >
               <CreditCard className="h-4 w-4 mr-2" />
-              {subscribed ? (isExpired ? 'Renew Subscription' : 'Manage Subscription') : 'Upgrade Plan'}
+              {subscribed ? (isExpired ? 'Renew Subscription' : 'Manage Billing') : 'Upgrade Plan'}
             </Button>
             <Button 
               variant="ghost" 

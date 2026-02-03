@@ -160,7 +160,7 @@ export async function getFullPlanStatus(
 
     // Default limits for free/missing plan
     const defaultLimits: PlanLimits = {
-      credits_per_month: 5,
+      credits_per_month: 0,
       max_listings: 10,
       max_auto_orders: 0,
       max_seo_titles: 0,
@@ -173,7 +173,7 @@ export async function getFullPlanStatus(
     };
 
     const limits: PlanLimits = planData ? {
-      credits_per_month: planData.credits_per_month ?? 5,
+      credits_per_month: planData.credits_per_month ?? 0,
       max_listings: planData.max_listings ?? 10,
       max_auto_orders: planData.max_auto_orders ?? 0,
       max_seo_titles: planData.max_seo_titles ?? 0,

@@ -78,6 +78,7 @@ serve(async (req) => {
       current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
       current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
       orders_used: 0,
+      credits_used: 0,
       updated_at: new Date().toISOString(),
     };
 
@@ -171,6 +172,7 @@ serve(async (req) => {
               current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
               current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
               orders_used: 0, // Reset on new subscription
+              credits_used: 0, // Reset on new subscription
               updated_at: new Date().toISOString(),
             };
 
@@ -285,7 +287,14 @@ serve(async (req) => {
             // Reset orders_used if new billing period
             if (isNewPeriod) {
               updatePayload.orders_used = 0;
+              updatePayload.credits_used = 0;
               logStep("New billing period detected, resetting order count");
+
+              // Also refresh credits to the plan total on new period
+              await supabase
+                .from("profiles")
+                .update({ credits: planData.credits_per_month })
+                .eq("id", userPlan.user_id);
 
               // Log order reset
               await supabase.from("order_transactions").insert({
@@ -332,16 +341,16 @@ serve(async (req) => {
               .from("profiles")
               .update({ 
                 plan_id: freePlan?.id || null, 
-                credits: freePlan?.credits_per_month ?? 5 
+                credits: freePlan?.credits_per_month ?? 0 
               })
               .eq("id", userPlan.user_id);
 
             // Log credit transaction for downgrade
             await supabase.from("credit_transactions").insert({
               user_id: userPlan.user_id,
-              amount: freePlan?.credits_per_month ?? 5,
+              amount: freePlan?.credits_per_month ?? 0,
               transaction_type: "plan_grant",
-              balance_after: freePlan?.credits_per_month ?? 5,
+              balance_after: freePlan?.credits_per_month ?? 0,
               description: "Downgraded to free plan",
               metadata: { reason: subscription.status },
             });
@@ -388,16 +397,16 @@ serve(async (req) => {
             .from("profiles")
             .update({ 
               plan_id: freePlan?.id || null, 
-              credits: freePlan?.credits_per_month ?? 5 
+              credits: freePlan?.credits_per_month ?? 0 
             })
             .eq("id", userPlan.user_id);
 
           // Log credit transaction
           await supabase.from("credit_transactions").insert({
             user_id: userPlan.user_id,
-            amount: freePlan?.credits_per_month ?? 5,
+            amount: freePlan?.credits_per_month ?? 0,
             transaction_type: "plan_grant",
-            balance_after: freePlan?.credits_per_month ?? 5,
+            balance_after: freePlan?.credits_per_month ?? 0,
             description: "Subscription canceled - downgraded to free plan",
             metadata: {},
           });
@@ -444,6 +453,7 @@ serve(async (req) => {
                 .from("user_plans")
                 .update({
                   orders_used: 0,
+                  credits_used: 0,
                   current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
                   updated_at: new Date().toISOString(),
                 })
@@ -521,6 +531,7 @@ serve(async (req) => {
                 .from("user_plans")
                 .update({
                   orders_used: 0,
+                  credits_used: 0,
                   current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
                   updated_at: new Date().toISOString(),
                 })

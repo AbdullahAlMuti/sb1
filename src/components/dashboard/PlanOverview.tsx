@@ -224,15 +224,7 @@ export function PlanOverview({ creditsRemaining, creditsMax }: PlanOverviewProps
         )}
       </div>
 
-      {/* Low Credits Warning */}
-      {creditsRemaining < 10 && !subscribed && (
-        <div className="px-4 py-3 bg-amber-500/10 border-t border-amber-500/20">
-          <div className="flex items-center gap-2 text-amber-400">
-            <Sparkles className="h-4 w-4" />
-            <span className="text-sm">Low on credits? Upgrade for more power!</span>
-          </div>
-        </div>
-      )}
+      {/* Low-credit notification handled globally (DashboardLayout) */}
     </div>
   );
 }

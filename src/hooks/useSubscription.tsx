@@ -20,6 +20,7 @@ interface SubscriptionState {
     max_auto_orders: number;
   } | null;
   usage?: {
+    credits_total?: number;
     credits_remaining: number;
     listings_active: number;
     orders_used: number;

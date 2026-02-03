@@ -160,16 +160,15 @@ serve(async (req) => {
             .maybeSingle()
         : { data: null } as any;
 
-      // Fallback to free if no matching plan found
-      planName = planData?.name || "free";
-      const planCredits = planData?.credits_per_month ?? 5;
+       // Fallback to free if no matching plan found
+       planName = planData?.name || "free";
 
       if (planData?.id) {
         planDetails = {
           id: planData.id,
           name: planData.name,
           display_name: planData.display_name ?? planData.name,
-          credits_per_month: planData.credits_per_month ?? 5,
+           credits_per_month: planData.credits_per_month ?? 0,
           max_listings: planData.max_listings ?? 10,
           max_auto_orders: planData.max_auto_orders ?? 0,
         };
@@ -223,7 +222,7 @@ serve(async (req) => {
           id: fallbackPlan.id,
           name: fallbackPlan.name,
           display_name: fallbackPlan.display_name ?? fallbackPlan.name,
-          credits_per_month: fallbackPlan.credits_per_month ?? 5,
+           credits_per_month: fallbackPlan.credits_per_month ?? 0,
           max_listings: fallbackPlan.max_listings ?? 10,
           max_auto_orders: fallbackPlan.max_auto_orders ?? 0,
         };
@@ -249,12 +248,13 @@ serve(async (req) => {
         .eq('status', 'active'),
     ]);
 
-    // Credits: derive from plan credits (total) and period usage (used).
-    // NOTE: do NOT rely on profiles.credits as "remaining" for subscription display,
-    // because new users previously got a default value which led to confusing UI.
+    // Credits source-of-truth:
+    // - profiles.credits is the authoritative remaining balance (deducted on usage, reset on renewal)
+    // - plans.credits_per_month is the monthly total
+    // - credits_used is derived for display (and also tracked in user_plans for analytics)
     const creditsTotal = planDetails?.credits_per_month ?? 0;
-    const creditsUsed = userPlan?.credits_used ?? 0;
-    const creditsRemaining = Math.max(creditsTotal - creditsUsed, 0);
+    const creditsRemaining = Math.max(profile?.credits ?? 0, 0);
+    const creditsUsed = Math.max(creditsTotal - creditsRemaining, 0);
 
     return new Response(
       JSON.stringify({
@@ -269,6 +269,7 @@ serve(async (req) => {
             }
           : null,
         usage: {
+          credits_total: creditsTotal,
           credits_remaining: creditsRemaining,
           listings_active: listingsCount ?? 0,
           orders_used: userPlan?.orders_used ?? 0,

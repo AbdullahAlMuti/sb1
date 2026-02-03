@@ -389,7 +389,7 @@ export default function AdminUsers() {
         .from('profiles')
         .update({ 
           plan_id: newPlanId,
-          credits: selectedPlan.credits_per_month || 5
+            credits: selectedPlan.credits_per_month ?? 0
         })
         .eq('id', selectedUser.id);
 
