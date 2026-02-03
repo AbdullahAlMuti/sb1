@@ -37,6 +37,7 @@ export type RouteKey =
   | 'ebay-orders'
   | 'orders'
   | 'subscription'
+  | 'billing-usage'
   | 'extension'
   | 'product-research'
   | 'best-selling'
@@ -72,6 +73,7 @@ export const ROUTE_PATHS: Record<RouteKey, string> = {
   'ebay-orders': '/dashboard/ebay-orders',
   'orders': '/dashboard/orders',
   'subscription': '/dashboard/subscription',
+  'billing-usage': '/dashboard/billing',
   'extension': '/dashboard/extension',
   'product-research': '/dashboard/product-research',
   'best-selling': '/dashboard/best-selling',
@@ -151,6 +153,7 @@ export const USER_NAV_SECTIONS: NavSectionConfig[] = [
       { key: 'ebay-orders', icon: ShoppingCart, label: 'eBay Orders' },
       { key: 'orders', icon: Package, label: 'Auto Orders' },
       { key: 'subscription', icon: Crown, label: 'Subscription' },
+      { key: 'billing-usage', icon: CreditCard, label: 'Billing & Usage' },
       { key: 'extension', icon: Puzzle, label: 'Extension' },
     ],
   },
