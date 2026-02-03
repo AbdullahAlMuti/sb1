@@ -4,7 +4,7 @@
 // This module provides centralized plan validation for all edge functions.
 // NO hardcoded limits - everything comes from the database.
 
-import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 export type LimitAction = 
   | 'credit' 
@@ -137,16 +137,24 @@ export async function getFullPlanStatus(
       .eq('status', 'active');
 
     // Determine if expired
+    // IMPORTANT: do NOT allow a stale "active" string to bypass an ended period.
     const now = new Date();
     let isExpired = false;
-    
+
     if (userPlan) {
-      if (userPlan.status === 'canceled') {
+      const statusStr = (userPlan.status ?? '').toLowerCase();
+      if (statusStr === 'canceled') {
         isExpired = true;
-      } else if (planData?.is_trial && userPlan.trial_end) {
-        isExpired = new Date(userPlan.trial_end) < now && userPlan.status !== 'active';
-      } else if (userPlan.current_period_end) {
-        isExpired = new Date(userPlan.current_period_end) < now && userPlan.status !== 'active';
+      }
+
+      // Trials: expired if trial_end is in the past (regardless of status string)
+      if (!isExpired && planData?.is_trial && userPlan.trial_end) {
+        isExpired = new Date(userPlan.trial_end) < now;
+      }
+
+      // Subscriptions: expired if current_period_end is in the past (regardless of status string)
+      if (!isExpired && userPlan.current_period_end) {
+        isExpired = new Date(userPlan.current_period_end) < now;
       }
     }
 
