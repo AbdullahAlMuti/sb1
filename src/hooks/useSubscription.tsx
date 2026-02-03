@@ -6,6 +6,27 @@ import { toast } from 'sonner';
 interface SubscriptionState {
   subscribed: boolean;
   planName: string;
+  plan?: {
+    id: string;
+    name: string;
+    display_name: string;
+    credits_per_month: number;
+    max_listings: number;
+    max_auto_orders: number;
+  } | null;
+  limits?: {
+    credits_per_month: number;
+    max_listings: number;
+    max_auto_orders: number;
+  } | null;
+  usage?: {
+    credits_remaining: number;
+    listings_active: number;
+    orders_used: number;
+    credits_used: number;
+    current_period_end: string | null;
+    status: string;
+  } | null;
   productId: string | null;
   subscriptionEnd: string | null;
   stripeSubscriptionId: string | null;
@@ -19,6 +40,9 @@ export function useSubscription() {
   const [subscription, setSubscription] = useState<SubscriptionState>({
     subscribed: false,
     planName: 'free',
+    plan: null,
+    limits: null,
+    usage: null,
     productId: null,
     subscriptionEnd: null,
     stripeSubscriptionId: null,
@@ -58,6 +82,9 @@ export function useSubscription() {
         setSubscription({
           subscribed: data.subscribed ?? false,
           planName: data.plan_name ?? 'free',
+          plan: data.plan ?? null,
+          limits: data.limits ?? null,
+          usage: data.usage ?? null,
           productId: null,
           subscriptionEnd: null,
           stripeSubscriptionId: null,
@@ -69,6 +96,9 @@ export function useSubscription() {
       setSubscription({
         subscribed: data.subscribed ?? false,
         planName: data.plan_name || 'free',
+        plan: data.plan ?? null,
+        limits: data.limits ?? null,
+        usage: data.usage ?? null,
         productId: data.product_id ?? null,
         subscriptionEnd: data.subscription_end ?? null,
         stripeSubscriptionId: data.stripe_subscription_id ?? null,
@@ -156,6 +186,9 @@ export function useSubscription() {
       setSubscription({
         subscribed: false,
         planName: 'free',
+        plan: null,
+        limits: null,
+        usage: null,
         productId: null,
         subscriptionEnd: null,
         stripeSubscriptionId: null,

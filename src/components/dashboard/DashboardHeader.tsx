@@ -39,7 +39,7 @@ interface Notice {
 export function DashboardHeader() {
   const navigate = useNavigate();
   const { user, profile, signOut, isAdmin } = useAuth();
-  const { planName, subscribed, subscriptionEnd } = useSubscription();
+  const { planName, subscribed, subscriptionEnd, plan, limits, usage } = useSubscription();
   const { theme, toggleTheme } = useTheme();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -500,16 +500,35 @@ export function DashboardHeader() {
                 )}
               >
                 <Shield className="h-3 w-3 mr-1" />
-                {planName || 'No Plan'}
+                {(plan?.display_name || planName) || 'No Plan'}
               </Badge>
             </div>
 
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Credits</span>
               <span className="text-sm font-medium text-foreground">
-                {profile?.credits ?? 0} remaining
+                {usage?.credits_remaining ?? profile?.credits ?? 0}
+                {limits?.credits_per_month ? ` / ${limits.credits_per_month}` : ''}
               </span>
             </div>
+
+            {limits?.max_listings !== undefined && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Listings</span>
+                <span className="text-sm font-medium text-foreground">
+                  {usage?.listings_active ?? 0} / {limits.max_listings}
+                </span>
+              </div>
+            )}
+
+            {limits?.max_auto_orders ? (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Auto Orders</span>
+                <span className="text-sm font-medium text-foreground">
+                  {usage?.orders_used ?? 0} / {limits.max_auto_orders}
+                </span>
+              </div>
+            ) : null}
 
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Member Since</span>

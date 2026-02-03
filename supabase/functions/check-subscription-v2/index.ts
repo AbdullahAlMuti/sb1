@@ -50,6 +50,9 @@ serve(async (req) => {
         JSON.stringify({
           subscribed: false,
           plan_name: "free",
+          plan: null,
+          limits: null,
+          usage: null,
           product_id: null,
           subscription_end: null,
           stripe_subscription_id: null,
@@ -72,6 +75,9 @@ serve(async (req) => {
         JSON.stringify({
           subscribed: false,
           plan_name: "free",
+          plan: null,
+          limits: null,
+          usage: null,
           product_id: null,
           subscription_end: null,
           stripe_subscription_id: null,
@@ -88,44 +94,31 @@ serve(async (req) => {
 
     // Find an active/trialing subscription for this email.
     const customers = await stripe.customers.list({ email: user.email, limit: 10 });
-    if (!customers.data.length) {
-      return new Response(
-        JSON.stringify({
-          subscribed: false,
-          plan_name: "free",
-          product_id: null,
-          subscription_end: null,
-          stripe_subscription_id: null,
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 200,
-        },
-      );
-    }
 
     const subscriptionCandidates: Array<{
       customerId: string;
       subscription: Stripe.Subscription | null;
-    }> = await Promise.all(
-      customers.data.map(async (customer: Stripe.Customer) => {
-        try {
-          const subs = await stripe.subscriptions.list({
-            customer: customer.id,
-            status: "all",
-            limit: 10,
-          });
+    }> = customers.data.length
+      ? await Promise.all(
+          customers.data.map(async (customer: Stripe.Customer) => {
+            try {
+              const subs = await stripe.subscriptions.list({
+                customer: customer.id,
+                status: "all",
+                limit: 10,
+              });
 
-          const activeSub =
-            subs.data.find((s: Stripe.Subscription) => s.status === "active" || s.status === "trialing") ??
-            null;
-          return { customerId: customer.id, subscription: activeSub };
-        } catch (e) {
-          logStep("Stripe subscriptions lookup failed", { customerId: customer.id });
-          return { customerId: customer.id, subscription: null };
-        }
-      }),
-    );
+              const activeSub =
+                subs.data.find((s: Stripe.Subscription) => s.status === "active" || s.status === "trialing") ??
+                null;
+              return { customerId: customer.id, subscription: activeSub };
+            } catch (e) {
+              logStep("Stripe subscriptions lookup failed", { customerId: customer.id });
+              return { customerId: customer.id, subscription: null };
+            }
+          }),
+        )
+      : [];
 
     const activeEntry = subscriptionCandidates.find((c) => Boolean(c.subscription)) ?? null;
     const hasActiveSub = Boolean(activeEntry?.subscription);
@@ -134,6 +127,14 @@ serve(async (req) => {
     let planName = "free";
     let subscriptionEnd: string | null = null;
     let stripeSubscriptionId: string | null = null;
+    let planDetails: {
+      id: string;
+      name: string;
+      display_name: string;
+      credits_per_month: number;
+      max_listings: number;
+      max_auto_orders: number;
+    } | null = null;
 
     if (hasActiveSub && activeEntry?.subscription) {
       const subscription = activeEntry.subscription;
@@ -154,7 +155,7 @@ serve(async (req) => {
       const { data: planData } = stripePriceId
         ? await supabaseServiceClient
             .from("plans")
-            .select("id, name, credits_per_month, max_listings, max_auto_orders")
+            .select("id, name, display_name, credits_per_month, max_listings, max_auto_orders")
             .or(`stripe_price_id_monthly.eq.${stripePriceId},stripe_price_id_yearly.eq.${stripePriceId}`)
             .maybeSingle()
         : { data: null } as any;
@@ -162,6 +163,17 @@ serve(async (req) => {
       // Fallback to free if no matching plan found
       planName = planData?.name || "free";
       const planCredits = planData?.credits_per_month ?? 5;
+
+      if (planData?.id) {
+        planDetails = {
+          id: planData.id,
+          name: planData.name,
+          display_name: planData.display_name ?? planData.name,
+          credits_per_month: planData.credits_per_month ?? 5,
+          max_listings: planData.max_listings ?? 10,
+          max_auto_orders: planData.max_auto_orders ?? 0,
+        };
+      }
 
       // Persist plan info (best-effort)
       if (planData?.id) {
@@ -198,10 +210,65 @@ serve(async (req) => {
       }
     }
 
+    // If we still don't have plan details (free or unmatched price), load them by name.
+    if (!planDetails) {
+      const { data: fallbackPlan } = await supabaseServiceClient
+        .from('plans')
+        .select('id, name, display_name, credits_per_month, max_listings, max_auto_orders')
+        .eq('name', planName)
+        .maybeSingle();
+
+      if (fallbackPlan?.id) {
+        planDetails = {
+          id: fallbackPlan.id,
+          name: fallbackPlan.name,
+          display_name: fallbackPlan.display_name ?? fallbackPlan.name,
+          credits_per_month: fallbackPlan.credits_per_month ?? 5,
+          max_listings: fallbackPlan.max_listings ?? 10,
+          max_auto_orders: fallbackPlan.max_auto_orders ?? 0,
+        };
+      }
+    }
+
+    // Also return basic usage/limits so dashboard can render plan limits + usage.
+    const [{ data: profile }, { data: userPlan }, { count: listingsCount }] = await Promise.all([
+      supabaseServiceClient
+        .from('profiles')
+        .select('credits, plan_id')
+        .eq('id', user.id)
+        .maybeSingle(),
+      supabaseServiceClient
+        .from('user_plans')
+        .select('orders_used, credits_used, current_period_end, status')
+        .eq('user_id', user.id)
+        .maybeSingle(),
+      supabaseServiceClient
+        .from('listings')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('status', 'active'),
+    ]);
+
     return new Response(
       JSON.stringify({
         subscribed: hasActiveSub,
         plan_name: planName,
+        plan: planDetails,
+        limits: planDetails
+          ? {
+              credits_per_month: planDetails.credits_per_month,
+              max_listings: planDetails.max_listings,
+              max_auto_orders: planDetails.max_auto_orders,
+            }
+          : null,
+        usage: {
+          credits_remaining: profile?.credits ?? 0,
+          listings_active: listingsCount ?? 0,
+          orders_used: userPlan?.orders_used ?? 0,
+          credits_used: userPlan?.credits_used ?? 0,
+          current_period_end: userPlan?.current_period_end ?? subscriptionEnd,
+          status: userPlan?.status ?? (hasActiveSub ? 'active' : 'free'),
+        },
         product_id: productId,
         subscription_end: subscriptionEnd,
         stripe_subscription_id: stripeSubscriptionId,
