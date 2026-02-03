@@ -1,0 +1,16 @@
+project_id = "ojxzssooylmydystjvdo"
+
+[functions.sync-ebay-orders]
+verify_jwt = false
+
+[functions.create-checkout]
+verify_jwt = false
+
+[functions.whatsapp-config]
+verify_jwt = false
+
+[functions.ebay-orders]
+verify_jwt = false
+
+[functions.orders-dashboard]
+verify_jwt = false

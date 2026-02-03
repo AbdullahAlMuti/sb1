@@ -1,0 +1,438 @@
+<div id="snipe-editor-root" class="snipe-editor-overlay" style="display:none" role="dialog" aria-modal="true" aria-label="Image Editor">
+  <!-- Mobile Sidebar Overlay Backdrop -->
+  <div class="sidebar-overlay" id="sidebar-overlay" aria-hidden="true"></div>
+  
+  <div class="editor-shell light-theme">
+    <!-- Left Sidebar -->
+    <aside class="editor-side" id="editor-side" role="complementary" aria-label="Editor tools and properties">
+      <!-- Sidebar Close Button (Mobile) -->
+      <button id="sidebar-close" class="sidebar-close-btn" aria-label="Close sidebar" title="Close sidebar">
+        <span aria-hidden="true">×</span>
+      </button>
+      
+      <!-- Stickers -->
+      <div class="side-section">
+        <div class="side-head">
+          <h4>🎨 Stickers</h4>
+          <label class="upload-btn" title="Upload your own sticker" aria-label="Upload sticker">
+            <span class="upload-icon" aria-hidden="true">📁</span>
+            <span class="upload-text">Upload</span>
+            <input id="sticker-upload" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden aria-label="Select sticker image file">
+          </label>
+        </div>
+        <div id="sticker-gallery" class="sticker-grid" role="group" aria-label="Sticker gallery">
+          <div class="loading" aria-live="polite">Loading stickers...</div>
+        </div>
+      </div>
+
+      <!-- Transform Tools -->
+      <div class="side-section">
+        <h4>🔄 Transform</h4>
+        <div class="tool-buttons" role="group" aria-label="Transform tools">
+          <button id="btn-tool-crop" class="btn-tool tool-btn" title="Crop (C)" aria-label="Crop tool">
+            <span class="btn-icon-text" aria-hidden="true">✂️</span>
+            <span class="btn-text">Crop</span>
+          </button>
+          <button id="btn-tool-rotate" class="btn-tool tool-btn" title="Rotate" aria-label="Rotate tool">
+            <span class="btn-icon-text" aria-hidden="true">🔄</span>
+            <span class="btn-text">Rotate</span>
+          </button>
+          <button id="btn-tool-flip-h" class="btn-tool tool-btn" title="Flip Horizontal" aria-label="Flip horizontal">
+            <span class="btn-icon-text" aria-hidden="true">↔️</span>
+            <span class="btn-text">Flip H</span>
+          </button>
+          <button id="btn-tool-flip-v" class="btn-tool tool-btn" title="Flip Vertical" aria-label="Flip vertical">
+            <span class="btn-icon-text" aria-hidden="true">↕️</span>
+            <span class="btn-text">Flip V</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Draw Tools -->
+      <div class="side-section">
+        <h4>✏️ Draw</h4>
+        <div class="tool-buttons" role="group" aria-label="Draw tools">
+          <button id="btn-tool-draw" class="btn-tool tool-btn" title="Draw (D)" aria-label="Draw tool">
+            <span class="btn-icon-text" aria-hidden="true">🖊️</span>
+            <span class="btn-text">Draw</span>
+          </button>
+          <button id="btn-tool-eraser" class="btn-tool tool-btn" title="Eraser (E)" aria-label="Eraser tool">
+            <span class="btn-icon-text" aria-hidden="true">🧹</span>
+            <span class="btn-text">Eraser</span>
+          </button>
+          <button id="btn-tool-text" class="btn-tool tool-btn" title="Text (T)" aria-label="Text tool">
+            <span class="btn-icon-text" aria-hidden="true">📝</span>
+            <span class="btn-text">Text</span>
+          </button>
+          <button id="btn-tool-shapes" class="btn-tool tool-btn" title="Shapes (S)" aria-label="Shapes tool">
+            <span class="btn-icon-text" aria-hidden="true">⬜</span>
+            <span class="btn-text">Shapes</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="side-section">
+        <h4>🎨 Filters</h4>
+        <div class="tool-buttons" role="group" aria-label="Filter tools">
+          <button id="btn-tool-filters" class="btn-tool tool-btn" title="Color Filters" aria-label="Filters tool">
+            <span class="btn-icon-text" aria-hidden="true">🌈</span>
+            <span class="btn-text">Filters</span>
+          </button>
+          <button id="btn-tool-blur" class="btn-tool tool-btn" title="Blur & Sharpen" aria-label="Blur sharpen tool">
+            <span class="btn-icon-text" aria-hidden="true">🌫️</span>
+            <span class="btn-text">Blur</span>
+          </button>
+          <button id="btn-tool-color" class="btn-tool tool-btn" title="Color Adjust" aria-label="Color adjustment tool">
+            <span class="btn-icon-text" aria-hidden="true">🎨</span>
+            <span class="btn-text">Color</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Sticker Tools -->
+      <div class="side-section">
+        <h4>🛠️ Sticker Tools</h4>
+        <div class="tool-buttons" role="group" aria-label="Sticker tools">
+          <button id="btn-clear-all" class="btn-tool" title="Clear all stickers" aria-label="Clear all stickers">
+            <span class="btn-icon-text" aria-hidden="true">🗑️</span>
+            <span class="btn-text">Clear All</span>
+          </button>
+          <button id="btn-duplicate" class="btn-tool" title="Duplicate selected sticker" aria-label="Duplicate selected sticker">
+            <span class="btn-icon-text" aria-hidden="true">📋</span>
+            <span class="btn-text">Duplicate</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tool Properties Panel -->
+      <div class="side-section" id="tool-properties" role="group" aria-label="Tool properties">
+        <!-- Crop Tool Properties -->
+        <div id="properties-crop" class="tool-property-panel" style="display:none;">
+          <h4>✂️ Crop</h4>
+          <div class="property-group">
+            <label for="crop-aspect-ratio">Aspect Ratio</label>
+            <select id="crop-aspect-ratio" class="property-select">
+              <option value="custom">Custom</option>
+              <option value="1:1">1:1 (Square)</option>
+              <option value="16:9">16:9 (Widescreen)</option>
+              <option value="4:5">4:5 (Portrait)</option>
+              <option value="9:16">9:16 (Vertical)</option>
+              <option value="5:4">5:4 (Landscape)</option>
+            </select>
+          </div>
+          <div class="property-group">
+            <button id="btn-crop-apply" class="btn primary" style="width: 100%;">Apply Crop</button>
+            <button id="btn-crop-cancel" class="btn secondary" style="width: 100%; margin-top: 8px;">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Draw Tool Properties -->
+        <div id="properties-draw" class="tool-property-panel" style="display:none;">
+          <h4>🖊️ Draw</h4>
+          <div class="property-group">
+            <label for="draw-brush-size">Brush Size</label>
+            <input type="range" id="draw-brush-size" min="1" max="50" value="5" aria-label="Brush size">
+            <span id="draw-brush-size-value" class="property-value">5px</span>
+          </div>
+          <div class="property-group">
+            <label for="draw-color">Color</label>
+            <input type="color" id="draw-color" value="#000000" aria-label="Draw color">
+          </div>
+          <div class="property-group">
+            <label for="draw-opacity">Opacity</label>
+            <input type="range" id="draw-opacity" min="10" max="100" value="100" aria-label="Draw opacity">
+            <span id="draw-opacity-value" class="property-value">100%</span>
+          </div>
+        </div>
+
+        <!-- Eraser Tool Properties -->
+        <div id="properties-eraser" class="tool-property-panel" style="display:none;">
+          <h4>🧹 Eraser</h4>
+          <div class="property-group">
+            <label for="eraser-size">Size</label>
+            <input type="range" id="eraser-size" min="5" max="100" value="20" aria-label="Eraser size">
+            <span id="eraser-size-value" class="property-value">20px</span>
+          </div>
+        </div>
+
+        <!-- Text Tool Properties -->
+        <div id="properties-text" class="tool-property-panel" style="display:none;">
+          <h4>📝 Text</h4>
+          <div class="property-group">
+            <label for="text-input">Text</label>
+            <input type="text" id="text-input" placeholder="Enter text..." aria-label="Text input">
+          </div>
+          <div class="property-group">
+            <label for="text-font">Font</label>
+            <select id="text-font" class="property-select">
+              <option value="Arial">Arial</option>
+              <option value="Times New Roman">Times New Roman</option>
+              <option value="Courier New">Courier New</option>
+              <option value="Georgia">Georgia</option>
+              <option value="Verdana">Verdana</option>
+            </select>
+          </div>
+          <div class="property-group">
+            <label for="text-size">Size</label>
+            <input type="range" id="text-size" min="12" max="120" value="32" aria-label="Text size">
+            <span id="text-size-value" class="property-value">32px</span>
+          </div>
+          <div class="property-group">
+            <label for="text-color">Color</label>
+            <input type="color" id="text-color" value="#000000" aria-label="Text color">
+          </div>
+          <div class="property-group">
+            <label>
+              <input type="checkbox" id="text-bold"> Bold
+            </label>
+            <label>
+              <input type="checkbox" id="text-italic"> Italic
+            </label>
+          </div>
+          <div class="property-group">
+            <button id="btn-text-add" class="btn primary" style="width: 100%;">Add Text</button>
+          </div>
+        </div>
+
+        <!-- Shapes Tool Properties -->
+        <div id="properties-shapes" class="tool-property-panel" style="display:none;">
+          <h4>⬜ Shapes</h4>
+          <div class="property-group">
+            <label for="shape-type">Shape</label>
+            <select id="shape-type" class="property-select">
+              <option value="rectangle">Rectangle</option>
+              <option value="circle">Circle</option>
+              <option value="arrow">Arrow</option>
+              <option value="line">Line</option>
+            </select>
+          </div>
+          <div class="property-group">
+            <label for="shape-color">Color</label>
+            <input type="color" id="shape-color" value="#000000" aria-label="Shape color">
+          </div>
+          <div class="property-group">
+            <label>
+              <input type="checkbox" id="shape-filled"> Filled
+            </label>
+          </div>
+        </div>
+
+        <!-- Filters Tool Properties -->
+        <div id="properties-filters" class="tool-property-panel" style="display:none;">
+          <h4>🌈 Filters</h4>
+          <div class="property-group">
+            <label for="filter-brightness">Brightness</label>
+            <input type="range" id="filter-brightness" min="-100" max="100" value="0" aria-label="Brightness">
+            <span id="filter-brightness-value" class="property-value">0</span>
+          </div>
+          <div class="property-group">
+            <label for="filter-contrast">Contrast</label>
+            <input type="range" id="filter-contrast" min="-100" max="100" value="0" aria-label="Contrast">
+            <span id="filter-contrast-value" class="property-value">0</span>
+          </div>
+          <div class="property-group">
+            <label for="filter-saturation">Saturation</label>
+            <input type="range" id="filter-saturation" min="-100" max="100" value="0" aria-label="Saturation">
+            <span id="filter-saturation-value" class="property-value">0</span>
+          </div>
+          <div class="property-group">
+            <label>Presets</label>
+            <div class="filter-presets">
+              <button class="btn-filter-preset" data-filter="grayscale">B&W</button>
+              <button class="btn-filter-preset" data-filter="sepia">Sepia</button>
+              <button class="btn-filter-preset" data-filter="vintage">Vintage</button>
+            </div>
+          </div>
+          <div class="property-group">
+            <button id="btn-filter-apply" class="btn primary" style="width: 100%;">Apply Filter</button>
+            <button id="btn-filter-reset" class="btn secondary" style="width: 100%; margin-top: 8px;">Reset</button>
+          </div>
+        </div>
+
+        <!-- Blur & Sharpen Tool Properties -->
+        <div id="properties-blur" class="tool-property-panel" style="display:none;">
+          <h4>🌫️ Blur & Sharpen</h4>
+          <div class="property-group">
+            <label for="blur-radius">Blur Radius</label>
+            <input type="range" id="blur-radius" min="0" max="20" value="5" aria-label="Blur radius">
+            <span id="blur-radius-value" class="property-value">5</span>
+          </div>
+          <div class="property-group">
+            <label for="sharpen-strength">Sharpen Strength</label>
+            <input type="range" id="sharpen-strength" min="0" max="100" value="50" aria-label="Sharpen strength">
+            <span id="sharpen-strength-value" class="property-value">50</span>
+          </div>
+          <div class="property-group">
+            <button id="btn-blur-apply" class="btn primary" style="width: 100%;">Apply Blur</button>
+            <button id="btn-sharpen-apply" class="btn primary" style="width: 100%; margin-top: 8px;">Apply Sharpen</button>
+          </div>
+        </div>
+
+        <!-- Color Adjust Tool Properties -->
+        <div id="properties-color" class="tool-property-panel" style="display:none;">
+          <h4>🎨 Color Adjust</h4>
+          <div class="property-group">
+            <label for="color-hue">Hue</label>
+            <input type="range" id="color-hue" min="-180" max="180" value="0" aria-label="Hue">
+            <span id="color-hue-value" class="property-value">0°</span>
+          </div>
+          <div class="property-group">
+            <label for="color-saturation">Saturation</label>
+            <input type="range" id="color-saturation" min="-100" max="100" value="0" aria-label="Saturation">
+            <span id="color-saturation-value" class="property-value">0</span>
+          </div>
+          <div class="property-group">
+            <label for="color-lightness">Lightness</label>
+            <input type="range" id="color-lightness" min="-100" max="100" value="0" aria-label="Lightness">
+            <span id="color-lightness-value" class="property-value">0</span>
+          </div>
+          <div class="property-group">
+            <label for="color-temperature">Temperature</label>
+            <input type="range" id="color-temperature" min="2000" max="8000" value="5500" aria-label="Temperature">
+            <span id="color-temperature-value" class="property-value">5500K</span>
+          </div>
+          <div class="property-group">
+            <label>Color Balance</label>
+            <div class="property-group">
+              <label for="color-red">Red</label>
+              <input type="range" id="color-red" min="-100" max="100" value="0" aria-label="Red">
+              <span id="color-red-value" class="property-value">0</span>
+            </div>
+            <div class="property-group">
+              <label for="color-green">Green</label>
+              <input type="range" id="color-green" min="-100" max="100" value="0" aria-label="Green">
+              <span id="color-green-value" class="property-value">0</span>
+            </div>
+            <div class="property-group">
+              <label for="color-blue">Blue</label>
+              <input type="range" id="color-blue" min="-100" max="100" value="0" aria-label="Blue">
+              <span id="color-blue-value" class="property-value">0</span>
+            </div>
+          </div>
+          <div class="property-group">
+            <button id="btn-color-apply" class="btn primary" style="width: 100%;">Apply Adjustments</button>
+            <button id="btn-color-reset" class="btn secondary" style="width: 100%; margin-top: 8px;">Reset</button>
+          </div>
+        </div>
+
+        <!-- Sticker Properties (existing) -->
+        <div id="sticker-properties" style="display:none;" role="group" aria-label="Sticker properties">
+          <h4>⚙️ Sticker Properties</h4>
+          <div class="property-group">
+            <label for="size-slider">Size</label>
+            <input type="range" id="size-slider" min="10" max="200" value="100" aria-label="Sticker size" aria-valuemin="10" aria-valuemax="200" aria-valuenow="100">
+            <span id="size-value" class="property-value" aria-live="polite">100%</span>
+          </div>
+          <div class="property-group">
+            <label for="opacity-slider">Opacity</label>
+            <input type="range" id="opacity-slider" min="10" max="100" value="100" aria-label="Sticker opacity" aria-valuemin="10" aria-valuemax="100" aria-valuenow="100">
+            <span id="opacity-value" class="property-value" aria-live="polite">100%</span>
+          </div>
+          <div class="property-group">
+            <label for="rotation-slider">Rotation</label>
+            <input type="range" id="rotation-slider" min="0" max="360" value="0" aria-label="Sticker rotation" aria-valuemin="0" aria-valuemax="360" aria-valuenow="0">
+            <span id="rotation-value" class="property-value" aria-live="polite">0°</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Top Toolbar -->
+    <header class="editor-header" role="banner">
+      <div class="header-left">
+        <button id="sidebar-toggle" class="btn-icon sidebar-toggle-btn" aria-label="Toggle sidebar" title="Toggle sidebar" aria-expanded="false">
+          <span aria-hidden="true">☰</span>
+        </button>
+        <h3>🖼️ Image Editor</h3>
+      </div>
+      <div class="header-actions" role="toolbar" aria-label="Editor actions">
+        <button id="btn-auto-enhance" class="btn-ai" title="Auto Enhance (Ctrl+E)" aria-label="Auto enhance image">
+          <span aria-hidden="true">✨</span>
+          <span>Auto Enhance</span>
+        </button>
+        <button id="btn-clean-bg" class="btn-ai btn-ai-clean" title="Clean Background & Add Shadow (Ctrl+B)" aria-label="Clean background and add shadow">
+          <span aria-hidden="true">🧹</span>
+          <span>Clean BG</span>
+        </button>
+        <button id="btn-remove-bg-local" class="btn-ai" title="Remove Background (Local)" aria-label="Remove background locally">
+          <span aria-hidden="true">🧽</span>
+          <span>Remove BG</span>
+        </button>
+        <button id="btn-upscale" class="btn-ai" title="Upscale Image 4x (AI)" aria-label="Upscale image">
+          <span aria-hidden="true">📈</span>
+          <span>Upscale 4x</span>
+        </button>
+        <div class="toolbar-divider" aria-hidden="true"></div>
+        <button id="btn-undo" class="btn-icon" title="Undo (Ctrl+Z)" aria-label="Undo">
+          <span aria-hidden="true">↶</span>
+        </button>
+        <button id="btn-redo" class="btn-icon" title="Redo (Ctrl+Y)" aria-label="Redo">
+          <span aria-hidden="true">↷</span>
+        </button>
+        <div class="toolbar-divider" aria-hidden="true"></div>
+        <button id="btn-zoom-out" class="btn-icon" title="Zoom Out" aria-label="Zoom out">
+          <span aria-hidden="true">−</span>
+        </button>
+        <span id="zoom-level" class="zoom-level-display" aria-live="polite">100%</span>
+        <button id="btn-zoom-in" class="btn-icon" title="Zoom In" aria-label="Zoom in">
+          <span aria-hidden="true">+</span>
+        </button>
+        <button id="btn-reset" class="btn-icon" title="Reset View" aria-label="Reset zoom">
+          <span aria-hidden="true">⌂</span>
+        </button>
+        <div class="toolbar-divider" aria-hidden="true"></div>
+        <button id="btn-theme-toggle" class="btn-theme-toggle" title="Toggle Dark/Light Theme" aria-label="Toggle theme">
+          <span id="theme-icon" aria-hidden="true">🌙</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Center Canvas -->
+    <main class="editor-main" role="main" aria-label="Canvas workspace">
+      <div class="canvas-container">
+        <canvas id="editor-canvas" aria-label="Image canvas"></canvas>
+        <div class="canvas-overlay" aria-hidden="true">
+          <div class="zoom-controls">
+            <span id="zoom-level-overlay">100%</span>
+          </div>
+        </div>
+        <div class="loading-overlay" id="loading-overlay" aria-hidden="true">
+          <div style="display: flex; flex-direction: column; align-items: center;">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Enhancing...</div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Bottom Bar -->
+    <footer class="status-bar" role="contentinfo">
+      <div class="status-info">
+        <span id="sticker-count" aria-live="polite">0 stickers</span>
+        <span class="status-divider" aria-hidden="true">•</span>
+        <span id="canvas-size">—</span>
+      </div>
+      <div class="actions" role="group" aria-label="Editor actions">
+        <div class="export-options" style="display: flex; gap: 8px; align-items: center;">
+          <button id="btn-copy-clipboard" class="btn-icon" title="Copy to Clipboard" aria-label="Copy image to clipboard">
+            <span aria-hidden="true">📋</span>
+          </button>
+          <select id="export-format" class="export-select" title="Export Format" aria-label="Export format">
+            <option value="png">PNG</option>
+            <option value="jpeg">JPEG</option>
+            <option value="webp">WEBP</option>
+          </select>
+          <button id="btn-export" class="btn secondary" title="Export Image" aria-label="Export image">Export</button>
+        </div>
+        <div class="action-buttons" style="display: flex; gap: 8px;">
+          <button id="btn-cancel-edit" class="btn secondary" aria-label="Close editor without saving">Close</button>
+          <button id="btn-save-edit" class="btn primary" aria-label="Save edited image">Save</button>
+        </div>
+      </div>
+    </footer>
+  </div>
+  
+  <!-- Toast Notifications Container -->
+  <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="true"></div>
+</div>

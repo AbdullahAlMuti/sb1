@@ -1,0 +1,116 @@
+AI Title Generation Architecture
+This document details the end-to-end flow of the AI Title Generation feature, from the Chrome Extension user interface to the backend AI service and Admin configuration.
+
+Overview
+The feature allows users to generate optimized eBay titles for Amazon products directly from the Chrome Extension. It utilizes Supabase Edge Functions to interface with OpenAI (or Lovable AI Gateway), using prompts configured in the Admin Panel.
+
+Architecture Components
+1. Chrome Extension (Frontend)
+File: 
+chrome_extension/ui/panel.js
+Role: Handles the UI interaction, scrapes product data, and initiates the API call.
+Key Function: 
+generateAITitles()
+Scrapes product data (Title, Brand, Category, Bullet Points) from the Amazon page or storage.
+Calls AuthHelper.callEdgeFunction('generate-titles', payload).
+Receives the generated titles and renders them with a "sci-fi" style animation.
+2. Backend Service (Edge Function)
+File: 
+supabase/functions/generate-titles/index.ts
+Role: Processes the request, fetches configuration/prompts, and calls the AI provider.
+Logic:
+Authenticates the user via Supabase Auth.
+Retrieves AI settings (Provider, Model, API Key, Prompt) from the admin_settings table.
+Falback: Uses a hardcoded DEFAULT_PROMPT if no custom prompt is found in the database.
+Constructs the prompt by replacing placeholders (e.g., {title}, {brand}).
+Calls OpenAI API (or Lovable Gateway).
+Parses the JSON response to extract ranked titles (best, recommended, powerful).
+3. Admin Panel (Configuration)
+File: 
+src/pages/admin/AdminAISettings.tsx
+Role: Provides a UI for Administrators to configure the AI model, API keys, and custom prompts.
+Storage: Saves configuration key-value pairs to the admin_settings Supabase table.
+4. Popup UI (Title Selection)
+File: 
+chrome_extension/ui/panel.js
+Key Function: 
+showTitleSelectionPopup(titles)
+Implementation:
+Triggered immediately after AI titles are received and saved.
+Targets the DOM element #title-selection-popup (hidden by default).
+Dynamically builds HTML for the 3 title options, assigning badges:
+Option 1: "Best"
+Option 2: "Recommended"
+Option 3: "Alternative"
+Interaction:
+Clicking a title option triggers 
+selectTitle()
+, which updates the main input field and saves the selection to Chrome storage (selectedEbayTitle).
+Clicking the close button or overlay hides the popup.
+Data Flow
+User Action: User clicks "Generate Titles" in the Chrome Extension panel.
+Scraping: 
+panel.js
+ gathers product metadata from the current Amazon product page.
+API Request: Extension sends a POST request to https://[project-ref].functions.supabase.co/generate-titles.
+Configuration Fetch: The Edge Function queries admin_settings for:
+Prompt Template
+AI Model
+API Key
+AI Generation:
+The prompt template is populated with the scraped product data.
+A request is sent to the AI provider (OpenAI).
+Response: The AI returns a JSON object with 3 title options.
+Display & Selection:
+The Extension renders the titles into the textareas with a staggered animation.
+showTitleSelectionPopup()
+ is called to present the "Best/Recommended/Alternative" modal overlay for immediate selection.
+Implementation Details
+Database Schema (admin_settings table)
+The system relies on a key-value store for configuration.
+
+Description	Logic in Frontend (
+AdminAISettings.tsx
+)	Logic in Backend (
+generate-titles/index.ts
+)	Status
+Title Prompt	ai_title_prompt	ext_title_prompt	🔴 Mismatch
+AI Model	ai_model	ext_ai_model	🔴 Mismatch
+API Key	openai_api_key	ext_ai_api_key	🔴 Mismatch
+Provider	(Not in UI)	ext_ai_provider	⚠️ Missing in UI
+WARNING
+
+Critical Configuration Mismatch The keys used by the Admin Panel to save settings do not match the keys the Backend uses to read them.
+
+Frontend saves ai_title_prompt
+Backend reads ext_title_prompt
+Result: Custom prompts and settings configured in the Admin Panel are currently ignored by the backend, which falls back to its internal defaults.
+
+Recommended Fix: Update 
+AdminAISettings.tsx
+ to use the ext_ prefix for all keys to match the backend expectation.
+
+Prompt Template Variables
+The following placeholders are supported in the prompt template:
+
+{title} - Original Amazon product title
+{brand} - Product brand
+{category} - Product category
+{price} - Current price
+{description} - Product description
+{bulletPoints} - Bullet points/features
+{specifications} - Technical specifications
+Code References
+Frontend Trigger: 
+chrome_extension/ui/panel.js
+ lines ~563 (
+generateAITitles
+)
+Backend Logic: 
+supabase/functions/generate-titles/index.ts
+ lines ~150 (Settings fetch)
+Admin Config: 
+src/pages/admin/AdminAISettings.tsx
+ lines ~158 (
+handleSave
+)

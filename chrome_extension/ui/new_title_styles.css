@@ -1,0 +1,71 @@
+/* AI Title Container Styles */
+.ai-title-container {
+  padding: 12px;
+  background: #f8f9fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 8px;
+  margin-top: 12px;
+  position: relative;
+  z-index: 999999;
+}
+
+.ai-title-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #586069;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ai-title-display {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #24292e;
+  padding: 10px;
+  background: white;
+  border: 2px solid #e1e4e8;
+  border-radius: 6px;
+  min-height: 60px;
+  word-break: break-word;
+  transition: all 0.2s ease;
+}
+
+.ai-title-display.has-title {
+  font-weight: 500;
+  border-color: #0366d6;
+  background: #f1f8ff;
+}
+
+.ai-title-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.ai-title-counter {
+  font-size: 11px;
+  color: #6a737d;
+}
+
+.btn-copy-title {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  background-color: #f6f8fa;
+  border: 1px solid rgba(27, 31, 35, 0.15);
+  border-radius: 4px;
+  color: #24292e;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-copy-title:hover {
+  background-color: #f3f4f6;
+  border-color: rgba(27, 31, 35, 0.2);
+}

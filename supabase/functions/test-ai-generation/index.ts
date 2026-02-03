@@ -1,0 +1,163 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    
+    if (!lovableApiKey) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'LOVABLE_API_KEY not configured' 
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    console.log('[test-ai-generation] Starting AI test...');
+
+    // Test title generation
+    const titlePrompt = `You are an expert eBay SEO specialist. Generate 3 optimized eBay titles for this product:
+    
+Product: Sony WH-1000XM5 Wireless Noise Canceling Headphones
+Brand: Sony
+Category: Electronics > Headphones
+
+Return ONLY a JSON object:
+{
+  "titles": [
+    {"rank": "best", "title": "Title 1"},
+    {"rank": "recommended", "title": "Title 2"},
+    {"rank": "powerful", "title": "Title 3"}
+  ]
+}`;
+
+    const titleResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${lovableApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'system', content: 'You are an expert eBay product title generator. Always respond with valid JSON only.' },
+          { role: 'user', content: titlePrompt }
+        ],
+      }),
+    });
+
+    console.log('[test-ai-generation] Title API response status:', titleResponse.status);
+
+    if (!titleResponse.ok) {
+      const errorText = await titleResponse.text();
+      console.error('[test-ai-generation] Title API error:', errorText);
+      
+      if (titleResponse.status === 429) {
+        return new Response(JSON.stringify({ success: false, error: 'Rate limit exceeded' }), {
+          status: 429,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (titleResponse.status === 402) {
+        return new Response(JSON.stringify({ success: false, error: 'AI credits exhausted' }), {
+          status: 402,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: `AI gateway error: ${titleResponse.status}`,
+        details: errorText.substring(0, 200)
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const titleData = await titleResponse.json();
+    const titleContent = titleData.choices?.[0]?.message?.content || '';
+    
+    console.log('[test-ai-generation] Title response received, length:', titleContent.length);
+
+    // Test description generation
+    const descPrompt = `Generate a short eBay product description (3-4 sentences) for:
+Product: Sony WH-1000XM5 Wireless Noise Canceling Headphones
+Features: Industry-leading noise cancellation, 30-hour battery life
+
+Output clean text only, no HTML.`;
+
+    const descResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${lovableApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'system', content: 'You are a professional eBay copywriter.' },
+          { role: 'user', content: descPrompt }
+        ],
+      }),
+    });
+
+    console.log('[test-ai-generation] Description API response status:', descResponse.status);
+
+    if (!descResponse.ok) {
+      const errorText = await descResponse.text();
+      console.error('[test-ai-generation] Description API error:', errorText);
+      
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: `Description AI error: ${descResponse.status}`,
+        titleTest: { success: true, content: titleContent.substring(0, 300) }
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const descData = await descResponse.json();
+    const descContent = descData.choices?.[0]?.message?.content || '';
+
+    console.log('[test-ai-generation] Both tests completed successfully');
+
+    return new Response(JSON.stringify({ 
+      success: true,
+      message: 'AI generation is working correctly!',
+      titleTest: {
+        success: true,
+        model: 'google/gemini-2.5-flash',
+        response: titleContent.substring(0, 500)
+      },
+      descriptionTest: {
+        success: true,
+        model: 'google/gemini-2.5-flash',
+        response: descContent.substring(0, 500)
+      }
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
+  } catch (error) {
+    console.error('[test-ai-generation] Error:', error);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+});

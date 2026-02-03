@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            width: 320px;
+            margin: 0;
+            padding: 0;
+            background-color: #f8f9fa;
+        }
+
+        .header {
+            background-color: #ffffff;
+            padding: 15px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .title {
+            font-weight: 600;
+            font-size: 16px;
+            color: #212529;
+        }
+
+        .status {
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            background-color: #e9ecef;
+            color: #495057;
+        }
+
+        .status.connecting {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .user-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+
+        .username {
+            font-size: 11px;
+            color: #198754;
+            font-weight: 600;
+        }
+
+        .help-tip {
+            font-size: 11px;
+            color: #0d6efd;
+            cursor: pointer;
+            text-decoration: underline;
+            margin-top: 2px;
+        }
+
+        .info-box {
+            background: #e7f1ff;
+            border: 1px solid #b6d4fe;
+            color: #084298;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            margin: 10px 15px 0 15px;
+            line-height: 1.4;
+        }
+
+        .status.active {
+            background-color: #d1e7dd;
+            color: #0f5132;
+        }
+
+        .status.inactive {
+            background-color: #f8d7da;
+            color: #842029;
+        }
+
+        .content {
+            padding: 15px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+            background: #fff;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 13px;
+            color: #6c757d;
+            font-weight: 500;
+        }
+
+        select,
+        input[type="text"] {
+            width: 100%;
+            padding: 6px;
+            font-size: 14px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .footer {
+            padding: 15px;
+            background: #fff;
+            border-top: 1px solid #e9ecef;
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            flex: 1;
+            padding: 8px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .btn-primary {
+            background-color: #0d6efd;
+            color: white;
+        }
+
+        .btn-secondary {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            color: #212529;
+        }
+
+        .btn-sync {
+            background-color: #198754;
+            color: white;
+            width: 100%;
+            margin-top: 5px;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <span class="title">SellerSuit Sync</span>
+        <div class="user-info">
+            <span id="authStatus" class="status">Checking...</span>
+            <span id="usernameDisplay" class="username hidden"></span>
+            <span id="toggleHelp" class="help-tip">Help?</span>
+        </div>
+    </div>
+
+    <!-- Help Section -->
+    <div id="helpSection" class="info-box hidden">
+        <strong>How to Connect:</strong><br>
+        1. Click "Open Dashboard" below.<br>
+        2. Log in to your account.<br>
+        3. Refresh this extension.<br>
+        <br>
+        If it fails, try reloading the page or refreshing the extension in chrome://extensions.
+    </div>
+
+    <!-- Login Prompt -->
+    <div id="loginView" class="content hidden">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <div style="font-size: 48px; margin-bottom: 10px;">🔴</div>
+            <h3 style="margin: 0; color: #dc3545;">Not Connected</h3>
+            <p style="color: #666; font-size: 13px;">Please log in to your dashboard to enable the extension.</p>
+        </div>
+        <button id="btnLogin" class="btn-primary" style="width: 100%">Log In to Dashboard</button>
+    </div>
+
+    <!-- Settings View -->
+    <div id="settingsView" class="content hidden">
+        <div class="control-group">
+            <div class="checkbox-row">
+                <label for="autoSync" style="margin:0">Auto-Sync Enabled</label>
+                <input type="checkbox" id="autoSync">
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Sync Interval</label>
+            <select id="syncInterval">
+                <option value="30">Every 30 Minutes</option>
+                <option value="60">Every 1 Hour</option>
+                <option value="120">Every 2 Hours</option>
+                <option value="360">Every 6 Hours</option>
+                <option value="600">Every 10 Hours</option>
+                <option value="720">Every 12 Hours</option>
+                <option value="1440">Every 24 Hours</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Sync Period (Lookback)</label>
+            <select id="syncDays">
+                <option value="1">Last 24 Hours</option>
+                <option value="3">Last 3 Days</option>
+                <option value="7">Last 7 Days</option>
+                <option value="14">Last 14 Days</option>
+                <option value="30">Last 30 Days</option>
+                <option value="90">Last 90 Days</option>
+                <option value="365">Last 1 Year</option>
+                <option value="730">Last 2 Years</option>
+                <option value="1825">Last 5 Years</option>
+                <option value="custom">Custom...</option>
+            </select>
+            <input type="number" id="customDays" placeholder="Enter days (e.g. 3650)" class="hidden"
+                style="margin-top: 5px;">
+        </div>
+
+        <div class="control-group" style="text-align: center;">
+            <div id="lastSyncTime" style="font-size: 11px; color: #999; margin-bottom: 5px;">Last Sync: Never</div>
+            <button id="btnSyncNow" class="btn-sync">🔄 Sync Now</button>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button id="btnDashboard" class="btn-secondary">Open Dashboard</button>
+    </div>
+
+    <script src="common/config.js"></script>
+    <script src="popup.js"></script>
+</body>
+
+</html>
