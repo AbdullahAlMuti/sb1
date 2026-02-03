@@ -1,155 +1,167 @@
 
+## What I found (current system behavior)
 
-# Fix Listings Page UI and Data Formatting Issues
+### 1) Listing limits are **not consistently enforced**
+You currently have two main backend entry points that create listings:
 
-This plan addresses three issues on the `/dashboard/listings` page:
-1. Prices displaying without decimal places
-2. Prices being editable when they should be read-only
-3. Amazon product images not displaying properly
+- **`supabase/functions/create-listing/index.ts`**
+  - Enforces listing limit by counting active listings and comparing against `plans.max_listings`.
+  - But it **ignores**:
+    - subscription status (active/expired/canceled)
+    - `user_plans.admin_override_limits` (admin overrides)
+    - `user_plans.plan_id` when `profiles.plan_id` is missing/outdated
 
----
+- **`supabase/functions/sync-listing/index.ts`** (used by extension / batch sync)
+  - **Does not check `max_listings` at all**, only checks credits.
+  - This is a direct path for users to exceed listing limits even if the UI blocks them.
 
-## Issue Analysis
+### 2) “Expired plans still allow listing creation” is currently true
+You already have a centralized enforcement layer:
+- **`supabase/functions/_shared/plan-middleware.ts`**
 
-### 1. Price Formatting (No Decimals)
-**Current behavior:** The prices are stored as strings in `rowEdits` using `String(listing.ebay_price)`, which converts `62` to `"62"` instead of `"62.00"`.
+But:
+- Neither `create-listing` nor `sync-listing` uses it today.
+- The middleware’s expiry logic is also flawed:
 
-**Root cause locations:**
-- `getEditForListing()` (lines 521-529): Converts prices to strings without formatting
-- `setRowEdits()` after save (lines 598-605): Same issue
-- Initial buffer setup in `fetchListings()` (lines 488-499): Same issue
+In `getFullPlanStatus()` it currently marks expired like:
+- `current_period_end < now` **AND** `status != 'active'`
 
-### 2. Prices Are Editable
-**Current behavior:** Both eBay and Amazon prices are displayed as `<Input>` elements with `onChange` handlers, allowing users to edit them.
+That means if a user’s `user_plans.status` stays `"active"` (which can happen if webhook sync lags or fails), they may **never be considered expired**, even if `current_period_end` is in the past.
 
-**Root cause location:**
-- Table cells (lines 1588-1611): Using `<Input>` components with editable behavior
+### 3) “Plans not activating after payment” likely caused by Stripe webhook configuration
+Your **`stripe-webhook`** edge function refuses to run in production unless `STRIPE_WEBHOOK_SECRET` exists:
 
-### 3. Amazon Image Not Displaying
-**Current behavior:** The code tries to render images but has a flawed fallback pattern. When `onError` fires, it hides the broken image but doesn't properly show the fallback icon.
+- In `supabase/functions/stripe-webhook/index.ts`:
+  - If `STRIPE_WEBHOOK_SECRET` is missing and `ENVIRONMENT !== "development"`, it returns **500** immediately.
+- Your configured secrets list includes `STRIPE_SECRET_KEY` but **does not show `STRIPE_WEBHOOK_SECRET`**.
+- Result: Stripe can accept payment, but the webhook update that marks the plan active may never succeed.
 
-**Root cause location:**
-- Image rendering (lines 1533-1547): The fallback logic is broken - when the image fails to load, it tries to access `nextElementSibling` which may not work correctly since the fallback `PackageIcon` uses `listing.image_url && "hidden"` as its class condition.
+### 4) “Listing is not showing on the user dashboard” — most likely root causes
+Based on the code and DB policies:
+- RLS is enabled and there is a listings policy: `USING (auth.uid() = user_id)` for ALL operations, which is correct for per-user data.
+- The dashboard fetch is straightforward (`select('*').eq('user_id', user.id)`).
 
----
+So if listings “don’t show”, it’s usually one of:
+1) The listing row **never got created** (edge function failed / extension failed).
+2) The listing row was created with a **different `user_id`** than the logged-in user (token mismatch in extension, or using another account).
+3) The listing row exists but **status isn’t `active`** and the UI is filtering (less likely since default is “all”, but still possible depending on user’s filter selection).
+4) Auth session mismatch in preview (logged out / wrong user / email not verified).
 
-## Implementation Plan
-
-### Step 1: Create a Price Formatting Helper
-
-Add a helper function to format prices consistently with 2 decimal places.
-
-**File:** `src/pages/dashboard/Listings.tsx`
-
-```typescript
-function formatPriceForDisplay(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "";
-  return value.toFixed(2);
-}
-```
-
-### Step 2: Update Price Display to Use Formatting
-
-Replace all instances where prices are converted to strings with the new formatter:
-
-1. In `getEditForListing()` - format prices with `.toFixed(2)`
-2. In `fetchListings()` rowEdits initialization - use formatted prices
-3. In `setRowEdits()` after save - use formatted prices
-
-### Step 3: Make eBay and Amazon Price Fields Read-Only
-
-Change the price `<Input>` elements to display-only elements:
-
-**Current (editable input):**
-```tsx
-<Input
-  type="number"
-  value={edit.ebay_price}
-  onChange={(e) => updateRowEdit(listing.id, { ebay_price: e.target.value })}
-  ...
-/>
-```
-
-**New (read-only display):**
-```tsx
-<span className="h-7 text-[11px] font-mono px-2 text-right block leading-7 tabular-nums">
-  {listing.ebay_price !== null ? `$${listing.ebay_price.toFixed(2)}` : "—"}
-</span>
-```
-
-This will:
-- Display prices with 2 decimal places and dollar sign
-- Be completely non-editable (not an input at all)
-- Use tabular numbers for alignment
-- Show a dash for missing values
-
-### Step 4: Fix Image Rendering with Proper Fallback
-
-Replace the current broken image handling with a state-based approach:
-
-**Current (broken):**
-```tsx
-<img 
-  src={listing.image_url} 
-  onError={(e) => {
-    (e.target as HTMLImageElement).style.display = 'none';
-    (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-  }}
-/>
-<PackageIcon className={cn("h-3 w-3", listing.image_url && "hidden")} />
-```
-
-**New (fixed):**
-```tsx
-{listing.image_url ? (
-  <img 
-    src={listing.image_url} 
-    alt={listing.title || 'Product'} 
-    className="h-full w-full object-cover"
-    onError={(e) => {
-      const img = e.currentTarget;
-      img.style.display = 'none';
-      const fallback = img.parentElement?.querySelector('.fallback-icon');
-      if (fallback) fallback.classList.remove('hidden');
-    }}
-  />
-) : null}
-<PackageIcon className={cn(
-  "h-3 w-3 text-muted-foreground/50 fallback-icon", 
-  listing.image_url ? "hidden" : ""
-)} />
-```
-
-This ensures:
-- The fallback icon is always in the DOM
-- When image loads successfully, fallback stays hidden
-- When image fails, the fallback is revealed
-- When no image URL exists, fallback shows immediately
-
-### Step 5: Clean Up Unused Edit State for Prices
-
-Since prices are now read-only, we can simplify:
-
-1. Remove `ebay_price` and `amazon_price` from `ListingRowEdits` type
-2. Update the edit schema to only include `sku`
-3. Update all references to `edit.ebay_price` and `edit.amazon_price`
-
-However, to minimize changes and maintain backward compatibility, we'll keep the type but simply not use those fields in the UI.
+This plan includes instrumentation/verification steps to pinpoint which one is happening.
 
 ---
 
-## Technical Summary
+## Fix strategy (without changing core business logic)
+Goal: keep your current “count active listings” model (your existing core logic) but make enforcement **consistent and backend-authoritative**.
 
-| File | Changes |
-|------|---------|
-| `src/pages/dashboard/Listings.tsx` | Add `formatPriceForDisplay()` helper, update `getEditForListing()` and related functions, replace price `<Input>` with read-only `<span>`, fix image fallback logic |
+### A) Make backend enforcement consistent (the most important fix)
+1) **Update `create-listing`** to use the existing middleware:
+   - Before inserting a NEW listing:
+     - call `validateUserPlan(..., 'listing', 1)`
+     - call `validateUserPlan(..., 'credit', 1)` (since this endpoint deducts 1 credit on create)
+   - Ensure the returned errors preserve your current response shape (402 with `limitType`, `current`, `limit`, `upgradeRequired`).
+
+2) **Update `sync-listing`** (batch import) to enforce limits too:
+   - After it determines `newListingsCount`:
+     - call `validateUserPlan(..., 'listing', newListingsCount)`
+     - call `validateUserPlan(..., 'credit', newListingsCount)`
+   - This fixes “users can exceed listing limits” via extension/sync.
+
+3) Ensure both functions use the same source of truth for plan selection:
+   - `plan-middleware` already resolves plan id using `profiles.plan_id || user_plans.plan_id`
+   - and it supports `admin_override_limits`
+   - so adopting it automatically fixes “admin changes not reflecting” for enforcement.
+
+### B) Fix expiry handling (backend-only)
+1) **Correct the expiry logic** in `supabase/functions/_shared/plan-middleware.ts`:
+   - Treat subscription as expired when:
+     - `current_period_end` exists and `< now()` (regardless of status string), OR
+     - status is `canceled`, OR
+     - trial_end exists and `< now()` (for trials)
+   - The key fix: do not allow `"active"` status to bypass a past `current_period_end`.
+
+2) Optional but recommended (still within your rules because it’s enforcement-related):
+   - When middleware detects expiry, do a best-effort update:
+     - set `user_plans.status = 'expired'` (or `'canceled'` if that’s your convention)
+   - This makes the UI and DB consistent even if Stripe webhook lags.
+
+### C) Fix “plan not activating after payment”
+1) **Add `STRIPE_WEBHOOK_SECRET` to Supabase Edge Function secrets**.
+   - This is required for reliable activation.
+2) Verify Stripe webhook endpoint is configured to hit your Supabase edge function URL.
+3) Add minimal logging improvements (no logic changes) to `stripe-webhook`:
+   - Log when it aborts due to missing secret.
+   - Log `user_id`, matched `plan_id`, and final `user_plans` write result for audit.
+
+### D) Fix listing dashboard not showing (only if it’s a logic blocker)
+This will be approached as a debug-first fix:
+1) Add targeted logs in the frontend `src/pages/dashboard/Listings.tsx` only if needed:
+   - log the Supabase query error message in the toast (currently generic “Failed to fetch listings”)
+   - this helps detect RLS/permission vs genuinely empty results
+2) Add a one-time debug panel (dev-only) if necessary:
+   - show current `user.id` and the number of rows returned
+   - (No UI redesign; purely diagnostic.)
 
 ---
 
-## Expected Outcomes
+## Verification plan (how we’ll confirm each issue is fixed)
 
-After implementation:
-- **Prices:** Will always show 2 decimal places (e.g., `$62.00`, `$39.00`)
-- **Editability:** Users can see prices but cannot modify them
-- **Images:** Product thumbnails will display when URL exists, with graceful fallback to icon when image fails to load
+### 1) Subscription activation after payment
+- Trigger a checkout
+- Confirm Stripe sends `checkout.session.completed`
+- Confirm edge function logs show:
+  - webhook signature verified
+  - plan matched by price id
+  - `user_plans.status` updated to `active`
+  - `profiles.plan_id` updated
+- Confirm app shows subscribed plan (via `useSubscription` / `check-subscription-v2`)
 
+### 2) Listing count increments correctly & shows in dashboard
+- Create a listing (web app path)
+- Confirm:
+  - row inserted in `public.listings` with correct `user_id`
+  - dashboard query returns it
+- Create a listing via extension/sync
+- Confirm the same
+
+### 3) Limit enforcement (can’t exceed limits)
+- Set `max_listings` low (e.g., 1) for a test plan
+- Create 1 listing → allowed
+- Attempt second listing:
+  - via web create-listing → blocked 402
+  - via sync-listing batch → blocked 402
+
+### 4) Expiry enforcement
+- Force `user_plans.current_period_end` to a past timestamp (test user)
+- Attempt listing creation:
+  - both endpoints return blocked with “Subscription expired…”
+
+### 5) Admin changes reflected
+- Set `user_plans.admin_override_limits.max_listings` for a user
+- Confirm middleware-based enforcement respects it immediately.
+
+---
+
+## Files we will change (targeted, minimal)
+Backend (edge functions):
+- `supabase/functions/_shared/plan-middleware.ts` (fix expiry logic, ensure it’s authoritative)
+- `supabase/functions/create-listing/index.ts` (use middleware for listing + expiry + admin overrides)
+- `supabase/functions/sync-listing/index.ts` (same enforcement for batch path)
+- `supabase/functions/stripe-webhook/index.ts` (configuration + logs; no business logic change)
+
+Frontend (only if necessary to resolve “not showing”):
+- `src/pages/dashboard/Listings.tsx` (improve error visibility; no redesign)
+
+Configuration / secrets:
+- Add `STRIPE_WEBHOOK_SECRET` in Supabase function secrets (required for real activation)
+
+---
+
+## Notes on your requirements (“don’t change business logic”)
+- I will **not** change your listing creation algorithm (dedupe rules, SKU/ASIN matching, payload normalization).
+- I will **not** change pricing, plan tier definitions, or replace your count-based model.
+- Fixes are strictly:
+  - consistent backend enforcement
+  - correct expiry calculation
+  - webhook activation reliability
+  - admin overrides respected by enforcement
