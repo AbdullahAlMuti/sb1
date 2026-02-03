@@ -3,13 +3,16 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { DashboardSidebar } from './DashboardSidebar';
 import { DashboardHeader } from './DashboardHeader';
 import { NoticesBanner } from './NoticesBanner';
+import { CreditsLowBanner } from './CreditsLowBanner';
 import { cn } from '@/lib/utils';
 import { Menu, Bell, Moon, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
+import { useSubscription } from '@/hooks/useSubscription';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 export function DashboardLayout() {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -17,7 +20,25 @@ export function DashboardLayout() {
   const [unreadCount, setUnreadCount] = useState(0);
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { subscribed, planName, usage, limits, openCustomerPortal } = useSubscription();
   const navigate = useNavigate();
+
+  const creditsTotal = usage?.credits_total ?? limits?.credits_per_month ?? 0;
+  const creditsRemaining = usage?.credits_remaining ?? 0;
+  const eligibleForCreditWarning = Boolean(subscribed || (planName && planName !== 'free'));
+
+  // One-time toast when credits are low (<= 5)
+  useEffect(() => {
+    const shouldToast = eligibleForCreditWarning && creditsTotal > 0 && creditsRemaining <= 5;
+    if (!shouldToast) {
+      sessionStorage.removeItem('low_credits_toast_shown');
+      return;
+    }
+
+    if (sessionStorage.getItem('low_credits_toast_shown')) return;
+    sessionStorage.setItem('low_credits_toast_shown', '1');
+    toast.warning('Credits running low. Renew to avoid interruptions.');
+  }, [creditsRemaining, creditsTotal, eligibleForCreditWarning]);
 
   // Listen for sidebar collapse state via custom event
   useEffect(() => {
@@ -164,6 +185,12 @@ export function DashboardLayout() {
         </div>
 
         <main className="flex-1 p-4 lg:p-6 xl:p-8">
+          <CreditsLowBanner
+            creditsRemaining={creditsRemaining}
+            creditsTotal={creditsTotal}
+            eligible={eligibleForCreditWarning}
+            onRenew={() => openCustomerPortal()}
+          />
           <NoticesBanner />
           <Outlet />
         </main>

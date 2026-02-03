@@ -154,7 +154,7 @@ export default function AdminPlans() {
         display_name: p.display_name,
         price_monthly: p.price_monthly ?? 0,
         price_yearly: p.price_yearly ?? 0,
-        credits_per_month: p.credits_per_month ?? 5,
+        credits_per_month: p.credits_per_month ?? 0,
         max_listings: p.max_listings ?? 10,
         max_auto_orders: p.max_auto_orders ?? 0,
         features: Array.isArray(p.features) ? p.features as string[] : null,

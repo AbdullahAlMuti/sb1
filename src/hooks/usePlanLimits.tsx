@@ -72,7 +72,7 @@ export function usePlanLimits() {
           .from('plans')
           .select('name, display_name, credits_per_month, max_listings, max_auto_orders')
           .eq('name', 'free')
-          .single();
+          .maybeSingle();
         planData = freePlan;
       }
 
@@ -84,7 +84,7 @@ export function usePlanLimits() {
         .eq('status', 'active');
 
       setLimits({
-        credits_per_month: planData?.credits_per_month ?? 5,
+        credits_per_month: planData?.credits_per_month ?? 0,
         max_listings: planData?.max_listings ?? 10,
         max_auto_orders: planData?.max_auto_orders ?? 0,
         // Derive remaining from plan total - used to avoid misleading defaults for new users.
