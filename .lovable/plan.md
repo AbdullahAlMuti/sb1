@@ -1,108 +1,193 @@
 
-লক্ষ্য: Trial প্ল্যানে সব ফিচার আগের মতো থাকবে, কিন্তু listing creation সার্ভার-সাইডে সর্বোচ্চ ১০টি পর্যন্ত সীমাবদ্ধ থাকবে। Existing business logic / listing algorithm পরিবর্তন করা হবে না—শুধু Trial প্ল্যানের limit configuration + enforcement message + ছোট UI text update।
+লক্ষ্য (আপনার চাহিদা অনুযায়ী)
+1) ইউজারের Total / Used / Remaining credits সবসময় সঠিক দেখাবে  
+2) নতুন ইউজারের ক্ষেত্রে কোনো “ডিফল্ট ক্রেডিট” (যেমন 5) ভুলভাবে দেখাবে না  
+3) Expiry/Renewal date দেখাবে + Renew করার অপশন থাকবে (Billing portal)  
+4) Credits ≤ 5 হলে তবেই “Credits running low” নোটিফিকেশন দেখাবে (আপনি বলেছেন: Banner + Toast, Paid + Trial users)  
+5) UI/UX পরিষ্কার ও consistent হবে, এবং লজিক/ফাংশনাল বাগ ফিক্স হবে
 
-## 1) বর্তমান অবস্থা (কোডবেস থেকে যা পাওয়া গেছে)
-- Backend listing enforcement এখন `validateUserPlan(..., 'listing', 1)` দিয়ে হচ্ছে (`create-listing` এবং `sync-listing` দুটোতেই)।
-- `validateUserPlan` listing limit নেয় DB থেকে: `plans.max_listings` (এবং admin override থাকলে `user_plans.admin_override_limits.max_listings`)।
-- DB-তে Trial plan আছে:
-  - `plans.name = "Trial"`, `is_trial = true`
-  - কিন্তু `max_listings = 50` (এটা আপনার নতুন রুলের সাথে mismatch)।
-- Pricing UI (`PricingSection.tsx`) ফিচার দেখায় DB-এর `plans.features` array থেকে; তাই “Up to 10 Listings” দেখাতে হলে DB features আপডেট বা UI-তে conditional injection দরকার।
+--------------------------------------------------------------------
+কেন সমস্যা হচ্ছে (কোডবেস অ্যানালাইসিস)
+A) কোডে বহু জায়গায় hardcoded fallback `5` আছে (frontend + backend)।  
+   ফলে কোনো plan resolve না হলে/ফ্রি plan না থাকলে/NULL হলে UI “5” দেখিয়ে ফেলতে পারে।
 
-আপনি নির্বাচন করেছেন: “Admin can override”  
-=> Trial এর default হবে 10, কিন্তু যদি কোনো নির্দিষ্ট user এর জন্য admin override দিয়ে বেশি সেট করা হয়, তখন সেটাই effective হবে (অর্থাৎ hard-cap 10 নয়)।
+B) Credits tracking এখন mixed-model:
+   - কিছু জায়গায় `profiles.credits` (remaining balance) ব্যবহার হচ্ছে
+   - কিছু জায়গায় `plans.credits_per_month - user_plans.credits_used` দিয়ে remaining calculate করা হচ্ছে
+   - Stripe renewal flow-তে `credits_used` reset না হওয়ায় remaining ভুল হতে পারে (credits_used জমতে থাকে)
 
-## 2) DB change (Trial default max_listings = 10)
-### কী করব
-- `plans` টেবিলে Trial প্ল্যানের `max_listings` 10 করে দেব।
-- “Existing users handling” স্বয়ংক্রিয়ভাবে কাজ করবে, কারণ limit check active listings count দিয়ে হয়; যাদের already >10 active listings আছে তারা নতুন listing তৈরি করতে পারবে না, পুরনো listing untouched থাকবে।
+C) আপনার DB-তে বর্তমানে `free` plan row নেই (read-query-তে দেখা গেছে শুধুই Trial/starter/growth/enterprise আছে), কিন্তু frontend/backend অনেক জায়গায় `name='free'` ধরে query করছে। এতে error/fallback mismatch হতে পারে।
 
-### প্রস্তাবিত SQL (Test environment)
-Cloud View → Run SQL (Test) এ রান:
-```sql
-update public.plans
-set max_listings = 10,
-    updated_at = now()
-where name = 'Trial';
+--------------------------------------------------------------------
+Clarification needed (একটাই ব্লকিং সিদ্ধান্ত)
+আপনি আগে প্রশ্নে “Credits for new users” উত্তর দেননি—এটা ঠিক না করলে “নতুন ইউজার” flow সম্পূর্ণ consistent করা যাবে না।
+
+নতুন ইউজার সাইনআপ করার পর আপনি কোনটা চান?
+Option 1: Paid/Trial ছাড়া কেউ credits পাবে না (default 0; UI তে “—”; plan_id null বা একটি “free” plan with 0 credits)  
+Option 2: Auto Trial (Trial plan assign হবে; credits/limits দেখাবে)  
+Option 3: Starter credits (যেমন 5) — (আপনি বলেছেন এটা চান না, তাই recommend করছি না)
+
+আমি Recommend করছি: Option 1 (0 credits + “—”), কারণ আপনার requirement: “নতুন ইউজারের জন্য ডিফল্ট কোনো ক্রেডিট দেখানো না হয়।”
+
+এই plan-এ আমি Option 1 ধরে ডিজাইন করছি; যদি আপনি Auto Trial চান, আমি plan অনুযায়ী query/trigger গুলো adjust করব।
+
+--------------------------------------------------------------------
+Design: Single source of truth (credits)
+আমরা credits কে consistent করব এইভাবে:
+
+- credits_total = plans.credits_per_month (plan limit)
+- credits_remaining = profiles.credits (actual remaining balance; deductUsage এখানেই decrement করে)
+- credits_used = (credits_total - credits_remaining) অথবা user_plans.credits_used (কিন্তু এটি অবশ্যই period reset-এ 0 হতে হবে)
+
+Best approach (সবচেয়ে কম বাগ):
+1) profiles.credits = remaining balance (authoritative)
+2) user_plans.credits_used = current billing period usage (analytics/display) — এবং এটি অবশ্যই renewal/period reset/plan change-এ 0 হবে
+3) UI সবসময় useSubscription (check-subscription-v2) থেকে total/used/remaining নেবে; profile.credits direct display এ আর ব্যবহার করবে না
+
+--------------------------------------------------------------------
+Implementation plan (Step-by-step)
+
+Step 1 — Backend: check-subscription-v2 কে “credits object” standard response দিতে হবে
+ফাইল: `supabase/functions/check-subscription-v2/index.ts`
+
+কাজ:
+- Hardcoded fallback `?? 5` remove করে `?? 0` করা (credits-related)
+- credits_total = planDetails?.credits_per_month ?? 0
+- profile থেকে credits_remaining আনতে হবে: `profiles.credits`  
+- credits_used = Math.max(credits_total - credits_remaining, 0)
+- response structure consistent রাখবো:
+
+```ts
+{
+  subscribed,
+  plan_name,
+  plan,
+  limits: { credits_per_month, max_listings, max_auto_orders },
+  usage: {
+    credits_total,
+    credits_used,
+    credits_remaining,
+    listings_active,
+    orders_used,
+    current_period_end,
+    status
+  },
+  subscription_end,
+  stripe_subscription_id
+}
 ```
 
-(যদি আপনার “Trial” নামটি case-sensitive ভিন্ন হয়, উপরের query adjust করা হবে; কিন্তু বর্তমানে DB-তে নাম ঠিক “Trial”.)
+নোট: বর্তমানে usage তে credits_remaining আছে, credits_used আছে—কিন্তু credits_remaining derive করছে credits_total - credits_used থেকে। আমরা এটাকে profiles.credits aligned করব যাতে “নতুন ইউজার 0” আর “actual remaining” সবসময় ঠিক থাকে।
 
-## 3) Backend enforcement (কোনো নতুন algorithm নয়; শুধু Trial message + নিশ্চিত করা)
-### কী করব
-- Enforcement আগে থেকেই backend-only হচ্ছে `validateUserPlan` দিয়ে; তাই Trial max_listings=10 হলে hard enforcement অটোমেটিক হবে।
-- কিন্তু আপনার চাহিদা অনুযায়ী Trial limit hit করলে error message আরো specific করা হবে:
-  - “Trial plan listing limit reached (10 max)”
+Step 2 — Stripe webhook: renewal/plan change-এ credits_used reset নিশ্চিত করা
+ফাইল: `supabase/functions/stripe-webhook/index.ts`
 
-### কোথায় পরিবর্তন হবে
-- `supabase/functions/_shared/plan-middleware.ts`
-  - `validateUserPlan` → `case 'listing'` অংশে:
-    - যদি `status.isTrial === true` এবং effective `limit === 10` এবং limit exceed হয়:
-      - reason string Trial-specific সেট করা হবে।
-    - Enforcement logic (current/limit হিসাব) পরিবর্তন হবে না—শুধু message।
+কাজ:
+- `invoice.payment_succeeded` (subscription_cycle) হলে:
+  - profiles.credits = planData.credits_per_month (আছে)
+  - user_plans.credits_used = 0 (এটা যোগ করতে হবে)
+- subscription canceled/downgrade এ free-plan fallback `?? 5` remove করে 0 করা
+- যদি free plan না থাকে: downgrade হলে credits=0 + plan_id null (safe fallback)
+  - (এটা Option 1 এর সাথে consistent)
 
-### Edge cases
-- Admin override থাকলে effective `limit` 10 নাও হতে পারে; সে ক্ষেত্রে generic message থাকবে (বা limit অনুযায়ী message)।
-- Extension path `sync-listing` এবং web app `create-listing` দুটোই একই middleware ব্যবহার করে, তাই Trial block সর্বত্র কাজ করবে।
+Step 3 — Shared plan middleware: defaultLimits কে 0 করা (no phantom credits)
+ফাইল: `supabase/functions/_shared/plan-middleware.ts`
 
-## 4) UI update (Minor): Trial card এ “Up to 10 Listings”
-আপনার requirement অনুযায়ী UI-তে Trial কার্ডে ছোট করে দেখাতে হবে: “Up to 10 Listings” (কিন্তু অন্য feature hide/disable নয়)।
+কাজ:
+- `defaultLimits.credits_per_month: 5` → 0
+- planData credits_per_month fallback 5 → 0
+- এর ফলে plan resolve না হলে credits limit “0” হবে, আর কোন hidden 5 থাকবে না
 
-### অপশন A (ডেটা-ড্রিভেন, সবচেয়ে consistent)
-- `plans.features` JSON array-তে Trial প্ল্যানের feature হিসেবে “Up to 10 Listings” যোগ/আপডেট করা।
-- সুবিধা: UI code না বদলালেও pricing section এবং অন্য জায়গায় একই টেক্সট দেখাবে।
+Step 4 — create-listing profile auto-create bugfix (credits: 5 → 0)
+ফাইল: `supabase/functions/create-listing/index.ts`
 
-প্রস্তাবিত SQL:
-```sql
-update public.plans
-set features = (
-  case
-    when jsonb_typeof(features) = 'array' then
-      -- Trial features array-তে যদি ইতিমধ্যে “Listings” ধরনের কিছু থাকে, সেটি রেখে নতুন entry যোগ করা (simple approach)
-      (features || to_jsonb(array['Up to 10 Listings']::text[]))::jsonb
-    else
-      to_jsonb(array['Up to 10 Listings']::text[])
-  end
-),
-updated_at = now()
-where name = 'Trial';
-```
+কাজ:
+- profile missing হলে create করার সময় `credits: 5` → `credits: 0`
+- `created?.credits ?? 5` → `created?.credits ?? 0`
+- free plan lookup (name=free) failure safe করা:
+  - যদি free plan row না থাকে, `plan_id` null রেখে দেব
+  - (Option 1 এর সাথে consistent)
 
-### অপশন B (কোড-সাইড injection, DB-তে features না ছুঁয়ে)
-- `src/components/PricingSection.tsx` এ render করার সময়:
-  - যদি `plan.is_trial === true` এবং `plan.max_listings === 10`:
-    - `plan.features` এর শুরুতে “Up to 10 Listings” prepend করা (duplicate guard সহ)।
-- সুবিধা: DB features untouched।
-- নোট: আপনি “Database Requirement” এ Trial max_listings=10 বলেছেন, তাই Option A-ই বেশি aligned।
+Step 5 — Frontend: UI credits display fully consistent করা
+ফাইলগুলো:
+- `src/hooks/useSubscription.tsx` (types)
+- `src/components/dashboard/DashboardHeader.tsx`
+- (সম্ভবত) `src/components/dashboard/PlanOverview.tsx`
+- `src/components/dashboard/UsageSummaryCard.tsx`
+- `src/pages/Dashboard.tsx` (যদি এখনও profile.credits দিয়ে banner/logic থাকে)
 
-আমি Option A + (প্রয়োজনে) UI-side duplicate guard recommend করব যাতে DB features-এ একবার যোগ হলেই বারবার duplication না হয়।
+কাজ:
+1) `useSubscription` interface-এ `usage.credits_total/credits_used/credits_remaining` যোগ/align করা (আজ usage তে credits_remaining, credits_used আছে; কিন্তু total limits থেকে নেওয়া হচ্ছে—আমরা explicit fields রাখবো)
+2) `DashboardHeader` dropdown এ:
+   - Credits: “Remaining / Total”
+   - Used: “Used this period”
+   - Free/No-plan হলে “—” show (আপনার requirement)
+3) Expiry:
+   - `subscriptionEnd` বা `usage.current_period_end` থেকে date show
+   - Expired হলে “Expired” label
+   - CTA: “Renew Subscription” → click করলে `openCustomerPortal()` (আপনি নির্বাচন করেছেন)
+4) PlanOverview low-credit threshold:
+   - এখন `<10` এবং `!subscribed` — এটাকে আপনার rule অনুযায়ী “<= 5” এবং Paid/Trial users এর জন্য align করব, যাতে সব জায়গায় একই threshold থাকে
+5) `usePlanLimits.tsx`:
+   - এখানে `credits_per_month ?? 5` remove করে 0
+   - “free plan” query `.eq('name','free').single()` এখন fail করতে পারে কারণ free plan নেই; এটাকে safe fallback করতে হবে:
+     - যদি planId না থাকে এবং free plan row না থাকে, then credits_per_month=0, max_listings=0 (or keep existing?), etc.
+   - তবে dashboard UI ideally useSubscription-driven হবে; usePlanLimits শুধু UsageSummaryCard-এর জন্য, তাই এটাকে useSubscription থেকে data নিতে refactor করাও সম্ভব (cleaner)
 
-## 5) Verification (End-to-end tests)
-1) Trial user দিয়ে 10টি active listing পর্যন্ত create করুন (web app + extension flow) → success।
-2) ১১তম listing create চেষ্টা করুন:
-   - `create-listing` → 402 response, error message: “Trial plan listing limit reached (10 max)”।
-   - `sync-listing` batch → 402 response, summary তে blocked, same reason।
-3) Existing Trial user যার active listing > 10:
-   - নতুন listing create blocked হবে, পুরনো listing থাকবে।
-4) Admin override test:
-   - কোনো Trial user এর `user_plans.admin_override_limits.max_listings = 20` দিলে 11-20 create allowed হবে (আপনার পছন্দ অনুযায়ী)।
-5) Pricing page (`/#pricing`) এ Trial card এ “Up to 10 Listings” দেখা যাচ্ছে কিনা যাচাই করুন।
+Step 6 — Low credits notification (Banner + Toast, creditsRemaining <= 5)
+আপনার screenshot অনুযায়ী banner style implement করবো।
 
-## 6) What will be changed (scope)
-- DB:
-  - `public.plans` row update: Trial `max_listings = 10`
-  - (optional) Trial `features` updated to include “Up to 10 Listings”
-- Code (minimal):
-  - `supabase/functions/_shared/plan-middleware.ts` → Trial listing limit exceeded হলে error message specific করা
-  - (optional) `src/components/PricingSection.tsx` → DB features না বদলালে conditional injection
+কোথায় বসবে:
+- `src/components/dashboard/DashboardLayout.tsx` এ `<NoticesBanner />` এর আগে একটি নতুন component:
+  - `CreditsLowBanner` (dismissable)
+  - Paid + Trial users only
+  - Trigger condition: `usage?.credits_remaining <= 5` AND `limits?.credits_per_month > 0`
+  - Expired subscription হলে banner message “Subscription expired—renew to restore credits” (optional but helpful)
 
-## 7) Rollback plan
-- Trial max_listings আগের মানে ফিরিয়ে দিতে:
-```sql
-update public.plans
-set max_listings = 50,
-    updated_at = now()
-where name = 'Trial';
-```
-- features থেকে “Up to 10 Listings” remove করতে features array edit (manual) বা targeted jsonb অপারেশন ব্যবহার করা হবে।
+Toast (once per session বা per day):
+- DashboardLayout এ useEffect:
+  - condition meet হলে `toast.warning("Credits running low...")` একবার
+  - sessionStorage flag: `low_credits_toast_shown=true`
+  - credits আবার >5 হলে flag remove করা (so it can show again later)
 
+Banner UI (screenshot-inspired):
+- Left: warning icon + title “Credits Running Low”
+- Subtext: “Upgrade/renew your plan to continue creating listings.”
+- Right: primary button “Upgrade Now” / “Renew Now”
+  - onClick → `openCustomerPortal()` (paid/trial users)
+
+Dismiss behavior:
+- “X” close button → localStorage/sessionStorage এ dismiss store (e.g. `dismiss_low_credits_banner_until`)
+
+Step 7 — Admin pages fallbacks cleanup (small bugs)
+ফাইল: `src/pages/admin/AdminPlans.tsx`, `src/pages/admin/AdminUsers.tsx`
+- credits_per_month default `?? 5` → `?? 0` (যাতে admin UI তেও phantom 5 না আসে)
+- This is important কারণ admin যদি নতুন plan বানায়, defaults ভুল হয়ে যেতে পারে
+
+--------------------------------------------------------------------
+Verification / Testing checklist (end-to-end)
+1) New user signup → dashboard:
+   - Credits section “—” (বা 0/0, আপনার পছন্দ অনুযায়ী)  
+   - কোথাও 5 দেখাবে না
+2) Trial/Paid user:
+   - Total/Used/Remaining consistent (Total = plan, Remaining decreases with usage, Used increases)
+3) Credits remaining 6 → কোনো low-credit banner/toast নেই
+4) Credits remaining 5 → banner show + toast once
+5) Credits remaining 4 → banner stays; toast repeat না (unless reset condition met)
+6) Renewal হলে:
+   - credits_remaining reset to plan total
+   - credits_used reset to 0
+7) Subscription expired:
+   - Expired label + “Renew Subscription” CTA works (billing portal)
+
+--------------------------------------------------------------------
+Rollback / Safety
+- এই পরিবর্তনগুলো mostly fallback logic + display consistency, তাই rollback সাধারণত প্রয়োজন হবে না।
+- Stripe webhook logic পরিবর্তন sensitive; deploy করার পর edge logs verify করবো।
+
+--------------------------------------------------------------------
+Deliverables summary
+- Backend: credits accounting consistent + no hardcoded 5 fallbacks + credits_used reset on renew
+- Frontend: clean breakdown UI + expiry + Renew CTA
+- Dashboard: low-credit banner + toast only when <= 5 (paid/trial only)
+- Small bug fixes: free plan assumptions safe + admin default corrections
