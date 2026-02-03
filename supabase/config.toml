@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.orders-dashboard]
 verify_jwt = false
+
+[functions.admin-adjust-credits]
+verify_jwt = false
