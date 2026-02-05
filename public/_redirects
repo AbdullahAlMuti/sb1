@@ -1,0 +1,3 @@
+# SPA fallback for Netlify / Cloudflare Pages
+# Sends all routes to the Vite SPA entry so React Router can handle routing.
+/*  /index.html  200
