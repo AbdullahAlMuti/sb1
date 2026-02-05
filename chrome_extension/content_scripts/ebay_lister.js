@@ -940,10 +940,24 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
     // Sync listing to dashboard database
     try {
       const syncData = await chrome.storage.local.get([
-        "ebayTitle", "amazonPrice", "ebayPrice", "amazonURL", "sku", 
-        "productTitle", "amazonAsin", "ebaySku"
+        "ebayTitle",
+        "amazonPrice",
+        "ebayPrice",
+        "amazonURL",
+        "sku",
+        "productTitle",
+        "amazonAsin",
+        "ebaySku",
+        // Full Amazon scrape payload (includes mainImage/allImages)
+        "completeProductData",
+        // Optional: some flows store images here
+        "productImages",
       ]);
       
+      const scraped = syncData?.completeProductData;
+      const mainImage = scraped?.mainImage || (Array.isArray(scraped?.allImages) ? scraped.allImages[0] : null) || (Array.isArray(syncData?.productImages) ? syncData.productImages[0] : null);
+      const allImages = Array.isArray(scraped?.allImages) ? scraped.allImages : (Array.isArray(syncData?.productImages) ? syncData.productImages : undefined);
+
       const listingData = {
         title: syncData.ebayTitle || syncData.productTitle || title,
         sku: syncData.sku || syncData.ebaySku || data.ebaySku,
@@ -951,7 +965,16 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         amazon_price: parseFloat(syncData.amazonPrice) || null,
         amazon_url: syncData.amazonURL || null,
         amazon_asin: syncData.amazonAsin || null,
-        status: 'active'
+        status: 'active',
+        // Pass through existing scraped Amazon data (no business-logic changes)
+        ...(mainImage || allImages ? {
+          amazon_data: {
+            ...(scraped && typeof scraped === 'object' ? scraped : {}),
+            ...(mainImage ? { mainImage, imageUrl: mainImage } : {}),
+            ...(allImages ? { allImages } : {}),
+            source: 'extension',
+          }
+        } : {})
       };
 
       console.log("📤 Syncing listing to dashboard:", listingData);
