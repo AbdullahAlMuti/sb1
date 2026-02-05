@@ -23,7 +23,6 @@ const Navbar = () => {
   const navLinks = [
     { label: "Features", href: "#features" },
     { label: "How It Works", href: "#workflow" },
-    { label: "Course", href: "/course", isRoute: true },
     { label: "Pricing", href: "#pricing" },
     { label: "Testimonials", href: "#testimonials" },
   ];
@@ -68,7 +67,7 @@ const Navbar = () => {
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-8">
             {navLinks.map((link) => (
-              link.isRoute ? (
+              link.href.startsWith("/") ? (
                 <button
                   key={link.label}
                   onClick={() => navigate(link.href)}
@@ -125,7 +124,7 @@ const Navbar = () => {
           <div className="md:hidden mt-4 pb-4 border-t border-border pt-4 animate-fade-in">
             <div className="flex flex-col gap-4">
               {navLinks.map((link) => (
-                link.isRoute ? (
+                link.href.startsWith("/") ? (
                   <button
                     key={link.label}
                     onClick={() => {
