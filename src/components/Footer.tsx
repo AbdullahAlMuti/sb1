@@ -7,26 +7,22 @@ const Footer = forwardRef<HTMLElement>((_, ref) => {
 
   const footerLinks = {
     product: [
-      { label: "Features", href: "#" },
-      { label: "Pricing", href: "#" },
-      { label: "Chrome Extension", href: "#" },
-      { label: "Dashboard", href: "#" },
+      { label: "Features", href: "/#features" },
+      { label: "Pricing", href: "/#pricing" },
+      { label: "Chrome Extension", href: "/dashboard/extension" },
+      { label: "Dashboard", href: "/dashboard" },
     ],
     resources: [
-      { label: "Documentation", href: "#" },
-      { label: "API Reference", href: "#" },
-      { label: "Blog", href: "#" },
-      { label: "Changelog", href: "#" },
+      { label: "Documentation", href: "/documentation" },
+      { label: "Troubleshooting", href: "/documentation#troubleshooting" },
     ],
     company: [
       { label: "About", href: "/about" },
-      { label: "Careers", href: "#" },
       { label: "Contact", href: "/contact" },
-      { label: "Partners", href: "#" },
     ],
     legal: [
-      { label: "Privacy Policy", href: "/privacy" },
-      { label: "Terms of Service", href: "/terms" },
+      { label: "Privacy Policy", href: "/privacy-policy" },
+      { label: "Terms of Service", href: "/terms-of-service" },
       { label: "Refund Policy", href: "/refund" },
     ],
   };
