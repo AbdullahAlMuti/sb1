@@ -25,6 +25,7 @@ const Navbar = () => {
     { label: "How It Works", href: "#workflow" },
     { label: "Pricing", href: "#pricing" },
     { label: "Testimonials", href: "#testimonials" },
+    { label: "Documentation", href: "/documentation" },
   ];
 
   const handleLogin = () => {
