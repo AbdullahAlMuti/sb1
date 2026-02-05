@@ -9,10 +9,18 @@ function buildAmazonFallbackUrls(asin: string): string[] {
 
   // Amazon's legacy host often fails now; m.media-amazon.com tends to work more reliably.
   // Keep multiple fallbacks in case one format is blocked/unavailable.
+  // Note: Many ASINs do NOT have a working images/P/{ASIN}.01 URL at every size,
+  // so we try a handful of common variants.
   return [
-    `https://m.media-amazon.com/images/P/${clean}.01._SCLZZZZZZZ_.jpg`,
+    // Prefer m.media-amazon.com
+    `https://m.media-amazon.com/images/P/${clean}.01._SL1500_.jpg`,
+    `https://m.media-amazon.com/images/P/${clean}.01._SL500_.jpg`,
     `https://m.media-amazon.com/images/P/${clean}.01._SL240_.jpg`,
-    `https://images-na.ssl-images-amazon.com/images/P/${clean}.01._SCLZZZZZZZ_.jpg`,
+
+    // Legacy hosts (still work for some products)
+    `https://images-na.ssl-images-amazon.com/images/P/${clean}.01._SL1500_.jpg`,
+    `https://images-na.ssl-images-amazon.com/images/P/${clean}.01._SL500_.jpg`,
+    `https://images-na.ssl-images-amazon.com/images/P/${clean}.01._SL240_.jpg`,
   ];
 }
 
