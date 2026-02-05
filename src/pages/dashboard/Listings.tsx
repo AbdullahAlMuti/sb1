@@ -1121,15 +1121,15 @@ export default function Listings() {
   return (
     <div className="space-y-3">
       {/* Title Panel */}
-      <div className="rounded-xl border border-border/60 bg-card/70 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-sm">
-        <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:p-4">
+      <div className="rounded-xl border border-border/60 bg-card/70 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-sm ring-1 ring-border/40">
+        <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="text-base sm:text-lg font-semibold text-foreground leading-tight">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <h2 className="text-lg sm:text-xl font-semibold tracking-tight text-foreground leading-tight">
                 Listings
               </h2>
               <span className="hidden sm:inline-block h-5 w-px bg-border" />
-              <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 shadow-[0_1px_0_hsl(var(--border))]">
                 <Package className="h-4 w-4 text-primary" />
                 <span className="text-sm font-semibold text-foreground tabular-nums">{timeBasedStats.total}</span>
                 <span className="text-xs text-muted-foreground">total</span>
@@ -1143,7 +1143,7 @@ export default function Listings() {
                 )}
               </div>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
               Manage your Amazon→eBay mappings and monitor sync status.
             </p>
           </div>
@@ -1152,7 +1152,7 @@ export default function Listings() {
           <div className="flex items-center gap-2 sm:justify-end">
             <Button
               size="sm"
-              className="shadow-sm h-9"
+              className="shadow-sm h-9 px-4"
               onClick={() => navigate("/dashboard/listings/new")}
             >
               <Plus className="h-3.5 w-3.5 mr-1.5" />
