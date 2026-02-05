@@ -1,114 +1,118 @@
 
-## Findings (as requested format)
+## Current Behavior (Title Panel Positioning)
 
-### 1) Broken Layer: **Backend Save Input (Chrome Extension → create-listing payload)**
-**Exact File & Function Name**
-- `chrome_extension/content_scripts/ebay_lister.js` → the “Sync listing to dashboard database” block where `listingData` is constructed (around the code you shared: lines ~940–955).
-- `chrome_extension/common/sync_utils.js` → `syncListing(listingData)` (lines ~211–268), where it builds `amazon_data` only if `listingData.amazon_data` is missing.
+### Is it floating or static?
+- It is **static** (normal document flow). It **scrolls away with the page content**.
 
-**Why the image is not showing (simple explanation)**
-- The extension currently sends this payload to the backend `create-listing` function:
-  - `title, sku, ebay_price, amazon_price, amazon_url, amazon_asin, status`
-  - **But it does not include any Amazon image URL fields** (like `mainImage` / `allImages`) in `amazon_data`.
-- `sync_utils.js` tries to “enrich” the payload, but its default `amazon_data` object only contains `amazonUrl, asin, title, price, source`. **No image keys are added there either**.
-- Result: The backend (`supabase/functions/create-listing/index.ts`) saves `amazon_data` exactly as received (or as the minimal default), so **the DB ends up with `amazon_data` that has no image URL**.
+### What CSS positioning is being used?
+- In `src/pages/dashboard/Listings.tsx` (Title Panel wrapper), the container is a plain `<div>` with Tailwind classes:
+  - `rounded-xl border ... bg-card/70 backdrop-blur ... shadow-sm`
+- There is **no** `fixed`, **no** `sticky`, and **no** `z-*` class applied to the title panel.
+- Therefore, it does **not** overlay content and does **not** require z-index layering.
 
-**Minimal Fix (without changing business logic)**
-- Keep all business logic the same; only pass through existing scraped image data.
-- Update the extension so that when it constructs `listingData`, it includes `amazon_data` containing at least:
-  - `mainImage` (string URL)
-  - optionally `allImages` (array of URLs)
-- This is the “minimal” fix because your dashboard already tries to read images from `amazon_data` (`normalizeListingRow()`), but the data never arrives.
+### Why it behaves this way
+- The page scroll is handled by the browser on the whole dashboard main content area (`<main className="flex-1 p-4 ...">` in `src/components/dashboard/DashboardLayout.tsx`).
+- Since the title panel is inside that normal flow, it scrolls with the rest of the Listings page.
 
 ---
 
-### 2) Broken Layer: **Database (data stored, not schema)**
-**Exact File & Function Name**
-- DB schema reference: `src/integrations/supabase/types.ts` → `public.Tables.listings`
-  - `listings.Row` includes: `amazon_data` (Json), `amazon_asin`, `amazon_url`, etc.
-  - There is **no `image_url` column** in `listings` (so it will always be `null` at the table level).
+## UI Problems Found (UI-only)
 
-**Why the image is not showing (simple explanation)**
-- New rows will have:
-  - `amazon_asin` set (often)
-  - `amazon_data` present but **missing `mainImage` / `imageUrl` / `images[0]`**
-- Because the image URL is missing in stored JSON, the dashboard has nothing reliable to render.
+1) **Small-screen density / wrapping risk**
+- The header row (`Listings | count chip | button`) can feel tight on smaller widths.
+- The count chip is inside the same row as the title; without explicit wrapping rules, the row can feel cramped or force awkward truncation.
 
-**Minimal Fix**
-- No schema changes required.
-- Ensure `amazon_data` is populated with `mainImage` (and/or other known keys your frontend already checks).
+2) **Visual separation could be stronger**
+- The card style is good, but the “header” could read more clearly as a *page header module* (clearer hierarchy, slightly stronger border/shadow, and a bit more consistent spacing).
+
+3) **Typography hierarchy**
+- `h2` is `text-base sm:text-lg`; it can be slightly stronger to feel like a primary dashboard title, while still staying compact.
 
 ---
 
-### 3) Broken Layer: **Frontend Rendering (not the root cause; just confirms the symptom)**
-**Exact File & Function Name**
-- `src/pages/dashboard/Listings.tsx` → `normalizeListingRow(row)` (lines ~194–263 in the snippet you shared)
-  - It tries: `amazonData.image`, `amazonData.imageUrl`, `amazonData.mainImage`, `amazonData.productImage`, `amazonData.images?.[0]`, etc.
-- `src/components/listings/ListingImage.tsx`
-  - Fallback tries to generate an Amazon image URL from ASIN.
+## Improved UI Code (Tailwind / style-only changes; no JS logic changes)
 
-**Why the image is not showing (simple explanation)**
-- Since `amazon_data` contains no image keys, `normalizeListingRow()` produces `image_url = null`.
-- Then `ListingImage` falls back to ASIN-based URLs, which can fail for some products (format not present / blocked / not found), so you end up seeing the package icon.
+### Target file
+- `src/pages/dashboard/Listings.tsx`
 
-**Minimal Fix**
-- Do not change UI/business behavior; just restore the missing input data (image URL) so the UI renders again reliably.
+### Changes to apply (styles only)
+1) **Make the header layout wrap safely**
+- Add `flex-wrap` on the title + chip row so it doesn’t squeeze on small screens.
+- Ensure chip stays readable and doesn’t overflow.
+
+2) **Strengthen the “panel” look slightly**
+- Adjust border/shadow + background to feel more like your established SaaS header pattern (consistent with the “DashboardHeader style” memory: rounded-xl, subtle border, bg-card/70 + blur).
+
+3) **Refine typography + spacing**
+- Slightly increase title size/weight on desktop.
+- Add a tiny top padding/spacing rhythm.
+
+### Proposed Tailwind-only patch (replace classes only, keep markup + logic the same)
+In the Title Panel section shown around lines ~1121+:
+
+**Outer container**
+- From:
+  - `rounded-xl border border-border/60 bg-card/70 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-sm`
+- To:
+  - `rounded-xl border border-border/60 bg-card/70 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-sm ring-1 ring-border/40`
+
+**Inner container**
+- From:
+  - `flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:p-4`
+- To:
+  - `flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6`
+
+**Title row (title + divider + chip)**
+- From:
+  - `flex items-center gap-2`
+- To:
+  - `flex flex-wrap items-center gap-x-3 gap-y-2`
+
+**Title typography**
+- From:
+  - `text-base sm:text-lg font-semibold text-foreground leading-tight`
+- To:
+  - `text-lg sm:text-xl font-semibold tracking-tight text-foreground leading-tight`
+
+**Divider**
+- Keep, but ensure it doesn’t appear on wrapped rows:
+  - Keep as `hidden sm:inline-block ...` (already correct)
+
+**Count chip**
+- From:
+  - `flex items-center gap-2 px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20`
+- To:
+  - `flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 shadow-[0_1px_0_hsl(var(--border))]`
+
+**Description**
+- From:
+  - `mt-1 text-xs text-muted-foreground`
+- To:
+  - `mt-1 text-xs sm:text-sm text-muted-foreground`
+
+**Actions container**
+- From:
+  - `flex items-center gap-2 sm:justify-end`
+- To:
+  - `flex items-center gap-2 sm:justify-end`
+
+(Leave as-is; it’s fine.)
+
+**Button**
+- Keep current:
+  - `size="sm" className="shadow-sm h-9"`
+- Optional style-only enhancement (no behavior change):
+  - `className="shadow-sm h-9 px-4"` (only if you want slightly more balanced padding)
 
 ---
 
-### 4) Amazon API Response (what field contains the image)
-**Exact File & Function Name**
-- `chrome_extension/content_scripts/amazon_injector.js` → `scrapeCompleteProductData()` (around lines ~106–182 in your snippet)
-  - Main image field name: **`mainImage`**
-    - `mainImage: getElAttr('#landingImage', 'src') || getElAttr('#imgBlkFront', 'src')`
-  - Additional images field name: **`allImages`**
-    - `allImages: Array.from(document.querySelectorAll(...)).map(...)`
+## Short Explanation (What changes visually / why it’s better)
 
-**Why this matters**
-- Your scraper already has correct image fields (`mainImage`, `allImages`).
-- The issue is not “Amazon stopped returning images”; it’s that **the listing sync flow is not including those fields when creating the listing**.
+- The header remains **static** (no sticky/fixed), so it won’t introduce overlap or z-index issues.
+- `flex-wrap` + improved spacing ensures the title/chip/button layout is **more resilient on smaller screens** without cramping.
+- Slightly stronger title typography improves **hierarchy and readability**.
+- A subtle ring and micro-shadow on the count chip improves **visual separation** without changing any data or behavior.
 
----
-
-## Minimal Fix Implementation Plan (no business-logic changes)
-
-### A) Confirm and use the existing scraped image object
-1) Identify where the extension stores the output of `scrapeCompleteProductData()` (or equivalent) into `chrome.storage.local`.
-2) In `chrome_extension/content_scripts/ebay_lister.js`, when building `listingData`, also pull that stored product data and attach it into `listingData.amazon_data`.
-
-**Target change location**
-- `chrome_extension/content_scripts/ebay_lister.js` → the `chrome.storage.local.get([...])` call at lines ~942–945 and the `listingData` object at ~947–955.
-
-**Minimal adjustment**
-- Add the key that contains the scraped object (commonly something like `completeProductData` or similar) to the `chrome.storage.local.get([...])` list.
-- Set:
-  - `listingData.amazon_data = { ...(scrapedObject), source: 'extension' }`
-  - Ensure at least one of the keys your dashboard recognizes exists:
-    - `mainImage` (preferred, matches scraper)
-    - optionally also set `imageUrl` = `mainImage` for compatibility
-
-This does not change plan limits, credits, listing creation rules, etc. It only restores missing data in the payload.
-
----
-
-### B) (Optional but still minimal) Hardening in `sync_utils.js`
-If you want an extra safety net without changing business logic:
-- In `chrome_extension/common/sync_utils.js` inside `syncListing()`, if `listingData.amazon_data` exists but has `allImages` and not `mainImage`, set `mainImage = allImages[0]`.
-- This is still “minimal” because it only normalizes/forwards data you already scraped; it does not alter pricing/limits/auth.
-
----
-
-## What to verify after the fix (quick checklist)
-1) Create a new listing from Amazon as usual.
-2) In Supabase `listings.amazon_data`, confirm it now contains:
-   - `mainImage: "https://..."` (non-empty)
-3) Reload Dashboard → Listings:
-   - The image should appear without needing ASIN fallback.
-4) If images still fail, then the remaining likely cause is **external image hotlink blocking** (403) on specific Amazon CDN URLs; but right now the primary break is earlier: **image URL never saved**.
-
----
-
-## Final diagnosis (the exact technical reason it used to work, but not now)
-- Previously, the sync payload likely included `amazon_data.mainImage` (or equivalent), so dashboard rendering succeeded.
-- Now, `ebay_lister.js` constructs a reduced `listingData` payload that does not include image fields, and `sync_utils.js` default enrichment also does not add image fields.
-- Therefore: **the image data is being dropped before it ever reaches the backend and database**.
+## Non-goals (explicitly not changing)
+- No API calls, no data mapping, no listing logic, no navigation logic changes.
+- No new UI features; only visual polish via Tailwind class adjustments.
