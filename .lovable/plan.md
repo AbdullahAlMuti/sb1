@@ -1,286 +1,263 @@
 
-## Objective (production-ready deployment, no behavior changes)
-Prepare the **website + Chrome extension** for live deployment using the live domain:
+## Compliance Review Summary (Chrome Web Store + Website)
 
-- **Website domain:** https://sellersuit.com  
-- **Rules:** Do not change business logic/algorithms/data flow. Only update URLs, hosting references, and add/adjust legal-policy pages/routes + documentation.
-
-You confirmed:
-- Remove localhost/127.0.0.1 from the production extension build.
-- Add policy-route aliases (e.g., `/privacy-policy` and `/terms-of-service`).
-- sellersuit.com is already live (and intended to use the same Supabase project).
+### Goal
+Review the **Chrome extension + website** for Chrome Web Store compliance focusing on **manifest, permissions, assets, policies, metadata, and UI readiness**. No business logic changes.
 
 ---
 
-## What I found (repo analysis summary)
+## 1) Current Status Checklist (✅/⚠️/❌)
 
-### Website (Vite/React in `src/`)
-- **No hardcoded `localhost`** references inside `src/` (good).
-- Routing already includes:
-  - `/privacy` → `src/pages/PrivacyPolicy.tsx`
-  - `/terms` → `src/pages/TermsOfService.tsx`
-- `index.html` canonical points to `https://sellersuit.com` (good).
-- Current legal pages exist but are **generic** and should be upgraded to explicitly mention extension + data practices required by Chrome Web Store.
+### 1.1 Manifest basics
+| Item | Status | Evidence / Notes |
+|---|---:|---|
+| `manifest_version: 3` | ✅ | `chrome_extension/manifest.json` line 2 |
+| `name` present | ✅ | Currently `"eBay Snipping Tool"` |
+| `version` present | ✅ | `"1.3.1"` |
+| `description` present | ✅ | Present, but should be aligned with branding and actual features |
+| `action.default_popup` | ✅ | `popup.html` |
+| `icons` 16/48/128 | ✅ | `icons/icon16.png`, `icon48.png`, `icon128.png` exist |
 
-### Chrome extension (`chrome_extension/`)
-Localhost + staging references exist and must be replaced/removed for the Web Store build:
+### 1.2 Required Web Store metadata (not in manifest)
+| Item | Status | Notes |
+|---|---:|---|
+| Privacy Policy URL in **Web Store listing** | ⚠️ | Not in manifest (that’s okay). Must be set in the Chrome Developer Dashboard listing fields. You already host `/privacy-policy`. |
+| Support email | ⚠️ | Must be provided in Web Store listing (and ideally also on site footer/support page). |
+| Support / homepage URL | ✅ | `homepage_url: https://sellersuit.com` in manifest |
 
-**Hardcoded / fallback localhost**
-- `chrome_extension/common/config.js`  
-  - `const WEB_APP_DOMAIN = 'http://localhost:8080';` (must become `https://sellersuit.com`)
-- `chrome_extension/popup.js`  
-  - Fallback base URL: `"http://localhost:8080"` (must become `https://sellersuit.com`)
-- `chrome_extension/background.js`  
-  - Onboarding fallback: `'https://sellersuit.lovable.app'` (should become `https://sellersuit.com`)
-  - Hardcoded API call: `fetch("http://localhost:8080/v1/ai/remove-bg"...` (must become `https://sellersuit.com/v1/ai/remove-bg` OR use `ExtensionConfig.URLS.AI_REMOVE_BG`)
+### 1.3 Host permissions & minimal-permissions policy
+| Item | Status | Notes |
+|---|---:|---|
+| No localhost / lovable hosts in manifest | ✅ | Manifest now only includes production domains |
+| Host permissions appear minimal | ❌/⚠️ | Manifest includes several domains that appear unused or mismatched: `gemini.google.com`, `api.replicate.com`, `cdn.jsdelivr.net`, `www.dailyfindz.com` |
+| Domain required by code but missing in manifest | ⚠️ | Code fetches `https://generativelanguage.googleapis.com/...` (Gemini API) but manifest currently does not include `https://generativelanguage.googleapis.com/*`. This can cause runtime failures and/or review confusion. |
 
-**Localhost and Lovable host permissions**
-- `chrome_extension/manifest.json` includes:
-  - `http://localhost:8080/*`, `http://localhost:8081/*`, `http://localhost:5173/*`
-  - `http://127.0.0.1:*`
-  - `https://*.lovable.app/*` and `https://*.lovableproject.com/*`
-These should be removed for production submission.
+### 1.4 Remote code / external resources
+| Item | Status | Notes |
+|---|---:|---|
+| No remote JS libraries loaded | ✅ | Good for MV3 “no remote code” policy |
+| Remote CSS/Font usage | ⚠️ | `chrome_extension/ui/panel.html` loads Google Fonts from `fonts.googleapis.com`. This is sometimes accepted, but it can trigger “remote code / remote resources” scrutiny. Safer for Web Store review: remove remote font dependency or bundle locally. (UI-only change.) |
+
+### 1.5 Policy pages on HTTPS
+| Item | Status | Notes |
+|---|---:|---|
+| Privacy Policy page exists | ✅ | `src/pages/PrivacyPolicy.tsx` with extension-specific sections |
+| Terms of Service exists | ✅ | `src/pages/TermsOfService.tsx` |
+| HTTPS hosting | ✅ | `https://sellersuit.com/*` |
+| Store-friendly canonical routes | ✅ | `/privacy-policy` and `/terms-of-service` are routed in `src/App.tsx` |
+
+### 1.6 Branding consistency (store clarity)
+| Item | Status | Notes |
+|---|---:|---|
+| Extension branding matches product | ❌ | Manifest name/title say “eBay Snipping Tool” while UI and site brand are “SellerSuit”. This can reduce trust and increase reviewer questions. You chose “Align to SellerSuit”. |
 
 ---
 
-## URL Replacement Table (production target = https://sellersuit.com)
+## 2) Issues Found + Why They Matter (Compliance Impact)
 
-| Location | Current | Replace with |
-|---|---|---|
-| `chrome_extension/common/config.js` | `http://localhost:8080` | `https://sellersuit.com` |
-| `chrome_extension/popup.js` fallback | `http://localhost:8080` | `https://sellersuit.com` |
-| `chrome_extension/background.js` onboarding fallback | `https://sellersuit.lovable.app` | `https://sellersuit.com` |
-| `chrome_extension/background.js` AI remove-bg fetch | `http://localhost:8080/v1/ai/remove-bg` | `https://sellersuit.com/v1/ai/remove-bg` (or `URLS.AI_REMOVE_BG`) |
-| `chrome_extension/manifest.json` | localhost/127.0.0.1/lovable domains | remove from production build |
+### Issue A — Unused / incorrect host permissions (High priority)
+**Found in manifest `host_permissions`:**
+- `https://gemini.google.com/*` (used only as a link target; not required as host permission)
+- `https://api.replicate.com/*` (not used directly; remove to satisfy minimal-permissions)
+- `https://cdn.jsdelivr.net/*` (not used in extension runtime; remove)
+- `https://www.dailyfindz.com/*` (not used; remove)
 
-Notes:
-- Keep Supabase URLs as-is (they’re already production: `https://ojxzssooylmydystjvdo.supabase.co`).
-- Website `src/` doesn’t require localhost replacements.
+**Why this matters**
+Chrome Web Store reviewers strongly enforce **least privilege**. Unused host permissions are one of the most common rejection reasons.
+
+**Also:** The extension background script performs a fetch to:
+- `https://generativelanguage.googleapis.com/...`
+…but that host is not included in `host_permissions`, which can cause:
+- runtime failures for that feature
+- reviewer confusion (“why request gemini.google.com but call generativelanguage.googleapis.com?”)
 
 ---
 
-## Implementation Roadmap (step-by-step, safe + review-friendly)
+### Issue B — Remote Google Fonts reference in extension UI (Medium priority)
+- `chrome_extension/ui/panel.html` loads:
+  - `https://fonts.googleapis.com/css2?family=Inter...`
 
-### Phase 1 — Extension: convert to production domain (no logic changes)
-1) **Update centralized extension base domain**
-   - File: `chrome_extension/common/config.js`
-   - Change only:
-     - `WEB_APP_DOMAIN` from `http://localhost:8080` → `https://sellersuit.com`
-   - Result: all derived URLs become production:
-     - `WEB_APP_AUTH`, `WEB_APP_DASHBOARD`, `AI_REMOVE_BG`, etc.
+**Why this matters**
+MV3 disallows remote code; while fonts/CSS are not JS, reviewers sometimes interpret remote stylesheet loads as problematic. Safest approach is to avoid external loads in extension pages and use:
+- system font stack, or
+- bundled font files inside the extension.
 
-2) **Remove hardcoded localhost fallback in popup**
-   - File: `chrome_extension/popup.js`
-   - Change only the fallback string in `getBaseUrl()`:
-     - `"http://localhost:8080"` → `"https://sellersuit.com"`
-   - Do not change IDs, event handlers, or flow.
+This is UI-only and does not change logic.
 
-3) **Remove hardcoded localhost references in background script**
-   - File: `chrome_extension/background.js`
-   - Update:
-     - Onboarding fallback URL:
-       - `URLS.WEB_APP_BASE || 'https://sellersuit.lovable.app'` → `URLS.WEB_APP_BASE || 'https://sellersuit.com'`
-     - AI remove-bg fetch:
-       - Replace the hardcoded `fetch("http://localhost:8080/v1/ai/remove-bg"...`
-       - With `fetch(URLS.AI_REMOVE_BG, ...)` OR direct `https://sellersuit.com/v1/ai/remove-bg`
-   - This is a URL-only change; it does not alter data structures, calculations, or control flow.
+---
 
-4) **Update manifest for production submission**
-   - File: `chrome_extension/manifest.json`
+### Issue C — Branding mismatch (Medium priority)
+Manifest shows:
+- Name: “eBay Snipping Tool”
+- Action title: “eBay Snipping Tool”
+Popup UI shows:
+- “SellerSuit Sync”
+Website brand:
+- SellerSuit
+
+**Why this matters**
+Not a strict technical policy violation, but a frequent reason for “needs more information” or trust/clarity issues. You requested to align branding.
+
+---
+
+### Issue D — Store listing requirements not represented in repo (Expected, but needs checklist)
+Screenshots, promotional tiles, privacy Q&A answers, and “data handling” disclosures are all required in the Chrome Developer Dashboard, not the codebase. We need a concrete checklist and recommended wording.
+
+---
+
+## 3) Step-by-Step Fix Plan (No business logic changes)
+
+### Phase 1 (High Priority): Manifest permission cleanup + correctness
+1) **Remove unused host permissions** from `chrome_extension/manifest.json`:
+   - Remove:
+     - `https://www.dailyfindz.com/*`
+     - `https://api.replicate.com/*`
+     - `https://cdn.jsdelivr.net/*`
+     - `https://gemini.google.com/*`
+   - Rationale: least privilege for store approval.
+
+2) **Add required host permission** (matches actual network calls):
    - Add:
-     - `"homepage_url": "https://sellersuit.com"`
-   - Remove (production build):
-     - `http://localhost:*/*`, `http://127.0.0.1:*/*`
-     - `https://*.lovable.app/*`, `https://*.lovableproject.com/*`
-   - Keep:
-     - `https://sellersuit.com/*`, `https://*.sellersuit.com/*`
-     - Supabase host permission
-     - Amazon/eBay/Walmart domains needed by content scripts
-   - Bump version:
-     - `"version": "1.3"` → `"1.3.1"` (or next release number)
+     - `https://generativelanguage.googleapis.com/*`
+   - Rationale: background script fetches this domain; host permission should match.
 
-Deliverable after Phase 1:
-- A “production-ready” extension build that only targets sellersuit.com for auth + backend endpoints.
+**Note on your “Gemini feature = Decide later”**
+- This plan does not change any logic. It only makes the manifest consistent with what the code already does.
+- If you later decide to remove that feature entirely, that would require logic changes (out of scope here).
 
 ---
 
-### Phase 2 — Website: add policy aliases + upgrade policy text (Chrome Web Store ready)
-You requested policies hosted at:
-- `https://sellersuit.com/privacy-policy`
-- `https://sellersuit.com/terms-of-service`
+### Phase 2 (Medium Priority): Remove remote font dependency (UI-only)
+Option A (lowest risk, simplest):
+- Replace Inter Google Fonts with a system font stack in `ui/panel.html` and `ui/panel.css` (no external requests).
 
-Current site routes are `/privacy` and `/terms`. We will add aliases without changing logic.
+Option B (best branding fidelity, slightly more work but still UI-only):
+- Add Inter font files to `chrome_extension/assets/fonts/` and reference via `@font-face` in `panel.css`.
+- Remove the `fonts.googleapis.com` `<link>` from `panel.html`.
 
-1) **Add route aliases**
-   - File: `src/App.tsx`
-   - Add routes (render the same components):
-     - `/privacy-policy` → `<PrivacyPolicy />`
-     - `/terms-of-service` → `<TermsOfService />`
-   - Keep existing `/privacy` and `/terms` intact.
-
-2) **Update policy content to explicitly cover extension**
-   - Files:
-     - `src/pages/PrivacyPolicy.tsx`
-     - `src/pages/TermsOfService.tsx`
-   - Update only the displayed text (UI content), not logic.
-
-#### Ready-to-publish Privacy Policy (Markdown/HTML content to embed)
-Below is the policy content to incorporate into `PrivacyPolicy.tsx` (rendered via your existing prose styling). This is written specifically for a web app + Chrome extension.
-
-**Privacy Policy — SellerSuit**  
-Last updated: [render date]
-
-1. Introduction  
-SellerSuit (“SellerSuit,” “we,” “us”) provides a web application at https://sellersuit.com and a Chrome extension that helps streamline eBay listing workflows. This Privacy Policy explains what we collect, how we use it, and your choices.
-
-2. Information We Collect  
-2.1 Account Information (Web App)  
-- Email address and account identifiers used for authentication and account management.  
-- Subscription status and plan/usage data (e.g., credits usage) where applicable.
-
-2.2 Payment Information  
-Payments are processed by Stripe. We do not store full card numbers. Stripe may provide us with billing metadata (e.g., customer ID, subscription status, last 4 digits, payment method type).
-
-2.3 Extension & Usage Data  
-The Chrome extension may process content from supported sites (e.g., Amazon, Walmart, eBay) to provide automation features. This may include:  
-- Product page information needed to generate listing data (such as title, images, prices, and product identifiers).  
-- User actions performed inside the extension UI (e.g., button clicks, feature usage events).  
-- Data you choose to export (e.g., to downloads or Google Sheets).
-
-2.4 Local Storage and Extension Storage  
-- The website uses browser storage (e.g., localStorage) for session management via Supabase.  
-- The extension uses Chrome storage to store settings (e.g., sync interval, lookback period) and may store authentication tokens required to communicate with SellerSuit services.
-
-2.5 Automatically Collected Technical Data  
-We may collect technical information such as device/browser type, IP address, and diagnostic logs to maintain reliability and prevent abuse.
-
-3. How We Use Information  
-We use information to:  
-- Provide and operate SellerSuit and the extension features  
-- Authenticate users and maintain sessions  
-- Sync data you request (e.g., Google Sheets integrations)  
-- Process subscriptions and billing status  
-- Improve performance, troubleshoot issues, and prevent fraud/abuse  
-- Communicate service updates and support responses
-
-4. Sharing and Disclosure  
-We may share information:  
-- With service providers (e.g., Stripe for payments, Supabase for authentication/database, email providers for transactional emails)  
-- When required by law or to protect our rights  
-- In a business transfer (merger/acquisition)
-
-5. Data Retention  
-We retain account and usage data as long as necessary to provide the Service and comply with legal obligations. You may request deletion where applicable.
-
-6. Security  
-We use reasonable administrative, technical, and physical safeguards to protect information. No method of transmission is 100% secure.
-
-7. Your Choices and Rights  
-Depending on your location, you may have rights to access, correct, delete, or export your data, and to object to certain processing. Contact us to request these actions.
-
-8. Children’s Privacy  
-SellerSuit is not intended for individuals under 18 and we do not knowingly collect data from children.
-
-9. International Users  
-Your data may be processed in countries where we and our providers operate.
-
-10. Contact  
-Email: support@sellersuit.com
-
-(We will tailor wording if you want to explicitly list all providers: Supabase, Stripe, Resend, etc.)
-
-#### Ready-to-publish Terms of Service (content to embed)
-**Terms of Service — SellerSuit**  
-Last updated: [render date]
-
-1. Agreement  
-By accessing or using SellerSuit (web app and Chrome extension), you agree to these Terms.
-
-2. Service Description  
-SellerSuit provides tools that help users streamline eBay listing workflows, including automation features and integrations.
-
-3. Accounts  
-You are responsible for maintaining account security and all activity under your account.
-
-4. Subscriptions & Billing  
-Paid plans are billed in advance. Subscription terms, renewals, cancellation, and refunds are governed by the checkout flow and Refund Policy where applicable.
-
-5. Acceptable Use  
-You agree not to:  
-- Use the Service unlawfully  
-- Attempt unauthorized access  
-- Interfere with Service operation  
-- Reverse engineer or abuse the Service  
-- Use the Service in a way that violates third-party platform rules (eBay/Amazon/Walmart). You are responsible for complying with those platforms’ terms.
-
-6. Third-Party Sites and Content  
-The extension operates on third-party websites. SellerSuit is not affiliated with or endorsed by those platforms.
-
-7. Intellectual Property  
-SellerSuit and its software, UI, branding, and documentation are protected by IP laws.
-
-8. Disclaimer  
-Service is provided “as is” and “as available” without warranties.
-
-9. Limitation of Liability  
-To the maximum extent permitted by law, SellerSuit is not liable for indirect or consequential damages.
-
-10. Termination  
-We may suspend/terminate accounts for violations, abuse, or security risks.
-
-11. Contact  
-support@sellersuit.com
+This improves compliance posture and reduces reviewer scrutiny.
 
 ---
 
-### Phase 3 — Documentation: hosting + Web Store submission (checklists)
-We will add/update documentation files (no code behavior changes) covering:
+### Phase 3 (Medium Priority): Align extension branding to SellerSuit (metadata/UI text only)
+1) Update `chrome_extension/manifest.json`:
+   - `name`: change to “SellerSuit” or “SellerSuit for eBay”
+   - `action.default_title`: change to “SellerSuit”
+   - `description`: rewrite to match actual features and brand voice
 
-1) **Website deployment (already live, but document it)**
-   - Confirm hosting supports SPA routing
-   - Confirm HTTPS
-   - Confirm correct Supabase env vars on the host
-   - Confirm routes `/privacy-policy` and `/terms-of-service` resolve
-   - Confirm extension-auth sync flow works on the live domain
+2) Update extension UI titles where needed (text only):
+   - Popup already says “SellerSuit Sync” (good).
+   - Panel titles already say “SellerSuit Panel” (good).
+   - Ensure consistent naming across store listing, website, and extension UI.
 
-2) **Extension packaging**
-   - Zip structure (manifest at root of zip)
-   - Required icons (16/48/128)
-   - Confirm no localhost references remain
-   - Bump version for each submission
-
-3) **Chrome Web Store submission checklist**
-   - Required listing fields
-   - Privacy Policy URL (use `https://sellersuit.com/privacy-policy`)
-   - Permissions justification text (why storage/tabs/scripting/downloads + host permissions are needed)
-   - Screenshots list (popup connected/disconnected, injected panel on Amazon, listing automation on eBay, etc.)
-   - Common rejection pitfalls (overbroad permissions, missing privacy disclosures)
+No logic changes required.
 
 ---
 
-## Verification plan (must do before Web Store upload)
-1) Load unpacked extension (production build)
-2) Go to https://sellersuit.com and log in
-3) Confirm the extension popup shows **Connected** (token sync works)
-4) Confirm injected panel login button opens https://sellersuit.com/auth
-5) Confirm background script no longer calls localhost
-6) Confirm policy pages load:
-   - https://sellersuit.com/privacy-policy
-   - https://sellersuit.com/terms-of-service
-7) End-to-end test on Amazon/eBay/Walmart pages to ensure host permissions are sufficient
+### Phase 4: Web Store listing compliance pack (documentation + assets checklist)
+Prepare the required items (outside code):
+1) **Screenshots** (mandatory)
+   - Popup (Connected)
+   - Popup (Not Connected)
+   - Amazon page with injected panel
+   - Walmart page with injected panel
+   - eBay listing flow automation screen
+   - (Optional) Dashboard extension connect page on sellersuit.com
+
+2) **Store listing text**
+   - Short description (1–2 lines)
+   - Detailed description (features, supported sites, how it works)
+   - Permission justifications (see below)
+
+3) **Privacy practices questionnaire answers**
+   - Disclose: authentication token in Chrome storage, site content processing on supported domains, optional Google Sheets sync.
+
+4) **Policy URLs**
+   - Privacy Policy: `https://sellersuit.com/privacy-policy`
+   - Terms: `https://sellersuit.com/terms-of-service`
+   - Ensure both pages load without login.
 
 ---
 
-## Minimal UI-only suggestions (popup, safe)
-No logic changes, but optional CSS polish to better match store expectations:
-- Replace the large “🔴” in Not Connected view with a smaller, cleaner badge (pure CSS)
-- Ensure `Not Connected` uses the same typography tokens as the header
-- Add a subtle divider between content and footer to enhance hierarchy (CSS only)
+## 4) Permissions Justification (Copy-ready for Web Store listing)
+Use concise, reviewer-friendly wording:
+
+### Permissions
+- **storage**: Saves extension settings (sync interval/lookback) and authentication token required to connect to SellerSuit services.
+- **tabs**: Opens SellerSuit dashboard/login pages and coordinates login flow.
+- **scripting**: Injects the SellerSuit panel UI into supported pages (Amazon/Walmart/eBay) to assist listing workflows.
+- **downloads**: Allows users to download exported images/files they explicitly request.
+
+### Host permissions
+- **Amazon/Walmart/eBay**: Required to run the extension UI and extract product/listing data on those sites when the user activates the tool.
+- **sellersuit.com**: Required for auth sync and to open dashboard pages.
+- **Supabase domain**: Required to call SellerSuit backend edge functions for authentication/status and app features.
+- **Google APIs (if used by existing code)**: Required only for the specific API endpoints actually called (ensure it matches `generativelanguage.googleapis.com` if that feature is present).
 
 ---
 
-## Deliverables after implementation
-- Production extension with all localhost/lovable references removed and domain set to sellersuit.com
-- Website includes `/privacy-policy` + `/terms-of-service` alias routes
-- Updated privacy policy and terms text suitable for Chrome Web Store
-- A deploy + submission checklist doc with a URL replacement log and “common rejection” tips
+## 5) Publishing Guide (Step-by-step, Web Store ready)
+
+### A) Website readiness (already live, verify)
+1) Confirm HTTPS: `https://sellersuit.com`
+2) Confirm SPA routing works on refresh:
+   - `/dashboard/listings` refresh must not 404
+3) Confirm legal pages are public:
+   - `/privacy-policy`
+   - `/terms-of-service`
+
+### B) Final extension QA (before zip)
+1) Load unpacked extension (production manifest)
+2) Log in to SellerSuit web app
+3) Open extension popup:
+   - Connected state shows correctly
+4) On Amazon/Walmart:
+   - Panel injects
+5) On eBay listing pages:
+   - Listing helper scripts run
+6) DevTools Network:
+   - Confirm no calls to `localhost` or lovable staging domains
+   - Confirm any external API calls match manifest host permissions
+
+### C) Packaging
+1) Zip the **contents** of `chrome_extension/` so `manifest.json` is at the zip root.
+2) Ensure icons are present (16/48/128).
+3) Bump `version` for each upload.
+
+### D) Chrome Web Store submission checklist
+- Upload zip
+- Add screenshots
+- Provide support email + support URL
+- Provide Privacy Policy URL
+- Fill privacy practices questionnaire accurately
+- Submit and respond to any reviewer notes with:
+  - permission justification
+  - policy clarifications
+  - proof that permissions are limited to required domains
+
+---
+
+## 6) “Compliance Fix Log” (what we’ll remember for next steps)
+1) Tighten manifest host permissions:
+   - Remove: dailyfindz.com, api.replicate.com, cdn.jsdelivr.net, gemini.google.com
+   - Add: generativelanguage.googleapis.com (matches code)
+2) Remove remote Google Fonts dependency from extension panel UI (prefer local/system fonts)
+3) Align manifest branding to SellerSuit (name/title/description)
+4) Ensure Web Store listing includes:
+   - privacy policy URL
+   - support email
+   - accurate permissions justification
+   - required screenshots
+
+---
+
+## 7) Implementation Notes (what is safe to auto-fix without touching logic)
+Safe automatic fixes (metadata/UI only):
+- Manifest host permissions cleanup/additions
+- Manifest name/title/description branding updates
+- Removing remote font link / switching to bundled fonts or system fonts
+- Adding/adjusting documentation files/checklists
+
+Not changing:
+- Any scraping logic, sync logic, API request payloads, auth flows, or conditions/loops.
+
