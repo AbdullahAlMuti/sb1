@@ -1944,54 +1944,58 @@ body {
 
 /* AI Title Container Styles */
 .ai-title-container {
-  padding: 12px;
-  background: #f8f9fa;
-  border: 1px solid #e1e4e8;
-  border-radius: 8px;
-  margin-top: 12px;
-  position: relative;
-  z-index: 999999;
+  /* Keep this block IN NORMAL FLOW.
+     Never allow extreme stacking here (it makes the section look “floating”). */
+  position: static;
+  z-index: auto;
+
+  /* Base styling (will be visually refined/overridden by the “Single Mode” block below) */
+  padding: var(--space-md);
+  margin-top: var(--space-md);
+  background: var(--bg-body);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
 }
 
 .ai-title-label {
   display: block;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
-  color: #586069;
-  margin-bottom: 8px;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-xs);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.05em;
 }
 
 .ai-title-display {
-  font-size: 14px;
+  font-size: var(--font-size-md);
   line-height: 1.5;
-  color: #24292e;
-  padding: 10px;
-  background: white;
-  border: 2px solid #e1e4e8;
-  border-radius: 6px;
-  min-height: 60px;
+  color: var(--text-primary);
+  padding: var(--space-md);
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  min-height: 44px;
   word-break: break-word;
-  transition: all 0.2s ease;
+  transition: all var(--transition-fast);
 }
 
 .ai-title-display.has-title {
   font-weight: 500;
-  border-color: #0366d6;
-  background: #f1f8ff;
+  border-color: var(--btn-primary);
 }
 
 .ai-title-meta {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 8px;
+  margin-top: var(--space-sm);
 }
 
 .ai-title-counter {
-  font-size: 11px;
-  color: #6a737d;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-weight: 500;
 }
 
 .btn-copy-title {

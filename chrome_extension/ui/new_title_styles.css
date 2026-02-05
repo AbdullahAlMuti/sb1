@@ -5,8 +5,9 @@
   border: 1px solid #e1e4e8;
   border-radius: 8px;
   margin-top: 12px;
-  position: relative;
-  z-index: 999999;
+  /* Keep in normal document flow; prevent overlay/floating behavior */
+  position: static;
+  z-index: auto;
 }
 
 .ai-title-label {
