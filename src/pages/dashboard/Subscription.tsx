@@ -1,15 +1,16 @@
-import { useCallback } from 'react';
-import { motion } from 'framer-motion';
-import { Check, Crown, Zap, Rocket, Building2, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { useSubscription } from '@/hooks/useSubscription';
-import { usePlans } from '@/hooks/usePlans';
-import { useRealtimePlans, useRealtimeUserPlan } from '@/hooks/useRealtimeSync';
-import { useAuth } from '@/hooks/useAuth';
-import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
+import { useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { Check, Crown, Zap, Rocket, Building2, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useSubscription } from "@/hooks/useSubscription";
+import { usePlans } from "@/hooks/usePlans";
+import { useRealtimePlans, useRealtimeUserPlan } from "@/hooks/useRealtimeSync";
+import { useAuth } from "@/hooks/useAuth";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 const planIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   free: Crown,
@@ -19,15 +20,16 @@ const planIcons: Record<string, React.ComponentType<{ className?: string }>> = {
 };
 
 export default function Subscription() {
+  const navigate = useNavigate();
   const { user } = useAuth();
-  const { 
-    planName, 
-    subscribed, 
-    subscriptionEnd, 
-    isLoading, 
-    createCheckout, 
+  const {
+    planName,
+    subscribed,
+    subscriptionEnd,
+    isLoading,
+    createCheckout,
     openCustomerPortal,
-    checkSubscription 
+    checkSubscription,
   } = useSubscription();
   const { plans, isLoading: plansLoading, getPlanByName } = usePlans();
 
@@ -160,7 +162,9 @@ export default function Subscription() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button variant="outline">Contact Support</Button>
+          <Button variant="outline" onClick={() => navigate("/contact")}>
+            Contact Support
+          </Button>
         </CardContent>
       </Card>
     </div>

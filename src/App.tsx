@@ -54,6 +54,7 @@ import VerifyEmail from "./pages/VerifyEmail";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import RefundPolicy from "./pages/RefundPolicy";
+import Contact from "./pages/Contact";
 
 const queryClient = new QueryClient();
 
@@ -68,6 +69,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/course" element={<Course />} />
+              <Route path="/contact" element={<Contact />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/register" element={<Register />} />
 
