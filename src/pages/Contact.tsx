@@ -112,6 +112,21 @@ export default function Contact() {
         </section>
 
         <section className="mt-10">
+          <h2 className="text-2xl font-semibold mb-4">Physical address</h2>
+          <Card>
+            <CardContent className="pt-6">
+              <address className="not-italic text-sm text-muted-foreground leading-relaxed">
+                <span className="font-medium text-foreground">ALMUTI LLC</span>
+                <br />
+                254 Chapman Rd
+                <br />
+                Newark, Delaware, New York, United States
+              </address>
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="mt-10">
           <h2 className="text-2xl font-semibold mb-4">FAQ</h2>
           <Accordion type="single" collapsible className="w-full">
             {FAQS.map((item, idx) => (
