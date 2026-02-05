@@ -48,7 +48,6 @@ import AdminMustSell from "./pages/admin/AdminMustSell";
 import AdminExtension from "./pages/admin/AdminExtension";
 import AdminCredits from "./pages/admin/AdminCredits";
 import NotFound from "./pages/NotFound";
-import Course from "./pages/Course";
 import ExtensionViewer from "./pages/ExtensionViewer";
 import VerifyEmail from "./pages/VerifyEmail";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
@@ -69,7 +68,6 @@ const App = () => (
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <Routes>
               <Route path="/" element={<Index />} />
-              <Route path="/course" element={<Course />} />
               <Route path="/about" element={<About />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/auth" element={<Auth />} />
