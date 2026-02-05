@@ -10,11 +10,36 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { WhatsAppButton } from "@/components/whatsapp/WhatsAppButton";
 
 const SUPPORT_EMAIL = "muti.sellersuit@gmail.com";
 // Normalized to digits-only for buildWhatsAppLink validator
 const WHATSAPP_NUMBER = "8801798008784";
+
+const FAQS = [
+  {
+    q: "How fast do you respond?",
+    a: "We typically reply within 24 hours (often faster during business hours).",
+  },
+  {
+    q: "What should I include in my message?",
+    a: "Please include your account email, plus any relevant order ID, listing ID, screenshots, and the exact error message (if any).",
+  },
+  {
+    q: "I have a billing/subscription issue—what should I do?",
+    a: "Email us with your account email and a short description. If you can, include a screenshot of the Billing/Subscription page.",
+  },
+  {
+    q: "The Chrome extension isn’t working—what are the first steps?",
+    a: "Try refreshing the page, ensuring you’re logged in, and verifying the extension is enabled. If it persists, send us your Chrome version and a screenshot of the issue.",
+  },
+] as const;
 
 export default function Contact() {
   useEffect(() => {
@@ -84,6 +109,20 @@ export default function Contact() {
               </div>
             </CardContent>
           </Card>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold mb-4">FAQ</h2>
+          <Accordion type="single" collapsible className="w-full">
+            {FAQS.map((item, idx) => (
+              <AccordionItem key={idx} value={`faq-${idx}`}>
+                <AccordionTrigger>{item.q}</AccordionTrigger>
+                <AccordionContent>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{item.a}</p>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
         </section>
       </div>
     </div>
