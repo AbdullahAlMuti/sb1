@@ -95,6 +95,7 @@ import {
 } from "@/components/ui/pagination";
 import InventoryStatusBadge from "@/components/listings/InventoryStatusBadge";
 import PriceUpdateIndicator from "@/components/listings/PriceUpdateIndicator";
+import { ListingImage } from "@/components/listings/ListingImage";
 // New Listing selector is now a dedicated page: /dashboard/listings/new
 
 interface DateRange {
@@ -247,11 +248,7 @@ function normalizeListingRow(row: any): Listing {
     ebayData?.galleryURL ??
     null;
 
-  // Fallback: Generate Amazon image URL from ASIN if no image stored
-  const asinForImage = row?.amazon_asin ?? row?.asin ?? amazonData?.asin;
-  if (!imageUrl && asinForImage) {
-    imageUrl = `https://images-na.ssl-images-amazon.com/images/P/${asinForImage}.01._SCLZZZZZZZ_.jpg`;
-  }
+  // Note: fallback rendering is handled by <ListingImage /> (multi-URL fallback).
 
   return {
     ...row,
@@ -1532,22 +1529,11 @@ export default function Listings() {
                         />
                       </TableCell>
                       <TableCell className="py-1.5 px-1">
-                        <div className="h-7 w-7 rounded bg-muted/50 border border-border/50 flex items-center justify-center overflow-hidden">
-                          {listing.image_url ? (
-                            <img 
-                              src={listing.image_url} 
-                              alt={listing.title || 'Product'} 
-                              className="h-full w-full object-cover"
-                              onError={(e) => {
-                                const img = e.currentTarget;
-                                img.style.display = 'none';
-                                const fallback = img.parentElement?.querySelector('.fallback-icon');
-                                if (fallback) fallback.classList.remove('hidden');
-                              }}
-                            />
-                          ) : null}
-                          <PackageIcon className={cn("h-3 w-3 text-muted-foreground/50 fallback-icon", listing.image_url ? "hidden" : "")} />
-                        </div>
+                        <ListingImage
+                          title={listing.title}
+                          imageUrl={listing.image_url}
+                          amazonAsin={listing.amazon_asin ?? null}
+                        />
                       </TableCell>
                       <TableCell className="py-1.5 px-2">
                         <div className="space-y-0">
