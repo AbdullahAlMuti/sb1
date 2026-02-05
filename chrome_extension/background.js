@@ -710,7 +710,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
     console.log('🎉 Extension installed for the first time!');
     await chrome.storage.local.set({ firstInstall: true });
-    const onboardingUrl = URLS.WEB_APP_BASE || 'https://sellersuit.lovable.app';
+    const onboardingUrl = URLS.WEB_APP_BASE || 'https://sellersuit.com';
     chrome.tabs.create({ url: onboardingUrl });
   } else if (details.reason === 'update') {
     console.log('🔄 Extension updated to version', chrome.runtime.getManifest().version);
@@ -960,7 +960,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         reader.onloadend = async function () {
           const base64data = reader.result;
           try {
-            const response = await fetch("http://localhost:8080/v1/ai/remove-bg", {
+            const response = await fetch(URLS.AI_REMOVE_BG, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ image_base64: base64data, replicate_api_token: apiKey }),

@@ -80,7 +80,7 @@ To ensure security, we do not blindly trust the token sent from the content scri
 
 If the extension says **"Login Required"** even when you are logged in:
 
-1.  **Check Permissions**: Ensure `manifest.json` allows host permissions for your domain (e.g., `*://*.sellersuit.com/*` and `http://localhost:*/*`).
+1.  **Check Permissions**: Ensure `manifest.json` allows host permissions for your domain (e.g., `https://sellersuit.com/*` and `https://*.sellersuit.com/*`).
 2.  **Force Sync**: Refresh the Dashboard page. This triggers `initialSync()` in `auth_sync.js`.
 3.  **Check Console**: Open F12 on the Dashboard. Look for logs starting with `[AuthSync]`.
     - `✅ Token synced to extension`: Success.

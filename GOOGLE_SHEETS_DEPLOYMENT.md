@@ -49,11 +49,15 @@ The Google Sheets integration was failing because:
    npx supabase functions serve google_sheets_sync
    ```
 
-3. **Update .env to use local Supabase**:
+3. **Update .env to use local Supabase (optional for local testing)**:
    ```env
    VITE_SUPABASE_URL="http://localhost:54321"
    VITE_SUPABASE_PUBLISHABLE_KEY="<your-local-anon-key>"
    ```
+
+   **Production (live)** should use your hosted domain + production Supabase env (managed in your hosting provider / Lovable Cloud):
+   - Web app: https://sellersuit.com
+   - Supabase: https://ojxzssooylmydystjvdo.supabase.co
 
 4. **Test the integration** in your app
 

@@ -20,14 +20,14 @@ const TermsOfService = () => {
           <section>
             <h2 className="text-2xl font-semibold mb-4">1. Agreement to Terms</h2>
             <p className="text-muted-foreground leading-relaxed">
-              By accessing or using SellerSuit ("Service"), you agree to be bound by these Terms of Service ("Terms"). If you disagree with any part of these terms, you may not access the Service.
+              By accessing or using SellerSuit (the "Service"), including our web application at https://sellersuit.com and our Chrome extension, you agree to be bound by these Terms of Service ("Terms"). If you do not agree, do not use the Service.
             </p>
           </section>
 
           <section>
             <h2 className="text-2xl font-semibold mb-4">2. Description of Service</h2>
             <p className="text-muted-foreground leading-relaxed">
-              SellerSuit provides dropshipping automation tools that help sellers manage their Amazon to eBay operations, including product listing, inventory management, order processing, and pricing optimization.
+              SellerSuit provides tools that help users streamline listing workflows and related operations, including automation features and integrations.
             </p>
           </section>
 
@@ -49,7 +49,7 @@ const TermsOfService = () => {
             <h2 className="text-2xl font-semibold mb-4">4. Subscription and Payments</h2>
             <h3 className="text-xl font-medium mb-3">4.1 Billing</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              Paid subscriptions are billed in advance on a monthly or annual basis. All fees are non-refundable except as expressly stated in our Refund Policy.
+              Paid subscriptions (if applicable) are billed in advance on a monthly or annual basis. Fees are non-refundable except as expressly stated in our Refund Policy.
             </p>
 
             <h3 className="text-xl font-medium mb-3">4.2 Price Changes</h3>
@@ -77,13 +77,14 @@ const TermsOfService = () => {
               <li>Interfere with the Service's proper functioning</li>
               <li>Engage in any activity that could harm our reputation</li>
               <li>Resell or redistribute the Service without authorization</li>
+              <li>Use the Service in a way that violates third-party platform rules (such as eBay, Amazon, or Walmart). You are responsible for complying with those platforms' terms.</li>
             </ul>
           </section>
 
           <section>
             <h2 className="text-2xl font-semibold mb-4">6. Third-Party Platforms</h2>
             <p className="text-muted-foreground leading-relaxed">
-              Our Service integrates with third-party platforms including Amazon and eBay. You are responsible for complying with their respective terms of service. We are not responsible for any actions taken by these platforms regarding your accounts.
+              The Service may operate on or integrate with third-party platforms (including Amazon, Walmart, and eBay). SellerSuit is not affiliated with or endorsed by those platforms. You are responsible for complying with their respective terms.
             </p>
           </section>
 

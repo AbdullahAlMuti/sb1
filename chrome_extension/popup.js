@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const getBaseUrl = () => {
         return (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.WEB_APP_BASE)
             ? ExtensionConfig.URLS.WEB_APP_BASE
-            : "http://localhost:8080";
+            : "https://sellersuit.com";
     };
 
     const baseUrl = getBaseUrl();

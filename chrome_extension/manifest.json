@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
   "name": "eBay Snipping Tool",
-  "version": "1.3",
+  "version": "1.3.1",
   "description": "Scrapes and watermarks Amazon and Walmart product data to streamline the eBay listing process.",
+  "homepage_url": "https://sellersuit.com",
   "permissions": [
     "storage",
     "scripting",
@@ -30,11 +31,6 @@
     "https://cdn.jsdelivr.net/*",
     "https://script.google.com/*",
     "https://www.dailyfindz.com/*",
-    "http://localhost:8080/*",
-    "http://localhost:8081/*",
-    "http://localhost:5173/*",
-    "https://*.lovableproject.com/*",
-    "https://*.lovable.app/*",
     "https://sellersuit.com/*",
     "https://*.sellersuit.com/*",
     "https://ojxzssooylmydystjvdo.supabase.co/*"
@@ -148,13 +144,6 @@
     },
     {
       "matches": [
-        "http://localhost:8080/*",
-        "http://localhost:8081/*",
-        "http://127.0.0.1:8080/*",
-        "http://localhost:5173/*",
-        "http://127.0.0.1:5173/*",
-        "https://*.lovableproject.com/*",
-        "https://*.lovable.app/*",
         "https://sellersuit.com/*",
         "https://*.sellersuit.com/*"
       ],
@@ -203,13 +192,6 @@
         "*://*.ebay.com/*",
         "*://*.walmart.com/*",
         "*://*.walmart.ca/*",
-        "http://localhost:8080/*",
-        "http://localhost:8081/*",
-        "http://127.0.0.1:8080/*",
-        "http://localhost:5173/*",
-        "http://127.0.0.1:5173/*",
-        "*://*.lovableproject.com/*",
-        "*://*.lovable.app/*",
         "https://sellersuit.com/*",
         "https://*.sellersuit.com/*"
       ]
