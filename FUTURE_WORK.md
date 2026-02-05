@@ -29,7 +29,7 @@ The Chrome Extension's `background.js` has grown significantly (>2300 lines) and
 
 ## 🤖 3. AI Features
 - **Background Removal**:
-  - The current `AI_REMOVE_BG` handler in `background.js` points to a local `http://localhost:8080` endpoint or uses a demo key.
+  - The current `AI_REMOVE_BG` handler in `background.js` should always point to the production web app endpoint (https://sellersuit.com) or a secure server-side wrapper.
   - **Action**: Implement a robust Edge Function wrapper for Replicate/OpenAI to hide API keys and handle rate limits.
 - **Listing Optimization**:
   - Enhance `GENERATE_TITLE` to allow "Template Management" from the Dashboard (e.g., set Tone, Forbidden Words).

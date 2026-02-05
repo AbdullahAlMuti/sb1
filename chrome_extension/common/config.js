@@ -15,7 +15,7 @@ const ExtensionConfig = (() => {
   // LOCAL DEV (as requested): point to localhost where you log into the web app.
   // IMPORTANT: AuthSync reads the Supabase session from the web app's localStorage and copies it into the extension.
   // When you later switch to a real domain, update this value.
-  const WEB_APP_DOMAIN = 'http://localhost:8080';
+  const WEB_APP_DOMAIN = 'https://sellersuit.com';
 
   const URLS = Object.freeze({
     // Supabase

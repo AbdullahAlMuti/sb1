@@ -75,7 +75,9 @@ const App = () => (
               <Route path="/payment-required" element={<PaymentRequired />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               <Route path="/terms" element={<TermsOfService />} />
+              <Route path="/terms-of-service" element={<TermsOfService />} />
               <Route path="/refund" element={<RefundPolicy />} />
               <Route path="/admin/login" element={<AdminLogin />} />
 

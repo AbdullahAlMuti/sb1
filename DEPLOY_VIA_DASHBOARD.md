@@ -253,7 +253,7 @@ serve(async (req) => {
 3. Status should show as "Active" or "Deployed"
 
 ### Step 6: Test the Integration
-1. Go to your app at http://localhost:8080
+1. Go to your app at https://sellersuit.com
 2. Navigate to Settings → Google Sheets Integration
 3. Enter your Google Apps Script URL
 4. Click "Test"
