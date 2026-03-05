@@ -1465,11 +1465,149 @@ const addEventListenersToPanel = () => {
     // Snipe Title button
     const snipeTitleBtn = document.getElementById('snipe-title-btn');
     if (snipeTitleBtn) {
-        snipeTitleBtn.addEventListener('click', () => {
-            const originalTitle = document.querySelector('#snipe-title-list .title-row').dataset.title;
-            generateTitleVariations(originalTitle);
+        snipeTitleBtn.addEventListener('click', async () => {
+            // Auto-trigger AI title generation by clicking the Generate AI Titles button
+            const generateAITitlesBtn = document.getElementById('generate-ai-titles-btn');
+            if (generateAITitlesBtn) {
+                generateAITitlesBtn.click();
+            } else {
+                console.warn('⚠️ Generate AI Titles button not found');
+            }
         });
         console.log('✅ Snipe Title button listener added');
+    }
+
+    // Generate AI Titles button
+    const generateAITitlesBtn = document.getElementById('generate-ai-titles-btn');
+    if (generateAITitlesBtn) {
+        generateAITitlesBtn.addEventListener('click', async () => {
+            const completeData = scrapeCompleteProductData();
+
+            if (!completeData.title) {
+                console.error('No product title found on page');
+                return;
+            }
+
+            const originalContent = generateAITitlesBtn.innerHTML;
+            generateAITitlesBtn.disabled = true;
+            generateAITitlesBtn.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin-animation">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+                Generating...
+            `;
+
+            try {
+                const bgResp = await new Promise((resolve, reject) => {
+                    chrome.runtime.sendMessage(
+                        {
+                            action: 'GENERATE_AI_TITLES',
+                            productData: completeData
+                        },
+                        (response) => {
+                            const err = chrome.runtime.lastError;
+                            if (err) return reject(new Error(err.message || 'Background message failed'));
+                            resolve(response);
+                        }
+                    );
+                });
+
+                if (!bgResp?.success) {
+                    throw new Error(bgResp?.error || 'Failed to generate titles');
+                }
+
+                if (bgResp.titles && bgResp.titles.length > 0) {
+                    const titles = bgResp.titles;
+                    const titlesToSave = titles.map((t, i) => typeof t === 'object' ? t.title : t);
+                    await chrome.storage.local.set({ savedTitles: titlesToSave, selectedEbayTitle: titlesToSave[0] });
+
+                    if (typeof UIHelper !== 'undefined' && typeof UIHelper.showTitleSelectionPopup === 'function') {
+                        UIHelper.showTitleSelectionPopup(titles);
+                    } else {
+                        // Fallback logic
+                        const titleDisplay = document.getElementById('ai-generated-title');
+                        const titleCounter = document.getElementById('ai-title-counter');
+                        if (titleDisplay) {
+                            titleDisplay.innerText = titlesToSave[0];
+                            titleDisplay.classList.add('has-title');
+                            if (titleCounter) titleCounter.textContent = titlesToSave[0].length + ' characters';
+                        }
+                    }
+                } else {
+                    throw new Error('No titles returned');
+                }
+            } catch (error) {
+                console.error('❌ Error generating AI titles:', error);
+            } finally {
+                generateAITitlesBtn.disabled = false;
+                generateAITitlesBtn.innerHTML = originalContent;
+            }
+        });
+        console.log('✅ Generate AI Titles button listener added');
+    }
+
+    // Generate AI Description button
+    const generateDescriptionBtn = document.getElementById('generate-description-btn');
+    const descriptionPreviewEl = document.getElementById('description-preview');
+    if (generateDescriptionBtn) {
+        generateDescriptionBtn.addEventListener('click', async () => {
+            const originalContent = generateDescriptionBtn.innerHTML;
+            generateDescriptionBtn.disabled = true;
+
+            if (descriptionPreviewEl) {
+                descriptionPreviewEl.innerHTML = `
+                    <div class="description-placeholder">
+                        <div class="spinner-small"></div>
+                        <span>Scraping product data & generating description...</span>
+                    </div>
+                `;
+            }
+
+            try {
+                const productData = scrapeCompleteProductData();
+
+                if (!productData?.title) {
+                    throw new Error('No product title found.');
+                }
+
+                const bgResp = await new Promise((resolve, reject) => {
+                    chrome.runtime.sendMessage(
+                        { action: 'GENERATE_DESCRIPTION', productData },
+                        (response) => {
+                            const err = chrome.runtime.lastError;
+                            if (err) return reject(new Error(err.message || 'Background message failed'));
+                            resolve(response);
+                        }
+                    );
+                });
+
+                if (!bgResp?.success) throw new Error(bgResp?.error || 'Failed to generate description');
+                if (!bgResp?.description) throw new Error('No description returned');
+
+                if (descriptionPreviewEl) {
+                    descriptionPreviewEl.innerHTML = bgResp.description;
+                }
+                
+                await chrome.storage.local.set({ 
+                    generatedDescription: bgResp.description,
+                    selectedEbayDescription: bgResp.description
+                });
+
+            } catch (error) {
+                console.error('❌ Error generating AI description:', error);
+                if (descriptionPreviewEl) {
+                    descriptionPreviewEl.innerHTML = `
+                        <div class="description-placeholder" style="color: #dc2626;">
+                            <span>Error generating description: ${error.message}</span>
+                        </div>
+                    `;
+                }
+            } finally {
+                generateDescriptionBtn.disabled = false;
+                generateDescriptionBtn.innerHTML = originalContent;
+            }
+        });
+        console.log('✅ Generate AI Description button listener added');
     }
 
     // Opti-List button
