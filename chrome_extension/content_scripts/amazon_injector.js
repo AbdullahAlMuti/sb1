@@ -3726,8 +3726,15 @@ function calculatePrice() {
 
     // Get SKU and selected title for logging
     const sku = document.getElementById('sku-input')?.value || '';
-    const selectedTitleRow = document.querySelector('#snipe-title-list .title-row.selected');
-    const selectedTitle = selectedTitleRow ? selectedTitleRow.dataset.title : '';
+    let selectedTitle = '';
+    const aiTitleDisplay = document.getElementById('ai-generated-title');
+    const isDefaultText = (t) => t.includes('Click "Generate"');
+    if (aiTitleDisplay && !isDefaultText(aiTitleDisplay.innerText)) {
+        selectedTitle = aiTitleDisplay.innerText.trim();
+    } else {
+        const selectedTitleRow = document.querySelector('#snipe-title-list .title-row.selected');
+        selectedTitle = selectedTitleRow ? selectedTitleRow.dataset.title : '';
+    }
     const amazonLink = window.location.href;
 
     // Log to Google Sheets after price calculation
@@ -4210,8 +4217,15 @@ async function generateSKU() {
         console.log('🔒 SKU saved to storage:', generatedSku);
 
         // Log to Google Sheets after SKU generation
-        const selectedTitleRow = document.querySelector('#snipe-title-list .title-row.selected');
-        const selectedTitle = selectedTitleRow ? selectedTitleRow.dataset.title : '';
+        let selectedTitle = '';
+        const aiTitleDisplay = document.getElementById('ai-generated-title');
+        const isDefaultText = (t) => t.includes('Click "Generate"');
+        if (aiTitleDisplay && !isDefaultText(aiTitleDisplay.innerText)) {
+            selectedTitle = aiTitleDisplay.innerText.trim();
+        } else {
+            const selectedTitleRow = document.querySelector('#snipe-title-list .title-row.selected');
+            selectedTitle = selectedTitleRow ? selectedTitleRow.dataset.title : '';
+        }
         const priceInput = document.getElementById('sell-it-for-input');
         const ebayPrice = priceInput ? priceInput.value : '';
         const amazonPriceInput = document.getElementById('amazon-price');

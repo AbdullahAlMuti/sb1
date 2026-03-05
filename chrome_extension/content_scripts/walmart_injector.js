@@ -862,10 +862,29 @@ const scrapeAndDisplayInitialTitle = () => {
         
         console.log('✅ Final title:', originalTitle);
         
-        const titleListContainer = document.getElementById('snipe-title-list');
-        if (titleListContainer) {
-            const titleData = { rank: 1, type: 'Filtered', title: originalTitle, charCount: originalTitle.length };
-            titleListContainer.innerHTML = createTitleRow(titleData, true);
+        // SINGLE TITLE DISPLAY UPDATE
+        const titleDisplay = document.getElementById('ai-generated-title');
+        const titleCounter = document.getElementById('ai-title-counter');
+
+        if (titleDisplay && originalTitle) {
+            titleDisplay.innerText = originalTitle;
+            titleDisplay.classList.add('has-title');
+
+            if (titleCounter) {
+                titleCounter.textContent = originalTitle.length + ' characters';
+            }
+
+            // Sync with storage for the rest of the flow
+            if (chrome && chrome.storage) {
+                chrome.storage.local.set({ selectedEbayTitle: originalTitle });
+            }
+        } else {
+            // Legacy fallback just in case
+            const titleListContainer = document.getElementById('snipe-title-list');
+            if (titleListContainer) {
+                const titleData = { rank: 1, type: 'Filtered', title: originalTitle, charCount: originalTitle.length };
+                titleListContainer.innerHTML = createTitleRow(titleData, true);
+            }
         }
     };
     
@@ -1615,10 +1634,35 @@ const addEventListenersToPanel = () => {
     if (optiListBtn) {
         optiListBtn.addEventListener('click', async () => {
             const selectedRow = document.querySelector('#snipe-title-list .title-row.selected');
-            if (selectedRow) {
+            const aiTitleDisplay = document.getElementById('ai-generated-title');
+            const hasAiTitle = aiTitleDisplay && (aiTitleDisplay.classList.contains('has-title') || aiTitleDisplay.innerText.trim().length > 0 && aiTitleDisplay.innerText !== 'Click "Generate" to create optimized eBay title...');
+
+            if (selectedRow || hasAiTitle) {
                 const btn = document.getElementById('opti-list-btn');
                 btn.disabled = true;
                 btn.textContent = 'Processing...';
+
+                // 🛠️ AUTO-SYNC: Ensure storage has fresh data with the NEW title
+                try {
+                    if (typeof getProductDataForExport === 'function') {
+                        const freshData = await getProductDataForExport();
+
+                        // 🔄 Overwrite with AI Title if valid
+                        const aiTitleDisplay = document.getElementById('ai-generated-title');
+                        const isDefaultText = (text) => text.includes('Click "Generate"');
+
+                        if (aiTitleDisplay && !isDefaultText(aiTitleDisplay.innerText)) {
+                            freshData.title = aiTitleDisplay.innerText.trim();
+                            console.log('🔄 Opti-List: Auto-updated export data with AI Title:', freshData.title);
+                        }
+
+                        // 💾 Save to storage to satisfy legacy checks
+                        await chrome.storage.local.set({ copyButtonData: freshData });
+                        console.log('✅ Opti-List: Auto-saved fresh data to storage');
+                    }
+                } catch (syncError) {
+                    console.error('⚠️ Opti-List: Auto-sync failed, using existing storage', syncError);
+                }
 
                 try {
                     console.log('═══════════════════════════════════════════════════════');
@@ -2506,8 +2550,15 @@ function calculatePrice() {
     const netProfit = finalPrice - walmartPrice - taxAmount - trackingFee - ebayFee - promoFee;
     
     const sku = document.getElementById('sku-input')?.value || '';
-    const selectedTitleRow = document.querySelector('#snipe-title-list .title-row.selected');
-    const selectedTitle = selectedTitleRow ? selectedTitleRow.dataset.title : '';
+    let selectedTitle = '';
+    const aiTitleDisplay = document.getElementById('ai-generated-title');
+    const isDefaultText = (t) => t.includes('Click "Generate"');
+    if (aiTitleDisplay && !isDefaultText(aiTitleDisplay.innerText)) {
+        selectedTitle = aiTitleDisplay.innerText.trim();
+    } else {
+        const selectedTitleRow = document.querySelector('#snipe-title-list .title-row.selected');
+        selectedTitle = selectedTitleRow ? selectedTitleRow.dataset.title : '';
+    }
     const walmartLink = window.location.href;
     
     if (sku && selectedTitle) {
@@ -2626,8 +2677,16 @@ window.testCalculator = function() {
 
 // Helper function to get product data for export
 async function getProductDataForExport() {
-    const selectedRow = document.querySelector('#snipe-title-list .title-row.selected');
-    const title = selectedRow ? selectedRow.dataset.title : 'No title selected';
+    let title = 'No title selected';
+    const aiTitleDisplay = document.getElementById('ai-generated-title');
+    const isDefaultText = (text) => text.includes('Click "Generate"');
+    
+    if (aiTitleDisplay && !isDefaultText(aiTitleDisplay.innerText)) {
+        title = aiTitleDisplay.innerText.trim();
+    } else {
+        const selectedRow = document.querySelector('#snipe-title-list .title-row.selected');
+        if (selectedRow) title = selectedRow.dataset.title;
+    }
     
     const sku = document.getElementById('sku-input')?.value || 'No SKU';
     
@@ -2919,8 +2978,15 @@ async function generateSKU() {
         await chrome.storage.local.set({ ebaySku: generatedSku });
         console.log('🔒 SKU saved to storage:', generatedSku);
         
-        const selectedTitleRow = document.querySelector('#snipe-title-list .title-row.selected');
-        const selectedTitle = selectedTitleRow ? selectedTitleRow.dataset.title : '';
+        let selectedTitle = '';
+        const aiTitleDisplay = document.getElementById('ai-generated-title');
+        const isDefaultText = (t) => t.includes('Click "Generate"');
+        if (aiTitleDisplay && !isDefaultText(aiTitleDisplay.innerText)) {
+            selectedTitle = aiTitleDisplay.innerText.trim();
+        } else {
+            const selectedTitleRow = document.querySelector('#snipe-title-list .title-row.selected');
+            selectedTitle = selectedTitleRow ? selectedTitleRow.dataset.title : '';
+        }
         const priceInput = document.getElementById('sell-it-for-input');
         const ebayPrice = priceInput ? priceInput.value : '';
         const walmartPriceInput = document.getElementById('amazon-price');

@@ -1,0 +1,132 @@
+chrome_extension/content_scripts/walmart_injector.js(12,34): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(66,42): error TS2339: Property 'innerText' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(92,49): error TS2339: Property 'innerText' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(93,49): error TS2339: Property 'innerText' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(125,52): error TS2339: Property 'innerText' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(142,44): error TS2339: Property 'innerText' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(164,47): error TS2339: Property 'innerText' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(184,11): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(193,25): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(428,25): error TS2339: Property 'src' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(429,25): error TS2339: Property 'dataset' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(430,25): error TS2339: Property 'dataset' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(499,21): error TS2339: Property 'dataset' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(500,21): error TS2339: Property 'dataset' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(594,32): error TS2802: Type 'Set<any>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+chrome_extension/content_scripts/walmart_injector.js(646,26): error TS2339: Property 'alt' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(702,1): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(746,42): error TS2339: Property 'innerText' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(793,21): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(827,21): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(831,21): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(835,20): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(953,20): error TS2304: Cannot find name 'ImageRenderer'.
+chrome_extension/content_scripts/walmart_injector.js(954,19): error TS2304: Cannot find name 'ImageRenderer'.
+chrome_extension/content_scripts/walmart_injector.js(962,28): error TS2339: Property '__SNIPE_OPEN_IMAGE_EDITOR__' does not exist on type 'Window & typeof globalThis'.
+chrome_extension/content_scripts/walmart_injector.js(1012,67): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+chrome_extension/content_scripts/walmart_injector.js(1043,92): error TS2339: Property '__SNIPE_OPEN_IMAGE_EDITOR__' does not exist on type 'Window & typeof globalThis'.
+chrome_extension/content_scripts/walmart_injector.js(1068,43): error TS2339: Property 'style' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1069,43): error TS2339: Property 'style' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1085,25): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1089,25): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1093,24): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1106,25): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1110,25): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1114,24): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1178,25): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1251,71): error TS2339: Property 'src' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1251,82): error TS2339: Property 'src' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1253,17): error TS2339: Property 'src' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1253,28): error TS2339: Property 'src' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1254,21): error TS2339: Property 'src' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1255,46): error TS2339: Property 'src' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1256,121): error TS2339: Property 'src' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1258,92): error TS2339: Property 'src' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1269,19): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1272,40): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1298,30): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1304,19): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1338,52): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+chrome_extension/content_scripts/walmart_injector.js(1381,90): error TS2339: Property 'dataset' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1394,21): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1402,49): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1408,29): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1425,29): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1432,29): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1439,29): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1453,55): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1459,29): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1475,27): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1491,25): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1492,33): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1494,37): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1496,89): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1504,41): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1510,37): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1515,41): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1524,29): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1530,25): error TS2339: Property 'disabled' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1573,23): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1600,34): error TS2339: Property 'closest' does not exist on type 'EventTarget'.
+chrome_extension/content_scripts/walmart_injector.js(1640,13): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1667,49): error TS2339: Property 'innerText' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1674,13): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1695,5): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1702,5): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1740,27): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(1747,12): error TS2339: Property 'checkStoredSku' does not exist on type 'Window & typeof globalThis'.
+chrome_extension/content_scripts/walmart_injector.js(1748,9): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1760,12): error TS2339: Property 'clearStoredSku' does not exist on type 'Window & typeof globalThis'.
+chrome_extension/content_scripts/walmart_injector.js(1761,9): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(1795,23): error TS2339: Property 'style' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1802,23): error TS2339: Property 'style' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1805,27): error TS2339: Property 'style' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1807,27): error TS2339: Property 'style' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1813,13): error TS2322: Type 'number' is not assignable to type 'string'.
+chrome_extension/content_scripts/walmart_injector.js(1821,13): error TS2322: Type 'number' is not assignable to type 'string'.
+chrome_extension/content_scripts/walmart_injector.js(1830,17): error TS2322: Type 'number' is not assignable to type 'string'.
+chrome_extension/content_scripts/walmart_injector.js(1851,27): error TS2339: Property 'focus' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(1923,16): error TS2304: Cannot find name 'JSZip'.
+chrome_extension/content_scripts/walmart_injector.js(1951,21): error TS2304: Cannot find name 'JSZip'.
+chrome_extension/content_scripts/walmart_injector.js(2126,35): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2164,19): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2182,28): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2183,37): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2232,24): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2250,77): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2251,74): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2252,76): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2253,83): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2254,85): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2255,80): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2282,55): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2284,63): error TS2339: Property 'dataset' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(2289,9): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(2317,24): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2386,8): error TS2339: Property 'testCalculator' does not exist on type 'Window & typeof globalThis'.
+chrome_extension/content_scripts/walmart_injector.js(2404,45): error TS2339: Property 'dataset' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(2406,55): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2416,34): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2416,54): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2417,32): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2497,70): error TS2339: Property 'innerText' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(2518,82): error TS2339: Property 'innerText' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(2565,29): error TS2802: Type 'RegExpStringIterator<RegExpExecArray>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+chrome_extension/content_scripts/walmart_injector.js(2591,30): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(2615,30): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(2636,30): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(2645,29): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2656,26): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2657,26): error TS2339: Property 'readOnly' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2658,26): error TS2339: Property 'placeholder' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2671,30): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(2684,22): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2685,22): error TS2339: Property 'readOnly' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2690,29): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2693,15): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(2697,67): error TS2339: Property 'dataset' does not exist on type 'Element'.
+chrome_extension/content_scripts/walmart_injector.js(2699,51): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2701,68): error TS2339: Property 'value' does not exist on type 'HTMLElement'.
+chrome_extension/content_scripts/walmart_injector.js(2705,13): error TS2304: Cannot find name 'chrome'.
+chrome_extension/content_scripts/walmart_injector.js(2726,8): error TS2339: Property 'forceLoadExtension' does not exist on type 'Window & typeof globalThis'.
+chrome_extension/content_scripts/walmart_injector.js(2803,8): error TS2339: Property 'debugWalmartPage' does not exist on type 'Window & typeof globalThis'.

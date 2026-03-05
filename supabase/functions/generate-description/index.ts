@@ -221,37 +221,51 @@ serve(async (req) => {
       // Use admin's OpenAI API key directly
       console.log('[generate-description] Calling OpenAI directly with admin API key');
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${adminApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: model.startsWith('openai/') ? model.replace('openai/', '') : model,
-          messages: [
-            { role: 'system', content: 'You are an expert product listing generator. You must ALWAYS output ONLY a valid JSON object matching the requested structure.' },
-            { role: 'user', content: prompt }
-          ],
-          response_format: { type: "json_object" },
-          max_tokens: 300
-        }),
-      });
+      let response;
+      let retries = 2;
+      
+      while (retries >= 0) {
+        response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${adminApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: model.startsWith('openai/') ? model.replace('openai/', '') : model,
+            messages: [
+              { role: 'user', content: 'You are an expert product listing generator. You must ALWAYS output ONLY a valid JSON object matching the requested structure.\n\n' + prompt }
+            ],
+            response_format: { type: "json_object" },
+            max_tokens: 500
+          }),
+        });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('OpenAI API error:', response.status, errorText);
+        if (response.ok) break;
+
+        if (response.status >= 500 && retries > 0) {
+          console.warn(`OpenAI 500 error, retrying... (${retries} retries left)`);
+          await new Promise(r => setTimeout(r, 1000));
+          retries--;
+        } else {
+          break;
+        }
+      }
+
+      if (!response || !response.ok) {
+        const errorText = await (response ? response.text() : 'No response');
+        console.error('OpenAI API error:', response?.status, errorText);
         
-        if (response.status === 401) {
+        if (response?.status === 401) {
           throw new Error('Invalid OpenAI API key. Please update your API key in Admin Settings.');
         }
-        if (response.status === 429) {
+        if (response?.status === 429) {
           return new Response(JSON.stringify({ success: false, error: 'OpenAI rate limit exceeded. Please try again.' }), {
             status: 429,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
-        throw new Error(`OpenAI API error: ${response.status}`);
+        throw new Error(`OpenAI API error: ${response?.status}`);
       }
 
       const data = await response.json();
@@ -282,11 +296,10 @@ serve(async (req) => {
         body: JSON.stringify({
           model: gatewayModel,
           messages: [
-            { role: 'system', content: 'You are an expert product listing generator. You must ALWAYS output ONLY a valid JSON object matching the requested structure.' },
-            { role: 'user', content: prompt }
+            { role: 'user', content: 'You are an expert product listing generator. You must ALWAYS output ONLY a valid JSON object matching the requested structure.\n\n' + prompt }
           ],
           response_format: { type: "json_object" },
-          max_tokens: 300
+          max_tokens: 500
         }),
       });
 
