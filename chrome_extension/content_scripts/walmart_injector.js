@@ -698,7 +698,60 @@ class WalmartImageExtractor {
 // Initialize extractor when page loads
 const extractor = new WalmartImageExtractor();
 
-// Listen for messages from popup
+// Function to scrape complete Walmart product data for AI generation
+const scrapeCompleteProductData = () => {
+    const details = scrapeProductDetails(); // Re-use the existing detailed scraper
+    
+    // Scrape Main Title
+    const titleSelectors = [
+        'h1[itemprop="name"]', '.prod-ProductTitle', '[data-testid="product-title"]',
+        'h1.prod-Title', '.product-title h1', 'h1[data-automation-id="product-title"]'
+    ];
+    let title = document.title;
+    for (const selector of titleSelectors) {
+        const el = document.querySelector(selector);
+        if (el) {
+            title = (el.innerText || el.textContent).trim();
+            break;
+        }
+    }
+    
+    // Scrape Category from Breadcrumbs
+    const categoryList = [];
+    document.querySelectorAll('[data-testid="breadcrumb-list"] li a, .breadcrumb-list li a').forEach(el => {
+        const text = (el.innerText || el.textContent).trim();
+        if (text) categoryList.push(text);
+    });
+    
+    // Scrape Bullet Points (Highlights/Features)
+    const bulletPoints = [];
+    document.querySelectorAll('.about-product-bullets li, .about-item-list li, [data-testid="product-highlights"] li').forEach(el => {
+        const text = (el.innerText || el.textContent).trim();
+        if (text) bulletPoints.push(text);
+    });
+    
+    // Format Specifications
+    const specifications = {};
+    if (details.brand) specifications.Brand = details.brand;
+    if (details.model) specifications.Model = details.model;
+    if (details.color) specifications.Color = details.color;
+    if (details.dimensions) specifications.Dimensions = details.dimensions;
+    if (details.weight) specifications.Weight = details.weight;
+
+    return {
+        title: title,
+        productTitle: title, // Panel supports both
+        brand: details.brand,
+        category: categoryList.join(' > '),
+        description: details.description,
+        features: bulletPoints,
+        bulletPoints: bulletPoints, // Panel supports both
+        specifications: specifications,
+        url: window.location.href
+    };
+};
+
+// Listen for messages from popup or panel
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'extractImages') {
         extractor.extractAllImages().then(images => {
@@ -706,6 +759,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }).catch(error => {
             sendResponse({ success: false, error: error.message });
         });
+        return true;
+    }
+    
+    if (request.action === 'SCRAPE_PRODUCT_DATA' || request.action === 'SCRAPE_COMPLETE_PRODUCT') {
+        console.log(`[Walmart Injector] Received ${request.action} request`);
+        try {
+            const productData = scrapeCompleteProductData();
+            
+            // Store for caching
+            chrome.storage.local.set({
+                completeProductData: productData,
+                currentProduct: productData,
+                lastScraped: Date.now()
+            });
+
+            sendResponse({
+                success: true,
+                data: productData
+            });
+        } catch (error) {
+            console.error('[Walmart Injector] Error scraping product data:', error);
+            sendResponse({ success: false, error: error.message });
+        }
+        return true;
+    }
+    
+    if (request.action === 'GENERATE_AI_TITLES') {
+        console.log('[Walmart Injector] Received GENERATE_AI_TITLES request');
+        const generateBtn = document.getElementById('generate-ai-titles-btn');
+        if (generateBtn) {
+            generateBtn.click();
+            sendResponse({ success: true });
+        } else {
+            sendResponse({ success: false, error: 'UI Button not found' });
+        }
         return true;
     }
 });
@@ -1079,7 +1167,7 @@ const scrapeAndDisplayImages = async () => {
             }
 
             console.log(`Successfully processed ${allImages.length} high-quality images`);
-
+        }
 
         if (optiListBtn) {
             optiListBtn.disabled = false;
@@ -2067,7 +2155,7 @@ const initializeApp = () => {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                 box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4), 0 0 0 0 rgba(99, 102, 241, 0.4);
                 transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-                z-index: 9998;
+                z-index: 2147483647;
                 animation: sellersuit-pulse 2s infinite;
             `;
 
@@ -2823,5 +2911,55 @@ window.debugWalmartPage = function() {
     return elements;
 };
 
-// Start the extension directly.
-initializeApp();
+// ═══════════════════════════════════════════════════════════
+// ROBUST INITIALIZATION WITH DOM READINESS DETECTION
+// ═══════════════════════════════════════════════════════════
+
+function startExtension() {
+    console.log('[Walmart Injector] Starting extension initialization...');
+
+    // Try to initialize
+    initializeApp();
+
+    // If button wasn't injected, retry after short delay
+    setTimeout(() => {
+        if (!document.getElementById('initial-list-button') && !document.getElementById('snipe-root-wrapper')) {
+            console.log('[Walmart Injector] Button not found, retrying...');
+            initializeApp();
+        }
+    }, 1000);
+}
+
+// Multiple initialization strategies for reliability
+if (document.readyState === 'complete') {
+    startExtension();
+} else if (document.readyState === 'interactive') {
+    startExtension();
+} else {
+    document.addEventListener('DOMContentLoaded', startExtension);
+}
+
+window.addEventListener('load', () => {
+    if (!document.getElementById('initial-list-button') && !document.getElementById('snipe-root-wrapper')) {
+        console.log('[Walmart Injector] Load event - attempting initialization');
+        startExtension();
+    }
+});
+
+// URL change detection for SPA navigation
+let lastUrl = location.href;
+const urlObserver = new MutationObserver(() => {
+    if (location.href !== lastUrl) {
+        lastUrl = location.href;
+        console.log('[Walmart Injector] URL changed, re-initializing...');
+        setTimeout(startExtension, 500);
+    }
+});
+
+if (document.body) {
+    urlObserver.observe(document.body, { childList: true, subtree: true });
+} else {
+    document.addEventListener('DOMContentLoaded', () => {
+        urlObserver.observe(document.body, { childList: true, subtree: true });
+    });
+}
