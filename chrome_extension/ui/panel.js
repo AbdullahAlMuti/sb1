@@ -535,7 +535,7 @@ async function generateAITitles() {
 
     // Final check for product data
     if (!productData.title && !productData.productTitle) {
-      throw new Error('No product data found. Please open an Amazon product page and try again.');
+      throw new Error('No product data found. Please open an Amazon or Walmart product page and try again.');
     }
 
     // Call edge function WITH AUTHENTICATION, including title count
@@ -858,9 +858,9 @@ function initActionButtons() {
           throw new Error('No active tab found');
         }
 
-        // Check if it's an Amazon page
-        if (!tab.url?.includes('amazon.com')) {
-          throw new Error('Please open an Amazon product page');
+        // Check if it's an Amazon or Walmart page
+        if (!tab.url?.includes('amazon.com') && !tab.url?.includes('walmart.com') && !tab.url?.includes('walmart.ca')) {
+          throw new Error('Please open an Amazon or Walmart product page');
         }
 
         // Send message to content script to trigger AI generation

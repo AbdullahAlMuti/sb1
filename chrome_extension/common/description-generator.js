@@ -41,70 +41,80 @@ const DescriptionGenerator = (() => {
    */
   async function getProductData() {
     console.log('[DescriptionGenerator] Getting product data...');
-    
+
     return new Promise((resolve) => {
       // First, try to get from storage
-      chrome.storage.local.get(['currentProduct', 'productData', 'snipedData', 'productDataTimestamp'], (result) => {
+      chrome.storage.local.get(['currentProduct', 'productData', 'snipedData', 'productDataTimestamp'], async (result) => {
         const product = result.currentProduct || result.productData || result.snipedData || {};
         const timestamp = result.productDataTimestamp || 0;
         const isStale = Date.now() - timestamp > 60000; // 1 minute
-        
+
         // Check if we have valid data
         const hasValidData = product.title && (product.bulletPoints?.length > 0 || product.description);
-        
+
         console.log('[DescriptionGenerator] Storage check:', {
           hasData: !!product.title,
           hasBullets: product.bulletPoints?.length || 0,
           hasDesc: !!product.description,
           isStale
         });
-        
+
         if (hasValidData && !isStale) {
           console.log('[DescriptionGenerator] Using stored product data');
-          resolve({
-            title: product.title || product.productTitle || '',
-            description: product.description || product.productDescription || '',
-            bulletPoints: product.bulletPoints || product.features || [],
-            category: product.category || '',
-            price: product.price || product.productPrice || '',
-            brand: product.brand || '',
-            features: product.features || [],
-            specifications: product.specifications || product.specs || {},
-            condition: product.condition || 'New'
-          });
-        } else {
-          console.log('[DescriptionGenerator] No valid stored data, scraping from page...');
-          
-          // Since we're in the content script context (panel is injected into page),
-          // we can directly scrape the page using window/document
-          const scrapedData = scrapeProductFromPage();
-          
-          if (scrapedData.title) {
-            // Store the scraped data
-            chrome.storage.local.set({ 
+          return resolve(formatProductDataMap(product));
+        }
+
+        console.log('[DescriptionGenerator] No valid stored data, requesting scrape via message...');
+
+        try {
+          // Ask the content script (amazon_injector/walmart_injector) to scrape
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tab) {
+            const response = await chrome.tabs.sendMessage(tab.id, { action: 'SCRAPE_PRODUCT_DATA' });
+            if (response && response.success && response.data) {
+              console.log('[DescriptionGenerator] Successfully scraped product data via message');
+              // Update storage cache
+              chrome.storage.local.set({
+                currentProduct: response.data,
+                productDataTimestamp: Date.now()
+              });
+              return resolve(formatProductDataMap(response.data));
+            }
+          }
+        } catch (error) {
+           console.warn('[DescriptionGenerator] Message scraping failed or timed out:', error);
+        }
+
+        // Fallback to manual dom scrape if message failed
+        console.log('[DescriptionGenerator] Falling back to manual DOM scrape...');
+        const scrapedData = scrapeProductFromPage();
+        if (scrapedData.title) {
+            chrome.storage.local.set({
               currentProduct: scrapedData,
               productDataTimestamp: Date.now()
             });
-            console.log('[DescriptionGenerator] Scraped and stored fresh data');
-            resolve(scrapedData);
-          } else {
-            // Fall back to whatever we have in storage
-            console.warn('[DescriptionGenerator] Scraping failed, using stale storage data');
-            resolve({
-              title: product.title || '',
-              description: product.description || '',
-              bulletPoints: product.bulletPoints || [],
-              category: product.category || '',
-              price: product.price || '',
-              brand: product.brand || '',
-              features: product.features || [],
-              specifications: product.specifications || {},
-              condition: 'New'
-            });
-          }
+            return resolve(formatProductDataMap(scrapedData));
         }
+
+        // Final Fall back to whatever we have in storage
+        console.warn('[DescriptionGenerator] All scraping failed, using stale storage data');
+        resolve(formatProductDataMap(product));
       });
     });
+  }
+
+  function formatProductDataMap(product) {
+      return {
+          title: product.title || product.productTitle || '',
+          description: product.description || product.productDescription || '',
+          bulletPoints: product.bulletPoints || product.features || [],
+          category: product.category || '',
+          price: product.price || product.productPrice || '',
+          brand: product.brand || '',
+          features: product.features || [],
+          specifications: product.specifications || product.specs || {},
+          condition: product.condition || 'New'
+      };
   }
 
   /**
