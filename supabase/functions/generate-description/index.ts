@@ -20,35 +20,22 @@ interface DescriptionRequest {
 }
 
 const DEFAULT_DESCRIPTION_PROMPT = `Transform the following Amazon product data into a professional eBay listing description.
+Return ONLY a valid JSON object matching this structure:
+{"opening": "...", "features": ["...", "..."], "specifications": [{"label": "...", "value": "..."}]}
 
 REQUIREMENTS:
-- Remove all Amazon-specific terms (Prime, Subscribe & Save, Amazon's Choice, etc.)
-- Create a compelling, professional description
-- Use HTML formatting for eBay (allowed tags: <b>, <br>, <ul>, <li>, <p>)
-- Include all key product features and specifications
-- Add standard seller sections at the bottom
+- Remove all Amazon-specific terms (Prime, Subscribe & Save, etc.)
+- "opening": 1-2 compelling sentences
+- "features": array of short, punchy bullet points
+- "specifications": array of key/value pairs
 
-STRUCTURE YOUR RESPONSE AS:
-1. Opening hook (1-2 sentences)
-2. Key Features (bullet points)
-3. Product Specifications
-4. What's Included
-5. Shipping & Handling
-6. Returns Policy
-7. Contact Information
-
-PRODUCT DATA:
+DATA:
 Title: {title}
 Brand: {brand}
-Category: {category}
 Original Description: {description}
 Bullet Points: {bulletPoints}
 Features: {features}
-Specifications: {specifications}
-Condition: {condition}
-Price: {price}
-
-Generate the eBay description in clean HTML format. Do not include any markdown code blocks, just raw HTML.`;
+Specifications: {specifications}`;
 
 const DEFAULT_TEMPLATE = `
 <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
@@ -152,31 +139,29 @@ serve(async (req) => {
     
     // SECURITY: Input validation and sanitization
     const title = String(requestData.title || '').slice(0, 500);
-    const description = String(requestData.description || '').slice(0, 5000);
+    const description = String(requestData.description || '').slice(0, 1000);
+    // reduce properties significantly
     const bulletPoints = Array.isArray(requestData.bulletPoints) 
-      ? requestData.bulletPoints.slice(0, 20).map(bp => String(bp).slice(0, 500))
+      ? requestData.bulletPoints.slice(0, 3).map(bp => String(bp).slice(0, 200))
       : [];
-    const category = String(requestData.category || '').slice(0, 200);
-    const price = String(requestData.price || '').slice(0, 50);
     const brand = String(requestData.brand || '').slice(0, 200);
     const features = Array.isArray(requestData.features) 
-      ? requestData.features.slice(0, 20).map(f => String(f).slice(0, 500))
+      ? requestData.features.slice(0, 3).map(f => String(f).slice(0, 200))
       : [];
     const specifications = typeof requestData.specifications === 'object' && requestData.specifications !== null
       ? Object.fromEntries(
-          Object.entries(requestData.specifications).slice(0, 50).map(([k, v]) => [String(k).slice(0, 100), String(v).slice(0, 500)])
+          Object.entries(requestData.specifications).slice(0, 5).map(([k, v]) => [String(k).slice(0, 50), String(v).slice(0, 100)])
         )
       : {};
-    const condition = String(requestData.condition || 'New').slice(0, 50);
 
-    console.log('Generating description for:', { title: title.slice(0, 50), brand, category });
+    console.log('Generating description for:', { title: title.slice(0, 50), brand });
 
     // Initialize defaults
     let promptTemplate = DEFAULT_DESCRIPTION_PROMPT;
     let htmlTemplate = DEFAULT_TEMPLATE;
-    let model = 'gpt-5-nano';
+    let model = 'gpt-4o-mini';
     let adminApiKey = '';
-    let apiProvider = 'lovable';
+    let apiProvider = 'openai';
 
     // Fetch AI settings from admin_settings (ext_* keys from AdminExtension page)
     try {
@@ -204,6 +189,10 @@ serve(async (req) => {
     } catch (dbError) {
       console.log('Using default settings:', dbError);
     }
+    
+    if (model === 'gpt-5-nano') {
+      model = 'gpt-4o-mini';
+    }
 
     // Determine if we should use direct OpenAI or Lovable AI Gateway
     // Use direct OpenAI if provider is 'openai' and a valid API key is provided
@@ -222,12 +211,9 @@ serve(async (req) => {
       .replace(/{title}/g, title)
       .replace(/{description}/g, description)
       .replace(/{bulletPoints}/g, bulletPointsText)
-      .replace(/{category}/g, category)
-      .replace(/{price}/g, price)
       .replace(/{brand}/g, brand)
       .replace(/{features}/g, featuresText)
-      .replace(/{specifications}/g, specsText)
-      .replace(/{condition}/g, condition);
+      .replace(/{specifications}/g, specsText);
 
     let responseContent = '';
 
@@ -244,9 +230,11 @@ serve(async (req) => {
         body: JSON.stringify({
           model: model.startsWith('openai/') ? model.replace('openai/', '') : model,
           messages: [
-            { role: 'system', content: 'You are an expert eBay listing copywriter. Generate professional, compelling product descriptions in clean HTML format. Do not wrap in markdown code blocks. Output raw HTML only.' },
+            { role: 'system', content: 'You are an expert product listing generator. You must ALWAYS output ONLY a valid JSON object matching the requested structure.' },
             { role: 'user', content: prompt }
           ],
+          response_format: { type: "json_object" },
+          max_tokens: 300
         }),
       });
 
@@ -294,9 +282,11 @@ serve(async (req) => {
         body: JSON.stringify({
           model: gatewayModel,
           messages: [
-            { role: 'system', content: 'You are an expert eBay listing copywriter. Generate professional, compelling product descriptions in clean HTML format. Do not wrap in markdown code blocks. Output raw HTML only.' },
+            { role: 'system', content: 'You are an expert product listing generator. You must ALWAYS output ONLY a valid JSON object matching the requested structure.' },
             { role: 'user', content: prompt }
           ],
+          response_format: { type: "json_object" },
+          max_tokens: 300
         }),
       });
 
@@ -323,18 +313,29 @@ serve(async (req) => {
       responseContent = data.choices?.[0]?.message?.content || '';
     }
 
-    console.log('Generated description length:', responseContent.length);
-
-    // Clean up the response - remove markdown code blocks if present
-    let cleanedDescription = responseContent
-      .replace(/```html\n?/g, '')
-      .replace(/```\n?/g, '')
-      .trim();
-
-    // If response is empty or too short, use template fallback
-    if (cleanedDescription.length < 50) {
-      console.log('Using template fallback');
+    // Process the JSON component output into an HTML block
+    let cleanedDescription = '';
+    
+    try {
+      const g = JSON.parse(responseContent);
       
+      const featuresHTML = Array.isArray(g.features) ? g.features.map((f: string) => `<li>${f}</li>`).join('\n') : '<li>High quality product</li>';
+      const specLineArr: string[] = [];
+      if (Array.isArray(g.specifications)) {
+        for (const o of g.specifications) {
+           specLineArr.push(`<tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>${o.label || 'Spec'}</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${o.value || '-'}</td></tr>`);
+        }
+      }
+      const specsHTML = specLineArr.length > 0 ? specLineArr.join('\n') : '<tr><td colspan="2" style="padding: 8px;">See product details above</td></tr>';
+      
+      cleanedDescription = htmlTemplate
+        .replace(/{title}/g, title || 'Premium Product')
+        .replace(/{opening}/g, g.opening || 'High quality product, brand new and ready to ship!')
+        .replace(/{features}/g, featuresHTML)
+        .replace(/{specifications}/g, specsHTML);
+        
+    } catch (e) {
+      console.log('JSON Parse failed, using fallback.');
       const featuresList = bulletPoints.length > 0 
         ? bulletPoints.map(bp => `<li>${bp}</li>`).join('\n')
         : features.map(f => `<li>${f}</li>`).join('\n') || '<li>High quality product</li>';

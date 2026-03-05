@@ -543,17 +543,15 @@ async function generateAITitles() {
       title: productData.title || productData.productTitle,
       brand: productData.brand,
       category: productData.category,
-      bulletPointsCount: (productData.bulletPoints || productData.features || []).length,
+      bulletPointsCount: Math.min(3, (productData.bulletPoints || productData.features || []).length),
       count: titleCount
     });
 
     const { data: result, error } = await AuthHelper.callEdgeFunction('generate-titles', {
       title: productData.title || productData.productTitle,
-      description: productData.description || productData.productDescription || '',
       category: productData.category || '',
       brand: productData.brand || '',
-      bulletPoints: productData.bulletPoints || productData.features || [],
-      specifications: productData.specifications || {},
+      bulletPoints: (productData.bulletPoints || productData.features || []).slice(0, 3),
       count: titleCount
     });
 

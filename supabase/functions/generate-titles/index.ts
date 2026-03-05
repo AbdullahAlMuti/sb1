@@ -1,10 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, accept',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, accept",
 };
 
 interface TitleGenerationRequest {
@@ -15,63 +16,48 @@ interface TitleGenerationRequest {
   brand?: string;
   specifications?: any;
   bulletPoints?: string[];
-  provider?: 'lovable' | 'openai';
+  provider?: "lovable" | "openai";
   test?: boolean;
 }
 
 interface RankedTitle {
-  rank: 'best' | 'recommended' | 'powerful';
+  rank: "best" | "recommended" | "powerful";
   title: string;
 }
 
-const DEFAULT_PROMPT = `You are an expert eBay SEO specialist. 
-Analyze the following Amazon product title and data to generate 3 unique, click-optimized eBay titles.
+const DEFAULT_PROMPT = `Generate 3 distinct, keyword-optimized eBay titles (under 80 chars each).
+Return ONLY a JSON object exactly like this:
+{"titles":[{"rank":"best","title":"..."},{"rank":"recommended","title":"..."},{"rank":"powerful","title":"..."}]}
 
-THE TASK:
-1. Analyze the Original Amazon Title: "{title}"
-2. Identify core keywords (Brand, Model, Material, Size, Color).
-3. Generate 3 distinct eBay titles (under 80 characters each).
-4. One title should be an optimized version of the original, the other two should focus on different high-volume keywords.
-
-PRODUCT CONTEXT:
-Original Title: {title}
+DATA:
+Title: {title}
 Brand: {brand}
 Category: {category}
-Price: {price}
-Bullet Points: {bulletPoints}
-Specifications: {specifications}
-Original Description: {description}
-
-RESPONSE FORMAT:
-Return ONLY a JSON object:
-{
-  "titles": [
-    {"rank": "best", "title": "Most optimized primary title"},
-    {"rank": "recommended", "title": "Keyword-rich secondary title"},
-    {"rank": "powerful", "title": "Sales-driven tertiary title"}
-  ]
-}`;
+Bullet Points: {bulletPoints}`;
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
 
     // SECURITY: Authenticate user before processing
-    const authHeader = req.headers.get('Authorization');
+    const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      console.log('[generate-titles] No auth header provided');
-      return new Response(JSON.stringify({ success: false, error: 'Authentication required' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      console.log("[generate-titles] No auth header provided");
+      return new Response(
+        JSON.stringify({ success: false, error: "Authentication required" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     // Create client with user's auth token to validate authentication
@@ -81,14 +67,20 @@ serve(async (req) => {
       },
     });
 
-    const { data: { user }, error: userError } = await supabaseAuth.auth.getUser();
-    
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseAuth.auth.getUser();
+
     if (userError || !user) {
-      console.error('[generate-titles] Auth error:', userError);
-      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      console.error("[generate-titles] Auth error:", userError);
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     console.log(`[generate-titles] User authenticated: ${user.id}`);
@@ -97,252 +89,362 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const rawBody = await req.json();
-    console.log('[generate-titles] Received body:', JSON.stringify(rawBody));
-    
+    console.log("[generate-titles] Received body:", JSON.stringify(rawBody));
+
     // Handle both old format (productInfo) and new format (direct fields)
-    const requestData: TitleGenerationRequest = rawBody.productInfo ? {
-      title: rawBody.productInfo.title,
-      description: rawBody.productInfo.description,
-      category: rawBody.productInfo.category,
-      brand: rawBody.productInfo.brand,
-      bulletPoints: rawBody.productInfo.keywords || rawBody.productInfo.bulletPoints,
-    } : rawBody;
-    
+    const requestData: TitleGenerationRequest = rawBody.productInfo
+      ? {
+          title: rawBody.productInfo.title,
+          description: rawBody.productInfo.description,
+          category: rawBody.productInfo.category,
+          brand: rawBody.productInfo.brand,
+          bulletPoints:
+            rawBody.productInfo.keywords || rawBody.productInfo.bulletPoints,
+        }
+      : rawBody;
+
     // SECURITY: Input validation and sanitization
-    const title = String(requestData.title || '').slice(0, 500);
-    const description = String(requestData.description || '').slice(0, 2000);
-    const category = String(requestData.category || '').slice(0, 200);
-    const price = String(requestData.price || '').slice(0, 50);
-    const brand = String(requestData.brand || '').slice(0, 200);
-    const specifications = typeof requestData.specifications === 'object' ? requestData.specifications : {};
-    const bulletPoints = Array.isArray(requestData.bulletPoints) 
-      ? requestData.bulletPoints.slice(0, 20).map(bp => String(bp).slice(0, 500))
+    const title = String(requestData.title || "").slice(0, 500);
+    const category = String(requestData.category || "").slice(0, 200);
+    const brand = String(requestData.brand || "").slice(0, 200);
+    // Limit to 3 bullet points for speed
+    const bulletPoints = Array.isArray(requestData.bulletPoints)
+      ? requestData.bulletPoints
+          .slice(0, 3)
+          .map((bp) => String(bp).slice(0, 200))
       : [];
-    const provider = requestData.provider === 'openai' ? 'openai' : 'lovable';
+    const provider = requestData.provider === "openai" ? "openai" : "lovable";
     const test = Boolean(requestData.test);
 
-    console.log('Generating titles for:', { title: title.slice(0, 50), brand, category, provider });
+    console.log("Generating titles for:", {
+      title: title.slice(0, 50),
+      brand,
+      category,
+      provider,
+    });
 
     // Default settings
     let promptTemplate = DEFAULT_PROMPT;
-    let model = 'gpt-5-nano';
-    let adminApiKey = '';
-    let apiProvider = 'lovable';
+    let model = "gpt-4o-mini"; // Changed to ultra-fast model
+    let adminApiKey = "";
+    let apiProvider = "openai"; // default to openai
 
     // Fetch AI settings from admin_settings (ext_* keys from AdminExtension page)
     try {
       const { data: settingsData } = await supabase
-        .from('admin_settings')
-        .select('key, value')
-        .in('key', ['ext_ai_provider', 'ext_ai_api_key', 'ext_ai_model', 'ext_title_prompt']);
+        .from("admin_settings")
+        .select("key, value")
+        .in("key", [
+          "ext_ai_provider",
+          "ext_ai_api_key",
+          "ext_ai_model",
+          "ext_title_prompt",
+        ]);
 
       if (settingsData) {
         settingsData.forEach((item: { key: string; value: string | null }) => {
-          if (item.key === 'ext_ai_provider' && item.value) {
+          if (item.key === "ext_ai_provider" && item.value) {
             apiProvider = item.value;
           }
-          if (item.key === 'ext_ai_model' && item.value) {
+          if (item.key === "ext_ai_model" && item.value) {
             model = item.value;
           }
-          if (item.key === 'ext_title_prompt' && item.value) {
+          if (item.key === "ext_title_prompt" && item.value) {
             promptTemplate = item.value;
           }
-          if (item.key === 'ext_ai_api_key' && item.value) {
+          if (item.key === "ext_ai_api_key" && item.value) {
             adminApiKey = item.value;
           }
         });
       }
     } catch (dbError) {
-      console.log('Using default settings (admin_settings not available):', dbError);
+      console.log(
+        "Using default settings (admin_settings not available):",
+        dbError,
+      );
+    }
+
+    // Fallback if the user's config was still pointing to an old slow model or gpt-5-nano
+    if (model === "gpt-5-nano") {
+      model = "gpt-4o-mini";
     }
 
     // Determine if we should use direct OpenAI or Lovable AI Gateway
     // Use direct OpenAI if provider is 'openai' and a valid API key is provided
-    const useDirectOpenAI = apiProvider === 'openai' && adminApiKey && adminApiKey.startsWith('sk-') && adminApiKey.length > 20;
-    
-    console.log(`[generate-titles] Using ${useDirectOpenAI ? 'Direct OpenAI' : 'Lovable AI Gateway'} with model: ${model}`);
+    const useDirectOpenAI =
+      apiProvider === "openai" &&
+      adminApiKey &&
+      adminApiKey.startsWith("sk-") &&
+      adminApiKey.length > 20;
+
+    console.log(
+      `[generate-titles] Using ${useDirectOpenAI ? "Direct OpenAI" : "Lovable AI Gateway"} with model: ${model}`,
+    );
 
     // Prepare data strings for prompt replacement
-    const specsStr = typeof specifications === 'object' ? JSON.stringify(specifications, null, 2) : String(specifications);
-    const bulletsStr = bulletPoints.join('\n- ');
+    const bulletsStr = bulletPoints.join("\n- ");
 
     // Replace placeholders in prompt
     const prompt = promptTemplate
       .replace(/{title}/g, title)
-      .replace(/{description}/g, description.substring(0, 1000))
       .replace(/{category}/g, category)
-      .replace(/{price}/g, price)
       .replace(/{brand}/g, brand)
-      .replace(/{specifications}/g, specsStr)
       .replace(/{bulletPoints}/g, bulletsStr);
 
-    let responseContent = '';
+    let responseContent = "";
 
     if (useDirectOpenAI) {
       // Use admin's OpenAI API key directly
-      console.log('[generate-titles] Calling OpenAI directly with admin API key');
+      console.log(
+        "[generate-titles] Calling OpenAI directly with admin API key",
+      );
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${adminApiKey}`,
-          'Content-Type': 'application/json',
+      const response = await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${adminApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: model.startsWith("openai/")
+              ? model.replace("openai/", "")
+              : model,
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" },
+            max_tokens: 150,
+          }),
         },
-        body: JSON.stringify({
-          model: model.startsWith('openai/') ? model.replace('openai/', '') : model,
-          messages: [
-            { role: 'system', content: 'You are an expert eBay product title generator. Always respond with valid JSON only, no markdown or code blocks. Just the raw JSON object.' },
-            { role: 'user', content: prompt }
-          ],
-        }),
-      });
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('OpenAI API error:', response.status, errorText);
-        
+        console.error("OpenAI API error:", response.status, errorText);
+
         if (response.status === 401) {
-          throw new Error('Invalid OpenAI API key. Please update your API key in Admin Settings.');
+          throw new Error(
+            "Invalid OpenAI API key. Please update your API key in Admin Settings.",
+          );
         }
         if (response.status === 429) {
-          return new Response(JSON.stringify({ success: false, error: 'OpenAI rate limit exceeded. Please try again.' }), {
-            status: 429,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "OpenAI rate limit exceeded. Please try again.",
+            }),
+            {
+              status: 429,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            },
+          );
         }
         throw new Error(`OpenAI API error: ${response.status}`);
       }
 
       const data = await response.json();
-      responseContent = data.choices?.[0]?.message?.content || '';
+      responseContent = data.choices?.[0]?.message?.content || "";
     } else {
       // Fallback to Lovable AI Gateway
       if (!lovableApiKey) {
-        console.error('LOVABLE_API_KEY not configured and no admin OpenAI key');
-        return new Response(JSON.stringify({
-          success: false,
-          error: 'AI service not configured. Please add an OpenAI API key in Admin Settings.'
-        }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        console.error("LOVABLE_API_KEY not configured and no admin OpenAI key");
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error:
+              "AI service not configured. Please add an OpenAI API key in Admin Settings.",
+          }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
       }
 
-      console.log('[generate-titles] Using Lovable AI Gateway as fallback');
+      console.log("[generate-titles] Using Lovable AI Gateway as fallback");
 
-      const gatewayModel = model.startsWith('gpt') ? `openai/${model}` : model;
-      
-      const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${lovableApiKey}`,
-          'Content-Type': 'application/json',
+      const gatewayModel = model.startsWith("gpt") ? `openai/${model}` : model;
+
+      const response = await fetch(
+        "https://ai.gateway.lovable.dev/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${lovableApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: gatewayModel,
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are an expert eBay product title generator. Always respond with valid JSON only, no markdown or code blocks. Just the raw JSON object.",
+              },
+              { role: "user", content: prompt },
+            ],
+            response_format: { type: "json_object" },
+            max_tokens: 150,
+          }),
         },
-        body: JSON.stringify({
-          model: gatewayModel,
-          messages: [
-            { role: 'system', content: 'You are an expert eBay product title generator. Always respond with valid JSON only, no markdown or code blocks. Just the raw JSON object.' },
-            { role: 'user', content: prompt }
-          ],
-        }),
-      });
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Lovable AI Gateway error:', response.status, errorText);
+        console.error("Lovable AI Gateway error:", response.status, errorText);
 
         if (response.status === 429) {
-          return new Response(JSON.stringify({ success: false, error: 'Rate limit exceeded. Please try again in a moment.' }), {
-            status: 429,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "Rate limit exceeded. Please try again in a moment.",
+            }),
+            {
+              status: 429,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            },
+          );
         }
         if (response.status === 402) {
-          return new Response(JSON.stringify({ success: false, error: 'AI credits exhausted. Please add an OpenAI API key in Admin Settings.' }), {
-            status: 402,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error:
+                "AI credits exhausted. Please add an OpenAI API key in Admin Settings.",
+            }),
+            {
+              status: 402,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            },
+          );
         }
         throw new Error(`AI gateway error: ${response.status}`);
       }
 
       const data = await response.json();
-      responseContent = data.choices?.[0]?.message?.content || '';
+      responseContent = data.choices?.[0]?.message?.content || "";
     }
 
-    console.log('AI response content:', responseContent);
+    console.log("AI response content:", responseContent);
 
     let aiResponse: RankedTitle[] = [];
 
     // Parse the JSON response
     try {
       // Remove any markdown code blocks if present
-      const cleanContent = responseContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const cleanContent = responseContent
+        .replace(/```json\n?/g, "")
+        .replace(/```\n?/g, "")
+        .trim();
       const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         aiResponse = parsed.titles || [];
-        console.log('Parsed titles:', aiResponse);
+        console.log("Parsed titles:", aiResponse);
       }
     } catch (parseError) {
-      console.error('Error parsing AI response:', parseError);
-      console.log('Raw content:', responseContent);
+      console.error("Error parsing AI response:", parseError);
+      console.log("Raw content:", responseContent);
 
       // Fallback titles if parsing fails
-      const baseTitle = title || 'Product';
+      const baseTitle = title || "Product";
       aiResponse = [
-        { rank: 'best', title: `${brand ? brand + ' ' : ''}${baseTitle} - Premium Quality Free Shipping` },
-        { rank: 'recommended', title: `${baseTitle}${category ? ' ' + category : ''} Brand New Top Rated` },
-        { rank: 'powerful', title: `NEW ${baseTitle} ${brand ? brand : ''} Limited Stock Best Deal` },
+        {
+          rank: "best",
+          title: `${brand ? brand + " " : ""}${baseTitle} - Premium Quality Free Shipping`,
+        },
+        {
+          rank: "recommended",
+          title: `${baseTitle}${category ? " " + category : ""} Brand New Top Rated`,
+        },
+        {
+          rank: "powerful",
+          title: `NEW ${baseTitle} ${brand ? brand : ""} Limited Stock Best Deal`,
+        },
       ];
     }
 
     // Handle case where aiResponse is still empty
     if (aiResponse.length === 0) {
-      const baseTitle = title || 'Product';
+      const baseTitle = title || "Product";
       aiResponse = [
-        { rank: 'best', title: `${brand ? brand + ' ' : ''}${baseTitle} - Premium Quality Fast Free Shipping` },
-        { rank: 'recommended', title: `${baseTitle}${category ? ' ' + category : ''} Brand New Top Rated Seller` },
-        { rank: 'powerful', title: `NEW ${baseTitle} ${brand ? brand : ''} Limited Stock Best Deal` },
+        {
+          rank: "best",
+          title: `${brand ? brand + " " : ""}${baseTitle} - Premium Quality Fast Free Shipping`,
+        },
+        {
+          rank: "recommended",
+          title: `${baseTitle}${category ? " " + category : ""} Brand New Top Rated Seller`,
+        },
+        {
+          rank: "powerful",
+          title: `NEW ${baseTitle} ${brand ? brand : ""} Limited Stock Best Deal`,
+        },
       ];
     }
 
     // Ensure we have exactly 3 titles with proper ranks
     const rankedTitles: RankedTitle[] = [
-      { rank: 'best', title: aiResponse.find(t => t.rank === 'best')?.title || aiResponse[0]?.title || '' },
-      { rank: 'recommended', title: aiResponse.find(t => t.rank === 'recommended')?.title || aiResponse[1]?.title || '' },
-      { rank: 'powerful', title: aiResponse.find(t => t.rank === 'powerful')?.title || aiResponse[2]?.title || '' },
+      {
+        rank: "best",
+        title:
+          aiResponse.find((t) => t.rank === "best")?.title ||
+          aiResponse[0]?.title ||
+          "",
+      },
+      {
+        rank: "recommended",
+        title:
+          aiResponse.find((t) => t.rank === "recommended")?.title ||
+          aiResponse[1]?.title ||
+          "",
+      },
+      {
+        rank: "powerful",
+        title:
+          aiResponse.find((t) => t.rank === "powerful")?.title ||
+          aiResponse[2]?.title ||
+          "",
+      },
     ];
 
     // Format response for frontend compatibility
-    const apiName = 'openai';
-    const titlesArray = rankedTitles.map(t => t.title);
-    
-    return new Response(JSON.stringify({
-      success: true,
-      results: [
-        {
-          api: apiName,
-          titles: titlesArray,
-          success: true
-        }
-      ],
-      titles: rankedTitles,
-      provider: useDirectOpenAI ? 'openai' : 'lovable',
-      model,
-      test
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    const apiName = "openai";
+    const titlesArray = rankedTitles.map((t) => t.title);
 
+    return new Response(
+      JSON.stringify({
+        success: true,
+        results: [
+          {
+            api: apiName,
+            titles: titlesArray,
+            success: true,
+          },
+        ],
+        titles: rankedTitles,
+        provider: useDirectOpenAI ? "openai" : "lovable",
+        model,
+        test,
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   } catch (error) {
-    console.error('Error in generate-titles function:', error);
-    return new Response(JSON.stringify({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to generate titles. Please try again.'
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.error("Error in generate-titles function:", error);
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to generate titles. Please try again.",
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
 });
