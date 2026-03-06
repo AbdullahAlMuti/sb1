@@ -17,6 +17,7 @@ interface AISettings {
   model: string;
   title_prompt: string;
   description_prompt: string;
+  title_count: number;
 }
 
 const AVAILABLE_MODELS = [
@@ -89,6 +90,7 @@ const DEFAULT_SETTINGS: AISettings = {
   model: 'gpt-4o-mini',
   title_prompt: DEFAULT_TITLE_PROMPT,
   description_prompt: DEFAULT_DESCRIPTION_PROMPT,
+  title_count: 3,
 };
 
 export default function AdminAISettings() {
@@ -106,7 +108,7 @@ export default function AdminAISettings() {
       const { data, error } = await supabase
         .from('admin_settings')
         .select('key, value')
-        .in('key', ['ext_ai_provider', 'ext_ai_api_key', 'ext_ai_model', 'ext_title_prompt', 'ext_description_prompt']);
+        .in('key', ['ext_ai_provider', 'ext_ai_api_key', 'ext_ai_model', 'ext_title_prompt', 'ext_description_prompt', 'ext_title_count']);
 
       if (error) throw error;
 
@@ -122,6 +124,7 @@ export default function AdminAISettings() {
           model: settingsMap['ext_ai_model'] || DEFAULT_SETTINGS.model,
           title_prompt: settingsMap['ext_title_prompt'] || DEFAULT_SETTINGS.title_prompt,
           description_prompt: settingsMap['ext_description_prompt'] || DEFAULT_SETTINGS.description_prompt,
+          title_count: parseInt(settingsMap['ext_title_count'] || '3', 10),
         });
       }
     } catch (error) {
@@ -161,6 +164,7 @@ export default function AdminAISettings() {
         saveSetting('ext_ai_model', settings.model),
         saveSetting('ext_title_prompt', settings.title_prompt),
         saveSetting('ext_description_prompt', settings.description_prompt),
+        saveSetting('ext_title_count', settings.title_count.toString()),
       ]);
       toast.success('AI settings saved successfully');
     } catch (error) {
@@ -320,6 +324,21 @@ export default function AdminAISettings() {
                   </Select>
                   <p className="text-xs text-muted-foreground">
                     GPT-4o Mini is the fastest and most cost-effective option for bulk processing
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="title_count">Number of Titles to Generate</Label>
+                  <Input
+                    id="title_count"
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={settings.title_count}
+                    onChange={(e) => setSettings({ ...settings, title_count: parseInt(e.target.value) || 3 })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    How many distinct eBay titles the AI should generate (1-10)
                   </p>
                 </div>
               </div>

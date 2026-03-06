@@ -21,7 +21,7 @@ interface TitleGenerationRequest {
 }
 
 interface RankedTitle {
-  rank: "best" | "recommended" | "powerful";
+  rank: string;
   title: string;
 }
 
@@ -128,6 +128,7 @@ serve(async (req) => {
     let model = "gpt-4o-mini"; // Changed to ultra-fast model
     let adminApiKey = "";
     let apiProvider = "openai"; // default to openai
+    let titleCount = 3;
 
     // Fetch AI settings from admin_settings (ext_* keys from AdminExtension page)
     try {
@@ -139,6 +140,7 @@ serve(async (req) => {
           "ext_ai_api_key",
           "ext_ai_model",
           "ext_title_prompt",
+          "ext_title_count",
         ]);
 
       if (settingsData) {
@@ -154,6 +156,9 @@ serve(async (req) => {
           }
           if (item.key === "ext_ai_api_key" && item.value) {
             adminApiKey = item.value;
+          }
+          if (item.key === "ext_title_count" && item.value) {
+            titleCount = parseInt(item.value, 10) || 3;
           }
         });
       }
@@ -215,7 +220,7 @@ serve(async (req) => {
               {
                 role: "system",
                 content:
-                  "You are an expert eBay product title generator. You MUST follow ALL instructions in the user's prompt exactly. Do not add conversational filler. Always respond with valid JSON only, exactly matching the requested structure.",
+                  `You are an expert eBay product title generator. You MUST follow ALL instructions in the user's prompt exactly. Do not add conversational filler. Always respond with valid JSON only, exactly matching the requested structure. You must generate EXACTLY ${titleCount} titles.`,
               },
               { role: "user", content: prompt }
             ],
@@ -286,7 +291,7 @@ serve(async (req) => {
               {
                 role: "system",
                 content:
-                  "You are an expert eBay product title generator. Always respond with valid JSON only, no markdown or code blocks. Just the raw JSON object.",
+                  `You are an expert eBay product title generator. Always respond with valid JSON only, no markdown or code blocks. Just the raw JSON object. You must generate EXACTLY ${titleCount} titles.`,
               },
               { role: "user", content: prompt },
             ],
@@ -355,65 +360,34 @@ serve(async (req) => {
 
       // Fallback titles if parsing fails
       const baseTitle = title || "Product";
-      aiResponse = [
-        {
-          rank: "best",
-          title: `${brand ? brand + " " : ""}${baseTitle} - Premium Quality Free Shipping`,
-        },
-        {
-          rank: "recommended",
-          title: `${baseTitle}${category ? " " + category : ""} Brand New Top Rated`,
-        },
-        {
-          rank: "powerful",
-          title: `NEW ${baseTitle} ${brand ? brand : ""} Limited Stock Best Deal`,
-        },
-      ];
+      aiResponse = Array.from({ length: titleCount }).map((_, i) => ({
+        rank: i === 0 ? "best" : i === 1 ? "recommended" : "powerful",
+        title: i === 0 
+          ? `${brand ? brand + " " : ""}${baseTitle} - Premium Quality Free Shipping`
+          : i === 1
+          ? `${baseTitle}${category ? " " + category : ""} Brand New Top Rated`
+          : `NEW ${baseTitle} ${brand ? brand : ""} Limited Stock Best Deal`,
+      }));
     }
 
     // Handle case where aiResponse is still empty
-    if (aiResponse.length === 0) {
+    if (!Array.isArray(aiResponse) || aiResponse.length === 0) {
       const baseTitle = title || "Product";
-      aiResponse = [
-        {
-          rank: "best",
-          title: `${brand ? brand + " " : ""}${baseTitle} - Premium Quality Fast Free Shipping`,
-        },
-        {
-          rank: "recommended",
-          title: `${baseTitle}${category ? " " + category : ""} Brand New Top Rated Seller`,
-        },
-        {
-          rank: "powerful",
-          title: `NEW ${baseTitle} ${brand ? brand : ""} Limited Stock Best Deal`,
-        },
-      ];
+      aiResponse = Array.from({ length: titleCount }).map((_, i) => ({
+        rank: i === 0 ? "best" : i === 1 ? "recommended" : "powerful",
+        title: i === 0 
+          ? `${brand ? brand + " " : ""}${baseTitle} - Premium Quality Free Shipping`
+          : i === 1
+          ? `${baseTitle}${category ? " " + category : ""} Brand New Top Rated`
+          : `NEW ${baseTitle} ${brand ? brand : ""} Limited Stock Best Deal`,
+      }));
     }
 
-    // Ensure we have exactly 3 titles with proper ranks
-    const rankedTitles: RankedTitle[] = [
-      {
-        rank: "best",
-        title:
-          aiResponse.find((t) => t.rank === "best")?.title ||
-          aiResponse[0]?.title ||
-          "",
-      },
-      {
-        rank: "recommended",
-        title:
-          aiResponse.find((t) => t.rank === "recommended")?.title ||
-          aiResponse[1]?.title ||
-          "",
-      },
-      {
-        rank: "powerful",
-        title:
-          aiResponse.find((t) => t.rank === "powerful")?.title ||
-          aiResponse[2]?.title ||
-          "",
-      },
-    ];
+    // Map AI response to ranked structure up to titleCount
+    const rankedTitles = aiResponse.slice(0, titleCount).map((t, idx) => ({
+      rank: t.rank || (idx === 0 ? "best" : idx === 1 ? "recommended" : "powerful"),
+      title: t.title || t || "",
+    }));
 
     // Format response for frontend compatibility
     const apiName = "openai";
