@@ -1817,8 +1817,10 @@ const addEventListenersToPanel = () => {
                         title: exportData.title,
                         sku: exportData.sku,
                         finalPrice: finalPrice,
-                        sourcePrice: walmartPrice,
-                        productURL: exportData.walmartLink || exportData.amazonLink
+                        amazonPrice: walmartPrice,
+                        productURL: exportData.walmartLink || exportData.amazonLink,
+                        asin: exportData.sku || exportData.itemId || '',
+                        mainImage: storedImages[0] || exportData.walmartImage || exportData.image || exportData.mainImage || document.querySelector('img[data-testid="hero-image"]')?.src || document.querySelector('img[loading="eager"]')?.src || ''
                     };
 
                     try {
