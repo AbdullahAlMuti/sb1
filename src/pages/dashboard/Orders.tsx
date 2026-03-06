@@ -575,14 +575,6 @@ export default function Orders() {
                       <TableHead className="w-[120px] h-9 px-2.5 text-[11px]">Net Profit</TableHead>
                       <TableHead className="min-w-[180px] h-9 px-2.5 text-[11px]">Supplier order #</TableHead>
                       <TableHead className="w-[140px] h-9 px-2.5 text-[11px]">Supplier cost</TableHead>
-                      <TableHead className="w-[140px] h-9 px-2.5 text-[11px]">Order status</TableHead>
-                      <TableHead className="w-[120px] h-9 px-2.5 text-[11px]">Profit</TableHead>
-                      <TableHead className="w-[90px] h-9 px-2.5 text-[11px]">ROI</TableHead>
-                      <TableHead className="w-[120px] h-9 px-2.5 text-[11px]">Delivery Date</TableHead>
-                      <TableHead className="w-[120px] h-9 px-2.5 text-[11px]">Sent message</TableHead>
-                      <TableHead className="min-w-[180px] h-9 px-2.5 text-[11px]">Tracking</TableHead>
-                      <TableHead className="min-w-[220px] h-9 px-2.5 text-[11px]">eBay refund</TableHead>
-                      <TableHead className="min-w-[220px] h-9 px-2.5 text-[11px]">Amazon refund</TableHead>
                     </TableRow>
                   </TableHeader>
 
@@ -650,156 +642,6 @@ export default function Orders() {
                               {formatMoney(e?.supplier_cost ?? null, order.currency || "USD")}
                             </div>
                           </TableCell>
-
-                          <TableCell className="px-2.5 py-2">
-                            <Badge
-                              variant={getStatusBadgeVariant(order.total_amount === 0 ? "cancelled" : order.order_status)}
-                              className="capitalize px-2 py-0.5 text-[11px]"
-                            >
-                              {(order.total_amount === 0 || order.total_amount == null)
-                                ? "cancelled"
-                                : (order.order_status || "pending")}
-                            </Badge>
-                            {isSaving ? <div className="text-[10px] text-muted-foreground mt-0.5">Saving…</div> : null}
-                          </TableCell>
-
-                          <TableCell className="px-2.5 py-2 text-xs font-medium">{formatMoney(metrics.profit, order.currency || "USD")}</TableCell>
-                          <TableCell className="px-2.5 py-2 text-xs">{metrics.roi == null ? "—" : `${metrics.roi.toFixed(1)}%`}</TableCell>
-                          <TableCell className="px-2.5 py-2 text-xs font-bold text-blue-600">
-                            {(() => {
-                              if (e?.supplier_arriving_date) {
-                                // Extract first line only to avoid long "if you order in next..." text
-                                const firstLine = e.supplier_arriving_date.split('\n')[0].trim();
-                                return (
-                                  <div className="flex items-center gap-1">
-                                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] font-bold py-0 h-4">
-                                      {firstLine.replace('Arriving', 'Est.')}
-                                    </Badge>
-                                  </div>
-                                );
-                              }
-                              return formatDate(order.delivery_date);
-                            })()}
-                          </TableCell>
-
-                          <TableCell className="px-2.5 py-2">
-                            <Switch
-                              checked={Boolean(e?.sent_message)}
-                              onCheckedChange={(checked) => {
-                                const sentAt = checked ? new Date().toISOString() : null;
-                                setDrafts((prev) => ({
-                                  ...prev,
-                                  [order.id]: {
-                                    ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
-                                    sent_message: checked,
-                                    sent_message_at: sentAt,
-                                  },
-                                }));
-                                saveEnrichment(order.id, { sent_message: checked, sent_message_at: sentAt });
-                              }}
-                            />
-                          </TableCell>
-
-                          <TableCell className="px-2.5 py-2">
-                            <Input
-                              value={e?.tracking ?? ""}
-                              placeholder="—"
-                              className={tablePlainInputClass}
-                              onChange={(ev) => {
-                                const v = ev.target.value;
-                                setDrafts((prev) => ({
-                                  ...prev,
-                                  [order.id]: {
-                                    ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
-                                    tracking: v.trim() ? v : null,
-                                  },
-                                }));
-                              }}
-                              onBlur={() => saveEnrichment(order.id, { tracking: drafts[order.id]?.tracking ?? null })}
-                            />
-                          </TableCell>
-
-                          <TableCell className="px-2.5 py-2">
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={Boolean(e?.ebay_refund)}
-                                onCheckedChange={(checked) => {
-                                  const amount = checked ? (drafts[order.id]?.ebay_refund_amount ?? 0) : null;
-                                  setDrafts((prev) => ({
-                                    ...prev,
-                                    [order.id]: {
-                                      ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
-                                      ebay_refund: checked,
-                                      ebay_refund_amount: amount,
-                                    },
-                                  }));
-                                  saveEnrichment(order.id, { ebay_refund: checked, ebay_refund_amount: amount });
-                                }}
-                              />
-                              <Input
-                                inputMode="decimal"
-                                placeholder="0.00"
-                                className={cn(tablePlainInputClass, "w-[60px] group-hover:px-1")}
-                                disabled={!e?.ebay_refund}
-                                value={e?.ebay_refund_amount == null ? "" : String(e.ebay_refund_amount)}
-                                onChange={(ev) => {
-                                  const n = numberOrNull(ev.target.value);
-                                  setDrafts((prev) => ({
-                                    ...prev,
-                                    [order.id]: {
-                                      ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
-                                      ebay_refund_amount: n,
-                                    },
-                                  }));
-                                }}
-                                onBlur={() => {
-                                  if (!drafts[order.id]?.ebay_refund) return;
-                                  saveEnrichment(order.id, { ebay_refund_amount: drafts[order.id]?.ebay_refund_amount ?? 0 });
-                                }}
-                              />
-                            </div>
-                          </TableCell>
-
-                          <TableCell className="px-2.5 py-2 border-r-0">
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={Boolean(e?.amazon_refund)}
-                                onCheckedChange={(checked) => {
-                                  const amount = checked ? (drafts[order.id]?.amazon_refund_amount ?? 0) : null;
-                                  setDrafts((prev) => ({
-                                    ...prev,
-                                    [order.id]: {
-                                      ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
-                                      amazon_refund: checked,
-                                      amazon_refund_amount: amount,
-                                    },
-                                  }));
-                                  saveEnrichment(order.id, { amazon_refund: checked, amazon_refund_amount: amount });
-                                }}
-                              />
-                              <Input
-                                inputMode="decimal"
-                                placeholder="0.00"
-                                className={cn(tablePlainInputClass, "w-[60px] group-hover:px-1")}
-                                disabled={!e?.amazon_refund}
-                                value={e?.amazon_refund_amount == null ? "" : String(e.amazon_refund_amount)}
-                                onChange={(ev) => {
-                                  const n = numberOrNull(ev.target.value);
-                                  setDrafts((prev) => ({
-                                    ...prev,
-                                    [order.id]: {
-                                      ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
-                                      amazon_refund_amount: n,
-                                    },
-                                  }));
-                                }}
-                                onBlur={() => {
-                                  if (!drafts[order.id]?.amazon_refund) return;
-                                  saveEnrichment(order.id, { amazon_refund_amount: drafts[order.id]?.amazon_refund_amount ?? 0 });
-                                }}
-                              />
-                            </div>
-                          </TableCell>
                         </TableRow>
                       );
                     })}
@@ -833,15 +675,9 @@ export default function Orders() {
                             {e?.supplier_order_date && <span className="text-foreground font-medium whitespace-nowrap">{formatDate(e.supplier_order_date)}</span>}
                           </div>
                         </div>
-                        <Badge
-                          variant={getStatusBadgeVariant(order.total_amount === 0 ? "cancelled" : order.order_status)}
-                          className="capitalize text-[10px] py-0 h-5"
-                        >
-                          {order.order_status || "pending"}
-                        </Badge>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 py-2 border-y border-dashed border-border/80">
+                      <div className="grid grid-cols-2 gap-2 py-2 border-y border-dashed border-border/80">
                         <div>
                           <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight">Net Profit</p>
                           <p className="text-xs font-semibold">{formatMoney(metrics.ebayNetProfit, order.currency || "USD")}</p>
@@ -850,74 +686,26 @@ export default function Orders() {
                           <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight">Amazon Cost</p>
                           <p className="text-xs font-semibold">{formatMoney(metrics.supplierCost, order.currency || "USD")}</p>
                         </div>
-                        <div>
-                          <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight">Final Profit</p>
-                          <p className={cn("text-xs font-bold", (metrics.profit || 0) > 0 ? "text-emerald-600" : "text-foreground")}>
-                            {formatMoney(metrics.profit, order.currency || "USD")}
-                          </p>
-                        </div>
                       </div>
 
                       <div className="space-y-3">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-muted-foreground">Amazon Order #</label>
-                            {e?.supplier_order_number ? (
-                              <div className="mt-0.5">
-                                <a
-                                  href={`https://www.amazon.com/your-orders/search?search=${e.supplier_order_number}&ref_=ppx_hzsearch_sb_dt_b`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-primary hover:underline inline-flex items-center gap-1.5 text-xs font-bold font-mono"
-                                >
-                                  {e.supplier_order_number}
-                                  <ExternalLink className="h-3 w-3" />
-                                </a>
-                              </div>
-                            ) : (
-                              <div className="text-[10px] text-muted-foreground font-mono mt-0.5">—</div>
-                            )}
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-muted-foreground">Tracking #</label>
-                            <Input
-                              value={e?.tracking ?? ""}
-                              className="h-7 text-[10px] bg-muted/30 border-none shadow-none focus-visible:bg-muted/50 py-0"
-                              placeholder="Add Tracking"
-                              onChange={(ev) => {
-                                const v = ev.target.value;
-                                setDrafts((prev) => ({
-                                  ...prev,
-                                  [order.id]: {
-                                    ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
-                                    tracking: v.trim() ? v : null,
-                                  },
-                                }));
-                              }}
-                              onBlur={() => saveEnrichment(order.id, { tracking: (drafts[order.id]?.tracking ?? null) })}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between p-2 bg-blue-50/30 rounded border border-blue-100/50">
-                          <div className="space-y-0.5">
-                            <p className="text-[9px] font-bold text-blue-700 uppercase tracking-tight">Delivery Status</p>
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] font-bold text-blue-900">
-                                {e?.supplier_arriving_date
-                                  ? e.supplier_arriving_date.split('\n')[0].trim().replace('Arriving', 'Est.')
-                                  : formatDate(order.delivery_date)}
-                              </span>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-muted-foreground">Amazon Order #</label>
+                          {e?.supplier_order_number ? (
+                            <div className="mt-0.5">
+                              <a
+                                href={`https://www.amazon.com/your-orders/search?search=${e.supplier_order_number}&ref_=ppx_hzsearch_sb_dt_b`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline inline-flex items-center gap-1.5 text-xs font-bold font-mono"
+                              >
+                                {e.supplier_order_number}
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[9px] font-medium text-muted-foreground italic">Msg:</span>
-                            <Switch
-                              checked={Boolean(e?.sent_message)}
-                              onCheckedChange={(c) => saveEnrichment(order.id, { sent_message: c, sent_message_at: c ? new Date().toISOString() : null })}
-                              className="scale-75 origin-right"
-                            />
-                          </div>
+                          ) : (
+                            <div className="text-[10px] text-muted-foreground font-mono mt-0.5">—</div>
+                          )}
                         </div>
                         {isSaving && <div className="text-[9px] text-primary animate-pulse font-medium text-center bg-primary/5 py-1 rounded-full border border-primary/10">Synchronizing...</div>}
                       </div>
