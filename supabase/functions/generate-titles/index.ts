@@ -220,7 +220,7 @@ serve(async (req) => {
               {
                 role: "system",
                 content:
-                  `You are an expert eBay product title generator. You MUST follow ALL instructions in the user's prompt exactly. Do not add conversational filler. Always respond with valid JSON only, exactly matching the requested structure. You must generate EXACTLY ${titleCount} titles.`,
+                  `You are an expert eBay product title generator. You MUST follow ALL instructions in the user's prompt exactly. Do not add conversational filler. Always respond with valid JSON only, exactly matching the requested structure. You must generate EXACTLY ${titleCount} titles.\n\nCRITICAL CONSTRAINTS:\n1. EVERY title MUST be STRICTLY UNDER 80 CHARACTERS long including spaces.\n2. Count the characters before outputting. If it exceeds 80, you MUST shorten it.`,
               },
               { role: "user", content: prompt }
             ],
@@ -291,7 +291,7 @@ serve(async (req) => {
               {
                 role: "system",
                 content:
-                  `You are an expert eBay product title generator. Always respond with valid JSON only, no markdown or code blocks. Just the raw JSON object. You must generate EXACTLY ${titleCount} titles.`,
+                  `You are an expert eBay product title generator. Always respond with valid JSON only, no markdown or code blocks. Just the raw JSON object. You must generate EXACTLY ${titleCount} titles.\n\nCRITICAL CONSTRAINTS:\n1. EVERY title MUST be STRICTLY UNDER 80 CHARACTERS long including spaces.\n2. Count the characters before outputting. If it exceeds 80, you MUST shorten it.`,
               },
               { role: "user", content: prompt },
             ],
@@ -369,6 +369,18 @@ serve(async (req) => {
           : `NEW ${baseTitle} ${brand ? brand : ""} Limited Stock Best Deal`,
       }));
     }
+
+    // Process titles to strictly enforce 80 characters programmatically as a final failsafe
+    aiResponse = aiResponse.map(t => {
+      let currentTitle = t.title || "";
+      if (currentTitle.length > 80) {
+        // Find last space before 80 chars
+        const truncated = currentTitle.substring(0, 80);
+        const lastSpace = truncated.lastIndexOf(" ");
+        currentTitle = lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated;
+      }
+      return { ...t, title: currentTitle };
+    });
 
     // Handle case where aiResponse is still empty
     if (!Array.isArray(aiResponse) || aiResponse.length === 0) {
