@@ -35,6 +35,20 @@ const injectUI = async () => {
         console.log('🔄 Auto-calculating price on panel load...');
         quickCalculate();
     }, 1500);
+
+    // URL change watcher for auto-reset
+    let lastUrl = window.location.href;
+    setInterval(() => {
+        if (window.location.href !== lastUrl) {
+            lastUrl = window.location.href;
+            console.log('🔄 URL changed, auto-resetting price calculation...');
+            const sellItForInput = document.getElementById('sell-it-for-input');
+            if (sellItForInput) sellItForInput.value = '';
+            if (typeof quickCalculate === 'function') {
+                quickCalculate();
+            }
+        }
+    }, 1000);
 };
 
 // Enhanced product details scraping function for Walmart
@@ -2529,14 +2543,15 @@ function quickCalculate() {
     
     const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
     
-    let walmartPrice = parseFloat(savedValues['amazon-price']) || 0;
+    let walmartPrice = 0;
     
-    if (walmartPrice <= 0) {
-        const scrapedPrice = scrapeWalmartPrice();
-        if (scrapedPrice !== 'No price found') {
-            walmartPrice = parseFloat(scrapedPrice);
-            console.log('💰 Using scraped Walmart price for quick calc:', walmartPrice);
-        }
+    const scrapedPrice = scrapeWalmartPrice();
+    if (scrapedPrice !== 'No price found') {
+        walmartPrice = parseFloat(scrapedPrice);
+        console.log('💰 Using scraped Walmart price for quick calc:', walmartPrice);
+    } else {
+        walmartPrice = parseFloat(savedValues['amazon-price']) || 0;
+        console.log('⚠️ Scrape failed, falling back to saved Walmart price:', walmartPrice);
     }
     const taxPercent = parseFloat(savedValues['tax-percent']) || 9;
     const trackingFee = parseFloat(savedValues['tracking-fee']) || 0.20;
@@ -2756,6 +2771,11 @@ async function getProductDataForExport() {
     
     const sku = document.getElementById('sku-input')?.value || 'No SKU';
     
+    // Ensure latest calculation
+    if (typeof quickCalculate === 'function') {
+        quickCalculate();
+    }
+
     const priceInput = document.getElementById('sell-it-for-input') || 
                        document.querySelector('.price-field input[type="text"]') ||
                        document.querySelector('input[aria-label*="Sell it for" i]') ||

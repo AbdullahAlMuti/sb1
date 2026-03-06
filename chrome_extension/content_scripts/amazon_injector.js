@@ -367,6 +367,20 @@ const injectUI = async () => {
             }
         }, 1000);
 
+        // URL change watcher for auto-reset
+        let lastUrl = window.location.href;
+        setInterval(() => {
+            if (window.location.href !== lastUrl) {
+                lastUrl = window.location.href;
+                console.log('🔄 URL changed, auto-resetting price calculation...');
+                const sellItForInput = document.getElementById('sell-it-for-input');
+                if (sellItForInput) sellItForInput.value = '';
+                if (typeof quickCalculate === 'function') {
+                    quickCalculate();
+                }
+            }
+        }, 1000);
+
     } catch (e) {
         console.error('❌ Failed to inject UI:', e);
     }
@@ -3629,15 +3643,17 @@ function quickCalculate() {
     // Get saved values from localStorage or use defaults
     const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
 
-    let amazonPrice = parseFloat(savedValues['amazon-price']) || 0;
+    let amazonPrice = 0;
 
-    // If no saved Amazon price, try to scrape it from the page
-    if (amazonPrice <= 0) {
-        const scrapedPrice = scrapeAmazonPrice();
-        if (scrapedPrice !== 'No price found') {
-            amazonPrice = parseFloat(scrapedPrice);
-            console.log('💰 Using scraped Amazon price for quick calc:', amazonPrice);
-        }
+    // Always scrape Amazon price first to ensure it's current
+    const scrapedPrice = scrapeAmazonPrice();
+    if (scrapedPrice !== 'No price found') {
+        amazonPrice = parseFloat(scrapedPrice);
+        console.log('💰 Using scraped Amazon price for quick calc:', amazonPrice);
+    } else {
+        // Fallback to saved price
+        amazonPrice = parseFloat(savedValues['amazon-price']) || 0;
+        console.log('⚠️ Scrape failed, falling back to saved Amazon price:', amazonPrice);
     }
     const taxPercent = parseFloat(savedValues['tax-percent']) || 9;
     const trackingFee = parseFloat(savedValues['tracking-fee']) || 0.20;
@@ -3883,10 +3899,15 @@ async function getProductDataForExport() {
     const sku = document.getElementById('sku-input')?.value || 'No SKU';
 
     // Try multiple selectors to find the calculated price (same as Opti-List button)
+    // Ensure latest calculation
+    if (typeof quickCalculate === 'function') {
+        quickCalculate();
+    }
+
     const priceInput = document.getElementById('sell-it-for-input') ||
-        document.querySelector('.price-field input[type="text"]') ||
-        document.querySelector('input[aria-label*="Sell it for" i]') ||
-        document.querySelector('.price-field input');
+                       document.querySelector('.price-field input[type="text"]') ||
+                       document.querySelector('input[aria-label*="Sell it for" i]') ||
+                       document.querySelector('.price-field input');
 
     // Also check the final-price display element as fallback
     const finalPriceElement = document.getElementById('final-price');
