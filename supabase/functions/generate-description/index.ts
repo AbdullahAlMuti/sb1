@@ -138,19 +138,19 @@ serve(async (req) => {
     const requestData: DescriptionRequest = await req.json();
     
     // SECURITY: Input validation and sanitization
-    const title = String(requestData.title || '').slice(0, 500);
-    const description = String(requestData.description || '').slice(0, 1000);
-    // reduce properties significantly
+    const title = String(requestData.title || '').slice(0, 1000);
+    const description = String(requestData.description || '').slice(0, 10000); // Allow long descriptions
+    // include all bullet points and features for better description generation
     const bulletPoints = Array.isArray(requestData.bulletPoints) 
-      ? requestData.bulletPoints.slice(0, 3).map(bp => String(bp).slice(0, 200))
+      ? requestData.bulletPoints.slice(0, 20).map(bp => String(bp).slice(0, 1000))
       : [];
     const brand = String(requestData.brand || '').slice(0, 200);
     const features = Array.isArray(requestData.features) 
-      ? requestData.features.slice(0, 3).map(f => String(f).slice(0, 200))
+      ? requestData.features.slice(0, 20).map(f => String(f).slice(0, 1000))
       : [];
     const specifications = typeof requestData.specifications === 'object' && requestData.specifications !== null
       ? Object.fromEntries(
-          Object.entries(requestData.specifications).slice(0, 5).map(([k, v]) => [String(k).slice(0, 50), String(v).slice(0, 100)])
+          Object.entries(requestData.specifications).slice(0, 30).map(([k, v]) => [String(k).slice(0, 100), String(v).slice(0, 500)])
         )
       : {};
 
