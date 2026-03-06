@@ -67,6 +67,7 @@ type EbayOrderRow = {
   ad_fee: number | null;
   sales_record_number: number | null;
   delivery_date?: string | null;
+  buyer_zip?: string | null;
   order_enrichments?: EnrichmentRow[];
 };
 
@@ -338,43 +339,31 @@ export default function Orders() {
     }
 
     const headers = [
-      "Order date",
+      "Sale No",
       "Date paid",
       "Ship by date",
       "Order number",
       "Net profit",
       "Supplier order number",
       "Supplier cost",
-      "Order status",
-      "Profit",
-      "ROI",
-      "Sent message",
-      "Tracking",
-      "eBay refund",
+      "ZIP",
       "eBay refund amount",
-      "Amazon refund",
-      "Amazon refund amount",
+      "Supplier refund amount",
     ];
 
     const rows = orders.map((o) => {
       const e = drafts[o.id];
-      const { ebayNetProfit, profit, roi } = calc(o, e);
+      const { ebayNetProfit } = calc(o, e);
       return [
-        o.order_date ?? "",
+        o.sales_record_number ?? "",
         o.date_paid ?? "",
         o.ship_by_date ?? "",
         o.ebay_order_id,
         ebayNetProfit == null ? "" : ebayNetProfit.toFixed(2),
         e?.supplier_order_number ?? "",
         (e?.supplier_cost ?? "") as any,
-        o.order_status ?? "",
-        profit == null ? "" : profit.toFixed(2),
-        roi == null ? "" : roi.toFixed(2),
-        e?.sent_message ? "true" : "false",
-        e?.tracking ?? "",
-        e?.ebay_refund ? "true" : "false",
+        (o as any).buyer_zip ?? "",
         (e?.ebay_refund_amount ?? "") as any,
-        e?.amazon_refund ? "true" : "false",
         (e?.amazon_refund_amount ?? "") as any,
       ].map((v) => String(v ?? ""));
     });
@@ -568,13 +557,17 @@ export default function Orders() {
                 <Table>
                   <TableHeader className="sticky top-0 z-20 bg-muted/80 backdrop-blur supports-[backdrop-filter]:bg-muted/70">
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[120px] h-9 px-2.5 text-[11px]">Order date</TableHead>
+                      <TableHead className="w-[90px] h-9 px-2.5 text-[11px]">Sale No</TableHead>
                       <TableHead className="w-[120px] h-9 px-2.5 text-[11px]">Date paid</TableHead>
                       <TableHead className="w-[120px] h-9 px-2.5 text-[11px]">Ship by date</TableHead>
                       <TableHead className="min-w-[160px] h-9 px-2.5 text-[11px]">Order Number</TableHead>
                       <TableHead className="w-[120px] h-9 px-2.5 text-[11px]">Net Profit</TableHead>
-                      <TableHead className="min-w-[180px] h-9 px-2.5 text-[11px]">Supplier order #</TableHead>
-                      <TableHead className="w-[140px] h-9 px-2.5 text-[11px]">Supplier cost</TableHead>
+                      <TableHead className="min-w-[180px] h-9 px-2.5 text-[11px]">Supplier Order #</TableHead>
+                      <TableHead className="w-[120px] h-9 px-2.5 text-[11px]">Supplier Cost</TableHead>
+                      <TableHead className="w-[90px] h-9 px-2.5 text-[11px]">ZIP</TableHead>
+                      <TableHead className="w-[60px] h-9 px-2.5 text-[11px]">Refund</TableHead>
+                      <TableHead className="w-[110px] h-9 px-2.5 text-[11px]">eBay Refund</TableHead>
+                      <TableHead className="w-[110px] h-9 px-2.5 text-[11px]">Supplier Refund</TableHead>
                     </TableRow>
                   </TableHeader>
 
@@ -585,26 +578,22 @@ export default function Orders() {
                       const e = drafts[order.id] || rawEnrich;
                       const metrics = calc(order, e);
                       const isSaving = savingIds.has(order.id);
+                      const refundActive = Boolean(e?.ebay_refund);
 
                       return (
                         <TableRow key={order.id} className="align-top border-b group">
-                          <TableCell className="px-2.5 py-2 text-xs">
-                            {(() => {
-                              const sOrderDate = e?.supplier_order_date;
-                              if (sOrderDate) {
-                                return (
-                                  <div className="flex flex-col">
-                                    <span>{format(new Date(sOrderDate), 'MMM dd, yyyy')}</span>
-                                    <span className="text-[10px] text-muted-foreground">{format(new Date(sOrderDate), 'HH:mm')}</span>
-                                  </div>
-                                );
-                              }
-                              return formatDate(order.order_date);
-                            })()}
+                          {/* Sale No */}
+                          <TableCell className="px-2.5 py-2 text-xs font-medium tabular-nums">
+                            {order.sales_record_number ?? "—"}
                           </TableCell>
+
+                          {/* Date paid */}
                           <TableCell className="px-2.5 py-2 text-xs">{formatDate(order.date_paid)}</TableCell>
+
+                          {/* Ship by date */}
                           <TableCell className="px-2.5 py-2 text-xs">{formatDate(order.ship_by_date)}</TableCell>
 
+                          {/* Order Number */}
                           <TableCell className="px-2.5 py-2 font-mono text-xs max-w-[180px] truncate">
                             <a
                               href={`https://www.ebay.com/mesh/ord/details?mode=SH&orderid=${order.ebay_order_id}&source=Orders&ru=https%3A%2F%2Fwww.ebay.com%2Fsh%2Ford`}
@@ -617,30 +606,143 @@ export default function Orders() {
                             </a>
                           </TableCell>
 
+                          {/* Net Profit */}
                           <TableCell className="px-2.5 py-2 text-xs font-medium">
                             {formatMoney((order.net_profit ?? order.add_fee) ?? null, order.currency || "USD")}
                           </TableCell>
 
+                          {/* Supplier Order # — EDITABLE */}
                           <TableCell className="px-2.5 py-2">
-                            {e?.supplier_order_number ? (
-                              <a
-                                href={`https://www.amazon.com/your-orders/search?search=${e.supplier_order_number}&ref_=ppx_hzsearch_sb_dt_b`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="font-mono text-xs text-primary hover:underline inline-flex items-center gap-1"
-                              >
-                                {e.supplier_order_number}
-                                <ExternalLink className="h-3 w-3" />
-                              </a>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">—</span>
-                            )}
+                            <div className="flex items-center gap-1">
+                              <Input
+                                value={e?.supplier_order_number ?? ""}
+                                placeholder="—"
+                                className={tablePlainInputClass}
+                                onChange={(ev) => {
+                                  const v = ev.target.value;
+                                  setDrafts((prev) => ({
+                                    ...prev,
+                                    [order.id]: {
+                                      ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
+                                      supplier_order_number: v.trim() ? v : null,
+                                    },
+                                  }));
+                                }}
+                                onBlur={() => saveEnrichment(order.id, { supplier_order_number: drafts[order.id]?.supplier_order_number ?? null })}
+                              />
+                              {e?.supplier_order_number && (
+                                <a
+                                  href={`https://www.amazon.com/your-orders/search?search=${e.supplier_order_number}&ref_=ppx_hzsearch_sb_dt_b`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:text-primary/80 shrink-0"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              )}
+                            </div>
+                            {isSaving && <div className="text-[10px] text-muted-foreground mt-0.5">Saving…</div>}
                           </TableCell>
 
+                          {/* Supplier Cost — EDITABLE */}
                           <TableCell className="px-2.5 py-2">
-                            <div className="text-xs font-medium tabular-nums">
-                              {formatMoney(e?.supplier_cost ?? null, order.currency || "USD")}
-                            </div>
+                            <Input
+                              inputMode="decimal"
+                              value={e?.supplier_cost == null ? "" : String(e.supplier_cost)}
+                              placeholder="0.00"
+                              className={cn(tablePlainInputClass, "w-[80px] tabular-nums")}
+                              onChange={(ev) => {
+                                const n = numberOrNull(ev.target.value);
+                                setDrafts((prev) => ({
+                                  ...prev,
+                                  [order.id]: {
+                                    ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
+                                    supplier_cost: n,
+                                  },
+                                }));
+                              }}
+                              onBlur={() => saveEnrichment(order.id, { supplier_cost: drafts[order.id]?.supplier_cost ?? null })}
+                            />
+                          </TableCell>
+
+                          {/* ZIP */}
+                          <TableCell className="px-2.5 py-2 text-xs tabular-nums">
+                            {(order as any).buyer_zip ?? "—"}
+                          </TableCell>
+
+                          {/* Refund Toggle */}
+                          <TableCell className="px-2.5 py-2">
+                            <Switch
+                              checked={refundActive}
+                              onCheckedChange={(checked) => {
+                                setDrafts((prev) => ({
+                                  ...prev,
+                                  [order.id]: {
+                                    ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
+                                    ebay_refund: checked,
+                                    amazon_refund: checked,
+                                    ebay_refund_amount: checked ? (prev[order.id]?.ebay_refund_amount ?? null) : null,
+                                    amazon_refund_amount: checked ? (prev[order.id]?.amazon_refund_amount ?? null) : null,
+                                  },
+                                }));
+                                saveEnrichment(order.id, {
+                                  ebay_refund: checked,
+                                  amazon_refund: checked,
+                                  ebay_refund_amount: checked ? (drafts[order.id]?.ebay_refund_amount ?? null) : null,
+                                  amazon_refund_amount: checked ? (drafts[order.id]?.amazon_refund_amount ?? null) : null,
+                                });
+                              }}
+                            />
+                          </TableCell>
+
+                          {/* eBay Refund — numeric input */}
+                          <TableCell className="px-2.5 py-2">
+                            <Input
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              disabled={!refundActive}
+                              className={cn(tablePlainInputClass, "w-[80px] tabular-nums", !refundActive && "opacity-40")}
+                              value={e?.ebay_refund_amount == null ? "" : String(e.ebay_refund_amount)}
+                              onChange={(ev) => {
+                                const n = numberOrNull(ev.target.value);
+                                setDrafts((prev) => ({
+                                  ...prev,
+                                  [order.id]: {
+                                    ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
+                                    ebay_refund_amount: n,
+                                  },
+                                }));
+                              }}
+                              onBlur={() => {
+                                if (!refundActive) return;
+                                saveEnrichment(order.id, { ebay_refund_amount: drafts[order.id]?.ebay_refund_amount ?? null });
+                              }}
+                            />
+                          </TableCell>
+
+                          {/* Supplier Refund — numeric input */}
+                          <TableCell className="px-2.5 py-2">
+                            <Input
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              disabled={!refundActive}
+                              className={cn(tablePlainInputClass, "w-[80px] tabular-nums", !refundActive && "opacity-40")}
+                              value={e?.amazon_refund_amount == null ? "" : String(e.amazon_refund_amount)}
+                              onChange={(ev) => {
+                                const n = numberOrNull(ev.target.value);
+                                setDrafts((prev) => ({
+                                  ...prev,
+                                  [order.id]: {
+                                    ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
+                                    amazon_refund_amount: n,
+                                  },
+                                }));
+                              }}
+                              onBlur={() => {
+                                if (!refundActive) return;
+                                saveEnrichment(order.id, { amazon_refund_amount: drafts[order.id]?.amazon_refund_amount ?? null });
+                              }}
+                            />
                           </TableCell>
                         </TableRow>
                       );
@@ -656,6 +758,7 @@ export default function Orders() {
                   const e = drafts[order.id] || (Array.isArray(enrichData) ? enrichData[0] : enrichData);
                   const metrics = calc(order, e);
                   const isSaving = savingIds.has(order.id);
+                  const refundActive = Boolean(e?.ebay_refund);
 
                   return (
                     <div key={order.id} className="p-4 space-y-3 bg-card">
@@ -671,8 +774,9 @@ export default function Orders() {
                             <ExternalLink className="h-3 w-3" />
                           </a>
                           <div className="text-[10px] text-muted-foreground flex flex-wrap gap-x-3">
-                            <span>{formatDate(order.order_date)}</span>
-                            {e?.supplier_order_date && <span className="text-foreground font-medium whitespace-nowrap">{formatDate(e.supplier_order_date)}</span>}
+                            <span>Sale #{order.sales_record_number ?? "—"}</span>
+                            <span>{formatDate(order.date_paid)}</span>
+                            {(order as any).buyer_zip && <span>ZIP: {(order as any).buyer_zip}</span>}
                           </div>
                         </div>
                       </div>
@@ -683,30 +787,127 @@ export default function Orders() {
                           <p className="text-xs font-semibold">{formatMoney(metrics.ebayNetProfit, order.currency || "USD")}</p>
                         </div>
                         <div>
-                          <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight">Amazon Cost</p>
+                          <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight">Supplier Cost</p>
                           <p className="text-xs font-semibold">{formatMoney(metrics.supplierCost, order.currency || "USD")}</p>
                         </div>
                       </div>
 
                       <div className="space-y-3">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-muted-foreground">Amazon Order #</label>
-                          {e?.supplier_order_number ? (
-                            <div className="mt-0.5">
-                              <a
-                                href={`https://www.amazon.com/your-orders/search?search=${e.supplier_order_number}&ref_=ppx_hzsearch_sb_dt_b`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline inline-flex items-center gap-1.5 text-xs font-bold font-mono"
-                              >
-                                {e.supplier_order_number}
-                                <ExternalLink className="h-3 w-3" />
-                              </a>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted-foreground">Supplier Order #</label>
+                            <Input
+                              value={e?.supplier_order_number ?? ""}
+                              className="h-7 text-[10px] bg-muted/30 border-none shadow-none focus-visible:bg-muted/50 py-0"
+                              placeholder="Enter order #"
+                              onChange={(ev) => {
+                                const v = ev.target.value;
+                                setDrafts((prev) => ({
+                                  ...prev,
+                                  [order.id]: {
+                                    ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
+                                    supplier_order_number: v.trim() ? v : null,
+                                  },
+                                }));
+                              }}
+                              onBlur={() => saveEnrichment(order.id, { supplier_order_number: drafts[order.id]?.supplier_order_number ?? null })}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted-foreground">Supplier Cost</label>
+                            <Input
+                              inputMode="decimal"
+                              value={e?.supplier_cost == null ? "" : String(e.supplier_cost)}
+                              className="h-7 text-[10px] bg-muted/30 border-none shadow-none focus-visible:bg-muted/50 py-0"
+                              placeholder="0.00"
+                              onChange={(ev) => {
+                                const n = numberOrNull(ev.target.value);
+                                setDrafts((prev) => ({
+                                  ...prev,
+                                  [order.id]: {
+                                    ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
+                                    supplier_cost: n,
+                                  },
+                                }));
+                              }}
+                              onBlur={() => saveEnrichment(order.id, { supplier_cost: drafts[order.id]?.supplier_cost ?? null })}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Refund section */}
+                        <div className="p-2 rounded border border-border/50 bg-muted/20 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-tight">Refunds</span>
+                            <Switch
+                              checked={refundActive}
+                              onCheckedChange={(checked) => {
+                                setDrafts((prev) => ({
+                                  ...prev,
+                                  [order.id]: {
+                                    ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
+                                    ebay_refund: checked,
+                                    amazon_refund: checked,
+                                    ebay_refund_amount: checked ? (prev[order.id]?.ebay_refund_amount ?? null) : null,
+                                    amazon_refund_amount: checked ? (prev[order.id]?.amazon_refund_amount ?? null) : null,
+                                  },
+                                }));
+                                saveEnrichment(order.id, {
+                                  ebay_refund: checked,
+                                  amazon_refund: checked,
+                                  ebay_refund_amount: checked ? (drafts[order.id]?.ebay_refund_amount ?? null) : null,
+                                  amazon_refund_amount: checked ? (drafts[order.id]?.amazon_refund_amount ?? null) : null,
+                                });
+                              }}
+                              className="scale-75 origin-right"
+                            />
+                          </div>
+                          {refundActive && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-0.5">
+                                <label className="text-[9px] font-bold text-muted-foreground">eBay Refund</label>
+                                <Input
+                                  inputMode="decimal"
+                                  value={e?.ebay_refund_amount == null ? "" : String(e.ebay_refund_amount)}
+                                  placeholder="0.00"
+                                  className="h-6 text-[10px] bg-background border-border/50 py-0"
+                                  onChange={(ev) => {
+                                    const n = numberOrNull(ev.target.value);
+                                    setDrafts((prev) => ({
+                                      ...prev,
+                                      [order.id]: {
+                                        ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
+                                        ebay_refund_amount: n,
+                                      },
+                                    }));
+                                  }}
+                                  onBlur={() => saveEnrichment(order.id, { ebay_refund_amount: drafts[order.id]?.ebay_refund_amount ?? null })}
+                                />
+                              </div>
+                              <div className="space-y-0.5">
+                                <label className="text-[9px] font-bold text-muted-foreground">Supplier Refund</label>
+                                <Input
+                                  inputMode="decimal"
+                                  value={e?.amazon_refund_amount == null ? "" : String(e.amazon_refund_amount)}
+                                  placeholder="0.00"
+                                  className="h-6 text-[10px] bg-background border-border/50 py-0"
+                                  onChange={(ev) => {
+                                    const n = numberOrNull(ev.target.value);
+                                    setDrafts((prev) => ({
+                                      ...prev,
+                                      [order.id]: {
+                                        ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
+                                        amazon_refund_amount: n,
+                                      },
+                                    }));
+                                  }}
+                                  onBlur={() => saveEnrichment(order.id, { amazon_refund_amount: drafts[order.id]?.amazon_refund_amount ?? null })}
+                                />
+                              </div>
                             </div>
-                          ) : (
-                            <div className="text-[10px] text-muted-foreground font-mono mt-0.5">—</div>
                           )}
                         </div>
+
                         {isSaving && <div className="text-[9px] text-primary animate-pulse font-medium text-center bg-primary/5 py-1 rounded-full border border-primary/10">Synchronizing...</div>}
                       </div>
                     </div>
