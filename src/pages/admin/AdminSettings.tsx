@@ -16,7 +16,6 @@ export default function AdminSettings() {
     enableRegistration: true,
     requireEmailVerification: true,
     maxSessionsPerUser: 5,
-    enableAutoOrders: true,
     maintenanceMode: false,
   });
 
@@ -320,16 +319,7 @@ export default function AdminSettings() {
         </div>
 
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label className="text-foreground">Enable Auto Orders</Label>
-              <p className="text-sm text-muted-foreground">Allow automated order processing</p>
-            </div>
-            <Switch
-              checked={settings.enableAutoOrders}
-              onCheckedChange={(checked) => setSettings({ ...settings, enableAutoOrders: checked })}
-            />
-          </div>
+
         </div>
       </motion.div>
 

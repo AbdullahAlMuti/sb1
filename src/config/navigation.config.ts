@@ -154,7 +154,6 @@ export const USER_NAV_SECTIONS: NavSectionConfig[] = [
       { key: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
       { key: 'listings', icon: Package, label: 'Listings' },
       { key: 'ebay-orders', icon: ShoppingCart, label: 'eBay Orders' },
-      { key: 'orders', icon: Package, label: 'Auto Orders' },
       { key: 'subscription', icon: Crown, label: 'Subscription' },
       { key: 'billing-usage', icon: CreditCard, label: 'Billing & Usage' },
       { key: 'extension', icon: Puzzle, label: 'Extension' },

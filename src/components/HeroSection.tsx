@@ -8,7 +8,6 @@ import { motion, AnimatePresence } from "framer-motion";
 
 const featureTabs = [
   { id: 'listings', label: 'Smart Listings', icon: Package, description: 'AI-powered product listings that convert' },
-  { id: 'orders', label: 'Auto Orders', icon: ShoppingCart, description: 'Automated order fulfillment from Amazon' },
   { id: 'analytics', label: 'Profit Tracker', icon: BarChart3, description: 'Real-time analytics and profit insights' },
 ];
 

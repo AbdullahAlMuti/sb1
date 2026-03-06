@@ -191,7 +191,7 @@ chrome.storage.local.set({ saasToken: "${token}" }, () => {
               <Badge variant="secondary">AI Titles</Badge>
               <Badge variant="secondary">AI Descriptions</Badge>
               <Badge variant="secondary">Image Editor</Badge>
-              <Badge variant="secondary">Auto Orders</Badge>
+
               <Badge variant="secondary">Inventory Sync</Badge>
             </div>
             

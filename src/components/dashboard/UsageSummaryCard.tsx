@@ -105,20 +105,8 @@ export function UsageSummaryCard() {
           limit={limits.max_listings}
           color="text-emerald-500"
         />
-        {limits.max_auto_orders > 0 && (
-          <UsageItem
-            icon={ShoppingCart}
-            label="Auto Orders"
-            current={limits.orders_used}
-            limit={limits.max_auto_orders}
-            color="text-amber-500"
-          />
-        )}
-
-        {/* Upgrade prompt if near any limit */}
         {(limits.current_credits <= 5 || 
-          limits.listings_count >= limits.max_listings * 0.8 ||
-          (limits.max_auto_orders > 0 && limits.orders_used >= limits.max_auto_orders * 0.8)) && (
+          limits.listings_count >= limits.max_listings * 0.8) && (
           <Button 
             variant="outline" 
             className="w-full mt-2"

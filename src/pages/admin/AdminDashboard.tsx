@@ -208,23 +208,32 @@ export default function AdminDashboard() {
         .from('listings')
         .select('*', { count: 'exact', head: true });
 
-      // Fetch orders in date range
+      // Fetch orders in date range from ebay_orders
       const { data: orders } = await supabase
-        .from('auto_orders')
+        .from('ebay_orders' as any)
         .select('*')
-        .gte('created_at', rangeStart)
-        .lte('created_at', rangeEnd)
-        .order('created_at', { ascending: false });
+        .gte('order_date', rangeStart)
+        .lte('order_date', rangeEnd)
+        .order('order_date', { ascending: false });
 
-      const allOrders = orders || [];
+      const allOrders = (orders || []) as any[];
       const totalOrders = allOrders.length;
-      const pendingOrders = allOrders.filter(o => o.status === 'PENDING' || o.status === 'pending').length;
-      const completedOrders = allOrders.filter(o => o.status === 'COMPLETED' || o.status === 'completed').length;
-      const cancelledOrders = allOrders.filter(o => o.status === 'CANCELLED' || o.status === 'cancelled').length;
+      
+      const pendingOrders = allOrders.filter(o => 
+        ['pending', 'awaiting payment', 'processing'].includes((o.order_status || '').toLowerCase())
+      ).length;
+      
+      const completedOrders = allOrders.filter(o => 
+        ['completed', 'shipped', 'paid'].includes((o.order_status || '').toLowerCase())
+      ).length;
+      
+      const cancelledOrders = allOrders.filter(o => 
+        ['cancelled', 'returned', 'refunded'].includes((o.order_status || '').toLowerCase())
+      ).length;
 
       // Calculate revenues for selected period
-      const totalRevenue = allOrders.reduce((sum, o) => sum + (o.item_price || 0), 0);
-      const totalProfit = allOrders.reduce((sum, o) => sum + (o.profit || 0), 0);
+      const totalRevenue = allOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+      const totalProfit = totalRevenue * 0.15; // Estimate 15% margin for eBay orders
 
       // Fetch subscription stats
       const { data: subscriptions } = await (supabase
@@ -272,13 +281,14 @@ export default function AdminDashboard() {
       intervals.forEach((date, idx) => {
         const nextDate = intervals[idx + 1] || endOfDay(date);
         const periodOrders = allOrders.filter(o => {
-          if (!o.created_at) return false;
-          const orderDate = new Date(o.created_at);
+          const dateStr = o.order_date || o.created_at;
+          if (!dateStr) return false;
+          const orderDate = new Date(dateStr);
           return orderDate >= startOfDay(date) && orderDate < nextDate;
         });
         
-        const periodRevenue = periodOrders.reduce((sum, o) => sum + (o.item_price || 0), 0);
-        const periodProfit = periodOrders.reduce((sum, o) => sum + (o.profit || 0), 0);
+        const periodRevenue = periodOrders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+        const periodProfit = periodRevenue * 0.15;
 
         dailyData.push({
           date: format(date, dateFormat),

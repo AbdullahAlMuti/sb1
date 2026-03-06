@@ -543,14 +543,7 @@ export function DashboardHeader() {
               </div>
             )}
 
-            {limits?.max_auto_orders ? (
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Auto Orders</span>
-                <span className="text-sm font-medium text-foreground">
-                  {usage?.orders_used ?? 0} / {limits.max_auto_orders}
-                </span>
-              </div>
-            ) : null}
+
 
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Member Since</span>

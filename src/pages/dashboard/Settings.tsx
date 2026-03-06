@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import NotificationSettings from '@/components/dashboard/NotificationSettings';
 import GoogleSheetsSettings from '@/components/dashboard/GoogleSheetsSettings';
 import { EbaySyncSettings } from '@/components/dashboard/EbaySyncSettings';
+import DeveloperSettings from '@/components/dashboard/DeveloperSettings';
 
 export default function DashboardSettings() {
   return (
@@ -19,6 +20,11 @@ export default function DashboardSettings() {
 
       {/* eBay Sync Configuration */}
       <EbaySyncSettings />
+
+      {/* Local Development Tools - Only visible in dev or on localhost */}
+      {(import.meta.env.DEV || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
+        <DeveloperSettings />
+      )}
 
       {/* Google Sheets Integration */}
       <GoogleSheetsSettings />

@@ -47,7 +47,7 @@ const extensionStructure = {
   content_scripts: [
     { name: "amazon_injector.js", type: "js", description: "Amazon page integration" },
     { name: "auth_sync.js", type: "js", description: "Auth synchronization" },
-    { name: "auto_order_executor.js", type: "js", description: "Auto order execution" },
+
     { name: "dailyfindz_automator.js", type: "js", description: "DailyFindz automation" },
     { name: "description_paster.js", type: "js", description: "Description paste helper" },
     { name: "ebay_lister.js", type: "js", description: "eBay listing functionality" },
@@ -186,7 +186,7 @@ export default function ExtensionViewer() {
                   <Badge variant="secondary">AI Titles</Badge>
                   <Badge variant="secondary">AI Descriptions</Badge>
                   <Badge variant="secondary">Image Editor</Badge>
-                  <Badge variant="secondary">Auto Orders</Badge>
+
                   <Badge variant="secondary">Inventory Sync</Badge>
                 </div>
               </div>

@@ -578,70 +578,7 @@ export default function GoogleSheetsSettings() {
             )}
           </div>
 
-          {/* Debug Details (only shown after test) */}
-          {debugInfo && (
-            <Accordion type="single" collapsible>
-              <AccordionItem value="debug">
-                <AccordionTrigger className="text-sm">
-                  Debug details (last test)
-                </AccordionTrigger>
-                <AccordionContent className="space-y-3">
-                  <div className="flex items-center justify-end">
-                    <Button size="sm" variant="secondary" onClick={copyDebugReport}>
-                      <ClipboardCopy className="h-3 w-3 mr-1" />
-                      Copy debug report
-                    </Button>
-                  </div>
-                  <div className="text-xs text-muted-foreground space-y-1">
-                    <div><span className="font-medium">Started:</span> {debugInfo.startedAt}</div>
-                    <div className="break-all"><span className="font-medium">URL:</span> {debugInfo.scriptUrl}</div>
-                  </div>
 
-                  <div className="space-y-3">
-                    <div>
-                      <div className="text-xs font-medium">AMZ_Listings</div>
-                      {debugInfo.listings?.errorMessage && (
-                        <div className="text-xs text-destructive break-words">{debugInfo.listings.errorMessage}</div>
-                      )}
-                      <pre className="bg-muted p-3 rounded-lg text-xs overflow-x-auto max-h-64">
-{JSON.stringify(
-  {
-    invokeError: debugInfo.listings?.errorMessage ?? null,
-    invokeResult: debugInfo.listings?.result ?? null,
-    data: debugInfo.listings?.data ?? null,
-  },
-  null,
-  2
-)}
-                      </pre>
-                    </div>
-
-                    <div>
-                      <div className="text-xs font-medium">AMZ_Orders</div>
-                      {debugInfo.orders?.errorMessage && (
-                        <div className="text-xs text-destructive break-words">{debugInfo.orders.errorMessage}</div>
-                      )}
-                      <pre className="bg-muted p-3 rounded-lg text-xs overflow-x-auto max-h-64">
-{JSON.stringify(
-  {
-    invokeError: debugInfo.orders?.errorMessage ?? null,
-    invokeResult: debugInfo.orders?.result ?? null,
-    data: debugInfo.orders?.data ?? null,
-  },
-  null,
-  2
-)}
-                      </pre>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-muted-foreground">
-                    Tip: Look for <code>data.debug.upstream_status</code> and <code>data.debug.upstream_response_text</code> in the payload.
-                  </p>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          )}
 
           {/* Auto-sync toggles */}
           <div className="space-y-4">
@@ -659,19 +596,6 @@ export default function GoogleSheetsSettings() {
               />
             </div>
             
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Auto-sync Orders</Label>
-                <p className="text-xs text-muted-foreground">
-                  Automatically sync new orders to Google Sheets
-                </p>
-              </div>
-              <Switch
-                checked={autoSyncOrders}
-                onCheckedChange={setAutoSyncOrders}
-                disabled={!isConnected}
-              />
-            </div>
           </div>
 
           {/* Save Button */}

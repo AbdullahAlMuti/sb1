@@ -195,8 +195,6 @@ export default function Dashboard() {
       const [
         listingsResult,
         alertsResult,
-        currentOrdersResult,
-        previousOrdersResult,
         topListingsResult,
         allListingsResult,
         // eBay Orders from extension sync
@@ -215,20 +213,6 @@ export default function Dashboard() {
           .select('id', { count: 'exact', head: true })
           .eq('user_id', user.id)
           .eq('status', 'UNREAD'),
-        // Current period auto orders (fulfillment)
-        supabase
-          .from('auto_orders')
-          .select('*')
-          .eq('user_id', user.id)
-          .gte('created_at', dateRange.from.toISOString())
-          .lte('created_at', dateRange.to.toISOString()),
-        // Previous period auto orders for comparison
-        supabase
-          .from('auto_orders')
-          .select('*')
-          .eq('user_id', user.id)
-          .gte('created_at', previousRange.from.toISOString())
-          .lte('created_at', previousRange.to.toISOString()),
         // Top listings
         supabase
           .from('listings')
@@ -257,8 +241,6 @@ export default function Dashboard() {
           .lte('order_date', previousRange.to.toISOString()) as any,
       ]);
 
-      const currentOrders = currentOrdersResult.data || [];
-      const previousOrders = previousOrdersResult.data || [];
       const listings = topListingsResult.data || [];
       const allListings = allListingsResult.data || [];
       
@@ -272,11 +254,6 @@ export default function Dashboard() {
       const currentEbayOrders: EbayOrderRow[] = (currentEbayOrdersResult as any)?.data || [];
       const previousEbayOrders: EbayOrderRow[] = (previousEbayOrdersResult as any)?.data || [];
       
-      // Calculate current period stats from auto_orders
-      const completedAutoOrders = currentOrders.filter(o => o.status === 'COMPLETED');
-      const pendingAutoOrders = currentOrders.filter(o => o.status === 'PENDING');
-      const autoOrdersProfit = completedAutoOrders.reduce((acc, o) => acc + (Number(o.profit) || 0), 0);
-      
       // Calculate eBay orders stats (from extension sync)
       const completedEbayOrders = currentEbayOrders.filter(o => 
         ['completed', 'shipped', 'paid'].includes((o.order_status || '').toLowerCase())
@@ -286,46 +263,39 @@ export default function Dashboard() {
       );
       const ebayOrdersRevenue = currentEbayOrders.reduce((acc, o) => acc + (Number(o.total_amount) || 0), 0);
       
-      // Combine stats: prioritize eBay orders if they exist, otherwise fall back to auto_orders
-      const totalCompletedOrders = completedEbayOrders.length || completedAutoOrders.length;
-      const totalPendingOrders = pendingEbayOrders.length || pendingAutoOrders.length;
-      const totalProfit = ebayOrdersRevenue > 0 ? ebayOrdersRevenue * 0.15 : autoOrdersProfit; // Estimate 15% margin if using ebay orders
+      // Combine stats: use eBay orders
+      const totalCompletedOrders = completedEbayOrders.length;
+      const totalPendingOrders = pendingEbayOrders.length;
+      const totalProfit = ebayOrdersRevenue * 0.15; // Estimate 15% margin
       
       // Calculate revenue from all listings
       const totalRevenue = allListings.reduce((acc, l) => acc + (Number(l.ebay_price) || 0), 0);
       const totalCost = allListings.reduce((acc, l) => acc + (Number(l.amazon_price) || 0), 0);
 
-      // Calculate previous period stats for comparison (combine both order types)
-      const previousCompletedAutoOrders = previousOrders.filter(o => o.status === 'COMPLETED');
-      const previousCompletedEbayOrders = previousEbayOrders.filter(o => 
-        ['completed', 'shipped', 'paid'].includes((o.order_status || '').toLowerCase())
-      );
+      // Calculate previous period stats for comparison
       const previousEbayRevenue = previousEbayOrders.reduce((acc, o) => acc + (Number(o.total_amount) || 0), 0);
-      const previousAutoProfit = previousCompletedAutoOrders.reduce((acc, o) => acc + (Number(o.profit) || 0), 0);
-      const previousProfit = previousEbayRevenue > 0 ? previousEbayRevenue * 0.15 : previousAutoProfit;
-      const previousTotalOrders = previousEbayOrders.length || previousOrders.length;
+      const previousProfit = previousEbayRevenue * 0.15;
+      const previousTotalOrders = previousEbayOrders.length;
 
       // Calculate percentage changes
       const profitChange = previousProfit > 0 
         ? Math.round(((totalProfit - previousProfit) / previousProfit) * 100 * 10) / 10
         : totalProfit > 0 ? 100 : 0;
       
-      const currentTotalOrders = currentEbayOrders.length || currentOrders.length;
+      const currentTotalOrders = currentEbayOrders.length;
       const ordersChange = previousTotalOrders > 0
         ? Math.round(((currentTotalOrders - previousTotalOrders) / previousTotalOrders) * 100 * 10) / 10
         : currentTotalOrders > 0 ? 100 : 0;
 
-      // Generate real trend data based on eBay orders if available, otherwise use auto_orders
-      const ordersForTrend = currentEbayOrders.length > 0 
-        ? currentEbayOrders.map(o => ({
+      // Generate real trend data based on eBay orders
+      const ordersForTrend = currentEbayOrders.map(o => ({
             ...o,
             created_at: o.order_date || o.created_at,
             status: (o.order_status || '').toLowerCase().includes('completed') || 
                     (o.order_status || '').toLowerCase().includes('shipped') ? 'COMPLETED' : 'PENDING',
             profit: (Number(o.total_amount) || 0) * 0.15,
             item_price: Number(o.total_amount) || 0,
-          }))
-        : currentOrders;
+          }));
       const trendDataGenerated = generateRealTrendData(ordersForTrend, dateRange);
 
       // Transform top listings

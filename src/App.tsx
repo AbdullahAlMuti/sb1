@@ -95,7 +95,6 @@ const App = () => (
                 <Route path="listings" element={<Listings />} />
                 <Route path="listings/new" element={<NewListing />} />
                 <Route path="ebay-orders" element={<EbayOrders />} />
-                <Route path="orders" element={<Orders />} />
                 <Route path="alerts" element={<Alerts />} />
 
                 <Route path="subscription" element={<Subscription />} />

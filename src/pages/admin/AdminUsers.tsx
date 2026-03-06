@@ -81,7 +81,6 @@ interface UserWithDetails {
     current_period_end: string | null;
     admin_override_limits: {
       max_listings?: number;
-      max_auto_orders?: number;
       credits_per_month?: number;
     } | null;
   };
@@ -93,12 +92,12 @@ interface Plan {
   display_name: string;
   credits_per_month: number | null;
   max_listings?: number | null;
-  max_auto_orders?: number | null;
+
 }
 
 interface OverrideLimits {
   max_listings?: number;
-  max_auto_orders?: number;
+
   credits_per_month?: number;
 }
 
@@ -652,9 +651,7 @@ export default function AdminUsers() {
       if (overrideLimits.max_listings !== undefined && overrideLimits.max_listings > 0) {
         cleanedOverrides.max_listings = overrideLimits.max_listings;
       }
-      if (overrideLimits.max_auto_orders !== undefined && overrideLimits.max_auto_orders >= 0) {
-        cleanedOverrides.max_auto_orders = overrideLimits.max_auto_orders;
-      }
+
       if (overrideLimits.credits_per_month !== undefined && overrideLimits.credits_per_month > 0) {
         cleanedOverrides.credits_per_month = overrideLimits.credits_per_month;
       }
@@ -1724,19 +1721,7 @@ export default function AdminUsers() {
                 min={0}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Max Auto Orders / Month (leave empty for plan default)</Label>
-              <Input
-                type="number"
-                value={overrideLimits.max_auto_orders ?? ''}
-                onChange={(e) => setOverrideLimits(prev => ({
-                  ...prev,
-                  max_auto_orders: e.target.value ? parseInt(e.target.value) : undefined
-                }))}
-                placeholder="e.g., 50"
-                min={0}
-              />
-            </div>
+
             <div className="space-y-2">
               <Label>Credits Per Month (leave empty for plan default)</Label>
               <Input

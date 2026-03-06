@@ -41,10 +41,14 @@ export default function Auth() {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
-  const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(
+    (location.state as { pendingEmail?: string })?.pendingEmail || null
+  );
   const [isResendingEmail, setIsResendingEmail] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
 
-  const { signIn, signUp, user, isEmailVerified, isLoading: authLoading } = useAuth();
+  const { signIn, signUp, verifyOtp, user, isEmailVerified, isLoading: authLoading } = useAuth();
   const { createCheckout, subscribed, planName, isLoading: subscriptionLoading } = useSubscription();
 
   // Handle redirect after login/signup
@@ -213,9 +217,6 @@ export default function Auth() {
       const { error } = await supabase.auth.resend({
         type: 'signup',
         email: pendingVerificationEmail,
-        options: {
-          emailRedirectTo: `${window.location.origin}/verify-email`,
-        },
       });
 
       if (error) throw error;
@@ -224,6 +225,26 @@ export default function Auth() {
       toast.error(error.message || 'Failed to resend verification email');
     } finally {
       setIsResendingEmail(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingVerificationEmail || otpCode.length !== 6) {
+      toast.error('Please enter the 6-digit verification code.');
+      return;
+    }
+    
+    setIsVerifyingOtp(true);
+    try {
+      const { error } = await verifyOtp(pendingVerificationEmail, otpCode);
+      if (error) {
+        // Error toast is handled by useAuth
+        return;
+      }
+      // On success, useAuth's auth listener handles session and triggers navigation
+    } finally {
+      setIsVerifyingOtp(false);
     }
   };
 
@@ -238,7 +259,7 @@ export default function Auth() {
 
   const getDescription = () => {
     if (mode === 'verify-email') {
-      return `We've sent a verification link to ${pendingVerificationEmail}`;
+      return `We've sent a 6-digit verification code to ${pendingVerificationEmail}`;
     }
     if (mode === 'signup' && selectedPlanFromState) {
       return `Complete your signup to start with the ${selectedPlanFromState.display_name} plan`;
@@ -314,14 +335,44 @@ export default function Auth() {
               
               <div className="space-y-2">
                 <p className="text-muted-foreground">
-                  Click the link in your email to verify your account and complete registration.
+                  Please enter the 6-digit code sent to your email to complete registration.
                 </p>
                 <p className="text-sm text-muted-foreground">
                   Didn't receive the email? Check your spam folder or click below to resend.
                 </p>
               </div>
 
-              <div className="space-y-3">
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="otpCode" className="text-foreground">Verification Code</Label>
+                  <Input
+                    id="otpCode"
+                    type="text"
+                    placeholder="123456"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="text-center tracking-[0.5em] text-lg font-bold bg-secondary/50 border-border/50 text-foreground"
+                    maxLength={6}
+                  />
+                </div>
+
+                <Button 
+                  type="submit"
+                  disabled={isVerifyingOtp || otpCode.length !== 6}
+                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold h-11"
+                >
+                  {isVerifyingOtp ? (
+                    <>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    'Verify Code'
+                  )}
+                </Button>
+              </form>
+
+              <div className="space-y-3 pt-2 border-t border-border/50">
                 <Button 
                   variant="outline" 
                   onClick={handleResendVerification}
@@ -336,7 +387,7 @@ export default function Auth() {
                   ) : (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2" />
-                      Resend Verification Email
+                      Resend Verification Code
                     </>
                   )}
                 </Button>

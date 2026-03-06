@@ -59,17 +59,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 
-const AmazonIcon = ({ className }: { className?: string }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-    className={className}
-  >
-    <path d="M15.54 11.697c-.36.988-1.465 1.15-1.465 1.15-1.55.77-3.66.953-5.763.4-2.623-.69-4.708-2.67-5.06-5.3-.39-2.9 1.15-5.322 3.82-6.243 2.112-.728 4.757-.258 6.463 1.25.176.157.14.426-.05.518s-.58.267-.58.267c-.21.096-.407.035-.555-.13-.996-1.12-2.522-1.447-3.896-.97-1.78.618-2.695 2.408-2.316 4.382.28 1.465 1.445 2.502 2.872 2.7.997.14 1.95-.125 2.9-.667.65-.373.49-1.332-.244-1.332-.236 0-.325.045-.325.045s.68-.44.82-.472c.18-.04.426.052.54.218 1.042 1.48 2.378-.45 2.378-.45l.93 1.05s-1.83 3.016-4.04 3.016h-.03zm4.558-5.748c0-.62-.57-1.144-1.29-1.144-.735 0-1.288.542-1.288 1.15 0 .633.58 1.152 1.306 1.152.008 0 .015 0 .023 0 .692-.02 1.25-.526 1.25-1.158zm-3.568 2.02c.035-.494 1.01-1.39 1.01-1.39.81-.82 2.152-.61 2.327-.58.12.02.164-.092.05-.198-.48-.448-.962-.803-1.634-.984-1.116-.3-2.325.176-2.88 1.15-.38.67-.32 1.558-.32 1.558s.22.46.447.445z" />
-    <path d="M11.96 14.545c-1.325 0-2.617-.22-3.83-.585 2.14 1.63 4.793 1.833 7.228.66-.46.8-1.465 1.76z" fill="none" />
-  </svg>
-);
+const AmazonIcon = () => null; // Placeholder to be removed later if not used
 
 type PeriodPreset = "all" | "last90days" | "today" | "yesterday" | "thisweek" | "lastweek" | "thismonth" | "lastmonth" | "thisyear" | "lastyear" | "custom" | (string & {});
 
@@ -172,12 +162,7 @@ export default function EbayOrders() {
     refunded: 0,
   });
 
-  const [fulfillmentStatus, setFulfillmentStatus] = useState<Record<string, 'amazon' | 'error' | null>>({});
-
-  const [fulfillDialogOpen, setFulfillDialogOpen] = useState(false);
-
-  const [fulfillData, setFulfillData] = useState<{ url: string; sku: string; orderId: string; order: EbayOrder } | null>(null);
-  const [confirmingFulfillment, setConfirmingFulfillment] = useState(false);
+  // Removed Amazon fulfillment states
 
   // Generate options for the last 12 months
   const monthOptions = useMemo(() => {
@@ -247,73 +232,7 @@ export default function EbayOrders() {
   }, [periodPreset]);
 
   // Listen for Amazon Fulfillment Completion
-  useEffect(() => {
-    const handleOrderCompletion = async (event: MessageEvent) => {
-      if (event.data.type === 'ORDER_COMPLETED_EVENT' && event.data.payload) {
-        const { amazonOrderId, cost, deliveryDate, orderId } = event.data.payload;
-        const numericCost = parseFloat(cost.replace(/[^0-9.]/g, ''));
-
-        toast.success(`Amazon Order Placed! ID: ${amazonOrderId}`);
-
-        try {
-          // 1. Update order_enrichments (Supplier Details)
-          const { error: enrichError } = await supabase
-            .from('order_enrichments')
-            .upsert({
-              ebay_order_row_id: orderId,
-              supplier_order_number: amazonOrderId,
-              supplier_cost: numericCost,
-              supplier_arriving_date: deliveryDate,
-              supplier_order_date: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            }, { onConflict: 'ebay_order_row_id' });
-
-          if (enrichError) console.error('Enrichment Update Error:', enrichError);
-
-          // 2. Update ebay_orders (Price & Delivery Date)
-          const { error: orderError } = await supabase
-            .from('ebay_orders')
-            .update({
-              amazon_price: numericCost,
-              delivery_date: deliveryDate || null,
-            })
-            .eq('id', orderId);
-
-          if (orderError) {
-            console.error('Failed to update order in DB:', orderError);
-            toast.error('Failed to save fulfillment details to DB');
-          } else {
-            toast.success('Fulfillment data saved successfully');
-            // Local state update for immediate feedback
-            setOrders(prev => prev.map(o => o.id === orderId ? {
-              ...o,
-              amazon_price: numericCost,
-              delivery_date: deliveryDate,
-              order_enrichments: {
-                supplier_order_number: amazonOrderId,
-                supplier_cost: numericCost,
-                supplier_arriving_date: deliveryDate,
-                supplier_order_date: new Date().toISOString(),
-                tracking: null
-              }
-            } : o));
-
-            setProcessingOrderIds(prev => {
-              const next = new Set(prev);
-              next.delete(orderId);
-              return next;
-            });
-            setUpdatedOrderIds(prev => new Set(prev).add(orderId));
-          }
-        } catch (e) {
-          console.error('DB Update Error:', e);
-        }
-      }
-    };
-
-    window.addEventListener('message', handleOrderCompletion);
-    return () => window.removeEventListener('message', handleOrderCompletion);
-  }, []);
+  // Removed handleOrderCompletion effect (Amazon Fulfillment)
 
   // Get display label for period preset
   const getPeriodLabel = (preset: PeriodPreset): string => {
@@ -658,102 +577,13 @@ export default function EbayOrders() {
     });
   };
 
-  const handleOrderFulfillment = async (order: EbayOrder) => {
-    // 1. Get SKU from order
-    const sku = order.custom_label || order.item_number;
-    if (!sku) {
-      toast.error("Order has no SKU/Custom Label");
-      return;
-    }
-
-    setConfirmingFulfillment(true);
-    try {
-      // 2. Call match-listing edge function
-      const { data, error } = await supabase.functions.invoke('match-listing', {
-        body: { sku },
-      });
-
-      if (error) throw error;
-
-      if (!data?.found) {
-        toast.error("No matching listing found", {
-          description: `Checked SKU: ${sku}`
-        });
-        setFulfillmentStatus(prev => ({ ...prev, [order.id]: 'error' }));
-        setProcessingOrderIds(prev => {
-          const next = new Set(prev);
-          next.delete(order.id);
-          return next;
-        });
-        return;
-      }
-
-      // Success: Set status to amazon
-      setFulfillmentStatus(prev => ({ ...prev, [order.id]: 'amazon' }));
-
-
-      // 3. Open confirmation dialog
-      setFulfillData({
-        url: data.listing.amazon_url,
-        sku: data.listing.sku, // or matched SKU
-        orderId: order.id,
-        order: order
-      });
-      setFulfillDialogOpen(true);
-
-    } catch (e: any) {
-      console.error("Fulfill check error:", e);
-      toast.error("Failed to check listings", {
-        description: e.message
-      });
-      // Set error status
-      setFulfillmentStatus(prev => ({ ...prev, [order.id]: 'error' }));
-
-      // Remove processing state
-      setProcessingOrderIds(prev => {
-        const next = new Set(prev);
-        next.delete(order.id);
-        return next;
-      });
-    } finally {
-      setConfirmingFulfillment(false);
-    }
-  };
+  // Removed handleOrderFulfillment (Amazon Fulfillment)
 
   const getStatusBadge = (order: EbayOrder) => {
-    // 1. Success State: Amazon Found
-    if (fulfillmentStatus[order.id] === 'amazon') {
-      return (
-        <Badge
-          className="gap-1.5 cursor-pointer bg-[#FF9900] hover:bg-[#FF9900]/90 text-black font-bold transition-colors"
-          onClick={(e) => {
-            e.stopPropagation();
-            // Re-trigger fulfillment (dialog) without re-fetching if we cached details? 
-            // For now, simpler to re-run handlers which checks cache or re-fetches.
-            // Actually, if we just want to open the link, we need the stored URL.
-            // But we didn't store the URL in the map, only the status.
-            // So we re-run logic.
-            setProcessingOrderIds(prev => new Set(prev).add(order.id));
-            handleOrderFulfillment(order);
-          }}
-        >
-          <AmazonIcon className="h-4 w-4" />
-          Buy
-        </Badge>
-      );
-    }
+    const statusLower = (order.total_amount === 0 || order.total_amount === null)
+      ? "cancelled"
+      : (order.order_status?.toLowerCase() || "pending");
 
-    // 2. Error State: Not Found
-    if (fulfillmentStatus[order.id] === 'error') {
-      return (
-        <Badge variant="destructive" className="gap-1.5 font-medium cursor-not-allowed opacity-90">
-          <AlertCircle className="h-3 w-3" />
-          No Link
-        </Badge>
-      );
-    }
-
-    // 3. Processing State
     if (processingOrderIds.has(order.id) || order.order_status?.toLowerCase() === 'processing') {
       return (
         <Badge variant="outline" className="gap-1.5 border-green-500/25 bg-green-500/10 text-green-600 animate-pulse font-medium">
@@ -763,38 +593,15 @@ export default function EbayOrders() {
       );
     }
 
-    const statusLower = (order.total_amount === 0 || order.total_amount === null)
-      ? "cancelled"
-      : (order.order_status?.toLowerCase() || "pending");
-
-    // Design Choice: If it's already 'completed' or 'shipped', show the status badge.
-    // Otherwise, show the active "Fulfill" button.
-    if (['completed', 'shipped', 'cancelled', 'refunded'].includes(statusLower)) {
-      return (
-        <Badge variant="outline" className={cn(
-          "capitalize font-medium",
-          statusLower === 'completed' && "border-green-500/25 bg-green-500/10 text-green-600",
-          statusLower === 'shipped' && "border-blue-500/25 bg-blue-500/10 text-blue-600",
-          statusLower === 'cancelled' && "border-red-500/25 bg-red-500/10 text-red-600",
-        )}>
-          {statusLower}
-        </Badge>
-      );
-    }
-
-    // Always show "Fulfill" button if not processing and not terminal state
     return (
-      <Badge
-        className="gap-1.5 cursor-pointer hover:bg-primary/90 transition-colors"
-        onClick={(e) => {
-          e.stopPropagation();
-          // Set processing immediately
-          setProcessingOrderIds(prev => new Set(prev).add(order.id));
-          handleOrderFulfillment(order);
-        }}
-      >
-        <ShoppingBag className="h-3 w-3" />
-        Fulfill
+      <Badge variant="outline" className={cn(
+        "capitalize font-medium shadow-sm",
+        statusLower === 'completed' && "border-green-500/25 bg-green-500/10 text-green-600",
+        statusLower === 'shipped' && "border-blue-500/25 bg-blue-500/10 text-blue-600",
+        statusLower === 'cancelled' && "border-red-500/25 bg-red-500/10 text-red-600",
+        statusLower === 'pending' && "border-amber-500/25 bg-amber-500/10 text-amber-600",
+      )}>
+        {statusLower}
       </Badge>
     );
   };
@@ -1556,58 +1363,6 @@ export default function EbayOrders() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Fulfillment Confirmation */}
-      <AlertDialog open={fulfillDialogOpen} onOpenChange={setFulfillDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Fulfill Order?</AlertDialogTitle>
-            <AlertDialogDescription>
-              We found a matching listing for SKU: <span className="font-medium text-foreground">{fulfillData?.sku}</span>
-              <br /><br />
-              This will open the Amazon product page in a new tab.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                if (fulfillData?.orderId) {
-                  setProcessingOrderIds(prev => {
-                    const next = new Set(prev);
-                    next.delete(fulfillData.orderId);
-                    return next;
-                  });
-                }
-              }}
-            >Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (fulfillData?.url && fulfillData?.order) {
-                  // Trigger Extension Automation
-                  window.postMessage({
-                    type: 'TRIGGER_AMAZON_FULFILLMENT',
-                    order: {
-                      ...fulfillData.order,
-                      url: fulfillData.url // Pass the Amazon URL for opening
-                    }
-                  }, '*');
-
-                  toast.success("Starting Amazon Fulfillment...", {
-                    description: "Extension will open Amazon and fill details."
-                  });
-                } else if (fulfillData?.url) {
-                  // Fallback if order data missing
-                  window.open(fulfillData.url, '_blank');
-                }
-
-                // Keep processing state active
-                setFulfillDialogOpen(false);
-              }}
-            >
-              Start Automation
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <OrderDetailsDrawer
         open={detailsOpen}

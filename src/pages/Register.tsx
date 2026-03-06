@@ -89,15 +89,15 @@ export default function Register() {
     try {
       const { error } = await signUp(email, password, fullName);
       if (!error) {
-        toast.success('Account created! Redirecting to payment...');
-        // Redirect to payment required page for paid plans
-        if (selectedPlan && selectedPlan.price_monthly > 0) {
-          navigate('/payment-required');
-        } else {
-          // Free plan - go directly to dashboard
-          localStorage.removeItem('selectedPlan');
-          navigate('/dashboard');
+        toast.success('Account created! Please verify your email.');
+        if (selectedPlan) {
+          localStorage.setItem('selectedPlanId', selectedPlan.id);
         }
+        // Free plan or paid plan, everyone must verify email first
+        navigate('/auth', { 
+          replace: true,
+          state: { mode: 'verify-email', pendingEmail: email }
+        });
       }
     } catch (error: any) {
       toast.error(error.message || 'An error occurred');

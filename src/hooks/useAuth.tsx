@@ -29,9 +29,10 @@ interface AuthContextType {
   isEmailVerified: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, fullName?: string) => Promise<{ error: Error | null }>;
+  verifyOtp: (email: string, token: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
-  resendVerificationEmail: () => Promise<{ error: Error | null }>;
+  resendVerificationEmail: (email?: string) => Promise<{ error: Error | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -216,13 +217,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, fullName?: string) => {
-    const redirectUrl = `${window.location.origin}/verify-email`;
-
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: redirectUrl,
         data: {
           full_name: fullName,
         },
@@ -238,7 +236,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error };
     }
 
-    toast.success('Check your email to confirm your account!');
+    toast.success('Please check your email for the verification code!');
+    return { error: null };
+  };
+
+  const verifyOtp = async (email: string, token: string) => {
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: 'signup',
+    });
+
+    if (error) {
+      toast.error(error.message);
+      return { error };
+    }
+
+    toast.success('Email verified successfully!');
     return { error: null };
   };
 
@@ -251,17 +265,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     toast.success('Signed out successfully');
   };
 
-  const resendVerificationEmail = async () => {
-    if (!user?.email) {
+  const resendVerificationEmail = async (email?: string) => {
+    const targetEmail = email || user?.email;
+    if (!targetEmail) {
       return { error: new Error('No email found') };
     }
 
     const { error } = await supabase.auth.resend({
       type: 'signup',
-      email: user.email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/verify-email`,
-      },
+      email: targetEmail,
     });
 
     if (error) {
@@ -286,6 +298,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isEmailVerified,
         signIn,
         signUp,
+        verifyOtp,
         signOut,
         refreshProfile,
         resendVerificationEmail,
