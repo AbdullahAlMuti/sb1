@@ -46,7 +46,8 @@ const scrapeProductDetails = () => {
         dimensions: '',
         height: '',
         weight: '',
-        description: ''
+        description: '',
+        rawSpecs: {}
     };
 
     // --- Scrape Brand from Walmart ---
@@ -83,27 +84,32 @@ const scrapeProductDetails = () => {
     specSelectors.forEach(selector => {
         const specTable = document.querySelector(selector);
         if (specTable) {
-            const rows = specTable.querySelectorAll('tr, .spec-row, [class*="spec-row"], div[class*="row"]');
+            const rows = specTable.querySelectorAll('tr, .spec-row, [class*="spec-row"], div[class*="row"], li');
             rows.forEach(row => {
-                const labelElement = row.querySelector('th, td:first-child, .spec-label, [class*="label"], dt');
-                const valueElement = row.querySelector('td:last-child, .spec-value, [class*="value"], dd');
+                const labelElement = row.querySelector('th, td:first-child, .spec-label, [class*="label"], dt, span:first-child, h3');
+                const valueElement = row.querySelector('td:last-child, .spec-value, [class*="value"], dd, span:last-child, p, div:last-child');
                 
-                if (labelElement && valueElement) {
-                    const label = (labelElement.innerText || labelElement.textContent)?.trim().toLowerCase() || '';
+                if (labelElement && valueElement && labelElement !== valueElement) {
+                    const label = (labelElement.innerText || labelElement.textContent)?.trim() || '';
                     const value = (valueElement.innerText || valueElement.textContent)?.trim() || '';
+                    const lowerLabel = label.toLowerCase();
                     
-                    if (label.includes('brand') || label.includes('manufacturer')) {
-                        if (!details.brand) details.brand = value;
-                    } else if (label.includes('model')) {
-                        if (!details.model) details.model = value;
-                    } else if (label.includes('color')) {
-                        if (!details.color) details.color = value;
-                    } else if (label.includes('dimension') || label.includes('size')) {
-                        if (!details.dimensions) details.dimensions = value;
-                    } else if (label.includes('weight')) {
-                        if (!details.weight) details.weight = value;
-                    } else if (label.includes('height')) {
-                        if (!details.height) details.height = value;
+                    if (label && value && label.length < 50 && value.length < 200) {
+                        details.rawSpecs[label] = value;
+                        
+                        if (lowerLabel.includes('brand') || lowerLabel.includes('manufacturer')) {
+                            if (!details.brand) details.brand = value;
+                        } else if (lowerLabel.includes('model')) {
+                            if (!details.model) details.model = value;
+                        } else if (lowerLabel.includes('color')) {
+                            if (!details.color) details.color = value;
+                        } else if (lowerLabel.includes('dimension') || lowerLabel.includes('size')) {
+                            if (!details.dimensions) details.dimensions = value;
+                        } else if (lowerLabel.includes('weight')) {
+                            if (!details.weight) details.weight = value;
+                        } else if (lowerLabel.includes('height')) {
+                            if (!details.height) details.height = value;
+                        }
                     }
                 }
             });
@@ -731,12 +737,14 @@ const scrapeCompleteProductData = () => {
     });
     
     // Format Specifications
-    const specifications = {};
-    if (details.brand) specifications.Brand = details.brand;
-    if (details.model) specifications.Model = details.model;
-    if (details.color) specifications.Color = details.color;
-    if (details.dimensions) specifications.Dimensions = details.dimensions;
-    if (details.weight) specifications.Weight = details.weight;
+    const specifications = { ...details.rawSpecs }; // Copy all raw specs first
+    
+    // Ensure core fields are present if they were scraped directly but not in rawSpecs
+    if (details.brand && !specifications.Brand && !specifications.brand) specifications.Brand = details.brand;
+    if (details.model && !specifications.Model && !specifications.model) specifications.Model = details.model;
+    if (details.color && !specifications.Color && !specifications.color) specifications.Color = details.color;
+    if (details.dimensions && !specifications.Dimensions && !specifications.dimensions) specifications.Dimensions = details.dimensions;
+    if (details.weight && !specifications.Weight && !specifications.weight) specifications.Weight = details.weight;
 
     return {
         title: title,
