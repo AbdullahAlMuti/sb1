@@ -123,7 +123,9 @@ const scrapeProductDetails = () => {
         '.about-product',
         '.product-highlights',
         '[class*="highlight"]',
-        '.about-item-list'
+        '.about-item-list',
+        '[data-testid="key-features"]',
+        '.key-item-features'
     ];
     
     let combinedDescription = [];
@@ -134,6 +136,33 @@ const scrapeProductDetails = () => {
             const text = highlightSection.innerText?.trim();
             if (text && !combinedDescription.includes(text)) {
                 combinedDescription.push(text);
+            }
+        }
+    });
+
+    // Also look for h3 containing "Key item features" and grab adjacent content
+    const h3s = document.querySelectorAll('h3, h2');
+    h3s.forEach(heading => {
+        if (heading.innerText && (heading.innerText.toLowerCase().includes('key item features') || heading.innerText.toLowerCase().includes('key features') || heading.innerText.toLowerCase().includes('about this item'))) {
+            let nextEl = heading.nextElementSibling;
+            // Iterate through siblings until the next heading
+            while (nextEl && !['H2', 'H3', 'H1', 'DIV'].includes(nextEl.tagName)) {
+                if (nextEl.innerText) {
+                    const text = nextEl.innerText.trim();
+                    if (text && !combinedDescription.includes(text)) {
+                        combinedDescription.push(text);
+                    }
+                }
+                nextEl = nextEl.nextElementSibling;
+            }
+            
+            // Sometimes it is nested, so let's just grab the parent container if it's small enough
+            const parent = heading.parentElement;
+            if (parent && parent.innerText && parent.innerText.length < 2000) {
+                 const text = parent.innerText.trim();
+                 if (text && !combinedDescription.includes(text)) {
+                     combinedDescription.push(text);
+                 }
             }
         }
     });
@@ -745,9 +774,22 @@ const scrapeCompleteProductData = () => {
     
     // Scrape Bullet Points (Highlights/Features/Key Features)
     const bulletPoints = [];
-    document.querySelectorAll('.about-product-bullets li, .about-item-list li, [data-testid="product-highlights"] li, [data-testid="long-description"] li').forEach(el => {
+    document.querySelectorAll('.about-product-bullets li, .about-item-list li, [data-testid="product-highlights"] li, [data-testid="long-description"] li, [data-testid="key-features"] li, .key-item-features li').forEach(el => {
         const text = (el.innerText || el.textContent).trim();
-        if (text) bulletPoints.push(text);
+        if (text && !bulletPoints.includes(text)) bulletPoints.push(text);
+    });
+
+    const featureHeadings = document.querySelectorAll('h3, h2, span, font, p');
+    featureHeadings.forEach(heading => {
+        if (heading.innerText && (heading.innerText.toLowerCase().includes('key item features') || heading.innerText.toLowerCase().includes('key features') || heading.innerText.toLowerCase().includes('about this item'))) {
+            const parent = heading.closest('section') || heading.parentElement;
+            if (parent) {
+                 parent.querySelectorAll('li').forEach(li => {
+                     const text = (li.innerText || li.textContent).trim();
+                     if (text && !bulletPoints.includes(text)) bulletPoints.push(text);
+                 });
+            }
+        }
     });
     
     // Format Specifications
