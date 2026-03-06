@@ -20,9 +20,6 @@ interface AISettings {
 }
 
 const AVAILABLE_MODELS = [
-  'gpt-5-nano',
-  'gpt-5-mini',
-  'gpt-5',
   'gpt-4o-mini',
   'gpt-4o',
 ];
@@ -89,7 +86,7 @@ Generate the eBay description in clean HTML format. Do not include any markdown 
 const DEFAULT_SETTINGS: AISettings = {
   provider: 'lovable',
   openai_api_key: '',
-  model: 'gpt-5-nano',
+  model: 'gpt-4o-mini',
   title_prompt: DEFAULT_TITLE_PROMPT,
   description_prompt: DEFAULT_DESCRIPTION_PROMPT,
 };
@@ -243,7 +240,7 @@ export default function AdminAISettings() {
                 OpenAI API Configuration
               </CardTitle>
               <CardDescription>
-                Configure your OpenAI API key to use GPT-5 Nano for AI generation.
+                Configure your OpenAI API key to use GPT-4o Mini for AI generation.
                 {!hasApiKey && " Without an API key, the system will use Lovable AI Gateway as fallback."}
               </CardDescription>
             </CardHeader>
@@ -313,7 +310,7 @@ export default function AdminAISettings() {
                         <SelectItem key={model} value={model}>
                           <div className="flex items-center gap-2">
                             {model}
-                            {model === 'gpt-5-nano' && (
+                            {model === 'gpt-4o-mini' && (
                               <Badge variant="secondary" className="ml-1">Recommended</Badge>
                             )}
                           </div>
@@ -322,7 +319,7 @@ export default function AdminAISettings() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    GPT-5 Nano is the fastest and most cost-effective option
+                    GPT-4o Mini is the fastest and most cost-effective option for bulk processing
                   </p>
                 </div>
               </div>

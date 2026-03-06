@@ -20,11 +20,8 @@ const AI_PROVIDERS = [
     id: 'openai',
     label: 'OpenAI',
     models: [
-      { id: 'gpt-5-nano', label: 'GPT-5 Nano (Fastest, Cheapest)' },
       { id: 'gpt-4o-mini', label: 'GPT-4o Mini (Fast, Affordable)' },
       { id: 'gpt-4o', label: 'GPT-4o (Powerful)' },
-      { id: 'gpt-5', label: 'GPT-5 (Most Powerful)' },
-      { id: 'gpt-5-mini', label: 'GPT-5 Mini (Balanced)' },
     ]
   },
   {
@@ -52,7 +49,7 @@ const AI_PROVIDERS = [
     models: [
       { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash (Default)' },
       { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-      { id: 'openai/gpt-5-mini', label: 'GPT-5 Mini' },
+      { id: 'openai/gpt-4o-mini', label: 'GPT-4o Mini' },
     ]
   }
 ];

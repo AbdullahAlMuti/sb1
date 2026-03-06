@@ -164,7 +164,7 @@ serve(async (req) => {
       );
     }
 
-    // Fallback if the user's config was still pointing to an old slow model or gpt-5-nano
+    // Fallback if the user's config was still pointing to an old slow model or gpt-4o-mini
     if (model === "gpt-5-nano") {
       model = "gpt-4o-mini";
     }

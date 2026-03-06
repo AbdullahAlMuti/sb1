@@ -31,8 +31,8 @@ serve(async (req) => {
 
     switch (provider) {
       case 'openai': {
-        // Use provided model or default to gpt-5-nano
-        const testModel = model || 'gpt-5-nano';
+        // Use provided model or default to gpt-4o-mini
+        const testModel = model || 'gpt-4o-mini';
         console.log(`[test-api-key] Testing OpenAI with model: ${testModel}`);
         
         const response = await fetch('https://api.openai.com/v1/chat/completions', {

@@ -40,8 +40,8 @@ interface GeneratedTitle {
 }
 
 const AI_PROVIDERS = [
-  { value: 'lovable', label: 'Lovable AI (Recommended)', models: ['google/gemini-3-flash-preview', 'google/gemini-2.5-flash', 'google/gemini-2.5-pro', 'openai/gpt-5-mini'] },
-  { value: 'openai', label: 'OpenAI', models: ['gpt-5-nano', 'gpt-5', 'gpt-5-mini', 'gpt-4o', 'gpt-4o-mini'] },
+  { value: 'lovable', label: 'Lovable AI (Recommended)', models: ['google/gemini-3-flash-preview', 'google/gemini-2.5-flash', 'google/gemini-2.5-pro'] },
+  { value: 'openai', label: 'OpenAI', models: ['gpt-4o-mini', 'gpt-4o'] },
   { value: 'anthropic', label: 'Anthropic', models: ['claude-sonnet-4-5', 'claude-3-5-haiku-20241022'] },
   { value: 'gemini', label: 'Google Gemini', models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro'] },
 ];
