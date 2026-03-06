@@ -993,7 +993,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     title: request.title, sku: request.sku,
                     ebay_price: request.finalPrice, amazon_price: request.amazonPrice,
                     amazon_url: request.productURL, amazon_asin: request.asin,
-                    status: "active"
+                    status: "active",
+                    amazon_data: { image: request.mainImage }
                   })
                 });
               }

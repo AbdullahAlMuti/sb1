@@ -917,7 +917,8 @@ function initActionButtons() {
           finalPrice,
           amazonPrice,
           productURL,
-          asin: product.asin || product.ASIN
+          asin: product.asin || product.ASIN,
+          mainImage: product.image || product.imageUrl || product.mainImage || product.amazonImage || ''
         };
 
         chrome.runtime.sendMessage(messageData, (response) => {
