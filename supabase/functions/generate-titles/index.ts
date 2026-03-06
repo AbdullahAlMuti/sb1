@@ -225,7 +225,7 @@ serve(async (req) => {
               { role: "user", content: prompt }
             ],
             response_format: { type: "json_object" },
-            max_tokens: 150,
+            max_tokens: 800,
           }),
         },
       );
@@ -251,7 +251,7 @@ serve(async (req) => {
             },
           );
         }
-        throw new Error(`OpenAI API error: ${response.status}`);
+        throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
@@ -296,7 +296,7 @@ serve(async (req) => {
               { role: "user", content: prompt },
             ],
             response_format: { type: "json_object" },
-            max_tokens: 150,
+            max_tokens: 800,
           }),
         },
       );
@@ -330,7 +330,7 @@ serve(async (req) => {
             },
           );
         }
-        throw new Error(`AI gateway error: ${response.status}`);
+        throw new Error(`AI gateway error: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
