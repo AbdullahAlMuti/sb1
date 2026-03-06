@@ -3899,10 +3899,6 @@ async function getProductDataForExport() {
     const sku = document.getElementById('sku-input')?.value || 'No SKU';
 
     // Try multiple selectors to find the calculated price (same as Opti-List button)
-    // Ensure latest calculation
-    if (typeof quickCalculate === 'function') {
-        quickCalculate();
-    }
 
     const priceInput = document.getElementById('sell-it-for-input') ||
                        document.querySelector('.price-field input[type="text"]') ||
