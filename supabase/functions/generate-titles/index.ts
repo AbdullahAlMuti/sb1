@@ -211,7 +211,14 @@ serve(async (req) => {
             model: model.startsWith("openai/")
               ? model.replace("openai/", "")
               : model,
-            messages: [{ role: "user", content: prompt }],
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are an expert eBay product title generator. You MUST follow ALL instructions in the user's prompt exactly. Do not add conversational filler. Always respond with valid JSON only, exactly matching the requested structure.",
+              },
+              { role: "user", content: prompt }
+            ],
             response_format: { type: "json_object" },
             max_tokens: 150,
           }),

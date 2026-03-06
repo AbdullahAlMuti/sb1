@@ -234,7 +234,11 @@ serve(async (req) => {
           body: JSON.stringify({
             model: model.startsWith('openai/') ? model.replace('openai/', '') : model,
             messages: [
-              { role: 'user', content: 'You are an expert product listing generator. You must ALWAYS output ONLY a valid JSON object matching the requested structure.\n\n' + prompt }
+              { 
+                role: 'system', 
+                content: 'You are an expert product listing generator. You MUST follow ALL instructions in the user\'s prompt exactly. Pay strict attention to length limits, formatting requirements, and exclusions. NEVER output markdown code blocks. Always respond with valid JSON only, exactly matching the requested structure.' 
+              },
+              { role: 'user', content: prompt }
             ],
             response_format: { type: "json_object" },
             max_tokens: 500
