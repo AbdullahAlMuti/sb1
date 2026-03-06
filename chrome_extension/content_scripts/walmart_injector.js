@@ -122,13 +122,19 @@ const scrapeProductDetails = () => {
         '[data-testid="product-highlights"]',
         '.about-product',
         '.product-highlights',
-        '[class*="highlight"]'
+        '[class*="highlight"]',
+        '.about-item-list'
     ];
+    
+    let combinedDescription = [];
     
     highlightSelectors.forEach(selector => {
         const highlightSection = document.querySelector(selector);
-        if (highlightSection && !details.description) {
-            details.description = highlightSection.innerText?.trim() || '';
+        if (highlightSection) {
+            const text = highlightSection.innerText?.trim();
+            if (text && !combinedDescription.includes(text)) {
+                combinedDescription.push(text);
+            }
         }
     });
 
@@ -157,20 +163,28 @@ const scrapeProductDetails = () => {
     // --- Scrape Product Description ---
     const descriptionSelectors = [
         '[data-testid="product-description"]',
+        '[data-testid="long-description"]',
+        '.dangerous-html',
         '.product-description',
         '.about-desc',
         '#product-description',
         '.prod-ProductDescription',
-        '[itemprop="description"]'
+        '[itemprop="description"]',
+        '.about-item-complete'
     ];
     
     for (const selector of descriptionSelectors) {
-        const descElement = document.querySelector(selector);
-        if (descElement && !details.description) {
-            details.description = descElement.innerText?.trim() || '';
-            break;
-        }
+        // Collect all matching description elements
+        const descElements = document.querySelectorAll(selector);
+        descElements.forEach(descElement => {
+            const text = descElement.innerText?.trim();
+            if (text && !combinedDescription.includes(text)) {
+                combinedDescription.push(text);
+            }
+        });
     }
+    
+    details.description = combinedDescription.join('\n\n');
     
     return details;
 };
@@ -729,9 +743,9 @@ const scrapeCompleteProductData = () => {
         if (text) categoryList.push(text);
     });
     
-    // Scrape Bullet Points (Highlights/Features)
+    // Scrape Bullet Points (Highlights/Features/Key Features)
     const bulletPoints = [];
-    document.querySelectorAll('.about-product-bullets li, .about-item-list li, [data-testid="product-highlights"] li').forEach(el => {
+    document.querySelectorAll('.about-product-bullets li, .about-item-list li, [data-testid="product-highlights"] li, [data-testid="long-description"] li').forEach(el => {
         const text = (el.innerText || el.textContent).trim();
         if (text) bulletPoints.push(text);
     });
