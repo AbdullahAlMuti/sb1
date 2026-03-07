@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { format, endOfMonth, endOfYear, startOfMonth, startOfYear, subDays, subMonths, subWeeks, subYears } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { CalendarIcon, CheckCircle2, ChevronDown, Download, ExternalLink, RefreshCw, Search } from "lucide-react";
+import { CalendarIcon, CheckCircle2, ChevronDown, Download, ExternalLink, RefreshCw, Search, Sparkles, Upload } from "lucide-react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -555,20 +555,22 @@ export default function Orders() {
             <>
               {/* Desktop Expert Table */}
               <div className="hidden md:block overflow-x-auto scrollbar-thin">
-                <Table className="table-fixed">
+                <Table>
                   <TableHeader className="sticky top-0 z-20 bg-muted/80 backdrop-blur supports-[backdrop-filter]:bg-muted/70">
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="h-8 px-1.5 text-[11px]">Sale No</TableHead>
-                      <TableHead className="h-8 px-1.5 text-[11px]">Date paid</TableHead>
-                      <TableHead className="h-8 px-1.5 text-[11px]">Ship by</TableHead>
-                      <TableHead className="h-8 px-1.5 text-[11px]">Order Number</TableHead>
-                      <TableHead className="h-8 px-1.5 text-[11px]">Net Profit</TableHead>
-                      <TableHead className="h-8 px-1.5 text-[11px]">Supplier Order #</TableHead>
-                      <TableHead className="h-8 px-1.5 text-[11px]">Supplier Cost</TableHead>
-                      <TableHead className="h-8 px-1.5 text-[11px]">ZIP</TableHead>
-                      <TableHead className="h-8 px-1.5 text-[11px]">Refund</TableHead>
-                      <TableHead className="h-8 px-1.5 text-[11px]">eBay Refund</TableHead>
-                      <TableHead className="h-8 px-1.5 text-[11px]">Supplier Refund</TableHead>
+                      <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">Sale No</TableHead>
+                      <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">Date paid</TableHead>
+                      <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">Ship by</TableHead>
+                      <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">Order Number</TableHead>
+                      <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">Net Profit</TableHead>
+                      <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">Supplier Order #</TableHead>
+                      <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">Supplier Cost</TableHead>
+                      <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">ZIP</TableHead>
+                      <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">Refund</TableHead>
+                      <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">eBay Refund</TableHead>
+                      <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">Supplier Refund</TableHead>
+                      <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">Tracking</TableHead>
+                      <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap w-[70px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
 
@@ -584,12 +586,12 @@ export default function Orders() {
                       return (
                         <TableRow key={order.id} className="align-top border-b group">
                           {/* Sale No */}
-                          <TableCell className="px-1.5 py-1.5 text-xs font-medium tabular-nums">
+                          <TableCell className="px-2 py-1.5 text-xs font-medium tabular-nums">
                             {order.sales_record_number ?? "—"}
                           </TableCell>
 
                           {/* Date paid */}
-                          <TableCell className="px-1.5 py-1.5 text-xs">{formatDate(order.date_paid)}</TableCell>
+                          <TableCell className="px-2 py-1.5 text-xs">{formatDate(order.date_paid)}</TableCell>
 
                           {/* Ship by date */}
                           <TableCell className="px-1.5 py-1.5 text-xs">{formatDate(order.ship_by_date)}</TableCell>
@@ -744,6 +746,46 @@ export default function Orders() {
                                 saveEnrichment(order.id, { amazon_refund_amount: drafts[order.id]?.amazon_refund_amount ?? null });
                               }}
                             />
+                          </TableCell>
+
+                          {/* Tracking — EDITABLE */}
+                          <TableCell className="px-2 py-1.5">
+                            <Input
+                              value={e?.tracking ?? ""}
+                              placeholder="—"
+                              className={tablePlainInputClass}
+                              onChange={(ev) => {
+                                const v = ev.target.value;
+                                setDrafts((prev) => ({
+                                  ...prev,
+                                  [order.id]: {
+                                    ...(prev[order.id] || { ebay_order_row_id: order.id } as EnrichmentRow),
+                                    tracking: v.trim() ? v : null,
+                                  },
+                                }));
+                              }}
+                              onBlur={() => saveEnrichment(order.id, { tracking: drafts[order.id]?.tracking ?? null })}
+                            />
+                          </TableCell>
+
+                          {/* Actions — Generate + Upload */}
+                          <TableCell className="px-2 py-1.5">
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                title="Generate"
+                                className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                              >
+                                <Sparkles className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                title="Upload"
+                                className="inline-flex items-center justify-center h-6 w-6 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                              >
+                                <Upload className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
