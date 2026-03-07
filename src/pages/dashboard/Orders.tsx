@@ -558,17 +558,17 @@ export default function Orders() {
                 <Table>
                   <TableHeader className="sticky top-0 z-20 bg-muted/80 backdrop-blur supports-[backdrop-filter]:bg-muted/70">
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[90px] h-9 px-2.5 text-[11px]">Sale No</TableHead>
-                      <TableHead className="w-[120px] h-9 px-2.5 text-[11px]">Date paid</TableHead>
-                      <TableHead className="w-[120px] h-9 px-2.5 text-[11px]">Ship by date</TableHead>
-                      <TableHead className="min-w-[160px] h-9 px-2.5 text-[11px]">Order Number</TableHead>
-                      <TableHead className="w-[120px] h-9 px-2.5 text-[11px]">Net Profit</TableHead>
-                      <TableHead className="min-w-[180px] h-9 px-2.5 text-[11px]">Supplier Order #</TableHead>
-                      <TableHead className="w-[120px] h-9 px-2.5 text-[11px]">Supplier Cost</TableHead>
-                      <TableHead className="w-[90px] h-9 px-2.5 text-[11px]">ZIP</TableHead>
-                      <TableHead className="w-[60px] h-9 px-2.5 text-[11px]">Refund</TableHead>
-                      <TableHead className="w-[110px] h-9 px-2.5 text-[11px]">eBay Refund</TableHead>
-                      <TableHead className="w-[110px] h-9 px-2.5 text-[11px]">Supplier Refund</TableHead>
+                      <TableHead className="w-[70px] h-8 px-1.5 text-[11px]">Sale No</TableHead>
+                      <TableHead className="w-[90px] h-8 px-1.5 text-[11px]">Date paid</TableHead>
+                      <TableHead className="w-[90px] h-8 px-1.5 text-[11px]">Ship by</TableHead>
+                      <TableHead className="min-w-[140px] h-8 px-1.5 text-[11px]">Order Number</TableHead>
+                      <TableHead className="w-[80px] h-8 px-1.5 text-[11px]">Net Profit</TableHead>
+                      <TableHead className="min-w-[150px] h-8 px-1.5 text-[11px]">Supplier Order #</TableHead>
+                      <TableHead className="w-[90px] h-8 px-1.5 text-[11px]">Supplier Cost</TableHead>
+                      <TableHead className="w-[60px] h-8 px-1.5 text-[11px]">ZIP</TableHead>
+                      <TableHead className="w-[50px] h-8 px-1.5 text-[11px]">Refund</TableHead>
+                      <TableHead className="w-[90px] h-8 px-1.5 text-[11px]">eBay Refund</TableHead>
+                      <TableHead className="w-[90px] h-8 px-1.5 text-[11px]">Supplier Refund</TableHead>
                     </TableRow>
                   </TableHeader>
 
@@ -584,18 +584,18 @@ export default function Orders() {
                       return (
                         <TableRow key={order.id} className="align-top border-b group">
                           {/* Sale No */}
-                          <TableCell className="px-2.5 py-2 text-xs font-medium tabular-nums">
+                          <TableCell className="px-1.5 py-1.5 text-xs font-medium tabular-nums">
                             {order.sales_record_number ?? "—"}
                           </TableCell>
 
                           {/* Date paid */}
-                          <TableCell className="px-2.5 py-2 text-xs">{formatDate(order.date_paid)}</TableCell>
+                          <TableCell className="px-1.5 py-1.5 text-xs">{formatDate(order.date_paid)}</TableCell>
 
                           {/* Ship by date */}
-                          <TableCell className="px-2.5 py-2 text-xs">{formatDate(order.ship_by_date)}</TableCell>
+                          <TableCell className="px-1.5 py-1.5 text-xs">{formatDate(order.ship_by_date)}</TableCell>
 
                           {/* Order Number */}
-                          <TableCell className="px-2.5 py-2 font-mono text-xs max-w-[180px] truncate">
+                          <TableCell className="px-1.5 py-1.5 font-mono text-xs max-w-[180px] truncate">
                             <a
                               href={`https://www.ebay.com/mesh/ord/details?mode=SH&orderid=${order.ebay_order_id}&source=Orders&ru=https%3A%2F%2Fwww.ebay.com%2Fsh%2Ford`}
                               target="_blank"
@@ -608,12 +608,12 @@ export default function Orders() {
                           </TableCell>
 
                           {/* Net Profit */}
-                          <TableCell className="px-2.5 py-2 text-xs font-medium">
+                          <TableCell className="px-1.5 py-1.5 text-xs font-medium">
                             {formatMoney((order.net_profit ?? order.add_fee) ?? null, order.currency || "USD")}
                           </TableCell>
 
                           {/* Supplier Order # — EDITABLE */}
-                          <TableCell className="px-2.5 py-2">
+                          <TableCell className="px-1.5 py-1.5">
                             <div className="flex items-center gap-1">
                               <Input
                                 value={e?.supplier_order_number ?? ""}
@@ -646,7 +646,7 @@ export default function Orders() {
                           </TableCell>
 
                           {/* Supplier Cost — EDITABLE */}
-                          <TableCell className="px-2.5 py-2">
+                          <TableCell className="px-1.5 py-1.5">
                             <Input
                               inputMode="decimal"
                               value={e?.supplier_cost == null ? "" : String(e.supplier_cost)}
@@ -667,12 +667,12 @@ export default function Orders() {
                           </TableCell>
 
                           {/* ZIP */}
-                          <TableCell className="px-2.5 py-2 text-xs tabular-nums">
+                          <TableCell className="px-1.5 py-1.5 text-xs tabular-nums">
                             {(order as any).shipping_address?.postal_code || (order as any).buyer_zip || "—"}
                           </TableCell>
 
                           {/* Refund Toggle */}
-                          <TableCell className="px-2.5 py-2">
+                          <TableCell className="px-1.5 py-1.5">
                             <Switch
                               checked={refundActive}
                               onCheckedChange={(checked) => {
@@ -697,7 +697,7 @@ export default function Orders() {
                           </TableCell>
 
                           {/* eBay Refund — numeric input */}
-                          <TableCell className="px-2.5 py-2">
+                          <TableCell className="px-1.5 py-1.5">
                             <Input
                               inputMode="decimal"
                               placeholder="0.00"
@@ -722,7 +722,7 @@ export default function Orders() {
                           </TableCell>
 
                           {/* Supplier Refund — numeric input */}
-                          <TableCell className="px-2.5 py-2">
+                          <TableCell className="px-1.5 py-1.5">
                             <Input
                               inputMode="decimal"
                               placeholder="0.00"
