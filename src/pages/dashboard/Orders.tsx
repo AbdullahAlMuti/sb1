@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { format, endOfMonth, endOfYear, startOfMonth, startOfYear, subDays, subMonths, subWeeks, subYears } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { CalendarIcon, CheckCircle2, ChevronDown, Download, ExternalLink, RefreshCw, Search, Sparkles, Upload } from "lucide-react";
+import { CalendarIcon, CheckCircle2, ChevronDown, DollarSign, Download, ExternalLink, RefreshCw, Search, Sparkles, TrendingUp, Upload, Wallet } from "lucide-react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -347,6 +347,7 @@ export default function Orders() {
       "Net profit",
       "Supplier order number",
       "Supplier cost",
+      "Profit",
       "ZIP",
       "eBay refund amount",
       "Supplier refund amount",
@@ -363,6 +364,7 @@ export default function Orders() {
         ebayNetProfit == null ? "" : ebayNetProfit.toFixed(2),
         e?.supplier_order_number ?? "",
         (e?.supplier_cost ?? "") as any,
+        ebayNetProfit != null && (e?.supplier_cost != null) ? (ebayNetProfit - (e?.supplier_cost ?? 0)).toFixed(2) : "",
         (o as any).shipping_address?.postal_code || (o as any).buyer_zip || "",
         (e?.ebay_refund_amount ?? "") as any,
         (e?.amazon_refund_amount ?? "") as any,
@@ -540,6 +542,53 @@ export default function Orders() {
         </CardContent>
       </Card>
 
+      {/* Summary Stats */}
+      {!isLoading && orders.length > 0 && (() => {
+        let totalNet = 0;
+        let totalSupplier = 0;
+        let totalProfit = 0;
+        orders.forEach((o) => {
+          const enrichData = (o as any).order_enrichments || (o as any).order_enrichment;
+          const e = drafts[o.id] || (Array.isArray(enrichData) ? enrichData[0] : enrichData);
+          const net = (o.net_profit ?? o.add_fee) ?? 0;
+          const sup = typeof e?.supplier_cost === "number" ? e.supplier_cost : 0;
+          totalNet += Number(net) || 0;
+          totalSupplier += sup;
+          totalProfit += (Number(net) || 0) - sup;
+        });
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-lg border border-border bg-card p-4 flex items-center gap-3">
+              <div className="h-9 w-9 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
+                <DollarSign className="h-4 w-4 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground font-medium">Total Net Profit</p>
+                <p className="text-lg font-bold tabular-nums text-foreground">${totalNet.toFixed(2)}</p>
+              </div>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-4 flex items-center gap-3">
+              <div className="h-9 w-9 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0">
+                <Wallet className="h-4 w-4 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground font-medium">Total Supplier Cost</p>
+                <p className="text-lg font-bold tabular-nums text-foreground">${totalSupplier.toFixed(2)}</p>
+              </div>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-4 flex items-center gap-3">
+              <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", totalProfit >= 0 ? "bg-emerald-500/10" : "bg-red-500/10")}>
+                <TrendingUp className={cn("h-4 w-4", totalProfit >= 0 ? "text-emerald-600" : "text-red-600")} />
+              </div>
+              <div>
+                <p className="text-[11px] text-muted-foreground font-medium">Total Profit</p>
+                <p className={cn("text-lg font-bold tabular-nums", totalProfit >= 0 ? "text-emerald-600" : "text-red-600")}>${totalProfit.toFixed(2)}</p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       <Card className="overflow-hidden border-border shadow-sm">
         <CardContent className="p-0">
           {isLoading ? (
@@ -565,6 +614,7 @@ export default function Orders() {
                       <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">Net Profit</TableHead>
                       <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">Supplier Order #</TableHead>
                       <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">Supplier Cost</TableHead>
+                      <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">Profit</TableHead>
                       <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">ZIP</TableHead>
                       <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">Refund</TableHead>
                       <TableHead className="h-8 px-2 text-[11px] whitespace-nowrap">eBay Refund</TableHead>
@@ -666,6 +716,16 @@ export default function Orders() {
                               }}
                               onBlur={() => saveEnrichment(order.id, { supplier_cost: drafts[order.id]?.supplier_cost ?? null })}
                             />
+                          </TableCell>
+
+                          {/* Profit = Net Profit - Supplier Cost */}
+                          <TableCell className="px-2 py-1.5 text-xs font-bold tabular-nums">
+                            <span className={cn(
+                              metrics.profit != null && metrics.profit >= 0 ? "text-emerald-600" : "",
+                              metrics.profit != null && metrics.profit < 0 ? "text-red-600" : "",
+                            )}>
+                              {metrics.profit != null ? formatMoney(metrics.profit, order.currency || "USD") : "—"}
+                            </span>
                           </TableCell>
 
                           {/* ZIP */}
