@@ -555,20 +555,20 @@ export default function Orders() {
             <>
               {/* Desktop Expert Table */}
               <div className="hidden md:block overflow-x-auto scrollbar-thin">
-                <Table>
+                <Table className="table-fixed">
                   <TableHeader className="sticky top-0 z-20 bg-muted/80 backdrop-blur supports-[backdrop-filter]:bg-muted/70">
                     <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[70px] h-8 px-1.5 text-[11px]">Sale No</TableHead>
-                      <TableHead className="w-[90px] h-8 px-1.5 text-[11px]">Date paid</TableHead>
-                      <TableHead className="w-[90px] h-8 px-1.5 text-[11px]">Ship by</TableHead>
-                      <TableHead className="min-w-[140px] h-8 px-1.5 text-[11px]">Order Number</TableHead>
-                      <TableHead className="w-[80px] h-8 px-1.5 text-[11px]">Net Profit</TableHead>
-                      <TableHead className="min-w-[150px] h-8 px-1.5 text-[11px]">Supplier Order #</TableHead>
-                      <TableHead className="w-[90px] h-8 px-1.5 text-[11px]">Supplier Cost</TableHead>
-                      <TableHead className="w-[60px] h-8 px-1.5 text-[11px]">ZIP</TableHead>
-                      <TableHead className="w-[50px] h-8 px-1.5 text-[11px]">Refund</TableHead>
-                      <TableHead className="w-[90px] h-8 px-1.5 text-[11px]">eBay Refund</TableHead>
-                      <TableHead className="w-[90px] h-8 px-1.5 text-[11px]">Supplier Refund</TableHead>
+                      <TableHead className="h-8 px-1.5 text-[11px]">Sale No</TableHead>
+                      <TableHead className="h-8 px-1.5 text-[11px]">Date paid</TableHead>
+                      <TableHead className="h-8 px-1.5 text-[11px]">Ship by</TableHead>
+                      <TableHead className="h-8 px-1.5 text-[11px]">Order Number</TableHead>
+                      <TableHead className="h-8 px-1.5 text-[11px]">Net Profit</TableHead>
+                      <TableHead className="h-8 px-1.5 text-[11px]">Supplier Order #</TableHead>
+                      <TableHead className="h-8 px-1.5 text-[11px]">Supplier Cost</TableHead>
+                      <TableHead className="h-8 px-1.5 text-[11px]">ZIP</TableHead>
+                      <TableHead className="h-8 px-1.5 text-[11px]">Refund</TableHead>
+                      <TableHead className="h-8 px-1.5 text-[11px]">eBay Refund</TableHead>
+                      <TableHead className="h-8 px-1.5 text-[11px]">Supplier Refund</TableHead>
                     </TableRow>
                   </TableHeader>
 
@@ -595,7 +595,7 @@ export default function Orders() {
                           <TableCell className="px-1.5 py-1.5 text-xs">{formatDate(order.ship_by_date)}</TableCell>
 
                           {/* Order Number */}
-                          <TableCell className="px-1.5 py-1.5 font-mono text-xs max-w-[180px] truncate">
+                          <TableCell className="px-1.5 py-1.5 font-mono text-xs truncate">
                             <a
                               href={`https://www.ebay.com/mesh/ord/details?mode=SH&orderid=${order.ebay_order_id}&source=Orders&ru=https%3A%2F%2Fwww.ebay.com%2Fsh%2Ford`}
                               target="_blank"
