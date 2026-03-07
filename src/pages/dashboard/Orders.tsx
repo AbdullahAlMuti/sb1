@@ -68,6 +68,7 @@ type EbayOrderRow = {
   sales_record_number: number | null;
   delivery_date?: string | null;
   buyer_zip?: string | null;
+  shipping_address?: any;
   order_enrichments?: EnrichmentRow[];
 };
 
@@ -362,7 +363,7 @@ export default function Orders() {
         ebayNetProfit == null ? "" : ebayNetProfit.toFixed(2),
         e?.supplier_order_number ?? "",
         (e?.supplier_cost ?? "") as any,
-        (o as any).buyer_zip ?? "",
+        (o as any).shipping_address?.postal_code || (o as any).buyer_zip || "",
         (e?.ebay_refund_amount ?? "") as any,
         (e?.amazon_refund_amount ?? "") as any,
       ].map((v) => String(v ?? ""));
@@ -667,7 +668,7 @@ export default function Orders() {
 
                           {/* ZIP */}
                           <TableCell className="px-2.5 py-2 text-xs tabular-nums">
-                            {(order as any).buyer_zip ?? "—"}
+                            {(order as any).shipping_address?.postal_code || (order as any).buyer_zip || "—"}
                           </TableCell>
 
                           {/* Refund Toggle */}
@@ -776,7 +777,7 @@ export default function Orders() {
                           <div className="text-[10px] text-muted-foreground flex flex-wrap gap-x-3">
                             <span>Sale #{order.sales_record_number ?? "—"}</span>
                             <span>{formatDate(order.date_paid)}</span>
-                            {(order as any).buyer_zip && <span>ZIP: {(order as any).buyer_zip}</span>}
+                            {((order as any).shipping_address?.postal_code || (order as any).buyer_zip) && <span>ZIP: {(order as any).shipping_address?.postal_code || (order as any).buyer_zip}</span>}
                           </div>
                         </div>
                       </div>
