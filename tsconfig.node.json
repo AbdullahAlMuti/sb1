@@ -18,5 +18,9 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts"]
+  "include": [
+    "apps/*/vite.config.ts",
+    "apps/*/tailwind.config.ts",
+    "tailwind.config.ts"
+  ]
 }

@@ -1,14 +1,28 @@
 {
-  "name": "vite_react_shadcn_ts",
+  "name": "sellersuit",
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "build:dev": "vite build --mode development",
+    "dev": "npm run dev:web",
+    "dev:marketing": "npm --workspace @sellersuit/marketing run dev",
+    "dev:web": "npm --workspace @sellersuit/web run dev",
+    "dev:admin": "npm --workspace @sellersuit/admin run dev",
+    "build": "npm run build:marketing && npm run build:web && npm run build:admin",
+    "build:marketing": "npm --workspace @sellersuit/marketing run build",
+    "build:web": "npm --workspace @sellersuit/web run build",
+    "build:admin": "npm --workspace @sellersuit/admin run build",
+    "build:dev": "npm run build",
+    "typecheck": "npm run typecheck:marketing && npm run typecheck:web && npm run typecheck:admin",
+    "typecheck:marketing": "npm --workspace @sellersuit/marketing run typecheck",
+    "typecheck:web": "npm --workspace @sellersuit/web run typecheck",
+    "typecheck:admin": "npm --workspace @sellersuit/admin run typecheck",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "npm --workspace @sellersuit/web run preview"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

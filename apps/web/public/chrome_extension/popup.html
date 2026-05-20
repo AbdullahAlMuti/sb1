@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        :root {
+            /* Core */
+            --bg: 210 40% 98%;
+            --card: 0 0% 100%;
+            --text: 222 47% 11%;
+            --muted: 215 16% 47%;
+            --border: 214 24% 90%;
+
+            /* Brand (teal, premium) */
+            --accent: 173 80% 33%;
+            --accent-2: 200 90% 45%;
+            --accent-contrast: 210 40% 98%;
+
+            /* Status */
+            --success-bg: 152 44% 92%;
+            --success-fg: 160 84% 18%;
+            --warn-bg: 48 96% 90%;
+            --warn-fg: 25 95% 22%;
+            --danger-bg: 0 84% 94%;
+            --danger-fg: 0 74% 30%;
+
+            /* Effects */
+            --radius-sm: 10px;
+            --radius-md: 12px;
+            --shadow-sm: 0 1px 2px hsl(222 47% 11% / 0.06);
+            --shadow-md: 0 10px 30px -16px hsl(222 47% 11% / 0.28);
+            --ring: 0 0 0 3px hsl(var(--accent) / 0.22);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            width: 320px;
+            margin: 0;
+            padding: 0;
+            color: hsl(var(--text));
+            background: linear-gradient(180deg, hsl(var(--bg)) 0%, hsl(210 40% 96%) 100%);
+        }
+
+        .header {
+            background:
+                radial-gradient(100% 140% at 0% 0%, hsl(var(--accent) / 0.16) 0%, transparent 55%),
+                radial-gradient(100% 140% at 100% 0%, hsl(var(--accent-2) / 0.14) 0%, transparent 55%),
+                hsl(var(--card));
+            padding: 14px 14px;
+            border-bottom: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .title {
+            font-weight: 600;
+            font-size: 16px;
+            color: hsl(var(--text));
+            letter-spacing: -0.01em;
+        }
+
+        .status {
+            font-size: 12px;
+            padding: 5px 10px;
+            border-radius: 999px;
+            background-color: hsl(210 20% 95%);
+            color: hsl(var(--muted));
+            border: 1px solid hsl(var(--border));
+            box-shadow: 0 1px 0 hsl(0 0% 100% / 0.7) inset;
+            white-space: nowrap;
+        }
+
+        .status.connecting {
+            background-color: hsl(var(--warn-bg));
+            color: hsl(var(--warn-fg));
+            border-color: hsl(48 85% 82%);
+        }
+
+        .user-info {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 3px;
+        }
+
+        .username {
+            font-size: 11px;
+            color: hsl(var(--accent));
+            font-weight: 600;
+        }
+
+        .help-tip {
+            font-size: 11px;
+            color: hsl(var(--accent-2));
+            cursor: pointer;
+            text-decoration: none;
+            margin-top: 0;
+            padding: 2px 6px;
+            border-radius: 999px;
+            border: 1px solid transparent;
+            transition: background-color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .help-tip:hover {
+            background-color: hsl(var(--accent-2) / 0.08);
+            border-color: hsl(var(--accent-2) / 0.18);
+        }
+
+        .info-box {
+            background:
+                radial-gradient(80% 120% at 0% 0%, hsl(var(--accent-2) / 0.10) 0%, transparent 60%),
+                hsl(var(--card));
+            border: 1px solid hsl(var(--border));
+            color: hsl(220 40% 18%);
+            padding: 10px 11px;
+            border-radius: var(--radius-md);
+            font-size: 11px;
+            margin: 10px 14px 0 14px;
+            line-height: 1.45;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .status.active {
+            background-color: hsl(var(--success-bg));
+            color: hsl(var(--success-fg));
+            border-color: hsl(152 35% 82%);
+        }
+
+        .status.inactive {
+            background-color: hsl(var(--danger-bg));
+            color: hsl(var(--danger-fg));
+            border-color: hsl(0 70% 86%);
+        }
+
+        .content {
+            padding: 14px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+            background: hsl(var(--card));
+            padding: 10px;
+            border-radius: var(--radius-md);
+            border: 1px solid hsl(var(--border));
+            box-shadow: var(--shadow-sm);
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 13px;
+            color: hsl(var(--muted));
+            font-weight: 500;
+        }
+
+        select,
+        input[type="text"],
+        input[type="number"] {
+            width: 100%;
+            padding: 8px 10px;
+            font-size: 14px;
+            border: 1px solid hsl(var(--border));
+            border-radius: 10px;
+            box-sizing: border-box;
+            background: hsl(0 0% 100%);
+            color: hsl(var(--text));
+            box-shadow: 0 1px 0 hsl(0 0% 100% / 0.8) inset;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+        }
+
+        select:focus,
+        input[type="text"]:focus,
+        input[type="number"]:focus {
+            outline: none;
+            border-color: hsl(var(--accent) / 0.6);
+            box-shadow: var(--ring), 0 1px 0 hsl(0 0% 100% / 0.8) inset;
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .footer {
+            padding: 12px 14px;
+            background: hsl(var(--card));
+            border-top: 1px solid hsl(var(--border));
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            flex: 1;
+            padding: 8px;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease, background-color 0.15s ease;
+            box-shadow: 0 8px 18px -14px hsl(222 47% 11% / 0.35);
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.02);
+            box-shadow: 0 10px 22px -14px hsl(222 47% 11% / 0.40);
+        }
+
+        button:active {
+            transform: translateY(0);
+            box-shadow: 0 7px 16px -14px hsl(222 47% 11% / 0.35);
+        }
+
+        button:focus-visible {
+            outline: none;
+            box-shadow: var(--ring), 0 10px 22px -14px hsl(222 47% 11% / 0.40);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, hsl(var(--accent-2)) 0%, hsl(var(--accent)) 100%);
+            color: hsl(var(--accent-contrast));
+        }
+
+        .btn-secondary {
+            background: hsl(210 40% 98%);
+            border: 1px solid hsl(var(--border));
+            color: hsl(var(--text));
+            box-shadow: none;
+        }
+
+        .btn-sync {
+            background: linear-gradient(135deg, hsl(160 84% 33%) 0%, hsl(173 80% 33%) 100%);
+            color: hsl(var(--accent-contrast));
+            width: 100%;
+            margin-top: 5px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* Small polish for the checkbox in compact UI */
+        input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: hsl(var(--accent));
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <span class="title">SellerSuit Sync</span>
+        <div class="user-info">
+            <span id="authStatus" class="status">Checking...</span>
+            <span id="usernameDisplay" class="username hidden"></span>
+            <span id="toggleHelp" class="help-tip">Help?</span>
+        </div>
+    </div>
+
+    <!-- Help Section -->
+    <div id="helpSection" class="info-box hidden">
+        <strong>How to Connect:</strong><br>
+        1. Click "Open Dashboard" below.<br>
+        2. Log in to your account.<br>
+        3. Refresh this extension.<br>
+        <br>
+        If it fails, try reloading the page or refreshing the extension in chrome://extensions.
+    </div>
+
+    <!-- Login Prompt -->
+    <div id="loginView" class="content hidden">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <div style="font-size: 48px; margin-bottom: 10px;">🔴</div>
+            <h3 style="margin: 0; color: #dc3545;">Not Connected</h3>
+            <p style="color: #666; font-size: 13px;">Please log in to your dashboard to enable the extension.</p>
+        </div>
+        <button id="btnLogin" class="btn-primary" style="width: 100%">Log In to Dashboard</button>
+    </div>
+
+    <!-- Settings View -->
+    <div id="settingsView" class="content hidden">
+        <div class="control-group">
+            <div class="checkbox-row">
+                <label for="autoSync" style="margin:0">Auto-Sync Enabled</label>
+                <input type="checkbox" id="autoSync">
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Sync Interval</label>
+            <select id="syncInterval">
+                <option value="30">Every 30 Minutes</option>
+                <option value="60">Every 1 Hour</option>
+                <option value="120">Every 2 Hours</option>
+                <option value="360">Every 6 Hours</option>
+                <option value="600">Every 10 Hours</option>
+                <option value="720">Every 12 Hours</option>
+                <option value="1440">Every 24 Hours</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Sync Period (Lookback)</label>
+            <select id="syncDays">
+                <option value="1">Last 24 Hours</option>
+                <option value="3">Last 3 Days</option>
+                <option value="7">Last 7 Days</option>
+                <option value="14">Last 14 Days</option>
+                <option value="30">Last 30 Days</option>
+                <option value="90">Last 90 Days</option>
+                <option value="365">Last 1 Year</option>
+                <option value="730">Last 2 Years</option>
+                <option value="1825">Last 5 Years</option>
+                <option value="custom">Custom...</option>
+            </select>
+            <input type="number" id="customDays" placeholder="Enter days (e.g. 3650)" class="hidden"
+                style="margin-top: 5px;">
+        </div>
+
+        <div class="control-group" style="text-align: center;">
+            <div id="lastSyncTime" style="font-size: 11px; color: #999; margin-bottom: 5px;">Last Sync: Never</div>
+            <button id="btnSyncNow" class="btn-sync">🔄 Sync Now</button>
+        </div>
+
+        <div class="control-group" style="text-align: center;">
+            <button id="btnDisconnect" class="btn-secondary" style="width: 100%; color: hsl(var(--danger-fg)); border-color: hsl(0 70% 86%);">🔓 Disconnect</button>
+        </div>
+    </div>
+
+    <div class="footer">
+        <button id="btnDashboard" class="btn-secondary">Open Dashboard</button>
+    </div>
+
+    <script src="common/config.js"></script>
+    <script src="popup.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": "../..",
+    "paths": {
+      "@/*": ["apps/marketing/src/*"],
+      "@repo/ui": ["packages/ui/src/index.ts"],
+      "@repo/ui/*": ["packages/ui/src/*"],
+      "@repo/auth": ["packages/auth/src/index.ts"],
+      "@repo/auth/*": ["packages/auth/src/*"],
+      "@repo/api-client": ["packages/api-client/src/index.ts"],
+      "@repo/api-client/*": ["packages/api-client/src/*"],
+      "@repo/types": ["packages/types/src/index.ts"],
+      "@repo/types/*": ["packages/types/src/*"],
+      "@repo/config": ["packages/config/src/index.ts"],
+      "@repo/config/*": ["packages/config/src/*"],
+      "@repo/utils": ["packages/utils/src/index.ts"],
+      "@repo/utils/*": ["packages/utils/src/*"],
+      "@repo/marketplace-core": ["packages/marketplace-core/src/index.ts"],
+      "@repo/marketplace-core/*": ["packages/marketplace-core/src/*"]
+    }
+  },
+  "include": ["src", "../../packages"]
+}

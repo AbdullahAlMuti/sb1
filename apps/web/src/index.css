@@ -1,0 +1,373 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Modern SaaS design system */
+
+@layer base {
+  :root {
+    /* ─── Light Mode ─── */
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 214 32% 95%;
+    --secondary-foreground: 222 36% 22%;
+
+    --muted: 214 30% 93%;
+    --muted-foreground: 215 16% 43%;
+
+    --accent: 160 60% 42%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 22% 88%;
+    --input: 214 22% 88%;
+    --ring: 221 83% 53%;
+
+    --radius: 0.5rem;
+
+    /* ─── Custom Design Tokens ─── */
+    --gradient-primary: linear-gradient(135deg, hsl(221, 83%, 53%) 0%, hsl(160, 60%, 42%) 100%);
+    --gradient-hero: linear-gradient(180deg, hsl(210, 40%, 98%) 0%, hsl(214, 32%, 95%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(210, 40%, 99%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(160, 60%, 42%) 0%, hsl(199, 89%, 48%) 100%);
+    --gradient-cta: linear-gradient(135deg, hsl(221, 83%, 53%) 0%, hsl(217, 91%, 60%) 100%);
+    
+    --shadow-sm: 0 1px 2px hsl(222 47% 11% / 0.04);
+    --shadow-md: 0 4px 6px -1px hsl(222 47% 11% / 0.07), 0 2px 4px -2px hsl(222 47% 11% / 0.05);
+    --shadow-lg: 0 10px 15px -3px hsl(222 47% 11% / 0.08), 0 4px 6px -4px hsl(222 47% 11% / 0.05);
+    --shadow-xl: 0 22px 45px -24px hsl(222 47% 11% / 0.38);
+    
+    --glow-primary: 0 8px 24px hsl(221 83% 53% / 0.18);
+    --glow-accent: 0 8px 24px hsl(160 60% 42% / 0.16);
+    
+    --glass-bg: hsl(0 0% 100% / 0.90);
+    --glass-border: hsl(214 22% 88% / 0.80);
+
+    /* Platform brand colors */
+    --amazon-orange: 33 100% 50%;
+    --ebay-blue: 211 100% 45%;
+    --whatsapp: 142 70% 45%;
+    --whatsapp-foreground: 0 0% 100%;
+    --success: 152 69% 40%;
+    --warning: 38 92% 50%;
+    --info: 199 89% 48%;
+
+    /* Premium/paywall tokens (used for "Get Pro Access" UI) */
+    --premium: 221 83% 53%;
+    --premium-foreground: 0 0% 100%;
+    --premium-surface: 221 70% 96%;
+    --premium-surface-foreground: 222 47% 11%;
+    --premium-border: 221 35% 86%;
+    --premium-ring: 221 83% 53%;
+    --gradient-premium-card: linear-gradient(
+      180deg,
+      hsl(var(--premium-surface)) 0%,
+      hsl(var(--card)) 100%
+    );
+    --glow-premium: 0 10px 30px -14px hsl(var(--premium) / 0.45);
+
+    /* Text hierarchy */
+    --text-primary: 222 47% 11%;
+    --text-secondary: 215 20% 32%;
+    --text-muted: 215 16% 43%;
+
+    --warm-bg: 210 40% 98%;
+    --warm-glow: 221 70% 93%;
+    --warm-accent: 221 83% 53%;
+    --warm-accent-soft: 221 70% 96%;
+    --warm-text: 222 47% 11%;
+    --warm-text-muted: 215 16% 43%;
+    --warm-border: 214 22% 88%;
+    --warm-cta: 221 83% 53%;
+    --warm-cta-hover: 221 83% 47%;
+    --warm-cta-text: 0 0% 100%;
+    --warm-star: 45 93% 47%;
+    --warm-trust: 152 69% 40%;
+    --warm-chrome: 20 10% 50%;
+    --warm-tab-bg: 214 32% 95%;
+    --warm-card: 0 0% 100%;
+    --warm-flow: 214 22% 82%;
+    --warm-badge: 221 70% 96%;
+
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 221 83% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 214 32% 95%;
+    --sidebar-accent-foreground: 222 36% 22%;
+    --sidebar-border: 214 22% 90%;
+    --sidebar-ring: 221 83% 53%;
+  }
+
+  .dark {
+    /* ─── Dark Mode ─── */
+    --background: 222 47% 8%;
+    --foreground: 210 20% 98%;
+
+    /* Cards - Elevated dark surfaces */
+    --card: 222 38% 12%;
+    --card-foreground: 210 20% 98%;
+
+    --popover: 222 38% 12%;
+    --popover-foreground: 210 20% 98%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary */
+    --secondary: 222 31% 16%;
+    --secondary-foreground: 210 15% 80%;
+
+    /* Muted */
+    --muted: 222 28% 17%;
+    --muted-foreground: 215 15% 55%;
+
+    /* Accent */
+    --accent: 160 60% 45%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders */
+    --border: 222 24% 21%;
+    --input: 222 24% 21%;
+    --ring: 217 91% 60%;
+
+    /* Custom tokens */
+    --gradient-primary: linear-gradient(135deg, hsl(217, 91%, 60%) 0%, hsl(160, 60%, 45%) 100%);
+    --gradient-hero: linear-gradient(180deg, hsl(222, 40%, 11%) 0%, hsl(222, 47%, 8%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(222, 38%, 14%) 0%, hsl(222, 38%, 11%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(160, 60%, 45%) 0%, hsl(199, 89%, 55%) 100%);
+    --gradient-cta: linear-gradient(135deg, hsl(217, 91%, 60%) 0%, hsl(199, 89%, 55%) 100%);
+    
+    --shadow-sm: 0 1px 2px hsl(222 47% 5% / 0.30);
+    --shadow-md: 0 4px 6px -1px hsl(222 47% 5% / 0.40);
+    --shadow-lg: 0 10px 15px -3px hsl(222 47% 5% / 0.50);
+    --shadow-xl: 0 20px 25px -5px hsl(222 47% 5% / 0.60);
+    
+    --glow-primary: 0 8px 28px hsl(217 91% 60% / 0.22);
+    --glow-accent: 0 8px 24px hsl(160 60% 45% / 0.18);
+    
+    --glass-bg: hsl(222 38% 12% / 0.82);
+    --glass-border: hsl(222 24% 22% / 0.55);
+
+    /* Platform brand colors */
+    --amazon-orange: 33 100% 50%;
+    --ebay-blue: 211 100% 55%;
+    --whatsapp: 142 72% 48%;
+    --whatsapp-foreground: 0 0% 100%;
+    --success: 152 69% 50%;
+    --warning: 38 92% 50%;
+    --info: 199 89% 55%;
+
+    --premium: 217 91% 60%;
+    --premium-foreground: 0 0% 100%;
+    --premium-surface: 222 30% 15%;
+    --premium-surface-foreground: 210 20% 98%;
+    --premium-border: 222 22% 24%;
+    --premium-ring: 217 91% 60%;
+    --gradient-premium-card: linear-gradient(
+      180deg,
+      hsl(var(--premium-surface)) 0%,
+      hsl(var(--card)) 100%
+    );
+    --glow-premium: 0 12px 34px -16px hsl(var(--premium) / 0.35);
+
+    /* Text hierarchy */
+    --text-primary: 210 20% 98%;
+    --text-secondary: 215 15% 65%;
+    --text-muted: 215 10% 50%;
+
+    --warm-bg: 222 47% 8%;
+    --warm-glow: 217 45% 20%;
+    --warm-accent: 217 91% 60%;
+    --warm-accent-soft: 222 30% 15%;
+    --warm-text: 210 20% 98%;
+    --warm-text-muted: 215 15% 60%;
+    --warm-border: 222 24% 21%;
+    --warm-cta: 217 91% 60%;
+    --warm-cta-hover: 217 91% 66%;
+    --warm-cta-text: 0 0% 100%;
+    --warm-star: 45 90% 55%;
+    --warm-trust: 152 65% 50%;
+    --warm-chrome: 215 15% 60%;
+    --warm-tab-bg: 222 31% 16%;
+    --warm-card: 222 38% 12%;
+    --warm-flow: 222 20% 35%;
+    --warm-badge: 222 30% 15%;
+
+    /* Sidebar */
+    --sidebar-background: 222 47% 8%;
+    --sidebar-foreground: 210 20% 95%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 222 31% 16%;
+    --sidebar-accent-foreground: 210 15% 80%;
+    --sidebar-border: 222 24% 20%;
+    --sidebar-ring: 217 91% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-feature-settings: "cv11", "ss01";
+    font-variation-settings: "opsz" 32;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    @apply font-semibold tracking-tight;
+  }
+
+  /* Focus styles for accessibility */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer components {
+  /* Glass morphism card */
+  .glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    @apply rounded-xl;
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Gradient text accent variant */
+  .gradient-text-accent {
+    background: var(--gradient-accent);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Elevated card with shadow */
+  .card-elevated {
+    @apply bg-card rounded-xl;
+    box-shadow: var(--shadow-md);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+  }
+
+  .card-elevated:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+  }
+
+  /* CTA button with glow */
+  .cta-glow {
+    box-shadow: var(--glow-primary);
+    transition: all 0.2s ease;
+  }
+
+  .cta-glow:hover {
+    box-shadow: 0 6px 30px hsl(var(--primary) / 0.35);
+    transform: translateY(-1px);
+  }
+
+  /* Platform badges */
+  .badge-amazon {
+    background: hsl(var(--amazon-orange) / 0.1);
+    color: hsl(var(--amazon-orange));
+    border: 1px solid hsl(var(--amazon-orange) / 0.2);
+  }
+
+  .badge-ebay {
+    background: hsl(var(--ebay-blue) / 0.1);
+    color: hsl(var(--ebay-blue));
+    border: 1px solid hsl(var(--ebay-blue) / 0.2);
+  }
+
+  .badge-success {
+    background: hsl(var(--success) / 0.1);
+    color: hsl(var(--success));
+    border: 1px solid hsl(var(--success) / 0.2);
+  }
+
+  /* Section divider */
+  .section-divider {
+    @apply h-px w-full;
+    background: linear-gradient(90deg, transparent, hsl(var(--border)), transparent);
+  }
+}
+
+@layer utilities {
+  /* Smooth gradient background */
+  .bg-gradient-subtle {
+    background: linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--muted)) 100%);
+  }
+
+  /* Hero section gradient */
+  .bg-hero-gradient {
+    background: var(--gradient-hero);
+  }
+
+  /* Noise texture overlay */
+  .noise-overlay::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    opacity: 0.02;
+    pointer-events: none;
+  }
+
+  /* Flow arrow connector */
+  .flow-connector {
+    @apply h-0.5 w-12 mx-3;
+    background: linear-gradient(90deg, hsl(var(--primary) / 0.3), hsl(var(--primary)));
+  }
+
+  /* Text balance for better typography */
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Animated underline for links */
+  .link-underline {
+    @apply relative;
+  }
+
+  .link-underline::after {
+    content: '';
+    @apply absolute bottom-0 left-0 w-0 h-0.5 bg-primary transition-all duration-300;
+  }
+
+  .link-underline:hover::after {
+    @apply w-full;
+  }
+}
