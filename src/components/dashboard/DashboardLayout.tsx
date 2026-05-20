@@ -11,13 +11,13 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
 import { useSubscription } from '@/hooks/useSubscription';
+import { useAlerts } from '@/hooks/useAlerts';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 export function DashboardLayout() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { subscribed, planName, usage, limits, openCustomerPortal } = useSubscription();
@@ -45,55 +45,11 @@ export function DashboardLayout() {
     toast.warning('Credits running low. Renew to avoid interruptions.');
   }, [creditsRemaining, creditsTotal, eligibleForCreditWarning]);
 
-  // Listen for sidebar collapse state via custom event
-  useEffect(() => {
-    const handleSidebarToggle = (e: CustomEvent<{
-      collapsed: boolean;
-    }>) => {
-      setIsCollapsed(e.detail.collapsed);
-    };
-    window.addEventListener('sidebar-toggle' as any, handleSidebarToggle);
-    return () => window.removeEventListener('sidebar-toggle' as any, handleSidebarToggle);
-  }, []);
+  // Sidebar collapse state is managed via props from DashboardSidebar
 
-  // Fetch unread alerts count for mobile header
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchUnreadCount = async () => {
-      const { count, error } = await supabase
-        .from('inventory_alerts')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('status', 'UNREAD');
-
-      if (!error && count !== null) {
-        setUnreadCount(count);
-      }
-    };
-
-    fetchUnreadCount();
-
-    const channel = supabase
-      .channel('mobile-alerts-count')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'inventory_alerts',
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          fetchUnreadCount();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user]);
+  // Removed duplicate alert fetching, useAlerts handles this globally if needed
+  // But wait, actually we need to use useAlerts here!
+  const { unreadCount } = useAlerts();
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 🔐 EXTENSION SYNC (SENDER)
@@ -110,7 +66,7 @@ export function DashboardLayout() {
   // ─────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (user) {
-      window.postMessage({ type: 'REFRESH_EXTENSION_TOKEN' }, '*');
+      window.postMessage({ type: 'REFRESH_EXTENSION_TOKEN' }, window.location.origin);
     }
   }, [user]);
 

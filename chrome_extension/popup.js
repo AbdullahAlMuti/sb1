@@ -16,14 +16,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         syncInterval: document.getElementById('syncInterval'),
         syncDays: document.getElementById('syncDays'),
         customDaysInput: document.getElementById('customDays'),
-        lastSyncLabel: document.getElementById('lastSyncTime')
+        lastSyncLabel: document.getElementById('lastSyncTime'),
+        btnDisconnect: document.getElementById('btnDisconnect')
     };
 
     // Helper to get base URL
     const getBaseUrl = () => {
         return (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.WEB_APP_BASE)
             ? ExtensionConfig.URLS.WEB_APP_BASE
-            : "https://sellersuit.com";
+            : "http://localhost:3001";
     };
 
     const baseUrl = getBaseUrl();
@@ -133,6 +134,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Event Listeners
     els.btnLogin.onclick = () => chrome.tabs.create({ url: `${baseUrl}/auth` });
     els.btnDashboard.onclick = () => chrome.tabs.create({ url: `${baseUrl}/dashboard` });
+
+    // Disconnect / Logout
+    if (els.btnDisconnect) {
+        els.btnDisconnect.onclick = () => {
+            chrome.runtime.sendMessage({ action: 'LOGOUT' }, () => {
+                chrome.storage.local.remove(['saasToken', 'saasUser', 'userId', 'userEmail', 'userPlan', 'authTimestamp'], () => {
+                    showView('login');
+                    els.authStatus.textContent = 'Not Connected';
+                    els.authStatus.className = 'status inactive';
+                    els.usernameDisplay.classList.add('hidden');
+                });
+            });
+        };
+    }
 
     // Help Toggle
     els.toggleHelp.onclick = () => {

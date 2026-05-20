@@ -15,7 +15,7 @@ const ExtensionConfig = (() => {
   // LOCAL DEV (as requested): point to localhost where you log into the web app.
   // IMPORTANT: AuthSync reads the Supabase session from the web app's localStorage and copies it into the extension.
   // When you later switch to a real domain, update this value.
-  const WEB_APP_DOMAIN = 'https://sellersuit.com';
+  const WEB_APP_DOMAIN = 'http://localhost:3001';
 
   const URLS = Object.freeze({
     // Supabase
@@ -34,6 +34,13 @@ const ExtensionConfig = (() => {
     // Backend API (same as web app)
     LOCAL_BACKEND: WEB_APP_DOMAIN,
     AI_REMOVE_BG: `${WEB_APP_DOMAIN}/v1/ai/remove-bg`
+  });
+
+  console.log('🔧 [Config] ExtensionConfig initialized:', {
+    DOMAIN: WEB_APP_DOMAIN,
+    BASE: URLS.WEB_APP_BASE,
+    AUTH: URLS.WEB_APP_AUTH,
+    DASHBOARD: URLS.WEB_APP_DASHBOARD
   });
 
   // ═══════════════════════════════════════════════════════════
@@ -200,9 +207,9 @@ const ExtensionConfig = (() => {
   // 🛡️ FEATURE FLAGS
   // ═══════════════════════════════════════════════════════════
   const FEATURES = Object.freeze({
-    DEBUG_MODE: true,
+    DEBUG_MODE: true, // TEMP: re-enabled for localhost testing
     ENABLE_CACHING: true,
-    ENABLE_AUTO_ORDERS: false,  // Disabled for local testing
+    ENABLE_AUTO_ORDERS: false,
     ENABLE_ANALYTICS: true,
     ENABLE_SYNC_QUEUE: true
   });

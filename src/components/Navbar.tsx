@@ -1,10 +1,19 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import SellerSuitLogo from "@/components/SellerSuitLogo";
+import { useAuth } from "@/hooks/useAuth";
+import { useNavigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
+
+const navLinks = [
+  { label: "Platform", href: "#features" },
+  { label: "Workflow", href: "#workflow" },
+  { label: "Pricing", href: "#pricing" },
+  { label: "Customers", href: "#testimonials" },
+  { label: "Docs", href: "/documentation" },
+];
 
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -13,66 +22,57 @@ const Navbar = () => {
   const { user } = useAuth();
 
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
-    };
+    const handleScroll = () => setIsScrolled(window.scrollY > 12);
+    handleScroll();
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const navLinks = [
-    { label: "Features", href: "#features" },
-    { label: "How It Works", href: "#workflow" },
-    { label: "Pricing", href: "#pricing" },
-    { label: "Testimonials", href: "#testimonials" },
-    { label: "Documentation", href: "/documentation" },
-  ];
-
-  const handleLogin = () => {
-    navigate('/auth');
-  };
-
-  const handleGetStarted = () => {
-    if (user) {
-      navigate('/dashboard');
-    } else {
-      // Scroll to pricing section
-      const pricingSection = document.getElementById('pricing');
-      if (pricingSection) {
-        pricingSection.scrollIntoView({ behavior: 'smooth' });
-      } else {
-        navigate('/#pricing');
-      }
+  const goToPricing = () => {
+    const pricingSection = document.getElementById("pricing");
+    if (pricingSection) {
+      pricingSection.scrollIntoView({ behavior: "smooth" });
+      return;
     }
+    navigate("/#pricing");
   };
 
-  const handleDashboard = () => {
-    navigate('/dashboard');
+  const handlePrimaryAction = () => {
+    if (user) {
+      navigate("/dashboard");
+      return;
+    }
+    navigate("/register");
   };
 
   return (
     <nav
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+      className={cn(
+        "fixed inset-x-0 top-0 z-50 border-b transition-all duration-200",
         isScrolled
-          ? "py-3 glass-card backdrop-blur-xl border-b border-border"
-          : "py-6 bg-transparent"
-      }`}
+          ? "border-border bg-background/92 py-3 shadow-sm backdrop-blur-xl"
+          : "border-transparent bg-background/75 py-4 backdrop-blur-md",
+      )}
     >
       <div className="container px-4">
-        <div className="flex items-center justify-between">
-          {/* Logo */}
-          <a href="/" className="flex items-center">
+        <div className="flex h-10 items-center justify-between">
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="flex items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="SellerSuit home"
+          >
             <SellerSuitLogo size="md" />
-          </a>
+          </button>
 
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-8">
-            {navLinks.map((link) => (
+          <div className="hidden items-center gap-1 md:flex">
+            {navLinks.map((link) =>
               link.href.startsWith("/") ? (
                 <button
                   key={link.label}
+                  type="button"
                   onClick={() => navigate(link.href)}
-                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 >
                   {link.label}
                 </button>
@@ -80,59 +80,55 @@ const Navbar = () => {
                 <a
                   key={link.label}
                   href={link.href}
-                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 >
                   {link.label}
                 </a>
-              )
-            ))}
+              ),
+            )}
           </div>
 
-          {/* CTA Buttons */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden items-center gap-2 md:flex">
             <ThemeToggle />
             {user ? (
-              <Button variant="default" size="sm" onClick={handleDashboard}>
+              <Button size="sm" onClick={() => navigate("/dashboard")}>
                 Dashboard
               </Button>
             ) : (
               <>
-                <Button variant="ghost" size="sm" onClick={handleLogin}>
-                  Log In
+                <Button variant="ghost" size="sm" onClick={() => navigate("/auth")}>
+                  Log in
                 </Button>
-                <Button variant="default" size="sm" onClick={handleGetStarted}>
-                  Get Started
+                <Button size="sm" onClick={handlePrimaryAction}>
+                  Start free
                 </Button>
               </>
             )}
           </div>
 
-          {/* Mobile Menu Button */}
           <button
-            className="md:hidden p-2"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            type="button"
+            className="rounded-md p-2 text-foreground md:hidden"
+            onClick={() => setIsMobileMenuOpen((open) => !open)}
+            aria-label="Toggle menu"
           >
-            {isMobileMenuOpen ? (
-              <X className="w-6 h-6" />
-            ) : (
-              <Menu className="w-6 h-6" />
-            )}
+            {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
 
-        {/* Mobile Menu */}
         {isMobileMenuOpen && (
-          <div className="md:hidden mt-4 pb-4 border-t border-border pt-4 animate-fade-in">
-            <div className="flex flex-col gap-4">
-              {navLinks.map((link) => (
+          <div className="mt-3 border-t border-border py-3 md:hidden">
+            <div className="grid gap-1">
+              {navLinks.map((link) =>
                 link.href.startsWith("/") ? (
                   <button
                     key={link.label}
+                    type="button"
                     onClick={() => {
                       navigate(link.href);
                       setIsMobileMenuOpen(false);
                     }}
-                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors text-left"
+                    className="rounded-md px-3 py-2 text-left text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
                   >
                     {link.label}
                   </button>
@@ -140,30 +136,31 @@ const Navbar = () => {
                   <a
                     key={link.label}
                     href={link.href}
-                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                     onClick={() => setIsMobileMenuOpen(false)}
+                    className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
                   >
                     {link.label}
                   </a>
-                )
-              ))}
-              <div className="flex items-center gap-4 mt-4">
-                <ThemeToggle />
-                {user ? (
-                  <Button variant="default" size="sm" className="flex-1" onClick={handleDashboard}>
-                    Dashboard
+                ),
+              )}
+            </div>
+
+            <div className="mt-3 grid grid-cols-[auto_1fr_1fr] items-center gap-2">
+              <ThemeToggle />
+              {user ? (
+                <Button className="col-span-2" size="sm" onClick={() => navigate("/dashboard")}>
+                  Dashboard
+                </Button>
+              ) : (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => navigate("/auth")}>
+                    Log in
                   </Button>
-                ) : (
-                  <>
-                    <Button variant="ghost" size="sm" className="flex-1" onClick={handleLogin}>
-                      Log In
-                    </Button>
-                    <Button variant="default" size="sm" className="flex-1" onClick={handleGetStarted}>
-                      Get Started
-                    </Button>
-                  </>
-                )}
-              </div>
+                  <Button size="sm" onClick={goToPricing}>
+                    View plans
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         )}

@@ -6,11 +6,10 @@
 (function () {
   'use strict';
 
-  // FORCE DEBUG MODE
-  const DEBUG = true;
+  const DEBUG = false;
   const SYNC_DELAY_MS = 3000;
   const SYNC_DEBOUNCE_KEY = 'ebay_orders_last_sync_trigger';
-  const MIN_SYNC_INTERVAL_MS = 5 * 1000; // Reduced to 5s for debugging
+  const MIN_SYNC_INTERVAL_MS = 60 * 1000; // 60s production interval
 
   // Status badge & Debug Log reference
   let statusBadge = null;
@@ -79,6 +78,7 @@
   }
 
   function appendVisualLog(level, message) {
+    if (!DEBUG) return;
     if (!debugLogContainer) createDebugLogContainer();
     const content = document.getElementById('ss-log-content');
     if (!content) return;

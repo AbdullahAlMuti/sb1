@@ -66,8 +66,12 @@ export function CouponInput({ planId, orderAmount, onCouponApplied, appliedCoupo
       } else {
         setError(result.error || 'Invalid coupon code');
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to validate coupon');
+    } catch (err: unknown) {
+      let errorMessage = "An error occurred applying the coupon.";
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      setError(errorMessage);
     } finally {
       setIsValidating(false);
     }

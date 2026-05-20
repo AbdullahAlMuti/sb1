@@ -146,7 +146,7 @@ Visit your dashboard at the SellerSuit website for support and documentation.
     }
   }
 
-  console.log(`Extension zip: ${successCount} files added, ${failCount} failed`);
+  if (import.meta.env.DEV) console.log(`Extension zip: ${successCount} files added, ${failCount} failed`);
 
   // Generate and download the zip
   const blob = await zip.generateAsync({ type: 'blob' });

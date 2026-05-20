@@ -48,7 +48,7 @@ export function useGoogleSheetsSync() {
 
     setIsSyncing(true);
     try {
-      console.log('🔄 Syncing to Google Sheets:', { sheetName, rowCount: rows.length, action });
+      if (import.meta.env.DEV) console.log('🔄 Syncing to Google Sheets:', { sheetName, rowCount: rows.length, action });
 
       // Use Edge Function proxy to avoid CORS issues
       // Use underscore alias to avoid Functions gateway JWT issues with hyphenated names.
@@ -62,7 +62,7 @@ export function useGoogleSheetsSync() {
         },
       });
 
-      console.log('📥 Google Sheets sync response:', { data, error });
+      if (import.meta.env.DEV) console.log('📥 Google Sheets sync response:', { data, error });
 
       if (error) {
         // Check if it's a function deployment issue

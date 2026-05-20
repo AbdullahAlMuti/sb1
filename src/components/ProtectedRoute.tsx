@@ -16,12 +16,12 @@ export function ProtectedRoute({
   requireAdmin = false,
   requireSuperAdmin = false,
 }: ProtectedRouteProps) {
-  const { user, isAdmin, isSuperAdmin, isLoading, isEmailVerified, resendVerificationEmail, signOut } = useAuth();
+  const { user, profile, isAdmin, isSuperAdmin, isLoading, isEmailVerified, resendVerificationEmail, signOut } = useAuth();
   const { subscribed, isLoading: subscriptionLoading, planName } = useSubscription();
   const location = useLocation();
   const [isResending, setIsResending] = useState(false);
 
-  if (isLoading || subscriptionLoading) {
+  if (isLoading || subscriptionLoading || (user && !profile)) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -34,6 +34,25 @@ export function ProtectedRoute({
 
   if (!user) {
     return <Navigate to="/auth" state={{ from: location }} replace />;
+  }
+
+  // Redirect based on user's registered goal (eBay vs. Shopify)
+  if (profile && !requireAdmin && !requireSuperAdmin && !isAdmin && !isSuperAdmin) {
+    const userGoal = (profile.settings as any)?.goal as string | undefined;
+    
+    if (userGoal === 'shopify') {
+      // If goal is shopify and they are trying to access standard eBay routes under /dashboard,
+      // redirect them to the Shopify dashboard.
+      if (location.pathname === '/dashboard' || (location.pathname.startsWith('/dashboard/') && !location.pathname.startsWith('/dashboard/shopify'))) {
+        return <Navigate to="/dashboard/shopify" replace />;
+      }
+    } else if (userGoal === 'ebay') {
+      // If goal is ebay and they are trying to access Shopify routes under /dashboard/shopify,
+      // redirect them to the default eBay dashboard.
+      if (location.pathname.startsWith('/dashboard/shopify')) {
+        return <Navigate to="/dashboard" replace />;
+      }
+    }
   }
 
   // Check if email is verified
@@ -119,10 +138,12 @@ export function ProtectedRoute({
   }
 
   // PAYMENT REQUIRED: Block access if user has no active paid subscription (admins bypass)
-  // Free plan no longer exists - all users must pay
+  // Disabled: all users bypass payment check and access dashboard for free
+  /*
   if (!subscribed && !isAdmin && !isSuperAdmin) {
     return <Navigate to="/payment-required" replace />;
   }
+  */
 
   return <>{children}</>;
 }

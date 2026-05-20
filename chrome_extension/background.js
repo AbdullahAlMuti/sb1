@@ -16,6 +16,8 @@ importScripts(
 
 const { URLS, API_KEYS, TIMING, STORAGE_KEYS, ACTIONS, FEATURES } = ExtensionConfig;
 
+console.log('🚀 [Background] Service Worker Started. WEB_APP_BASE:', URLS.WEB_APP_BASE);
+
 const HOMEPAGE_URL = URLS.WEB_APP_BASE;
 const DEFAULT_SHEET_URL = URLS.DEFAULT_GOOGLE_SHEET;
 
@@ -145,30 +147,27 @@ async function verifyAuthStatus(forceRefresh = false) {
       500
     );
 
-    if (response.ok) {
-      const result = await response.json();
+    const result = await response.json().catch(() => ({}));
 
-      if (result.success && result.user) {
-        authLog('success', 'Session verified', { userId: result.user.id, email: result.user.email });
+    if (response.ok && result.success && result.user) {
+      authLog('success', 'Session verified', { userId: result.user.id, email: result.user.email });
 
-        // SYNC: Update Extension Storage with fresh data
-        await chrome.storage.local.set({
-          userId: result.user.id,
-          userPlan: result.user.plan,
-          userCredits: result.user.credits,
-          userEmail: result.user.email,
-          authTimestamp: Date.now()
-        });
+      // SYNC: Update Extension Storage with fresh data
+      await chrome.storage.local.set({
+        userId: result.user.id,
+        userPlan: result.user.plan,
+        userCredits: result.user.credits,
+        userEmail: result.user.email,
+        authTimestamp: Date.now()
+      });
 
-        isExtensionUnlocked = true;
-        lastAuthCheck = Date.now();
-        return true;
-      }
+      isExtensionUnlocked = true;
+      lastAuthCheck = Date.now();
+      return true;
     }
 
-    // Auth failed - check response details
-    const errorData = await response.json().catch(() => ({}));
-    authLog('warn', 'LOCKDOWN: Invalid session', { status: response.status, error: errorData.error });
+    // Auth failed
+    authLog('warn', 'LOCKDOWN: Invalid session', { status: response.status, error: result.error });
     isExtensionUnlocked = false;
     return false;
 
@@ -191,19 +190,11 @@ async function verifyAuthStatus(forceRefresh = false) {
 // Syncs orders on startup, login, and at regular intervals
 // ═══════════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════════
-// 📦 AUTOMATIC EBAY ORDER SYNC
-// ═══════════════════════════════════════════════════════════
-
 // Sync state
 const EBAY_ORDER_SYNC_INTERVAL = 15 * 60 * 1000; // 15 minutes
 const EBAY_ORDER_SYNC_DAYS = 90;
-let ebayOrderSyncIntervalId = null;
 let isEbayOrderSyncInProgress = false;
 let lastEbayOrderSync = 0;
-
-// (Merged/Cleaned logic is at the bottom of the file to ensure dependencies are loaded)
-// Forward declaration or alias if needed, but 'function' hosting handles it.
 
 
 // Top-Level CSV Parser
@@ -226,8 +217,8 @@ async function fetchEbayCsv(syncDays = 90) {
     }
     const idx = html.search(/downloadCsrfToken/i);
     if (idx !== -1) {
-      const window = html.slice(Math.max(0, idx - 500), Math.min(html.length, idx + 500));
-      const m = window.match(/['"]([A-Za-z0-9_-]{10,})['"]/);
+      const snippet = html.slice(Math.max(0, idx - 500), Math.min(html.length, idx + 500));
+      const m = snippet.match(/['"]([A-Za-z0-9_-]{10,})['"]/);
       if (m && m[1]) return m[1];
     }
     return null;
@@ -647,44 +638,57 @@ async function syncSettings() {
   }
 }
 
-async function startEbayOrderSyncInterval() {
-  if (ebayOrderSyncIntervalId) {
-    clearInterval(ebayOrderSyncIntervalId);
-    ebayOrderSyncIntervalId = null;
-  }
+// ═══════════════════════════════════════════════════════════
+// ⏰ CHROME ALARMS (MV3-compatible persistent scheduling)
+// ═══════════════════════════════════════════════════════════
 
+const ALARM_SYNC_ORDERS = 'ebay-order-sync';
+const ALARM_SYNC_SETTINGS = 'sync-settings';
+
+async function startEbayOrderSyncInterval() {
   const data = await chrome.storage.local.get(['ebaySyncInterval', 'ebaySyncEnabled']);
   const interval = data.ebaySyncInterval || EBAY_ORDER_SYNC_INTERVAL;
   const enabled = data.ebaySyncEnabled !== false;
 
   if (!enabled) {
     syncLog('info', 'eBay auto-sync is DISABLED by user.');
+    await chrome.alarms.clear(ALARM_SYNC_ORDERS);
     return;
   }
 
-  ebayOrderSyncIntervalId = setInterval(() => {
-    triggerEbayOrderSync('interval');
-  }, interval);
-
-  syncLog('info', `eBay order sync interval started (every ${interval / 60000} minutes)`);
+  // chrome.alarms minimum period is 1 minute
+  const periodMinutes = Math.max(1, interval / 60000);
+  await chrome.alarms.create(ALARM_SYNC_ORDERS, { periodInMinutes: periodMinutes });
+  syncLog('info', `eBay order sync alarm set (every ${periodMinutes} min)`);
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local') {
     if (changes.ebaySyncInterval || changes.ebaySyncEnabled) {
-      console.log('🔄 Settings changed. Restarting Sync Interval...');
       startEbayOrderSyncInterval();
     }
   }
 });
 
-function stopEbayOrderSyncInterval() {
-  if (ebayOrderSyncIntervalId) {
-    clearInterval(ebayOrderSyncIntervalId);
-    ebayOrderSyncIntervalId = null;
-    syncLog('info', 'eBay order sync interval stopped');
-  }
+async function stopEbayOrderSyncInterval() {
+  await chrome.alarms.clear(ALARM_SYNC_ORDERS);
+  syncLog('info', 'eBay order sync alarm cleared');
 }
+
+// ═══════════════════════════════════════════════════════════
+// 🔔 ALARM LISTENER
+// ═══════════════════════════════════════════════════════════
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === ALARM_SYNC_ORDERS) {
+    triggerEbayOrderSync('alarm');
+  } else if (alarm.name === ALARM_SYNC_SETTINGS) {
+    syncSettings();
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// 🚀 LIFECYCLE EVENTS (single consolidated handler)
+// ═══════════════════════════════════════════════════════════
 
 chrome.runtime.onStartup.addListener(async () => {
   const isAuth = await verifyAuthStatus();
@@ -695,27 +699,26 @@ chrome.runtime.onStartup.addListener(async () => {
   }
 });
 
-chrome.runtime.onInstalled.addListener(async () => {
+chrome.runtime.onInstalled.addListener(async (details) => {
+  // Auth & settings sync for all install/update events
   const isAuth = await verifyAuthStatus();
   syncSettings();
   if (isAuth) {
     setTimeout(() => triggerEbayOrderSync('install'), 10000);
     startEbayOrderSyncInterval();
   }
-});
 
-setInterval(syncSettings, 30 * 60 * 1000);
-
-chrome.runtime.onInstalled.addListener(async (details) => {
+  // First-install specific behavior
   if (details.reason === 'install') {
-    console.log('🎉 Extension installed for the first time!');
     await chrome.storage.local.set({ firstInstall: true });
-    const onboardingUrl = URLS.WEB_APP_BASE || 'https://sellersuit.com';
+    const onboardingUrl = 'http://localhost:3001';
+    console.log('🎉 [Background] First Install! Opening onboarding:', onboardingUrl);
     chrome.tabs.create({ url: onboardingUrl });
-  } else if (details.reason === 'update') {
-    console.log('🔄 Extension updated to version', chrome.runtime.getManifest().version);
   }
 });
+
+// Periodic settings sync via chrome.alarms (replaces setInterval)
+chrome.alarms.create(ALARM_SYNC_SETTINGS, { periodInMinutes: 30 });
 
 function todayISO() {
   const d = new Date();
@@ -988,7 +991,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               if (tokenData.saasToken) {
                 await fetch(`${URLS.SUPABASE_FUNCTIONS}/create-listing`, {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenData.saasToken}` },
+                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenData.saasToken}`, 'apikey': API_KEYS.SUPABASE_ANON },
                   body: JSON.stringify({
                     title: request.title, sku: request.sku,
                     ebay_price: request.finalPrice, amazon_price: request.amazonPrice,
@@ -1032,7 +1035,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (tokenData.saasToken) {
           await fetch(`${URLS.SUPABASE_FUNCTIONS}/create-listing`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenData.saasToken}` },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenData.saasToken}`, 'apikey': API_KEYS.SUPABASE_ANON },
             body: JSON.stringify(request.payload)
           });
           sendResponse({ success: true });
@@ -1176,46 +1179,6 @@ async function generateTitleWithGemini(apiKey, promptTemplate, productData, mode
   return data.candidates[0].content.parts[0].text.trim().replace(/^"|"$/g, '');
 }
 
-function convertEbayCsvToSupabaseFormat(csvOrders) {
-  const parseNum = (val) => {
-    if (!val) return null;
-    const num = parseFloat(String(val).replace(/[$,]/g, '').trim());
-    return isNaN(num) ? null : num;
-  };
-
-  const parseDate = (val) => {
-    if (!val) return null;
-    const date = new Date(val);
-    return isNaN(date.getTime()) ? null : date.toISOString();
-  };
-
-  const rawOrders = csvOrders.map(row => ({
-    ebay_order_id: row['Order number'] || row['Order Number'] || '',
-    sales_record_number: row['Sales record number'] || row['Sales Record Number'] || row['Sales Record'] || row['Sales Record #'] || row['Sale No'] || row['Sale No.'] || row['Record #'] || '',
-    order_date: parseDate(row['Sale date'] || row['Paid on date'] || row['Date sold'] || row['Date Paid'] || row['Paid date']),
-    quantity: parseInt(String(row['Quantity'] || 1), 10),
-    item_number: row['Custom label'] || row['Item number'] || null,
-    total_amount: parseNum(row['Total price'] || row['Total Amount']),
-    item_title: row['Item title'] || row['Title'] || 'Untitled Item',
-    order_status: 'paid',
-    platform: 'eBay',
-    currency: 'USD'
-  }));
-
-  const aggregatedOrdersMap = new Map();
-  for (const order of rawOrders) {
-    const id = order.ebay_order_id;
-    if (!id) continue;
-    if (!aggregatedOrdersMap.has(id)) {
-      aggregatedOrdersMap.set(id, { ...order, line_items: [] });
-    }
-    const existing = aggregatedOrdersMap.get(id);
-    existing.line_items.push({ title: order.item_title, sku: order.item_number, quantity: order.quantity });
-    existing.quantity = existing.line_items.reduce((sum, item) => sum + item.quantity, 0);
-  }
-
-  return Array.from(aggregatedOrdersMap.values());
-}
-
-chrome.runtime.onMessage.addListener(MessageHandler.createListener());
-console.log('✅ Background Service Worker Fully Initialized');
+// BUG-02 FIX: Removed orphan MessageHandler.createListener() - no handlers were registered.
+// BUG-09 FIX: Removed dead convertEbayCsvToSupabaseFormat() function.
+if (FEATURES.DEBUG_MODE) console.log('✅ Background Service Worker Fully Initialized');

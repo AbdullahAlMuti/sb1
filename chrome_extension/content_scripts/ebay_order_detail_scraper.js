@@ -4,7 +4,7 @@
 (function () {
     'use strict';
 
-    const DEBUG = true;
+    const DEBUG = false;
 
     function log(msg, data = null) {
         if (!DEBUG) return;
@@ -250,15 +250,16 @@
     if (document.readyState === 'complete') init();
     else window.addEventListener('load', init);
 
-    // Watch for internal eBay navigation
+    // Watch for internal eBay navigation (SPA) using MutationObserver
     let lastUrl = location.href;
-    setInterval(() => {
+    const navObserver = new MutationObserver(() => {
         if (location.href !== lastUrl) {
             lastUrl = location.href;
-            log('URL change detected (SPA)');
+            if (DEBUG) log('URL change detected (SPA)');
             init();
         }
-    }, 1500);
+    });
+    navObserver.observe(document.body, { childList: true, subtree: true });
 
     log('eBay Scraper V3 Ready');
 })();

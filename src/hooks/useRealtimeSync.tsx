@@ -42,7 +42,7 @@ export function useRealtimeSync(
         'postgres_changes',
         config,
         (payload) => {
-          console.log(`[Realtime] ${table} ${payload.eventType}:`, payload);
+          if (import.meta.env.DEV) console.log(`[Realtime] ${table} ${payload.eventType}:`, payload);
           callback(payload);
         }
       );
@@ -50,7 +50,7 @@ export function useRealtimeSync(
 
     // Subscribe to the channel
     channel.subscribe((status) => {
-      console.log(`[Realtime] Channel status: ${status}`);
+      if (import.meta.env.DEV) console.log(`[Realtime] Channel status: ${status}`);
     });
 
     channelRef.current = channel;
@@ -106,7 +106,7 @@ export function useRealtimeNotices(onNoticeChange: () => void) {
         table: 'notices',
         event: '*',
         callback: () => {
-          console.log('[Realtime] Notice changed, refreshing...');
+          if (import.meta.env.DEV) console.log('[Realtime] Notice changed, refreshing...');
           onNoticeChange();
         },
       },
@@ -128,7 +128,7 @@ export function useRealtimeProfile(
             event: 'UPDATE',
             filter: `id=eq.${userId}`,
             callback: () => {
-              console.log('[Realtime] Profile changed, refreshing...');
+              if (import.meta.env.DEV) console.log('[Realtime] Profile changed, refreshing...');
               onProfileChange();
             },
           },
@@ -146,7 +146,7 @@ export function useRealtimePlans(onPlanChange: () => void) {
         table: 'plans',
         event: '*',
         callback: () => {
-          console.log('[Realtime] Plans changed, refreshing...');
+          if (import.meta.env.DEV) console.log('[Realtime] Plans changed, refreshing...');
           onPlanChange();
         },
       },
@@ -168,7 +168,7 @@ export function useRealtimeUserPlan(
             event: '*',
             filter: `user_id=eq.${userId}`,
             callback: () => {
-              console.log('[Realtime] User plan changed, refreshing...');
+              if (import.meta.env.DEV) console.log('[Realtime] User plan changed, refreshing...');
               onPlanChange();
             },
           },

@@ -36,22 +36,18 @@ export function usePlanLimits() {
     }
 
     try {
-      // Fetch user's profile with current credits
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('credits, plan_id')
-        .eq('id', user.id)
-        .single();
+      // Run independent queries in parallel
+      const [profileRes, userPlanRes, listingsRes] = await Promise.all([
+        supabase.from('profiles').select('credits, plan_id').eq('id', user.id).single(),
+        supabase.from('user_plans').select('*').eq('user_id', user.id).maybeSingle(),
+        supabase.from('listings').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'active')
+      ]);
 
-      if (profileError) throw profileError;
+      if (profileRes.error) throw profileRes.error;
 
-      // Fetch user's plan details (cast for extended schema)
-      const { data: userPlan } = await supabase
-        .from('user_plans')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      const userPlanData = userPlan as { orders_used?: number; credits_used?: number; current_period_end?: string; plan_id?: string } | null;
+      const profile = profileRes.data;
+      const userPlanData = userPlanRes.data as { orders_used?: number; credits_used?: number; current_period_end?: string; plan_id?: string } | null;
+      const listingsCount = listingsRes.count;
 
       // Fetch the plan limits from plans table
       const planId = profile?.plan_id || userPlanData?.plan_id;
@@ -76,13 +72,6 @@ export function usePlanLimits() {
         planData = freePlan;
       }
 
-      // Count user's listings
-      const { count: listingsCount } = await supabase
-        .from('listings')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('status', 'active');
-
       setLimits({
         credits_per_month: planData?.credits_per_month ?? 0,
         max_listings: planData?.max_listings ?? 10,
@@ -96,9 +85,13 @@ export function usePlanLimits() {
         current_period_end: userPlanData?.current_period_end ?? null,
       });
       setError(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error fetching plan limits:', err);
-      setError(err.message);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError(String(err));
+      }
     } finally {
       setIsLoading(false);
     }

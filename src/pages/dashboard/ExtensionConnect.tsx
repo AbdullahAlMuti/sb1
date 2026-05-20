@@ -82,7 +82,7 @@ export default function ExtensionConnect() {
         ...prev, 
         authStatus: data.success ? 'success' : 'error' 
       }));
-      console.log('[Test] auth-status:', data);
+      if (import.meta.env.DEV) console.log('[Test] auth-status:', data);
     } catch (e) {
       setTestResults(prev => ({ ...prev, authStatus: 'error' }));
       console.error('[Test] auth-status error:', e);
@@ -98,7 +98,7 @@ export default function ExtensionConnect() {
         ...prev, 
         getListings: data.success ? 'success' : 'error' 
       }));
-      console.log('[Test] get-listings:', data);
+      if (import.meta.env.DEV) console.log('[Test] get-listings:', data);
     } catch (e) {
       setTestResults(prev => ({ ...prev, getListings: 'error' }));
       console.error('[Test] get-listings error:', e);
@@ -114,7 +114,7 @@ export default function ExtensionConnect() {
         ...prev, 
         dashboardOverview: data.success ? 'success' : 'error' 
       }));
-      console.log('[Test] dashboard-overview:', data);
+      if (import.meta.env.DEV) console.log('[Test] dashboard-overview:', data);
     } catch (e) {
       setTestResults(prev => ({ ...prev, dashboardOverview: 'error' }));
       console.error('[Test] dashboard-overview error:', e);
@@ -139,6 +139,13 @@ export default function ExtensionConnect() {
   };
 
   const extensionCode = `// Run this in your extension's background console to set the token:
+chrome.storage.local.set({ saasToken: "${token}" }, () => {
+  if (import.meta.env.DEV) console.log('✅ Token saved! Extension authenticated.');
+});`;
+
+  // Fix for SEC-02: The above template is displayed to users — ensure the
+  // console.log is always reachable when pasted in extension devtools.
+  const extensionCodeFixed = `// Run this in your extension's background console to set the token:
 chrome.storage.local.set({ saasToken: "${token}" }, () => {
   console.log('✅ Token saved! Extension authenticated.');
 });`;
@@ -259,14 +266,14 @@ chrome.storage.local.set({ saasToken: "${token}" }, () => {
               <Label>Quick Setup Code</Label>
               <div className="relative">
                 <pre className="p-4 bg-muted rounded-lg text-xs overflow-x-auto">
-                  {extensionCode}
+                  {extensionCodeFixed}
                 </pre>
                 <Button
                   size="sm"
                   variant="secondary"
                   className="absolute top-2 right-2"
                   onClick={() => {
-                    navigator.clipboard.writeText(extensionCode);
+                    navigator.clipboard.writeText(extensionCodeFixed);
                     toast({ title: "Code copied!" });
                   }}
                 >

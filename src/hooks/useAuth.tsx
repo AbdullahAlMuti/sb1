@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, getFunctionErrorMessage } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 interface Profile {
@@ -28,7 +28,7 @@ interface AuthContextType {
   isLoading: boolean;
   isEmailVerified: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, fullName?: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, fullName?: string, goal?: string) => Promise<{ error: Error | null }>;
   verifyOtp: (email: string, token: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -216,44 +216,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   };
 
-  const signUp = async (email: string, password: string, fullName?: string) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-        },
-      },
-    });
+  const signUp = async (email: string, password: string, fullName?: string, goal?: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('auth-otp', {
+        body: {
+          action: 'signup',
+          email,
+          password,
+          fullName,
+          goal
+        }
+      });
 
-    if (error) {
-      if (error.message.includes('already registered')) {
-        toast.error('This email is already registered. Please sign in instead.');
-      } else {
-        toast.error(error.message);
+      if (error || (data && data.error)) {
+        const rawErrMsg = await getFunctionErrorMessage(error);
+        const errMsg = data?.error || rawErrMsg || 'An error occurred during signup';
+        toast.error(errMsg);
+        return { error: new Error(errMsg), isSandbox: false, otpCode: null };
       }
-      return { error };
-    }
 
-    toast.success('Please check your email for the verification code!');
-    return { error: null };
+      toast.success(data?.isSandbox ? 'Sandbox mode: verification code generated.' : 'Please check your email for the verification code!');
+      return { error: null, isSandbox: !!data?.isSandbox, otpCode: data?.otpCode || null };
+    } catch (err: any) {
+      toast.error(err.message || 'An error occurred during signup');
+      return { error: err, isSandbox: false, otpCode: null };
+    }
   };
 
   const verifyOtp = async (email: string, token: string) => {
-    const { error } = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type: 'signup',
-    });
+    try {
+      const { data, error } = await supabase.functions.invoke('auth-otp', {
+        body: {
+          action: 'verify',
+          email,
+          code: token
+        }
+      });
 
-    if (error) {
-      toast.error(error.message);
-      return { error };
+      if (error || (data && data.error)) {
+        const rawErrMsg = await getFunctionErrorMessage(error);
+        const errMsg = data?.error || rawErrMsg || 'Verification failed';
+        toast.error(errMsg);
+        return { error: new Error(errMsg) };
+      }
+
+      toast.success('Email verified successfully!');
+      return { error: null };
+    } catch (err: any) {
+      toast.error(err.message || 'Verification failed');
+      return { error: err };
     }
-
-    toast.success('Email verified successfully!');
-    return { error: null };
   };
 
   const signOut = async () => {
@@ -268,21 +280,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const resendVerificationEmail = async (email?: string) => {
     const targetEmail = email || user?.email;
     if (!targetEmail) {
-      return { error: new Error('No email found') };
+      return { error: new Error('No email found'), isSandbox: false, otpCode: null };
     }
 
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email: targetEmail,
-    });
+    try {
+      const { data, error } = await supabase.functions.invoke('auth-otp', {
+        body: {
+          action: 'resend',
+          email: targetEmail
+        }
+      });
 
-    if (error) {
-      toast.error(error.message);
-      return { error };
+      if (error || (data && data.error)) {
+        const rawErrMsg = await getFunctionErrorMessage(error);
+        const errMsg = rawErrMsg || data?.error || 'Failed to resend code';
+        toast.error(errMsg);
+        return { error: new Error(errMsg), isSandbox: false, otpCode: null };
+      }
+
+      toast.success(data?.isSandbox ? 'Sandbox mode: new code generated.' : 'Verification code resent successfully.');
+      return { error: null, isSandbox: !!data?.isSandbox, otpCode: data?.otpCode || null };
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to resend code');
+      return { error: err, isSandbox: false, otpCode: null };
     }
-
-    toast.success('Verification email sent! Check your inbox.');
-    return { error: null };
   };
 
   return (

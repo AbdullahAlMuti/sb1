@@ -6,7 +6,7 @@
 const AuthHelper = (() => {
   'use strict';
 
-  const DEBUG = true;
+  const DEBUG = false;
   const SUPABASE_URL =
     (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.SUPABASE_URL)
       ? ExtensionConfig.URLS.SUPABASE_URL

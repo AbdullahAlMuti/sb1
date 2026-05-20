@@ -49,15 +49,15 @@ export function DashboardSidebar({
     const Icon = item.icon;
     const active = isActive(item.key);
     const path = getRoutePath(item.key);
-    return <Link to={path} onClick={onMobileClose} className={cn('flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group', item.disabled && 'opacity-50 pointer-events-none', active ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
-        <Icon className={cn("h-5 w-5 transition-colors", active ? "text-background" : "text-muted-foreground group-hover:text-foreground")} />
-        {!effectiveCollapsed && <span className={cn('flex-1 text-sm font-medium', active ? 'text-background' : '')}>
-            {item.label}
-          </span>}
-        {!effectiveCollapsed && item.badge && <span className="text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
-            {item.badge}
-          </span>}
-      </Link>;
+      return <Link to={path} onClick={onMobileClose} className={cn('flex items-center gap-3 px-3 py-1.5 rounded-md group', item.disabled && 'opacity-50 pointer-events-none', active ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground')}>
+          <Icon className={cn("h-[18px] w-[18px]", active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground")} />
+          {!effectiveCollapsed && <span className={cn('flex-1 text-[13px] font-medium', active ? 'text-foreground' : '')}>
+              {item.label}
+            </span>}
+          {!effectiveCollapsed && item.badge && <span className="text-[11px] bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
+              {item.badge}
+            </span>}
+        </Link>;
   };
 
   // Section label component
@@ -86,7 +86,7 @@ export function DashboardSidebar({
           {!effectiveCollapsed ? <SellerSuitLogo size="sm" showText={true} /> : <SellerSuitLogo size="sm" showText={false} />}
         </Link>
         {!isMobile && <Button variant="ghost" size="icon" onClick={() => handleCollapse(!isCollapsed)} className="h-8 w-8 rounded-lg hover:bg-muted">
-            <ChevronLeft className={cn("h-4 w-4 transition-transform", isCollapsed && "rotate-180")} />
+            <ChevronLeft className={cn("h-4 w-4", isCollapsed && "rotate-180")} />
           </Button>}
       </div>
 
@@ -108,30 +108,24 @@ export function DashboardSidebar({
 
       {/* Pro Access Card */}
       {!effectiveCollapsed && !isAdminSection && <div className="px-3 pb-3">
-          <div className="rounded-2xl p-4 relative overflow-hidden cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-lg bg-[premium-surface-foreground] bg-primary border-solid" onClick={() => {
+          <div className="rounded-lg p-3 relative cursor-pointer bg-card border border-border shadow-sm hover:bg-muted/50" onClick={() => {
         onMobileClose?.();
         navigate('/dashboard/subscription');
       }}>
-            {/* Background decorative element */}
-            <div className="absolute -bottom-8 -right-8 w-32 h-32 bg-white/10 rounded-full" />
-            <div className="absolute -bottom-4 -right-4 w-20 h-20 bg-white/5 rounded-full" />
-            
-            <div className="relative z-10">
-              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center mb-3">
-                <Rocket className="h-5 w-5 text-white" />
-              </div>
-              <h3 className="font-semibold text-white text-sm mb-1">Get Pro Access</h3>
-              <p className="text-xs text-white/80 leading-relaxed">
-                Unlock premium features
-              </p>
-              <Button size="sm" className="mt-3 bg-white text-ebay hover:bg-white/90 text-xs h-8 font-semibold" onClick={e => {
+            <div className="flex items-center gap-2 mb-2">
+              <Rocket className="h-4 w-4 text-muted-foreground" />
+              <h3 className="font-semibold text-foreground text-sm">Get Pro Access</h3>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+              Unlock premium features
+            </p>
+            <Button variant="outline" size="sm" className="w-full text-xs h-8 font-medium" onClick={e => {
             e.stopPropagation();
             onMobileClose?.();
             navigate('/dashboard/subscription');
           }}>
-                Upgrade Now
-              </Button>
-            </div>
+              Upgrade Now
+            </Button>
           </div>
         </div>}
 
@@ -140,9 +134,9 @@ export function DashboardSidebar({
         <button onClick={() => {
         onMobileClose?.();
         signOut();
-      }} className={cn('w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200', 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
-          <LogOut className="h-5 w-5" />
-          {!effectiveCollapsed && <span className="text-sm font-medium">Log out</span>}
+      }} className={cn('w-full flex items-center gap-3 px-3 py-1.5 rounded-md', 'text-muted-foreground hover:bg-muted/50 hover:text-foreground')}>
+          <LogOut className="h-[18px] w-[18px]" />
+          {!effectiveCollapsed && <span className="text-[13px] font-medium">Log out</span>}
         </button>
       </div>
     </aside>;

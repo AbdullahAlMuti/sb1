@@ -44,7 +44,7 @@ export function useExtensionStatus() {
     };
 
     window.addEventListener('message', handlePong);
-    window.postMessage({ type: 'SELLERSUIT_EXTENSION_PING' }, '*');
+    window.postMessage({ type: 'SELLERSUIT_EXTENSION_PING' }, window.location.origin);
 
     // Timeout - if no response after 2 seconds, extension not installed
     setTimeout(() => {

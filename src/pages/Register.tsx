@@ -1,30 +1,41 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, ArrowRight, Loader2, Check, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, ArrowRight, Loader2, Check, ArrowLeft, User, Mail, Lock, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth } from '@/hooks/useAuth';
 import { usePlans } from '@/hooks/usePlans';
 import { toast } from 'sonner';
 import { z } from 'zod';
+import { cn } from '@/lib/utils';
+import SellerSuitLogo from '@/components/SellerSuitLogo';
+import { OtpInput } from '@/components/auth/OtpInput';
+import { TurnstileCaptcha } from '@/components/auth/TurnstileCaptcha';
 
 const emailSchema = z.string().email('Please enter a valid email address');
-const passwordSchema = z.string().min(6, 'Password must be at least 6 characters');
+const passwordSchema = z.string()
+  .min(8, 'Password must be at least 8 characters')
+  .regex(/[0-9]/, 'Password must contain at least one number')
+  .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character');
 
 export default function Register() {
+  const [signUpStep, setSignUpStep] = useState<1 | 2 | 3>(1);
+  const [selectedGoal, setSelectedGoal] = useState<'ebay' | 'shopify' | 'both' | null>(null);
   const [email, setEmail] = useState('');
-  const [confirmEmail, setConfirmEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; confirmEmail?: string; password?: string; terms?: string }>({});
+  const [code, setCode] = useState<string[]>(Array(6).fill(''));
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [sandboxOtp, setSandboxOtp] = useState<string | null>(null);
+  const [errors, setErrors] = useState<{ email?: string; password?: string; fullName?: string }>({});
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
-  const { signUp, user } = useAuth();
+  const { signUp, verifyOtp, resendVerificationEmail, signIn, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { plans, isLoading: plansLoading, getPlanByName } = usePlans();
@@ -43,36 +54,32 @@ export default function Register() {
   }, [stateSelectedPlan]);
 
   useEffect(() => {
-    if (user && selectedPlan) {
-      // User is already logged in, redirect to payment if paid plan selected
-      if (selectedPlan.price_monthly > 0) {
-        navigate('/payment-required', { replace: true });
+    if (user && user.email_confirmed_at) {
+      localStorage.removeItem('selectedPlan');
+      const goal = selectedGoal || localStorage.getItem('selectedGoal');
+      if (goal === 'shopify') {
+        navigate('/dashboard/shopify', { replace: true });
       } else {
-        localStorage.removeItem('selectedPlan');
         navigate('/dashboard', { replace: true });
       }
     }
-  }, [user, navigate, selectedPlan]);
+  }, [user, navigate, selectedGoal]);
 
   const validateForm = () => {
-    const newErrors: { email?: string; confirmEmail?: string; password?: string; terms?: string } = {};
+    const newErrors: { email?: string; password?: string; fullName?: string } = {};
     
+    if (!fullName.trim()) {
+      newErrors.fullName = 'Please enter your name';
+    }
+
     const emailResult = emailSchema.safeParse(email);
     if (!emailResult.success) {
       newErrors.email = emailResult.error.errors[0].message;
     }
 
-    if (email !== confirmEmail) {
-      newErrors.confirmEmail = 'Emails do not match';
-    }
-
     const passwordResult = passwordSchema.safeParse(password);
     if (!passwordResult.success) {
       newErrors.password = passwordResult.error.errors[0].message;
-    }
-
-    if (!agreedToTerms) {
-      newErrors.terms = 'You must agree to the Terms & Conditions';
     }
 
     setErrors(newErrors);
@@ -84,20 +91,30 @@ export default function Register() {
     
     if (!validateForm()) return;
 
+    if (!captchaToken) {
+      toast.error('Please complete the security check.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      const { error } = await signUp(email, password, fullName);
-      if (!error) {
-        toast.success('Account created! Please verify your email.');
+      const res = await signUp(email, password, fullName, selectedGoal || undefined);
+      if (!res.error) {
+        if (res.isSandbox && res.otpCode) {
+          setSandboxOtp(res.otpCode);
+          toast.success('Sandbox mode: Verification code generated!');
+        } else {
+          toast.success('Account created! Please check your email for the verification code.');
+        }
         if (selectedPlan) {
           localStorage.setItem('selectedPlanId', selectedPlan.id);
         }
-        // Free plan or paid plan, everyone must verify email first
-        navigate('/auth', { 
-          replace: true,
-          state: { mode: 'verify-email', pendingEmail: email }
-        });
+        // Persist selected goal for post-verification redirect
+        if (selectedGoal) {
+          localStorage.setItem('selectedGoal', selectedGoal);
+        }
+        setSignUpStep(3);
       }
     } catch (error: any) {
       toast.error(error.message || 'An error occurred');
@@ -105,6 +122,121 @@ export default function Register() {
       setIsSubmitting(false);
     }
   };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = code.join('');
+    if (token.length < 6) {
+      toast.error('Please enter the 6-digit verification code');
+      return;
+    }
+
+    setIsVerifying(true);
+    try {
+      const { error } = await verifyOtp(email, token);
+      if (!error) {
+        // Automatically sign in the user
+        const { error: signInError } = await signIn(email, password);
+        if (signInError) {
+          toast.error('Verification succeeded, but auto sign-in failed. Please log in manually.');
+          navigate('/auth', { replace: true });
+          return;
+        }
+
+        toast.success('Email verified successfully!');
+        localStorage.removeItem('selectedPlan');
+        const goal = selectedGoal || localStorage.getItem('selectedGoal');
+        localStorage.removeItem('selectedGoal');
+        if (goal === 'shopify') {
+          navigate('/dashboard/shopify', { replace: true });
+        } else {
+          navigate('/dashboard', { replace: true });
+        }
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Verification failed');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    setResending(true);
+    try {
+      const res = await resendVerificationEmail(email);
+      if (!res.error) {
+        if (res.isSandbox && res.otpCode) {
+          setSandboxOtp(res.otpCode);
+          toast.success('Sandbox mode: New verification code generated!');
+        } else {
+          toast.success('Verification code resent successfully.');
+        }
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to resend code');
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const maskEmail = (str: string) => {
+    if (!str) return 'your email';
+    const [local, domain] = str.split('@');
+    if (local.length <= 3) return `***@${domain}`;
+    const firstLetter = local[0];
+    const middlePart = '***';
+    const lastLetter = local[local.length - 1];
+    return `${firstLetter}${middlePart}${lastLetter}@${domain}`;
+  };
+
+  const options = [
+    {
+      id: 'ebay',
+      title: 'eBay Seller',
+      logoBg: 'bg-zinc-100 dark:bg-zinc-800/60',
+      renderLogo: () => (
+        <svg className="w-8 h-4 max-w-full" viewBox="0 0 120 60" xmlns="http://www.w3.org/2000/svg">
+          <path d="M71.474 30.746c-3.794.124-6.165.804-6.165 3.32 0 1.63 1.3 3.382 4.578 3.382 4.392 0 6.743-2.392 6.743-6.33v-.433l-5.155.062zm9.362 5.196l.144 3.505h-3.897c-.103-.887-.144-1.773-.144-2.64-2.103 2.598-4.62 3.34-8.104 3.34-5.155 0-7.918-2.722-7.918-5.877 0-4.578 3.753-6.186 10.3-6.33C73 27.9 75 27.9 76.65 27.9v-.454c0-3.052-1.96-4.3-5.36-4.3-2.516 0-4.392 1.052-4.578 2.846H62.3c.474-4.495 5.196-5.63 9.34-5.63 5 0 9.176 1.773 9.176 7.032v8.557z" fill="#f5af02"/>
+          <path d="M35.203 28.52c-.165-3.918-3-5.382-6.02-5.382-3.258 0-5.877 1.65-6.33 5.382zM22.77 31.304c.227 3.815 2.846 6.062 6.454 6.062 2.495 0 4.722-1 5.464-3.237h4.33c-.845 4.495-5.63 6.02-9.733 6.02-7.485 0-10.784-4.124-10.784-9.67 0-6.124 3.423-10.145 10.867-10.145 5.918 0 10.248 3.093 10.248 9.857v1.114z" fill="#e53238"/>
+          <path d="M50.36 37.283c3.897 0 6.557-2.804 6.557-7.032s-2.66-7.032-6.557-7.032c-3.877 0-6.557 2.804-6.557 7.032s2.68 7.032 6.557 7.032zM39.615 12.97H43.8v10.537c2.062-2.454 4.887-3.155 7.67-3.155 4.68 0 9.857 3.155 9.857 9.96 0 5.7-4.124 9.857-9.94 9.857-3.052 0-5.897-1.093-7.67-3.258 0 .866-.04 1.732-.144 2.557H39.45l.144-4.33V12.97z" fill="#0064d2"/>
+          <path d="M102.178 21.034L89.207 46.5h-4.7l3.732-7.073-9.753-18.393h4.908l7.176 14.372 7.155-14.372z" fill="#86b817"/>
+        </svg>
+      ),
+    },
+    {
+      id: 'shopify',
+      title: 'Shopify Seller',
+      logoBg: 'bg-[#95BF47]/10 dark:bg-[#A6DF58]/10 border border-[#95BF47]/20',
+      renderLogo: () => (
+        <svg className="w-5.5 h-5.5 text-[#95BF47] dark:text-[#A6DF58]" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <title>Shopify</title>
+          <path d="M15.337 23.979l7.216-1.561s-2.604-17.613-2.625-17.73c-.018-.116-.114-.192-.211-.192s-1.929-.136-1.929-.136-1.275-1.274-1.439-1.411c-.045-.037-.075-.057-.121-.074l-.914 21.104h.023zM11.71 11.305s-.81-.424-1.774-.424c-1.447 0-1.504.906-1.504 1.141 0 1.232 3.24 1.715 3.24 4.629 0 2.295-1.44 3.76-3.406 3.76-2.354 0-3.54-1.465-3.54-1.465l.646-2.086s1.245 1.066 2.28 1.066c.675 0 .975-.545.975-.932 0-1.619-2.654-1.694-2.654-4.359-.034-2.237 1.571-4.416 4.827-4.416 1.257 0 1.875.361 1.875.361l-.945 2.715-.02.01zM11.17.83c.136 0 .271.038.405.135-.984.465-2.064 1.639-2.508 3.992-.656.213-1.293.405-1.889.578C7.697 3.75 8.951.84 11.17.84V.83zm1.235 2.949v.135c-.754.232-1.583.484-2.394.736.466-1.777 1.333-2.645 2.085-2.971.193.501.309 1.176.309 2.1zm.539-2.234c.694.074 1.141.867 1.429 1.755-.349.114-.735.231-1.158.366v-.252c0-.752-.096-1.371-.271-1.871v.002zm2.992 1.289c-.02 0-.06.021-.078.021s-.289.075-.714.21c-.423-1.233-1.176-2.37-2.508-2.37h-.115C12.135.209 11.669 0 11.265 0 8.159 0 6.675 3.877 6.21 5.846c-1.194.365-2.063.636-2.16.674-.675.213-.694.232-.772.87-.075.462-1.83 14.063-1.83 14.063L15.009 24l.927-21.166z"/>
+        </svg>
+      ),
+    },
+    {
+      id: 'both',
+      title: 'Both eBay & Shopify',
+      logoBg: 'bg-zinc-100/50 dark:bg-zinc-800/30',
+      renderLogo: () => (
+        <div className="relative w-10 h-10 flex items-center justify-center scale-[0.85]">
+          <div className="absolute top-0 left-0 w-6 h-6 rounded-lg bg-card border border-border flex items-center justify-center shadow-sm z-10 overflow-hidden">
+            <svg className="w-5 h-2.5" viewBox="0 0 120 60" xmlns="http://www.w3.org/2000/svg">
+              <path d="M71.474 30.746c-3.794.124-6.165.804-6.165 3.32 0 1.63 1.3 3.382 4.578 3.382 4.392 0 6.743-2.392 6.743-6.33v-.433l-5.155.062zm9.362 5.196l.144 3.505h-3.897c-.103-.887-.144-1.773-.144-2.64-2.103 2.598-4.62 3.34-8.104 3.34-5.155 0-7.918-2.722-7.918-5.877 0-4.578 3.753-6.186 10.3-6.33C73 27.9 75 27.9 76.65 27.9v-.454c0-3.052-1.96-4.3-5.36-4.3-2.516 0-4.392 1.052-4.578 2.846H62.3c.474-4.495 5.196-5.63 9.34-5.63 5 0 9.176 1.773 9.176 7.032v8.557z" fill="#f5af02"/>
+              <path d="M35.203 28.52c-.165-3.918-3-5.382-6.02-5.382-3.258 0-5.877 1.65-6.33 5.382zM22.77 31.304c.227 3.815 2.846 6.062 6.454 6.062 2.495 0 4.722-1 5.464-3.237h4.33c-.845 4.495-5.63 6.02-9.733 6.02-7.485 0-10.784-4.124-10.784-9.67 0-6.124 3.423-10.145 10.867-10.145 5.918 0 10.248 3.093 10.248 9.857v1.114z" fill="#e53238"/>
+              <path d="M50.36 37.283c3.897 0 6.557-2.804 6.557-7.032s-2.66-7.032-6.557-7.032c-3.877 0-6.557 2.804-6.557 7.032s2.68 7.032 6.557 7.032zM39.615 12.97H43.8v10.537c2.062-2.454 4.887-3.155 7.67-3.155 4.68 0 9.857 3.155 9.857 9.96 0 5.7-4.124 9.857-9.94 9.857-3.052 0-5.897-1.093-7.67-3.258 0 .866-.04 1.732-.144 2.557H39.45l.144-4.33V12.97z" fill="#0064d2"/>
+              <path d="M102.178 21.034L89.207 46.5h-4.7l3.732-7.073-9.753-18.393h4.908l7.176 14.372 7.155-14.372z" fill="#86b817"/>
+            </svg>
+          </div>
+          <div className="absolute bottom-0 right-0 w-6 h-6 rounded-lg bg-[#95BF47]/10 dark:bg-[#A6DF58]/10 border border-[#95BF47]/20 flex items-center justify-center shadow-sm overflow-hidden">
+            <svg className="w-3.5 h-3.5 text-[#95BF47] dark:text-[#A6DF58]" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M15.337 23.979l7.216-1.561s-2.604-17.613-2.625-17.73c-.018-.116-.114-.192-.211-.192s-1.929-.136-1.929-.136-1.275-1.274-1.439-1.411c-.045-.037-.075-.057-.121-.074l-.914 21.104h.023zM11.71 11.305s-.81-.424-1.774-.424c-1.447 0-1.504.906-1.504 1.141 0 1.232 3.24 1.715 3.24 4.629 0 2.295-1.44 3.76-3.406 3.76-2.354 0-3.54-1.465-3.54-1.465l.646-2.086s1.245 1.066 2.28 1.066c.675 0 .975-.545.975-.932 0-1.619-2.654-1.694-2.654-4.359-.034-2.237 1.571-4.416 4.827-4.416 1.257 0 1.875.361 1.875.361l-.945 2.715-.02.01zM11.17.83c.136 0 .271.038.405.135-.984.465-2.064 1.639-2.508 3.992-.656.213-1.293.405-1.889.578C7.697 3.75 8.951.84 11.17.84V.83zm1.235 2.949v.135c-.754.232-1.583.484-2.394.736.466-1.777 1.333-2.645 2.085-2.971.193.501.309 1.176.309 2.1zm.539-2.234c.694.074 1.141.867 1.429 1.755-.349.114-.735.231-1.158.366v-.252c0-.752-.096-1.371-.271-1.871v.002zm2.992 1.289c-.02 0-.06.021-.078.021s-.289.075-.714.21c-.423-1.233-1.176-2.37-2.508-2.37h-.115C12.135.209 11.669 0 11.265 0 8.159 0 6.675 3.877 6.21 5.846c-1.194.365-2.063.636-2.16.674-.675.213-.694.232-.772.87-.075.462-1.83 14.063-1.83 14.063L15.009 24l.927-21.166z"/>
+            </svg>
+          </div>
+        </div>
+      ),
+    },
+  ];
 
   if (plansLoading) {
     return (
@@ -114,250 +246,382 @@ export default function Register() {
     );
   }
 
-  return (
-    <div className="min-h-screen mesh-gradient flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-5xl"
-      >
-        {/* Back button */}
-        <div className="mb-6">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => navigate('/#pricing')}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Plans
-          </Button>
-        </div>
+  if (signUpStep === 1) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="w-full max-w-[440px]"
+        >
+          <div className="bg-card border border-border/80 p-6 sm:p-8 rounded-[20px] shadow-md flex flex-col space-y-6">
+            {/* Logo */}
+            <div className="flex justify-center">
+              <SellerSuitLogo size="md" />
+            </div>
 
-        <div className="grid lg:grid-cols-2 gap-8">
-          {/* Registration Form - Step One */}
-          <div className="glass-card p-8">
+            {/* Title & Subtitle */}
+            <div className="text-center space-y-1.5">
+              <h2 className="font-display text-xl sm:text-2xl font-extrabold tracking-tight text-foreground">
+                What do you want to grow first?
+              </h2>
+              <p className="text-muted-foreground text-[13px] sm:text-sm max-w-[320px] mx-auto">
+                We'll personalize your experience based on your choice.
+              </p>
+            </div>
+
             {/* Steps indicator */}
-            <div className="flex items-center gap-4 mb-8">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <div className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold bg-primary text-primary-foreground shadow-sm">
+                  1
+                </div>
+                <span className="text-[11px] sm:text-[12px] font-semibold text-foreground border-b border-primary pb-0.5">
+                  Choose Goal
+                </span>
+              </div>
+              
+              <div className="w-8 h-[1px] bg-border" />
+              
+              <div className="flex items-center gap-1.5 opacity-55">
+                <div className="flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold bg-muted text-muted-foreground">
+                  2
+                </div>
+                <span className="text-[11px] sm:text-[12px] font-semibold text-muted-foreground pb-0.5">
+                  Create Account
+                </span>
+              </div>
+            </div>
+
+            {/* Options list */}
+            <div className="space-y-3">
+              {options.map((option) => {
+                const isSelected = selectedGoal === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setSelectedGoal(option.id as any)}
+                    className={cn(
+                      "w-full flex items-center justify-center gap-3.5 p-4 rounded-xl border transition-all duration-200 bg-card hover:border-primary/50",
+                      isSelected 
+                        ? "border-primary ring-1 ring-primary/20 dark:ring-primary/40 shadow-sm" 
+                        : "border-border/60"
+                    )}
+                  >
+                    {/* Logo container */}
+                    <div className={cn(
+                      "w-9 h-9 rounded-lg shrink-0 flex items-center justify-center shadow-sm overflow-hidden",
+                      option.logoBg
+                    )}>
+                      {option.renderLogo()}
+                    </div>
+
+                    {/* Content */}
+                    <span className="font-semibold text-foreground text-[15px] sm:text-[16px] leading-none">
+                      {option.title}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Continue button */}
+            <Button
+              type="button"
+              onClick={() => {
+                setSignUpStep(2);
+              }}
+              size="lg"
+              disabled={!selectedGoal}
+              className="w-full h-12 text-sm sm:text-base font-semibold bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed rounded-xl flex items-center justify-center gap-2 group transition-all"
+            >
+              Continue
+              <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+            </Button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (signUpStep === 2) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="w-full max-w-[440px]"
+        >
+          <div className="bg-card border border-border/80 p-6 sm:p-8 rounded-[20px] shadow-md flex flex-col space-y-6">
+            {/* Logo */}
+            <div className="flex justify-center">
+              <SellerSuitLogo size="md" />
+            </div>
+
+            {/* Title & Subtitle */}
+            <div className="text-center space-y-1.5">
+              <h2 className="font-display text-xl sm:text-2xl font-extrabold tracking-tight text-foreground">
+                Create your account
+              </h2>
+              <p className="text-muted-foreground text-[13px] sm:text-sm max-w-[320px] mx-auto">
+                Get started with your personalized {selectedGoal === 'shopify' ? 'Shopify' : selectedGoal === 'both' ? 'eBay & Shopify' : 'eBay'} workspace.
+              </p>
+            </div>
+
+            {/* Steps indicator */}
+            <div className="flex items-center justify-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <div className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold bg-emerald-500 text-emerald-foreground shadow-sm">
+                  <Check className="h-3 w-3 stroke-[3]" />
+                </div>
                 <div className="flex flex-col">
-                  <span className="text-xs text-muted-foreground uppercase tracking-wide">Step One</span>
-                  <span className="font-semibold text-foreground border-b-2 border-primary pb-1">Create Account</span>
+                  <span className="text-[9px] sm:text-[10px] text-muted-foreground uppercase font-bold tracking-wide leading-none">Step One</span>
+                  <span className="font-semibold text-muted-foreground text-[11px] sm:text-xs leading-tight">Choose Goal</span>
                 </div>
               </div>
-              <div className="flex items-center gap-2 opacity-50">
+              
+              <div className="w-8 h-[1px] bg-border" />
+              
+              <div className="flex items-center gap-1.5">
+                <div className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold bg-primary text-primary-foreground shadow-sm">
+                  2
+                </div>
                 <div className="flex flex-col">
-                  <span className="text-xs text-muted-foreground uppercase tracking-wide">Step Two</span>
-                  <span className="font-semibold text-muted-foreground">Payment Details</span>
+                  <span className="text-[9px] sm:text-[10px] text-primary uppercase font-bold tracking-wide leading-none">Step Two</span>
+                  <span className="font-semibold text-foreground text-[11px] sm:text-xs border-b border-primary pb-0.5 leading-tight">Create Account</span>
                 </div>
               </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Email */}
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-foreground">Email Address</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    setErrors(prev => ({ ...prev, email: undefined }));
-                  }}
-                  className={`bg-primary/5 border-border/50 text-foreground placeholder:text-muted-foreground ${
-                    errors.email ? 'border-destructive' : ''
-                  }`}
-                />
-                {errors.email && (
-                  <p className="text-sm text-destructive">{errors.email}</p>
+              {/* Name */}
+              <div className="space-y-1.5">
+                <Label htmlFor="fullName" className="text-foreground/80 text-[13px] sm:text-sm font-semibold">Name</Label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/75" />
+                  <Input
+                    id="fullName"
+                    type="text"
+                    placeholder="Enter your full name"
+                    value={fullName}
+                    onChange={(e) => {
+                      setFullName(e.target.value);
+                      setErrors(prev => ({ ...prev, fullName: undefined }));
+                    }}
+                    className={`pl-10 h-12 bg-transparent border-border/70 text-foreground text-sm sm:text-[15px] placeholder:text-muted-foreground/60 rounded-xl focus-visible:ring-1 focus-visible:ring-primary/30 ${
+                      errors.fullName ? 'border-destructive' : ''
+                    }`}
+                  />
+                </div>
+                {errors.fullName && (
+                  <p className="text-xs font-medium text-destructive">{errors.fullName}</p>
                 )}
               </div>
 
-              {/* Confirm Email */}
-              <div className="space-y-2">
-                <Label htmlFor="confirmEmail" className="text-foreground">Confirm Email Address</Label>
-                <Input
-                  id="confirmEmail"
-                  type="email"
-                  placeholder="Confirm Email"
-                  value={confirmEmail}
-                  onChange={(e) => {
-                    setConfirmEmail(e.target.value);
-                    setErrors(prev => ({ ...prev, confirmEmail: undefined }));
-                  }}
-                  className={`bg-secondary/50 border-border/50 text-foreground placeholder:text-muted-foreground ${
-                    errors.confirmEmail ? 'border-destructive' : ''
-                  }`}
-                />
-                {errors.confirmEmail && (
-                  <p className="text-sm text-destructive">{errors.confirmEmail}</p>
+              {/* Email */}
+              <div className="space-y-1.5">
+                <Label htmlFor="email" className="text-foreground/80 text-[13px] sm:text-sm font-semibold">Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/75" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="Enter your email address"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setErrors(prev => ({ ...prev, email: undefined }));
+                    }}
+                    className={`pl-10 h-12 bg-transparent border-border/70 text-foreground text-sm sm:text-[15px] placeholder:text-muted-foreground/60 rounded-xl focus-visible:ring-1 focus-visible:ring-primary/30 ${
+                      errors.email ? 'border-destructive' : ''
+                    }`}
+                  />
+                </div>
+                {errors.email && (
+                  <p className="text-xs font-medium text-destructive">{errors.email}</p>
                 )}
               </div>
 
               {/* Password */}
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-foreground">Password</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="password" className="text-foreground/80 text-[13px] sm:text-sm font-semibold">Password</Label>
                 <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/75" />
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
+                    placeholder="Enter your password"
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);
                       setErrors(prev => ({ ...prev, password: undefined }));
                     }}
-                    className={`pr-10 bg-primary/5 border-border/50 text-foreground placeholder:text-muted-foreground ${
+                    className={`pl-10 pr-10 h-12 bg-transparent border-border/70 text-foreground text-sm sm:text-[15px] placeholder:text-muted-foreground/60 rounded-xl focus-visible:ring-1 focus-visible:ring-primary/30 ${
                       errors.password ? 'border-destructive' : ''
                     }`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/80 hover:text-foreground transition-colors"
                   >
-                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    {showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
                   </button>
                 </div>
                 {errors.password ? (
-                  <p className="text-sm text-destructive">{errors.password}</p>
+                  <p className="text-xs font-medium text-destructive">{errors.password}</p>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Must be 6 characters</p>
+                  <p className="text-xs text-muted-foreground/70">Must be at least 8 characters</p>
                 )}
               </div>
 
-              {/* Terms checkbox */}
-              <div className="flex items-start gap-3">
-                <Checkbox 
-                  id="terms" 
-                  checked={agreedToTerms}
-                  onCheckedChange={(checked) => {
-                    setAgreedToTerms(checked as boolean);
-                    setErrors(prev => ({ ...prev, terms: undefined }));
-                  }}
-                  className="mt-1"
-                />
-                <Label htmlFor="terms" className="text-sm text-muted-foreground cursor-pointer">
-                  I agree to SellerSuit's{' '}
-                  <a href="/terms" className="text-primary hover:underline">Terms & Conditions</a>
-                  {' '}and{' '}
-                  <a href="/privacy" className="text-primary hover:underline">Privacy Policy</a>.
-                </Label>
-              </div>
-              {errors.terms && (
-                <p className="text-sm text-destructive">{errors.terms}</p>
-              )}
+              {/* CAPTCHA */}
+              <TurnstileCaptcha 
+                onVerify={(token) => setCaptchaToken(token)} 
+                onExpire={() => setCaptchaToken(null)}
+              />
 
               {/* Submit Button */}
               <Button 
                 type="submit" 
-                variant="hero" 
                 size="lg" 
-                className="w-full uppercase tracking-wide"
+                className="w-full h-12 text-sm sm:text-base font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl flex items-center justify-center gap-2 group transition-all mt-6"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (
                   <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    Creating account...
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Signing up...
                   </>
                 ) : (
-                  <>
-                    Proceed to Secure Payment
-                    <ArrowRight className="h-5 w-5" />
-                  </>
+                  'Sign Up'
                 )}
               </Button>
 
-              {/* Divider */}
-              <div className="relative my-6">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t border-border" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
-                </div>
+              {/* Footer Actions */}
+              <div className="flex flex-col items-center gap-2 mt-4 pt-2 text-[13px] sm:text-sm">
+                <p className="text-muted-foreground">
+                  Already a member?{' '}
+                  <a href="/auth" className="text-primary hover:underline font-semibold">
+                    Log in
+                  </a>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSignUpStep(1)}
+                  className="text-muted-foreground/80 hover:text-foreground transition-colors font-medium flex items-center gap-1 mt-1 text-xs"
+                >
+                  <ArrowLeft className="h-3 w-3" />
+                  Change Goal Selection
+                </button>
               </div>
-
-              {/* Google Sign Up */}
-              <Button variant="outline" type="button" className="w-full" disabled>
-                <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24">
-                  <path
-                    fill="currentColor"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                  />
-                </svg>
-                Sign up with Google
-              </Button>
-
-              {/* Already have account */}
-              <p className="text-center text-muted-foreground mt-4">
-                Already a member?{' '}
-                <a href="/auth" className="text-primary hover:underline font-medium">
-                  Login
-                </a>
-              </p>
             </form>
           </div>
+        </motion.div>
+      </div>
+    );
+  }
 
-          {/* Plan Details - Right Side */}
-          {selectedPlan && (
-            <div className="glass-card p-8">
-              <div className="mb-6">
-                <span className="text-xs text-muted-foreground uppercase tracking-wide">Your Subscription</span>
-                <h2 className="font-display text-3xl font-bold text-foreground mt-2">
-                  {selectedPlan.display_name} Plan
-                </h2>
+  // Fallback / Step 3
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="w-full max-w-[440px]"
+      >
+        <div className="bg-card border border-border/80 p-6 sm:p-8 rounded-[20px] shadow-md flex flex-col space-y-6">
+          {/* Illustrated Envelope Badge */}
+          <div className="flex justify-center">
+            <div className="relative w-20 h-20 rounded-full bg-primary/5 dark:bg-primary/10 flex items-center justify-center">
+              <div className="w-16 h-16 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center relative">
+                <Mail className="h-8 w-8 text-primary" />
+                <div className="absolute -bottom-1 -right-1 bg-card border-2 border-background dark:border-zinc-900 rounded-full p-1 shadow-sm">
+                  <ShieldCheck className="h-4 w-4 text-primary fill-primary/10" />
+                </div>
               </div>
+            </div>
+          </div>
 
-              {/* Features List */}
-              <ul className="space-y-4 mb-8">
-                {selectedPlan.features.map((feature, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <div className="w-5 h-5 rounded-full bg-success/20 flex items-center justify-center mt-0.5">
-                      <Check className="w-3 h-3 text-success" />
-                    </div>
-                    <span className="text-foreground">{feature}</span>
-                  </li>
-                ))}
-              </ul>
+          {/* Headline & Subtitle */}
+          <div className="text-center space-y-2">
+            <h2 className="font-display text-xl sm:text-2xl font-extrabold tracking-tight text-foreground">
+              Verify your email
+            </h2>
+            <p className="text-muted-foreground text-xs max-w-[320px] mx-auto leading-relaxed">
+              We've sent a verification code to{' '}
+              <span className="text-primary font-bold">{maskEmail(email)}</span>.
+              Please enter the code below to activate your account.
+            </p>
+          </div>
 
-              {/* Price Summary */}
-              <div className="border-t border-border pt-6">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-lg font-semibold text-foreground">Total Due Today</span>
-                  <span className="font-display text-3xl font-bold text-foreground">
-                    ${selectedPlan.price_monthly} <span className="text-lg font-normal text-muted-foreground">USD</span>
-                  </span>
-                </div>
-
-                {/* Guarantee Badge */}
-                <div className="bg-secondary/50 rounded-lg px-4 py-3 text-center mb-4">
-                  <span className="text-sm font-medium text-foreground">30-Day Money-Back Guarantee</span>
-                </div>
-
-                {/* Subscription note */}
-                <p className="text-xs text-muted-foreground text-center">
-                  Starting next month, you'll be billed ${selectedPlan.price_monthly}/month for the {selectedPlan.display_name} subscription unless you cancel. You can cancel anytime.
-                </p>
+          {sandboxOtp && (
+            <div className="bg-amber-500/10 dark:bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 text-center space-y-2">
+              <div className="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400 tracking-wider">
+                Developer Sandbox Mode
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Resend key sandbox limitation activated. Use the code below to verify:
+              </p>
+              <div className="text-2xl font-mono font-extrabold tracking-widest text-amber-600 dark:text-amber-400">
+                {sandboxOtp}
               </div>
             </div>
           )}
+
+          <form onSubmit={handleVerifyOtp} className="space-y-6">
+            {/* Digit Inputs */}
+            <OtpInput value={code} onChange={setCode} disabled={isVerifying} />
+
+            {/* Verify Email Button */}
+            <Button 
+              type="submit" 
+              size="lg" 
+              className="w-full h-11 text-xs sm:text-sm font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl flex items-center justify-center gap-2 group transition-all"
+              disabled={isVerifying}
+            >
+              {isVerifying ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                <>
+                  Verify email
+                  <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
+            </Button>
+
+            {/* Separator line with Lock Shield icon */}
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-border/60" />
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="bg-card px-3 text-muted-foreground flex items-center gap-1">
+                  <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground/75" />
+                </span>
+              </div>
+            </div>
+
+            {/* Resend Code */}
+            <p className="text-center text-xs text-muted-foreground">
+              Didn't receive the code?{' '}
+              <button
+                type="button"
+                onClick={handleResendCode}
+                disabled={resending}
+                className="text-primary hover:underline font-semibold"
+              >
+                {resending ? 'Sending...' : 'Resend code'}
+              </button>
+            </p>
+          </form>
         </div>
       </motion.div>
     </div>

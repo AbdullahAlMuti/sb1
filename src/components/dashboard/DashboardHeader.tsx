@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { useTheme } from '@/hooks/useTheme';
 import { useSubscription } from '@/hooks/useSubscription';
+import { useAlerts } from '@/hooks/useAlerts';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -41,9 +42,7 @@ export function DashboardHeader() {
   const { user, profile, signOut, isAdmin } = useAuth();
   const { planName, subscribed, subscriptionEnd, plan, limits, usage, openCustomerPortal } = useSubscription();
   const { theme, toggleTheme } = useTheme();
-  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   
@@ -69,45 +68,7 @@ export function DashboardHeader() {
     }
   }, []);
 
-  // Fetch inventory alerts
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchAlerts = async () => {
-      const { data, error } = await supabase
-        .from('inventory_alerts')
-        .select('id, alert_type, message, status, created_at')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-      if (!error && data) {
-        setAlerts(data);
-      }
-    };
-
-    fetchAlerts();
-
-    const channel = supabase
-      .channel('alerts-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'inventory_alerts',
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          fetchAlerts();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user]);
+  const { alerts, unreadCount: unreadAlertsCount, markAsRead, markAllAsRead } = useAlerts();
 
   // Fetch active notices
   useEffect(() => {
@@ -160,24 +121,7 @@ export function DashboardHeader() {
 
   // Calculate total unread count (alerts + visible notices)
   const visibleNotices = notices.filter(n => !dismissedNoticeIds.has(n.id));
-  const unreadAlertsCount = alerts.filter((a) => a.status === 'UNREAD').length;
   const totalUnreadCount = unreadAlertsCount + visibleNotices.length;
-
-  const markAsRead = async (alertId: string) => {
-    await supabase
-      .from('inventory_alerts')
-      .update({ status: 'READ' })
-      .eq('id', alertId);
-  };
-
-  const markAllAsRead = async () => {
-    if (!user) return;
-    await supabase
-      .from('inventory_alerts')
-      .update({ status: 'READ' })
-      .eq('user_id', user.id)
-      .eq('status', 'UNREAD');
-  };
 
   const getAlertTypeColor = (type: string) => {
     switch (type) {

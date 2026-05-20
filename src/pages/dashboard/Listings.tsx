@@ -452,12 +452,12 @@ export default function Listings() {
 
   const fetchListings = async (showLog = false) => {
     if (!user) {
-      console.log("[Listings] No user, skipping fetch");
+      if (import.meta.env.DEV) console.log("[Listings] No user, skipping fetch");
       return;
     }
     
     try {
-      console.log("[Listings] Fetching listings for user:", user.id);
+      if (import.meta.env.DEV) console.log("[Listings] Fetching listings for user:", user.id);
       
       const { data, error } = await supabase
         .from("listings")
@@ -471,10 +471,10 @@ export default function Listings() {
       }
 
       const listingsData = data || [];
-      console.log("[Listings] Fetched", listingsData.length, "listings");
+      if (import.meta.env.DEV) console.log("[Listings] Fetched", listingsData.length, "listings");
       
       if (showLog && listingsData.length > 0) {
-        console.log("[Listings] Latest listing:", listingsData[0]);
+        if (import.meta.env.DEV) console.log("[Listings] Latest listing:", listingsData[0]);
       }
       
       const normalized = listingsData.map(normalizeListingRow);
@@ -618,7 +618,7 @@ export default function Listings() {
   // Fetch on mount and when user changes
   useEffect(() => {
     if (user) {
-      console.log("[Listings] User available, fetching listings...");
+      if (import.meta.env.DEV) console.log("[Listings] User available, fetching listings...");
       fetchListings(true);
     }
   }, [user]);
@@ -628,7 +628,7 @@ export default function Listings() {
     if (!user) return;
     
     const interval = setInterval(() => {
-      console.log("[Listings] Polling for updates...");
+      if (import.meta.env.DEV) console.log("[Listings] Polling for updates...");
       fetchListings();
     }, 30000);
     
@@ -643,7 +643,7 @@ export default function Listings() {
         event: '*',
         filter: `user_id=eq.${user.id}`,
         callback: (payload) => {
-          console.log('[Realtime] Listing changed:', payload.eventType, payload);
+          if (import.meta.env.DEV) console.log('[Realtime] Listing changed:', payload.eventType, payload);
           // Immediate refresh on any change
           fetchListings(true);
 
@@ -726,7 +726,7 @@ export default function Listings() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    console.log("[Listings] Manual refresh triggered");
+    if (import.meta.env.DEV) console.log("[Listings] Manual refresh triggered");
     await fetchListings(true);
     toast({
       title: "Refreshed",

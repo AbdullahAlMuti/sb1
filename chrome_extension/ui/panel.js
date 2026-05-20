@@ -67,7 +67,7 @@ async function initAuthStatus() {
           // Open web app login page (environment-aware)
           const authUrl = (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.WEB_APP_AUTH)
             ? ExtensionConfig.URLS.WEB_APP_AUTH
-            : 'https://sellersuit.com/auth';
+            : 'http://localhost:3001/auth';
           chrome.tabs.create({ url: authUrl });
         };
       }

@@ -89,7 +89,7 @@ export function EbaySyncSettings() {
             toast({ title: "Settings Saved", description: "Extension will update on next sync." });
 
             // Notify Extension
-            window.postMessage({ type: 'REFRESH_EXTENSION_TOKEN' }, '*');
+            window.postMessage({ type: 'REFRESH_EXTENSION_TOKEN' }, window.location.origin);
 
         } catch (error: any) {
             toast({ title: "Error Saving", description: error.message, variant: "destructive" });

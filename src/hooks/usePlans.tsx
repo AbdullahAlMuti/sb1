@@ -70,8 +70,12 @@ export function usePlans() {
 
       setPlans(formattedPlans);
       setError(null);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load plans');
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Failed to load plans');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -94,7 +98,7 @@ export function usePlans() {
           table: 'plans'
         },
         (payload) => {
-          console.log('Plans changed:', payload.eventType);
+          if (import.meta.env.DEV) console.log('Plans changed:', payload.eventType);
           // Refetch plans on any change (INSERT, UPDATE, DELETE)
           fetchPlans();
         }

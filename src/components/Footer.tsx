@@ -2,113 +2,70 @@ import { forwardRef } from "react";
 import { Link } from "react-router-dom";
 import SellerSuitLogo from "@/components/SellerSuitLogo";
 
+const footerLinks = {
+  product: [
+    { label: "Platform", href: "/#features" },
+    { label: "Workflow", href: "/#workflow" },
+    { label: "Pricing", href: "/#pricing" },
+    { label: "Extension", href: "/dashboard/extension" },
+  ],
+  resources: [
+    { label: "Documentation", href: "/documentation" },
+    { label: "Troubleshooting", href: "/documentation#troubleshooting" },
+  ],
+  company: [
+    { label: "About", href: "/about" },
+    { label: "Contact", href: "/contact" },
+  ],
+  legal: [
+    { label: "Privacy", href: "/privacy-policy" },
+    { label: "Terms", href: "/terms-of-service" },
+    { label: "Refunds", href: "/refund" },
+  ],
+};
+
 const Footer = forwardRef<HTMLElement>((_, ref) => {
   const currentYear = new Date().getFullYear();
 
-  const footerLinks = {
-    product: [
-      { label: "Features", href: "/#features" },
-      { label: "Pricing", href: "/#pricing" },
-      { label: "Chrome Extension", href: "/dashboard/extension" },
-      { label: "Dashboard", href: "/dashboard" },
-    ],
-    resources: [
-      { label: "Documentation", href: "/documentation" },
-      { label: "Troubleshooting", href: "/documentation#troubleshooting" },
-    ],
-    company: [
-      { label: "About", href: "/about" },
-      { label: "Contact", href: "/contact" },
-    ],
-    legal: [
-      { label: "Privacy Policy", href: "/privacy-policy" },
-      { label: "Terms of Service", href: "/terms-of-service" },
-      { label: "Refund Policy", href: "/refund" },
-    ],
-  };
-
   return (
-    <footer ref={ref} className="py-16 border-t border-border">
+    <footer ref={ref} className="border-t border-border bg-secondary/35 py-14">
       <div className="container px-4">
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 sm:gap-8 mb-12">
-          {/* Brand */}
-          <div className="col-span-2 sm:col-span-2 md:col-span-3 lg:col-span-1">
-            <div className="mb-4">
-              <SellerSuitLogo size="sm" />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Professional dropshipping automation from Amazon to eBay.
+        <div className="grid gap-8 md:grid-cols-[1.2fr_2fr]">
+          <div className="max-w-sm">
+            <SellerSuitLogo size="sm" />
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              Marketplace automation for sellers who need a clearer way to manage
+              listings, orders, fulfillment, and usage.
             </p>
           </div>
 
-          {/* Links */}
-          <div>
-            <h4 className="font-semibold mb-4">Product</h4>
-            <ul className="space-y-2">
-              {footerLinks.product.map((link) => (
-                <li key={link.label}>
-                  <a href={link.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    {link.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="font-semibold mb-4">Resources</h4>
-            <ul className="space-y-2">
-              {footerLinks.resources.map((link) => (
-                <li key={link.label}>
-                  <a href={link.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    {link.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="font-semibold mb-4">Company</h4>
-            <ul className="space-y-2">
-              {footerLinks.company.map((link) => (
-                <li key={link.label}>
-                  {link.href.startsWith("/") ? (
-                    <Link to={link.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                      {link.label}
-                    </Link>
-                  ) : (
-                    <a href={link.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                      {link.label}
-                    </a>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="font-semibold mb-4">Legal</h4>
-            <ul className="space-y-2">
-              {footerLinks.legal.map((link) => (
-                <li key={link.label}>
-                  <Link to={link.href} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+          <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
+            {Object.entries(footerLinks).map(([group, links]) => (
+              <div key={group}>
+                <h4 className="mb-3 text-sm font-semibold capitalize text-foreground">{group}</h4>
+                <ul className="space-y-2">
+                  {links.map((link) => (
+                    <li key={link.label}>
+                      {link.href.startsWith("/#") ? (
+                        <a href={link.href} className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+                          {link.label}
+                        </a>
+                      ) : (
+                        <Link to={link.href} className="text-sm text-muted-foreground transition-colors hover:text-foreground">
+                          {link.label}
+                        </Link>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Bottom bar */}
-        <div className="pt-8 border-t border-border flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-sm text-muted-foreground">
-            © {currentYear} SellerSuit. All rights reserved.
-          </p>
-          <div className="flex items-center gap-6">
-            <span className="text-sm text-muted-foreground">Made with ❤️ for dropshippers</span>
-          </div>
+        <div className="mt-10 flex flex-col gap-3 border-t border-border pt-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <p>© {currentYear} SellerSuit. All rights reserved.</p>
+          <p>Built for marketplace operators.</p>
         </div>
       </div>
     </footer>

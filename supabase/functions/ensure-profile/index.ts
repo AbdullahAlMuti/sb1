@@ -72,6 +72,8 @@ Deno.serve(async (req) => {
       user.email ||
       null;
 
+    const goal = (user.user_metadata && (user.user_metadata as any).goal) || null;
+
     // Create profile without a plan - user must pay to get access
     // No free plan exists - plan_id will be set after payment
     const { data: created, error: createError } = await supabaseAdmin
@@ -81,6 +83,7 @@ Deno.serve(async (req) => {
         full_name: fullName,
         credits: 0,
         is_active: false, // Inactive until payment
+        settings: goal ? { goal } : {},
       })
       .select('*')
       .single();

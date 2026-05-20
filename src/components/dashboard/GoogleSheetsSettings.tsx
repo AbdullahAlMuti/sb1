@@ -254,7 +254,7 @@ export default function GoogleSheetsSettings() {
         order_date: new Date().toISOString(),
       };
 
-      console.log('Testing Google Sheets connection with URL:', scriptUrl);
+      if (import.meta.env.DEV) console.log('Testing Google Sheets connection with URL:', scriptUrl);
 
       // Test with AMZ_Listings via Edge Function proxy
       let listingsResult: InvokeResult;
@@ -269,7 +269,7 @@ export default function GoogleSheetsSettings() {
             uniqueColumn: 'id',
           },
         });
-        console.log('Listings sync result:', listingsResult);
+        if (import.meta.env.DEV) console.log('Listings sync result:', listingsResult);
         setDebugInfo((prev) => ({
           ...(prev ?? { startedAt: new Date().toISOString(), scriptUrl }),
           listings: {
@@ -315,7 +315,7 @@ export default function GoogleSheetsSettings() {
             uniqueColumn: 'id',
           },
         });
-        console.log('Orders sync result:', ordersResult);
+        if (import.meta.env.DEV) console.log('Orders sync result:', ordersResult);
         setDebugInfo((prev) => ({
           ...(prev ?? { startedAt: new Date().toISOString(), scriptUrl }),
           orders: {

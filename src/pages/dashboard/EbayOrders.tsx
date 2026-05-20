@@ -559,7 +559,7 @@ export default function EbayOrders() {
 
     if (isExtensionInstalled) {
       // Send message to extension to handle it (background script)
-      window.postMessage({ type: 'OPEN_BACKGROUND_TAB', url }, '*');
+      window.postMessage({ type: 'OPEN_BACKGROUND_TAB', url }, window.location.origin);
     } else {
       // Fallback: Open locally if extension is not present
       window.open(url, '_blank');
@@ -606,22 +606,90 @@ export default function EbayOrders() {
     );
   };
 
-  const exportToCSV = () => {
-    if (filteredOrders.length === 0) {
+  const exportToCSV = async () => {
+    let ordersToExport = filteredOrders;
+
+    // If they specifically selected a subset (and not 'Select All'), export only those
+    if (selectedOrderIds.size > 0 && !isAllVisibleSelected) {
+      ordersToExport = filteredOrders.filter(o => selectedOrderIds.has(o.id));
+    } else {
+      // Otherwise, fetch ALL orders from the database using pagination
+      toast.loading("Fetching all orders for export (this may take a few seconds)...", { id: "export-csv" });
+      try {
+        let allFetchedOrders: EbayOrder[] = [];
+        let page = 1;
+        let hasMore = true;
+        
+        while (hasMore) {
+          const { data, error } = await supabase.functions.invoke("ebay-orders", {
+            method: "POST",
+            body: {
+              op: "list",
+              page,
+              limit: 100, // Edge function enforces max 100 per request
+              search: searchQuery || undefined,
+              status: "all", // Force "all" to include cancelled orders as requested
+              dateFrom: dateRange?.from ? dateRange.from.toISOString() : undefined,
+              dateTo: dateRange?.to ? dateRange.to.toISOString() : undefined,
+            },
+          });
+          
+          if (error) throw error;
+          
+          const batch = data?.orders || [];
+          allFetchedOrders = [...allFetchedOrders, ...batch];
+          
+          if (batch.length < 100 || allFetchedOrders.length >= (data?.total || 0)) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+          
+          // Safety escape hatch to prevent infinite loops (max 50,000 orders)
+          if (page > 500) hasMore = false;
+        }
+        
+        ordersToExport = allFetchedOrders;
+        toast.success(`Fetched ${ordersToExport.length} orders for export`, { id: "export-csv" });
+      } catch (err) {
+        console.error("Export fetch error:", err);
+        toast.error("Failed to fetch all orders. Exporting visible instead.", { id: "export-csv" });
+      }
+    }
+
+    if (ordersToExport.length === 0) {
       toast.error("No orders to export");
       return;
     }
 
-    const headers = ["Order ID", "Buyer Name", "Buyer Email", "Order Date", "Status", "Total", "Currency"];
-    const rows = filteredOrders.map((order) => [
-      order.ebay_order_id,
-      order.buyer_name || "",
-      order.buyer_email || "",
-      order.order_date ? format(new Date(order.order_date), "yyyy-MM-dd") : "",
-      order.order_status || "",
-      order.total_amount?.toString() || "",
-      order.currency || "USD",
-    ]);
+    const headers = ["Order ID", "Buyer Name", "Buyer Email", "Phone Number", "Order Date", "Status", "Total", "Currency"];
+    const rows = ordersToExport.map((order) => {
+      // Extract phone number from shipping_address object or JSON string
+      let phone = "";
+      try {
+        const address = typeof order.shipping_address === 'string' 
+          ? JSON.parse(order.shipping_address) 
+          : order.shipping_address;
+          
+        if (address) {
+          phone = address.phone || address.phoneNumber || address.Phone || address.PrimaryPhone?.Phone || address.primaryPhone?.phoneNumber || "";
+        }
+      } catch (e) {
+        // Ignore parse errors if shipping_address is invalid
+      }
+
+      return [
+        order.ebay_order_id,
+        // Wrap strings in quotes to avoid CSV delimiter issues with commas
+        `"${(order.buyer_name || "").replace(/"/g, '""')}"`,
+        `"${(order.buyer_email || "").replace(/"/g, '""')}"`,
+        `"${(phone || "").replace(/"/g, '""')}"`,
+        order.order_date ? format(new Date(order.order_date), "yyyy-MM-dd") : "",
+        order.order_status || "",
+        order.total_amount?.toString() || "",
+        order.currency || "USD",
+      ];
+    });
 
     const csvContent = [headers, ...rows].map((row) => row.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv" });
@@ -631,7 +699,7 @@ export default function EbayOrders() {
     a.download = `ebay-orders-${format(new Date(), "yyyy-MM-dd")}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Orders exported successfully");
+    toast.success(`Exported ${ordersToExport.length} orders successfully`);
   };
 
   const stats = useMemo(() => {

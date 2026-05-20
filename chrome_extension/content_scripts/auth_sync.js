@@ -18,7 +18,7 @@
 (function () {
     'use strict';
 
-    const DEBUG = true;
+    const DEBUG = true; // TEMP: re-enabled for localhost testing
     // IMPORTANT: Must match the web app's project id (used in localStorage key: sb-<projectId>-auth-token)
     const PROJECT_ID = 'ojxzssooylmydystjvdo';
     const TOKEN_KEY = `sb-${PROJECT_ID}-auth-token`;
@@ -212,7 +212,7 @@
                     type: 'SELLERSUIT_EXTENSION_PONG',
                     version: chrome.runtime?.getManifest?.()?.version || 'unknown',
                     installed: true
-                }, '*');
+                }, window.location.origin);
             }
 
             // Forward token refresh requests from web app
@@ -232,7 +232,7 @@
                         type: 'EBAY_ORDER_SYNC_RESULT',
                         success: false,
                         error: 'Extension not installed or not enabled. Please install the SellerSuit extension.'
-                    }, '*');
+                    }, window.location.origin);
                     return;
                 }
 
@@ -261,7 +261,7 @@
                                         type: 'EBAY_ORDER_SYNC_RESULT',
                                         success: true,
                                         count: response.cache?.count || 0
-                                    }, '*');
+                                    }, window.location.origin);
                                 } else {
                                     let errorMsg = response.error || 'Sync failed';
 
@@ -277,7 +277,7 @@
                                         type: 'EBAY_ORDER_SYNC_RESULT',
                                         success: false,
                                         error: errorMsg
-                                    }, '*');
+                                    }, window.location.origin);
                                 }
                             }
                         }
@@ -288,7 +288,7 @@
                         type: 'EBAY_ORDER_SYNC_RESULT',
                         success: false,
                         error: 'Failed to communicate with extension.'
-                    }, '*');
+                    }, window.location.origin);
                 }
             }
 
@@ -373,7 +373,7 @@
             window.postMessage({
                 type: 'ORDER_COMPLETED_EVENT',
                 payload: request.payload
-            }, '*');
+            }, window.location.origin);
         }
     });
 
