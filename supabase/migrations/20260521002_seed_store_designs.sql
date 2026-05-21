@@ -183,11 +183,11 @@ VALUES
   ('winning-products', 'Winning Products', '/winning-products', 'Feature', 'Active', 'Pro+',      '200 items / mo',  TRUE, TRUE,  2,  'Trophy'),
   ('store-explorer',   'Store Explorer',   '/store-explorer',   'Feature', 'Active', 'Starter+',  '50 lookups / mo', TRUE, TRUE,  3,  'Store'),
   ('store-designs',    'Store Designs',    '/store-designs',    'Feature', 'Active', 'Pro+',      '50 views / mo',   TRUE, TRUE,  4,  'Paintbrush'),
-  ('ad-library',       'Ad Library',       '/ad-library',       'Feature', 'Active', 'Pro+',      '100 lookups / mo',TRUE, TRUE,  5,  'Image'),
-  ('ai-copy-studio',   'AI Copy Studio',   '/ai-copy-studio',   'Feature', 'Active', 'Starter+',  '200 generations / mo', TRUE, TRUE, 6, 'Sparkles'),
-  ('saved-items',      'Saved Items',      '/saved-items',      'Feature', 'Active', 'All Plans', '500 items',       TRUE, TRUE,  7,  'Bookmark'),
-  ('settings',         'Settings',         '/settings',         'Core',    'Active', 'All Plans', '-',               TRUE, TRUE,  8,  'Settings'),
-  ('billing',          'Billing',          '/billing',          'Core',    'Active', 'All Plans', '-',               TRUE, TRUE,  9,  'CreditCard'),
-  ('help',             'Help',             '/help',             'Core',    'Active', 'All Plans', '-',               TRUE, TRUE,  10, 'HelpCircle')
-
+  ('store-analytics',  'Store Intelligence', '/store-analytics',  'Feature', 'Active', 'Pro+',      '-',               TRUE, TRUE,  5,  'BarChart3'),
+  ('ad-library',       'Ad Library',       '/ad-library',       'Feature', 'Active', 'Pro+',      '100 lookups / mo',TRUE, TRUE,  6,  'Image'),
+  ('ai-copy-studio',   'AI Copy Studio',   '/ai-copy-studio',   'Feature', 'Active', 'Starter+',  '200 generations / mo', TRUE, TRUE, 7, 'Sparkles'),
+  ('saved-items',      'Saved Items',      '/saved-items',      'Feature', 'Active', 'All Plans', '500 items',       TRUE, TRUE,  8,  'Bookmark'),
+  ('settings',         'Settings',         '/settings',         'Core',    'Active', 'All Plans', '-',               TRUE, TRUE,  9,  'Settings'),
+  ('billing',          'Billing',          '/billing',          'Core',    'Active', 'All Plans', '-',               TRUE, TRUE,  10, 'CreditCard'),
+  ('help',             'Help',             '/help',             'Core',    'Active', 'All Plans', '-',               TRUE, TRUE,  11, 'HelpCircle')
 ON CONFLICT (page_key) DO NOTHING;

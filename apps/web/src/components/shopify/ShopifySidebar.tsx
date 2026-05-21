@@ -21,17 +21,18 @@ import { useAuth } from '@repo/auth/hooks/useAuth';
 import { Button } from '@repo/ui/components/ui/button';
 import { cn } from '@repo/ui/lib/utils';
 import SellerSuitLogo from '@repo/ui/brand/SellerSuitLogo';
+import { useShopifyPageSettings } from '../../hooks/shopify/useShopifyPageSettings';
 
 const SHOPIFY_NAV_ITEMS = [
   { key: 'dashboard', path: '/dashboard/shopify', icon: LayoutDashboard, label: 'Dashboard' },
-  { key: 'opportunities', path: '/dashboard/shopify/winning-products', icon: Trophy, label: 'Product Opportunities' },
+  { key: 'winning-products', path: '/dashboard/shopify/winning-products', icon: Trophy, label: 'Product Opportunities' },
   { key: 'product-research', path: '/dashboard/shopify/product-research', icon: Search, label: 'Product Research' },
   { key: 'store-explorer', path: '/dashboard/shopify/store-explorer', icon: Globe, label: 'Store Explorer' },
   { key: 'store-designs', path: '/dashboard/shopify/store-designs', icon: Palette, label: 'Store Designs' },
   { key: 'store-analytics', path: '/dashboard/shopify/store-analytics', icon: BarChart3, label: 'Store Intelligence' },
   { key: 'ad-library', path: '/dashboard/shopify/ad-library', icon: Megaphone, label: 'Ad Library' },
   { key: 'ai-copy-studio', path: '/dashboard/shopify/copy-studio', icon: Sparkles, label: 'AI Copy Studio' },
-  { key: 'saved-research', path: '/dashboard/shopify/saved-items', icon: Bookmark, label: 'Saved Research' },
+  { key: 'saved-items', path: '/dashboard/shopify/saved-items', icon: Bookmark, label: 'Saved Research' },
 ];
 
 const SHOPIFY_FOOTER_ITEMS = [
@@ -43,13 +44,15 @@ const SHOPIFY_FOOTER_ITEMS = [
 interface ShopifySidebarProps {
   isMobile?: boolean;
   onMobileClose?: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-export function ShopifySidebar({ isMobile, onMobileClose }: ShopifySidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+export function ShopifySidebar({ isMobile, onMobileClose, isCollapsed = false, onToggleCollapse }: ShopifySidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { signOut } = useAuth();
+  const { settings, isLoading } = useShopifyPageSettings();
 
   const effectiveCollapsed = isMobile ? false : isCollapsed;
 
@@ -60,11 +63,24 @@ export function ShopifySidebar({ isMobile, onMobileClose }: ShopifySidebarProps)
     return location.pathname.startsWith(path);
   };
 
+  const navItems = isLoading || settings.length === 0 ? SHOPIFY_NAV_ITEMS : [
+    ...settings.filter(s => s.is_visible && SHOPIFY_NAV_ITEMS.some(nav => nav.key === s.page_key)).map(s => ({
+      ...SHOPIFY_NAV_ITEMS.find(nav => nav.key === s.page_key)!,
+      label: s.name, // Use DB name
+    })),
+    ...SHOPIFY_NAV_ITEMS.filter(nav => !settings.some(s => s.page_key === nav.key))
+  ];
+
+  const footerItems = isLoading || settings.length === 0 ? SHOPIFY_FOOTER_ITEMS : SHOPIFY_FOOTER_ITEMS.map(item => {
+    const s = settings.find(s => s.page_key === item.key);
+    return s ? { ...item, label: s.name, isVisible: s.is_visible } : { ...item, isVisible: true };
+  }).filter(item => item.isVisible);
+
   return (
     <aside
       data-collapsed={effectiveCollapsed}
       className={cn(
-        'h-screen bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col',
+        'h-screen bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col transition-all duration-300 ease-in-out',
         !isMobile && 'fixed left-0 top-0 z-50',
         isMobile ? 'w-full' : effectiveCollapsed ? 'w-20' : 'w-[260px]'
       )}
@@ -82,17 +98,17 @@ export function ShopifySidebar({ isMobile, onMobileClose }: ShopifySidebarProps)
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setIsCollapsed(!isCollapsed)}
+            onClick={onToggleCollapse}
             className="h-8 w-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
           >
-            <ChevronLeft className={cn('h-4 w-4 text-slate-500', isCollapsed && 'rotate-180')} />
+            <ChevronLeft className={cn('h-4 w-4 text-slate-500 transition-transform duration-300', effectiveCollapsed && 'rotate-180')} />
           </Button>
         )}
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto scrollbar-thin">
-        {SHOPIFY_NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.path);
           return (
@@ -119,7 +135,7 @@ export function ShopifySidebar({ isMobile, onMobileClose }: ShopifySidebarProps)
         <div className="my-3 border-t border-slate-200 dark:border-slate-800" />
 
         {/* Footer items */}
-        {SHOPIFY_FOOTER_ITEMS.map((item) => {
+        {footerItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.path);
           return (

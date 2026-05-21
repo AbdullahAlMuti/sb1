@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { ShopifySidebar } from '@/components/shopify/ShopifySidebar';
 import { ShopifyHeader } from '@/components/shopify/ShopifyHeader';
+import { cn } from '@repo/ui/lib/utils';
 import { Menu } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
 import { Sheet, SheetContent } from '@repo/ui/components/ui/sheet';
@@ -14,7 +15,7 @@ export default function ShopifyLayout() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
-        <ShopifySidebar />
+        <ShopifySidebar isCollapsed={isCollapsed} onToggleCollapse={() => setIsCollapsed(!isCollapsed)} />
       </div>
 
       {/* Mobile Sidebar */}
@@ -25,7 +26,7 @@ export default function ShopifyLayout() {
       </Sheet>
 
       {/* Main Content */}
-      <div className="lg:ml-[260px]">
+      <div className={cn("transition-all duration-300 ease-in-out", isCollapsed ? "lg:ml-[80px]" : "lg:ml-[260px]")}>
         {/* Header */}
         <div className="sticky top-0 z-40 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center h-16 px-4 sm:px-6">
