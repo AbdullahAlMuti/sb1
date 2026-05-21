@@ -269,3 +269,11 @@ export const ADMIN_PANEL_LINK: NavItemConfig = {
   icon: Shield,
   label: 'Admin Panel',
 };
+
+export type SellerGoal = 'ebay' | 'shopify' | 'both' | string | null | undefined;
+
+export function getDashboardPathForGoal(goal: SellerGoal): string {
+  if (goal === 'shopify') return '/dashboard/shopify';
+  if (goal === 'both') return '/dashboard/ebay';
+  return '/dashboard/ebay';
+}

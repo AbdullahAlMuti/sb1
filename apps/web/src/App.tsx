@@ -53,6 +53,7 @@ import SavedItemsPage from "./pages/integrations/shopify/SavedItemsPage";
 import BillingPage from "./pages/integrations/shopify/BillingPage";
 import SettingsPage from "./pages/integrations/shopify/SettingsPage";
 import HelpPage from "./pages/integrations/shopify/HelpPage";
+import EbayLayout from "./pages/integrations/ebay/EbayLayout";
 
 const queryClient = new QueryClient();
 const ADMIN_ORIGIN = import.meta.env.VITE_ADMIN_URL ?? "https://admin.sellersuit.com";
@@ -95,6 +96,32 @@ const ShopifyRoutes = () => (
       <Route path="billing" element={<BillingPage />} />
       <Route path="settings" element={<SettingsPage />} />
       <Route path="help" element={<HelpPage />} />
+    </Route>
+  </Routes>
+);
+
+const EbayRoutes = () => (
+  <Routes>
+    <Route
+      element={
+        <ProtectedRoute>
+          <EbayLayout />
+        </ProtectedRoute>
+      }
+    >
+      <Route index element={<Dashboard />} />
+      <Route path="overview" element={<Dashboard />} />
+      <Route path="listings" element={<Listings />} />
+      <Route path="listings/new" element={<NewListing />} />
+      <Route path="orders" element={<EbayOrders />} />
+      <Route path="auto-orders" element={<Orders />} />
+      <Route path="product-research" element={<ProductResearch />} />
+      <Route path="best-selling" element={<BestSellingItems />} />
+      <Route path="must-sell" element={<MustSellItems />} />
+      <Route path="profitable-products" element={<ProfitableProducts />} />
+      <Route path="calculator" element={<CalculatorSettings />} />
+      <Route path="extension" element={<ExtensionConnect />} />
+      <Route path="settings" element={<DashboardSettings />} />
     </Route>
   </Routes>
 );
@@ -151,9 +178,10 @@ const App = () => (
                   <Route path="settings" element={<DashboardSettings />} />
                 </Route>
 
+                <Route path="/dashboard/ebay/*" element={<EbayRoutes />} />
                 <Route path="/dashboard/shopify/*" element={<ShopifyRoutes />} />
                 <Route path="/integrations/shopify/*" element={<ShopifyRoutes />} />
-                <Route path="/integrations/ebay" element={<Navigate to="/dashboard/ebay-orders" replace />} />
+                <Route path="/integrations/ebay" element={<Navigate to="/dashboard/ebay" replace />} />
                 <Route path="/integrations/amazon" element={<Navigate to="/dashboard/settings" replace />} />
                 <Route path="/orders" element={<Navigate to="/dashboard/orders" replace />} />
                 <Route path="/listings" element={<Navigate to="/dashboard/listings" replace />} />

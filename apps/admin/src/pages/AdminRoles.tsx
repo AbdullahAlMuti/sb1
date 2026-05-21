@@ -12,7 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import { supabase } from '@repo/api-client/supabase/client';
+import { supabase, getFunctionErrorMessage } from '@repo/api-client/supabase/client';
 import { Button } from '@repo/ui/components/ui/button';
 import { Input } from '@repo/ui/components/ui/input';
 import { Badge } from '@repo/ui/components/ui/badge';
@@ -214,6 +214,29 @@ export default function AdminRoles() {
     }
   };
 
+  const updateRoleViaFunction = async (userId: string, role: AppRole) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+
+    if (!token) {
+      throw new Error('You must be signed in as an admin to update roles');
+    }
+
+    const { data, error } = await supabase.functions.invoke('admin-update-role', {
+      body: { userId, newRole: role },
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (error) {
+      const rawErrMsg = await getFunctionErrorMessage(error);
+      throw new Error(rawErrMsg || error.message || 'Failed to update role');
+    }
+    if (data?.error) throw new Error(data.error);
+    return data;
+  };
+
   const handleAddRole = async () => {
     if (!newUserEmail.trim()) {
       toast.error('Please enter a user ID');
@@ -236,42 +259,7 @@ export default function AdminRoles() {
         return;
       }
 
-      // Check if user already has this role
-      const { data: existingRole } = await supabase
-        .from('user_roles')
-        .select('id')
-        .eq('user_id', profile.id)
-        .eq('role', newRole as any)
-        .maybeSingle();
-
-      if (existingRole) {
-        toast.error('User already has this role');
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Remove existing role and add new one
-      await supabase
-        .from('user_roles')
-        .delete()
-        .eq('user_id', profile.id);
-
-      const { error } = await (supabase
-        .from('user_roles')
-        .insert({
-          user_id: profile.id,
-          role: newRole,
-        } as any) as any);
-
-      if (error) throw error;
-
-      // Log audit
-      await supabase.from('audit_logs').insert({
-        action: 'ROLE_ASSIGNED',
-        entity_type: 'user_role',
-        entity_id: profile.id,
-        new_values: { role: newRole, email: newUserEmail },
-      });
+      await updateRoleViaFunction(profile.id, newRole);
 
       toast.success(`Role assigned to ${newUserEmail}`);
       setShowAddDialog(false);
@@ -279,9 +267,9 @@ export default function AdminRoles() {
       setNewRole('admin');
       fetchRoles();
       fetchStats();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error assigning role:', error);
-      toast.error('Failed to assign role');
+      toast.error(error.message || 'Failed to assign role');
     } finally {
       setIsSubmitting(false);
     }
@@ -291,38 +279,16 @@ export default function AdminRoles() {
     if (!selectedRole) return;
 
     try {
-      // Demote to regular user instead of completely removing
-      await supabase
-        .from('user_roles')
-        .delete()
-        .eq('id', selectedRole.id);
-
-      const { error } = await (supabase
-        .from('user_roles')
-        .insert({
-          user_id: selectedRole.user_id,
-          role: 'user',
-        } as any) as any);
-
-      if (error) throw error;
-
-      // Log audit
-      await supabase.from('audit_logs').insert({
-        action: 'ROLE_REMOVED',
-        entity_type: 'user_role',
-        entity_id: selectedRole.user_id,
-        old_values: { role: selectedRole.role },
-        new_values: { role: 'user' },
-      });
+      await updateRoleViaFunction(selectedRole.user_id, 'user');
 
       toast.success('User demoted to regular user');
       setShowDeleteDialog(false);
       setSelectedRole(null);
       fetchRoles();
       fetchStats();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error removing role:', error);
-      toast.error('Failed to remove role');
+      toast.error(error.message || 'Failed to remove role');
     }
   };
 

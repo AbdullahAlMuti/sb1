@@ -12,6 +12,7 @@ import {
   MOCK_AD_KPIS, MOCK_TOP_ADS, MOCK_ALL_ADS, MOCK_SIGNALS, 
   MOCK_NICHES, MOCK_SAVED_ITEMS, metaAdsDummyData 
 } from './ad-library.mock';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // A tiny Sparkline component for the KPI cards and ad cards
 const MiniSparkline = ({ data, colorClass = "stroke-emerald-500" }: { data: number[], colorClass?: string }) => {
@@ -34,6 +35,7 @@ export default function AdLibraryPage() {
   const [selectedAdId, setSelectedAdId] = useState<string | null>(null);
   const [copiedText, setCopiedText] = useState(false);
   const [lastUpdated, setLastUpdated] = useState('8 min ago');
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const filters = [
     'Hot Winners', 'New Today', 'Ready to Scale', 'Low Saturation', 
@@ -126,10 +128,10 @@ export default function AdLibraryPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+      <div className="grid grid-cols-1 gap-8 items-start">
         
         {/* Main Content Area */}
-        <div className="xl:col-span-9 space-y-8">
+        <div className="space-y-8">
           
           {/* Top KPI Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
@@ -162,15 +164,29 @@ export default function AdLibraryPage() {
                 </h2>
                 <span className="text-xs text-slate-400 hidden sm:inline-block">Based on ad spend, growth, engagement and duration</span>
               </div>
-              <Button variant="ghost" className="text-xs text-violet-600 hover:text-violet-700 font-semibold flex items-center gap-1.5 h-8">
-                View All <ArrowRight className="h-3.5 w-3.5" />
+              <Button 
+                variant="ghost" 
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="text-xs text-violet-600 hover:text-violet-700 font-semibold flex items-center gap-1.5 h-8"
+              >
+                {isExpanded ? 'Show Less' : 'View All'} <ArrowRight className={cn("h-3.5 w-3.5 transition-transform", isExpanded && "-rotate-90")} />
               </Button>
             </div>
 
-            {/* Horizontal Scroll Area */}
-            <div className="flex overflow-x-auto pb-4 -mx-4 px-4 sm:mx-0 sm:px-0 gap-4 snap-x">
-              {MOCK_TOP_ADS.map((ad) => (
-                <div key={ad.id} className="min-w-[280px] w-[280px] sm:min-w-[300px] sm:w-[300px] snap-center bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-[24px] overflow-hidden flex-shrink-0 shadow-xs hover:border-violet-300 dark:hover:border-violet-800 transition-colors cursor-pointer group" onClick={() => setSelectedAdId(ad.id)}>
+            {/* Grid Area */}
+            <motion.div layout className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">
+              <AnimatePresence>
+              {(isExpanded ? MOCK_TOP_ADS : MOCK_TOP_ADS.slice(0, 4)).map((ad) => (
+                <motion.div 
+                  key={ad.id} 
+                  layout
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.2 }}
+                  className="bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-[24px] overflow-hidden shadow-xs hover:border-violet-300 dark:hover:border-violet-800 transition-colors cursor-pointer group" 
+                  onClick={() => setSelectedAdId(ad.id)}
+                >
                   
                   <div className="aspect-[4/3] relative bg-slate-100 dark:bg-slate-800">
                     <img src={ad.image} alt={ad.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -205,9 +221,10 @@ export default function AdLibraryPage() {
                       {ad.score}
                     </div>
                   </div>
-                </div>
+                </motion.div>
               ))}
-            </div>
+              </AnimatePresence>
+            </motion.div>
           </div>
 
           {/* Filters Section */}
@@ -283,7 +300,7 @@ export default function AdLibraryPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {MOCK_ALL_ADS.map((ad) => (
                   <div key={ad.id} className="bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden flex flex-col shadow-xs group hover:border-violet-300 transition-colors">
-                    <div className="aspect-video relative bg-slate-100 cursor-pointer" onClick={() => setSelectedAdId(ad.id)}>
+                    <div className="aspect-[21/9] relative bg-slate-100 cursor-pointer" onClick={() => setSelectedAdId(ad.id)}>
                       <img src={ad.image} alt={ad.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                       <div className="absolute top-2 left-2 flex items-center gap-1 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm px-2 py-0.5 rounded-md text-[9px] font-bold text-orange-600 dark:text-orange-400 border border-white/20 shadow-sm">
                         {ad.badge}
@@ -292,19 +309,21 @@ export default function AdLibraryPage() {
                         {ad.daysActive} Days
                       </div>
                       <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center border border-white/20 text-white shadow-lg">
-                          <Play className="h-4 w-4 ml-0.5" fill="currentColor" />
+                        <div className="w-8 h-8 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center border border-white/20 text-white shadow-lg">
+                          <Play className="h-3 w-3 ml-0.5" fill="currentColor" />
                         </div>
                       </div>
                     </div>
-                    <div className="p-4 flex flex-col flex-1">
-                      <div className="mb-3">
-                        <h4 className="text-xs font-bold text-slate-800 dark:text-white line-clamp-1">{ad.title}</h4>
-                        <p className="text-[10px] text-slate-500 mt-0.5">{ad.category} • {ad.platform} • {ad.country}</p>
-                        <p className="text-[10px] font-semibold text-slate-700 dark:text-slate-300 mt-1">{ad.price}</p>
+                    <div className="p-3 flex flex-col flex-1">
+                      <div className="mb-2">
+                        <h4 className="text-[11px] font-bold text-slate-800 dark:text-white line-clamp-1">{ad.title}</h4>
+                        <div className="flex items-center justify-between mt-0.5">
+                          <p className="text-[9px] text-slate-500">{ad.platform}</p>
+                          <p className="text-[9px] font-semibold text-slate-700 dark:text-slate-300">{ad.price}</p>
+                        </div>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 py-2 border-y border-slate-100 dark:border-slate-800 mb-3">
+                      <div className="grid grid-cols-2 gap-2 py-1.5 border-y border-slate-100 dark:border-slate-800 mb-2">
                         <div>
                           <p className="text-[9px] font-bold text-slate-800 dark:text-slate-200">{ad.adSpend}</p>
                           <p className="text-[8px] uppercase tracking-wider text-slate-400">Ad Spend</p>
@@ -313,35 +332,21 @@ export default function AdLibraryPage() {
                           <p className="text-[9px] font-bold text-slate-800 dark:text-slate-200">{ad.reach}</p>
                           <p className="text-[8px] uppercase tracking-wider text-slate-400">Reach</p>
                         </div>
-                        <div>
-                          <p className="text-[9px] font-bold text-slate-800 dark:text-slate-200">{ad.activeAds}</p>
-                          <p className="text-[8px] uppercase tracking-wider text-slate-400">Active Ads</p>
-                        </div>
                       </div>
 
-                      <div className="flex items-end justify-between mb-4">
+                      <div className="flex items-end justify-between mb-2">
                         <div>
-                          <p className="text-[8px] uppercase tracking-wider text-slate-400">SellerSuit Score</p>
+                          <p className="text-[8px] uppercase tracking-wider text-slate-400">Score</p>
                           <div className="flex items-end gap-1 mt-0.5">
-                            <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400 leading-none">{ad.score}</span>
-                            <span className="text-[9px] text-slate-400 leading-none pb-0.5">/100</span>
+                            <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400 leading-none">{ad.score}</span>
                           </div>
-                          <p className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 mt-1">{ad.opportunity}</p>
                         </div>
                         <MiniSparkline data={ad.trendData} />
                       </div>
 
-                      <div className="mt-auto pt-3 flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800">
-                        <div className="flex items-center gap-1">
-                          <button onClick={(e) => toggleSave(ad.id, e)} className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-violet-600 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                            <Bookmark className={cn('h-3.5 w-3.5', savedAds.includes(ad.id) && 'fill-violet-600 text-violet-600')} />
-                          </button>
-                          <button className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:text-violet-600 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                        <Button onClick={() => setSelectedAdId(ad.id)} className="h-8 text-xs font-semibold rounded-lg bg-violet-600 hover:bg-violet-700 text-white flex-1 shadow-xs">
-                          Analyze
+                      <div className="mt-auto pt-2 flex items-center gap-2 border-t border-slate-100 dark:border-slate-800">
+                        <Button onClick={() => setSelectedAdId(ad.id)} className="h-7 text-[10px] font-semibold rounded-lg bg-violet-600 hover:bg-violet-700 text-white flex-1 shadow-xs">
+                          Analyze Ad
                         </Button>
                       </div>
                     </div>
@@ -404,100 +409,6 @@ export default function AdLibraryPage() {
               </div>
             )}
           </div>
-        </div>
-
-        {/* Right Sidebar */}
-        <div className="xl:col-span-3 space-y-6">
-          
-          {/* Live Market Signals */}
-          <div className="bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-800 dark:text-white">Live Market Signals</h3>
-              <div className="flex items-center gap-1.5">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                </span>
-                <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">Live</span>
-              </div>
-            </div>
-            <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto scrollbar-hide">
-              {MOCK_SIGNALS.map((signal, i) => (
-                <div key={i} className="flex gap-3">
-                  <div className="mt-0.5 w-2 h-2 rounded-full bg-violet-200 dark:bg-violet-900 border border-violet-400 dark:border-violet-600 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs text-slate-700 dark:text-slate-300 leading-tight">{signal.text}</p>
-                    <p className="text-[9px] text-slate-400 mt-1">{signal.time}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="p-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
-              <button className="w-full text-[10px] font-semibold text-violet-600 hover:text-violet-700 flex items-center justify-center gap-1">
-                View All Signals <ArrowRight className="h-3 w-3" />
-              </button>
-            </div>
-          </div>
-
-          {/* Trending Niches */}
-          <div className="bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-800 dark:text-white">Trending Niches</h3>
-              <span className="text-[10px] text-slate-400 font-medium bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">This Week</span>
-            </div>
-            <div className="p-4 space-y-3">
-              {MOCK_NICHES.map((niche, i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{niche.name}</span>
-                  </div>
-                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">{niche.growth}</span>
-                </div>
-              ))}
-            </div>
-            <div className="p-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
-              <button className="w-full text-[10px] font-semibold text-violet-600 hover:text-violet-700 flex items-center justify-center gap-1">
-                View All Niches <ArrowRight className="h-3 w-3" />
-              </button>
-            </div>
-          </div>
-
-          {/* AI Product Finder Promo */}
-          <div className="bg-gradient-to-br from-violet-600 to-indigo-700 rounded-2xl p-5 text-white shadow-md relative overflow-hidden">
-            <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-xl"></div>
-            <div className="flex items-center justify-between mb-3 relative z-10">
-              <h3 className="text-sm font-bold">AI Product Finder</h3>
-              <Badge className="bg-white/20 hover:bg-white/30 text-white border-none text-[9px] px-1.5 py-0">BETA</Badge>
-            </div>
-            <p className="text-xs text-white/80 leading-relaxed mb-4 relative z-10">
-              Find untapped winning products with low competition and high profit potential.
-            </p>
-            <Button className="w-full bg-white text-violet-700 hover:bg-slate-50 text-xs font-bold h-9 rounded-xl shadow-sm relative z-10">
-              Find Products with AI <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
-            </Button>
-          </div>
-
-          {/* Recently Saved */}
-          <div className="bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-800 dark:text-white">Recently Saved</h3>
-              <button className="text-[10px] font-semibold text-violet-600 hover:text-violet-700">View All</button>
-            </div>
-            <div className="p-4 space-y-3">
-              {MOCK_SAVED_ITEMS.map((item, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center flex-shrink-0 border border-slate-200 dark:border-slate-700">
-                    <Bookmark className="h-3.5 w-3.5 text-slate-400" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-semibold text-slate-700 dark:text-slate-300 line-clamp-1">{item.name}</h4>
-                    <p className="text-[9px] text-slate-400">{item.time}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          
         </div>
       </div>
 

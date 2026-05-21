@@ -67,9 +67,10 @@ export default function AdminLogin() {
     setIsSubmitting(true);
     setAccessDenied(false);
 
-    const { error } = await signIn(email, password);
+    const { error } = await signIn(email, password, 'admin');
     
     if (error) {
+      setErrors({ password: error.message });
       setIsSubmitting(false);
       return;
     }

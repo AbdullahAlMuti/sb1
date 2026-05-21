@@ -8,6 +8,7 @@ import { Label } from '@repo/ui/components/ui/label';
 import { useAuth } from '@repo/auth/hooks/useAuth';
 import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { supabase } from '@repo/api-client/supabase/client';
+import { getDashboardPathForGoal } from '@repo/config/navigation';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { OtpInput } from '@repo/auth/components/auth/OtpInput';
@@ -107,11 +108,7 @@ export default function Auth() {
       localStorage.removeItem('appliedCouponCode');
       localStorage.removeItem('selectedGoal');
 
-      if (userGoal === 'shopify') {
-        navigate('/dashboard/shopify', { replace: true });
-      } else {
-        navigate('/dashboard', { replace: true });
-      }
+      navigate(getDashboardPathForGoal(userGoal), { replace: true });
     }
   }, [user, authProfile, isEmailVerified, authLoading, subscriptionLoading, subscribed, planName, navigate]);
 
@@ -242,7 +239,7 @@ export default function Auth() {
         setResetEmailSent(true);
         toast.success('Password reset email sent! Check your inbox.');
       } else if (mode === 'login') {
-        const { error } = await signIn(email, password);
+        const { error } = await signIn(email, password, 'user');
         if (error) {
           throw error;
         }
@@ -280,7 +277,10 @@ export default function Auth() {
         setErrors({ email: 'This email is already registered. Please sign in instead.' });
         toast.error('This email is already registered.');
       } else if (error.message?.includes('Invalid login credentials')) {
+        setErrors({ password: 'Invalid email or password. Please try again.' });
         toast.error('Invalid email or password. Please try again.');
+      } else if (error.message?.includes('login panel')) {
+        setErrors({ password: error.message });
       } else {
         toast.error(error.message || 'An error occurred');
       }
@@ -331,7 +331,7 @@ export default function Auth() {
         return;
       }
       // On success, we must sign the user in so the auth session is established
-      const { error: signInError } = await signIn(pendingVerificationEmail, password);
+      const { error: signInError } = await signIn(pendingVerificationEmail, password, 'user');
       if (signInError) {
         toast.error('Verification succeeded, but auto sign-in failed. Please log in manually.');
         setMode('login');

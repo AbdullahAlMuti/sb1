@@ -25,7 +25,7 @@ import {
   Calendar,
   Settings2,
 } from 'lucide-react';
-import { supabase } from '@repo/api-client/supabase/client';
+import { supabase, getFunctionErrorMessage } from '@repo/api-client/supabase/client';
 import { Button } from '@repo/ui/components/ui/button';
 import { Input } from '@repo/ui/components/ui/input';
 import { Badge } from '@repo/ui/components/ui/badge';
@@ -104,6 +104,7 @@ interface OverrideLimits {
 
 type SortField = 'id' | 'name' | 'credits' | 'status' | 'created_at' | 'last_login';
 type SortDirection = 'asc' | 'desc';
+type AppRole = 'user' | 'admin' | 'super_admin';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -136,6 +137,12 @@ const getUserCountry = (id: string) => {
   return countries[index];
 };
 
+const getEffectiveRole = (roles: { role: string }[]): AppRole => {
+  if (roles.some((r) => r.role === 'super_admin')) return 'super_admin';
+  if (roles.some((r) => r.role === 'admin')) return 'admin';
+  return 'user';
+};
+
 export default function AdminUsers() {
   const [users, setUsers] = useState<UserWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -149,7 +156,7 @@ export default function AdminUsers() {
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showPlanDialog, setShowPlanDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [newRole, setNewRole] = useState<'user' | 'admin' | 'super_admin'>('user');
+  const [newRole, setNewRole] = useState<AppRole>('user');
   const [newPlanId, setNewPlanId] = useState<string>('');
   const [plans, setPlans] = useState<Plan[]>([]);
   const [isUpdatingPlan, setIsUpdatingPlan] = useState(false);
@@ -333,44 +340,36 @@ export default function AdminUsers() {
     if (!selectedUser) return;
 
     try {
-      const existingRole = selectedUser.roles.find(r => r.role === newRole);
+      // Check if they exclusively have this exact role already (fixes users with multiple roles)
+      const isExactlyThisRole = selectedUser.roles.length === 1 && getEffectiveRole(selectedUser.roles) === newRole;
       
-      if (existingRole) {
+      if (isExactlyThisRole) {
         toast.info('User already has this role');
         setShowRoleDialog(false);
         return;
       }
 
-      const { error: deleteError } = await supabase
-        .from('user_roles')
-        .delete()
-        .eq('user_id', selectedUser.id);
-
-      if (deleteError) throw deleteError;
-
-      const { error: insertError } = await supabase
-        .from('user_roles')
-        .insert({
-          user_id: selectedUser.id,
-          role: newRole as any,
-        } as any);
-
-      if (insertError) throw insertError;
-
-      await supabase.from('audit_logs').insert({
-        action: 'ROLE_CHANGED',
-        entity_type: 'user',
-        entity_id: selectedUser.id,
-        old_values: { roles: selectedUser.roles },
-        new_values: { role: newRole },
+      const { data: sessionData } = await supabase.auth.getSession();
+      
+      const { data, error } = await supabase.functions.invoke('admin-update-role', {
+        body: { userId: selectedUser.id, newRole },
+        headers: {
+          Authorization: `Bearer ${sessionData.session?.access_token}`,
+        },
       });
+
+      if (error) {
+        const rawErrMsg = await getFunctionErrorMessage(error);
+        throw new Error(rawErrMsg || error.message || 'Failed to update role');
+      }
+      if (data?.error) throw new Error(data.error);
 
       setShowRoleDialog(false);
       fetchUsers();
       toast.success('User role updated successfully');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating role:', error);
-      toast.error('Failed to update role');
+      toast.error(error.message || 'Failed to update role');
     }
   };
 
@@ -1029,7 +1028,7 @@ export default function AdminUsers() {
                                 className="h-8 w-8 text-muted-foreground hover:text-foreground"
                                 onClick={() => {
                                   setSelectedUser(user);
-                                  setNewRole((user.roles[0]?.role as any) || 'user');
+                                  setNewRole(getEffectiveRole(user.roles));
                                   setShowRoleDialog(true);
                                 }}
                               >
@@ -1121,7 +1120,7 @@ export default function AdminUsers() {
                                   </DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => {
                                     setSelectedUser(user);
-                                    setNewRole((user.roles[0]?.role as any) || 'user');
+                                    setNewRole(getEffectiveRole(user.roles));
                                     setShowRoleDialog(true);
                                   }}>
                                     <Pencil className="h-4 w-4 mr-2" />
@@ -1252,7 +1251,7 @@ export default function AdminUsers() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Role</Label>
-              <Select value={newRole} onValueChange={(value) => setNewRole(value as any)}>
+              <Select value={newRole} onValueChange={(value) => setNewRole(value as AppRole)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

@@ -6,6 +6,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const ADMIN_PANEL_ROLES = new Set(["admin", "super_admin", "moderator", "staff"]);
+const USER_PANEL_ROLE_ERROR =
+  "This account cannot be used from the user login panel. Please use the admin login page.";
+const ADMIN_PANEL_ROLE_ERROR =
+  "This account cannot be used from the admin login panel. Please use the user login page.";
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -17,7 +23,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { action, email, password, fullName, goal, code } = await req.json();
+    const { action, email, password, fullName, goal, code, loginContext } = await req.json();
 
     if (!email) {
       return new Response(
@@ -27,6 +33,77 @@ serve(async (req) => {
     }
 
     console.log(`[auth-otp] Action: ${action}, Email: ${email}`);
+
+    // Action 0: LOGIN CONTEXT CHECK
+    // Blocks wrong-panel accounts before the browser creates a Supabase session.
+    if (action === "validate-login-context") {
+      if (loginContext !== "user" && loginContext !== "admin") {
+        return new Response(
+          JSON.stringify({ error: "Invalid login context" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+      if (listError) throw listError;
+
+      const user = users?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+      if (!user) {
+        return new Response(
+          JSON.stringify({ error: "Invalid email or password." }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: profile, error: profileError } = await supabaseAdmin
+        .from("profiles")
+        .select("is_active")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (profileError) throw profileError;
+
+      if (profile && profile.is_active === false) {
+        return new Response(
+          JSON.stringify({ error: "This account is inactive. Please contact support." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (user.banned_until && new Date(user.banned_until) > new Date()) {
+        return new Response(
+          JSON.stringify({ error: "This account is currently disabled. Please contact support." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: roles, error: rolesError } = await supabaseAdmin
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id);
+      if (rolesError) throw rolesError;
+
+      const roleNames = (roles || []).map((row) => row.role as string);
+      const hasAdminPanelRole = roleNames.some((role) => ADMIN_PANEL_ROLES.has(role));
+
+      if (loginContext === "user" && hasAdminPanelRole) {
+        return new Response(
+          JSON.stringify({ error: USER_PANEL_ROLE_ERROR, code: "INVALID_LOGIN_PANEL" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (loginContext === "admin" && !hasAdminPanelRole) {
+        return new Response(
+          JSON.stringify({ error: ADMIN_PANEL_ROLE_ERROR, code: "INVALID_LOGIN_PANEL" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Action 1: SIGNUP (Initiates verification)
     if (action === "signup") {

@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@repo/auth/hooks/useAuth';
 import { useSubscription } from '@repo/auth/hooks/useSubscription';
+import { getDashboardPathForGoal } from '@repo/config/navigation';
 import { Loader2, Mail, RefreshCw, ArrowLeft } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
 import { useState } from 'react';
@@ -39,19 +40,28 @@ export function ProtectedRoute({
   // Redirect based on user's registered goal (eBay vs. Shopify)
   if (profile && !requireAdmin && !requireSuperAdmin && !isAdmin && !isSuperAdmin) {
     const userGoal = (profile.settings as any)?.goal as string | undefined;
+    const isShopifyRoute = location.pathname.startsWith('/dashboard/shopify');
     
     if (userGoal === 'shopify') {
-      // If goal is shopify and they are trying to access standard eBay routes under /dashboard,
+      // If goal is shopify and they are trying to access standard/eBay routes under /dashboard,
       // redirect them to the Shopify dashboard.
-      if (location.pathname === '/dashboard' || (location.pathname.startsWith('/dashboard/') && !location.pathname.startsWith('/dashboard/shopify'))) {
+      if (location.pathname === '/dashboard' || (location.pathname.startsWith('/dashboard/') && !isShopifyRoute)) {
         return <Navigate to="/dashboard/shopify" replace />;
       }
     } else if (userGoal === 'ebay') {
-      // If goal is ebay and they are trying to access Shopify routes under /dashboard/shopify,
-      // redirect them to the default eBay dashboard.
-      if (location.pathname.startsWith('/dashboard/shopify')) {
-        return <Navigate to="/dashboard" replace />;
+      // If goal is ebay and they are trying to access Shopify routes or the legacy dashboard root,
+      // redirect them to the namespaced eBay dashboard.
+      if (isShopifyRoute || location.pathname === '/dashboard') {
+        return <Navigate to="/dashboard/ebay" replace />;
       }
+    } else if (userGoal === 'both') {
+      // Both-platform users can use either module. The dashboard root defaults to eBay for now.
+      if (location.pathname === '/dashboard') {
+        return <Navigate to={getDashboardPathForGoal(userGoal)} replace />;
+      }
+    } else if (location.pathname === '/dashboard') {
+      // Unknown or legacy profiles default to the eBay workspace, matching current app behavior.
+      return <Navigate to="/dashboard/ebay" replace />;
     }
   }
 

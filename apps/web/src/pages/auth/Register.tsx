@@ -10,6 +10,7 @@ import { usePlans } from '@repo/api-client/hooks/usePlans';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { cn } from '@repo/ui/lib/utils';
+import { getDashboardPathForGoal } from '@repo/config/navigation';
 import SellerSuitLogo from '@repo/ui/brand/SellerSuitLogo';
 import { OtpInput } from '@repo/auth/components/auth/OtpInput';
 import { TurnstileCaptcha } from '@repo/auth/components/auth/TurnstileCaptcha';
@@ -57,11 +58,7 @@ export default function Register() {
     if (user && user.email_confirmed_at) {
       localStorage.removeItem('selectedPlan');
       const goal = selectedGoal || localStorage.getItem('selectedGoal');
-      if (goal === 'shopify') {
-        navigate('/dashboard/shopify', { replace: true });
-      } else {
-        navigate('/dashboard', { replace: true });
-      }
+      navigate(getDashboardPathForGoal(goal), { replace: true });
     }
   }, [user, navigate, selectedGoal]);
 
@@ -136,7 +133,7 @@ export default function Register() {
       const { error } = await verifyOtp(email, token);
       if (!error) {
         // Automatically sign in the user
-        const { error: signInError } = await signIn(email, password);
+        const { error: signInError } = await signIn(email, password, 'user');
         if (signInError) {
           toast.error('Verification succeeded, but auto sign-in failed. Please log in manually.');
           navigate('/auth', { replace: true });
@@ -147,11 +144,7 @@ export default function Register() {
         localStorage.removeItem('selectedPlan');
         const goal = selectedGoal || localStorage.getItem('selectedGoal');
         localStorage.removeItem('selectedGoal');
-        if (goal === 'shopify') {
-          navigate('/dashboard/shopify', { replace: true });
-        } else {
-          navigate('/dashboard', { replace: true });
-        }
+        navigate(getDashboardPathForGoal(goal), { replace: true });
       }
     } catch (error: any) {
       toast.error(error.message || 'Verification failed');

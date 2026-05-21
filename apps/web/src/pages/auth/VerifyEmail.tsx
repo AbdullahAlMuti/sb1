@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { CheckCircle, XCircle, Loader2, ArrowRight, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
 import { supabase } from '@repo/api-client/supabase/client';
+import { getDashboardPathForGoal } from '@repo/config/navigation';
 
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
@@ -60,11 +61,7 @@ export default function VerifyEmail() {
         .single();
         
       const goal = (profile?.settings as any)?.goal as string | undefined;
-      if (goal === 'shopify') {
-        navigate('/dashboard/shopify', { replace: true });
-        return;
-      }
-      navigate('/dashboard', { replace: true });
+      navigate(getDashboardPathForGoal(goal), { replace: true });
       return;
     }
     navigate('/auth', { replace: true });

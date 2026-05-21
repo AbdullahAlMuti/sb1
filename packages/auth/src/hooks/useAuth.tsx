@@ -27,7 +27,7 @@ interface AuthContextType {
   isSuperAdmin: boolean;
   isLoading: boolean;
   isEmailVerified: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signIn: (email: string, password: string, loginContext?: 'user' | 'admin') => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, fullName?: string, goal?: string) => Promise<{ error: Error | null; isSandbox?: boolean; otpCode?: string | null }>;
   verifyOtp: (email: string, token: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -194,7 +194,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signIn = async (email: string, password: string) => {
+  const isAdminRole = (role: string) => role === 'admin' || role === 'super_admin' || role === 'moderator' || role === 'staff';
+
+  const signIn = async (email: string, password: string, loginContext: 'user' | 'admin' = 'user') => {
+    try {
+      const { data: panelCheckData, error: panelCheckError } = await supabase.functions.invoke('auth-otp', {
+        body: {
+          action: 'validate-login-context',
+          email,
+          loginContext,
+        },
+      });
+
+      if (panelCheckError || (panelCheckData && panelCheckData.error)) {
+        const rawErrMsg = await getFunctionErrorMessage(panelCheckError);
+        const errMsg = panelCheckData?.error || rawErrMsg || 'Unable to validate login access';
+        toast.error(errMsg);
+        return { error: new Error(errMsg) };
+      }
+    } catch (err: any) {
+      const errMsg = err.message || 'Unable to validate login access';
+      toast.error(errMsg);
+      return { error: new Error(errMsg) };
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -203,6 +226,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) {
       toast.error(error.message);
       return { error };
+    }
+
+    const { data: roleRows, error: rolesError } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', data.user.id);
+
+    if (rolesError) {
+      await supabase.auth.signOut();
+      toast.error('Unable to validate account access.');
+      return { error: new Error('Unable to validate account access.') };
+    }
+
+    const hasAdminRole = ((roleRows as any[]) || []).some((row) => isAdminRole(row.role));
+    if (loginContext === 'user' && hasAdminRole) {
+      await supabase.auth.signOut();
+      const errMsg = 'This account cannot be used from the user login panel. Please use the admin login page.';
+      toast.error(errMsg);
+      return { error: new Error(errMsg) };
+    }
+
+    if (loginContext === 'admin' && !hasAdminRole) {
+      await supabase.auth.signOut();
+      const errMsg = 'This account cannot be used from the admin login panel. Please use the user login page.';
+      toast.error(errMsg);
+      return { error: new Error(errMsg) };
     }
 
     // If email is not verified, keep the session so the app can show the verification UI
