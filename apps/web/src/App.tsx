@@ -73,28 +73,30 @@ function AdminRedirect() {
 }
 
 const ShopifyRoutes = () => (
-  <Route
-    element={
-      <ProtectedRoute>
-        <ShopifyLayout />
-      </ProtectedRoute>
-    }
-  >
-    <Route index element={<ShopifyDashboard />} />
-    <Route path="winning-products" element={<WinningProductsPage />} />
-    <Route path="product-research" element={<ProductResearchPage />} />
-    <Route path="store-explorer" element={<StoreExplorerPage />} />
-    <Route path="store-designs" element={<StoreDesignsPage />} />
-    <Route path="store-analytics" element={<StoreExplorerPage />} />
-    <Route path="ad-library" element={<AdLibraryPage />} />
-    <Route path="copy-studio" element={<AiCopyStudio />} />
-    <Route path="ai-ad-generator" element={<AiCopyStudio />} />
-    <Route path="ai-product-tools" element={<AiCopyStudio />} />
-    <Route path="saved-items" element={<SavedItemsPage />} />
-    <Route path="billing" element={<BillingPage />} />
-    <Route path="settings" element={<SettingsPage />} />
-    <Route path="help" element={<HelpPage />} />
-  </Route>
+  <Routes>
+    <Route
+      element={
+        <ProtectedRoute>
+          <ShopifyLayout />
+        </ProtectedRoute>
+      }
+    >
+      <Route index element={<ShopifyDashboard />} />
+      <Route path="winning-products" element={<WinningProductsPage />} />
+      <Route path="product-research" element={<ProductResearchPage />} />
+      <Route path="store-explorer" element={<StoreExplorerPage />} />
+      <Route path="store-designs" element={<StoreDesignsPage />} />
+      <Route path="store-analytics" element={<StoreExplorerPage />} />
+      <Route path="ad-library" element={<AdLibraryPage />} />
+      <Route path="copy-studio" element={<AiCopyStudio />} />
+      <Route path="ai-ad-generator" element={<AiCopyStudio />} />
+      <Route path="ai-product-tools" element={<AiCopyStudio />} />
+      <Route path="saved-items" element={<SavedItemsPage />} />
+      <Route path="billing" element={<BillingPage />} />
+      <Route path="settings" element={<SettingsPage />} />
+      <Route path="help" element={<HelpPage />} />
+    </Route>
+  </Routes>
 );
 
 const App = () => (

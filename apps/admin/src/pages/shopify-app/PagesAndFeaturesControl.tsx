@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Table,
   TableBody,
@@ -40,7 +40,6 @@ import {
   MoreHorizontal,
   Pencil,
   Copy,
-  Trash2,
   Eye,
   EyeOff,
   GripVertical,
@@ -57,147 +56,178 @@ import {
   Settings,
   CreditCard,
   HelpCircle,
+  LayoutDashboard,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@repo/auth/hooks/useAuth";
+import { useShopifyPageSettings } from "./hooks/useShopifyPageSettings";
+import type { ShopifyPageSetting } from "@repo/types";
 
-// Data Model
-export type ShopifyFeaturePage = {
-  id: string;
-  name: string;
-  route: string;
-  type: "Core" | "Feature" | "Custom";
-  status: "Active" | "Disabled" | "Coming Soon" | "Maintenance";
-  planAccess: string;
-  usageLimit: string;
-  visible: boolean;
-  contentEditable: boolean;
-  lastUpdated: string;
-  updatedBy: string;
-  icon?: any;
+// ── Icon map (from icon_name stored in DB) ────────────────────────────────────
+
+const ICON_MAP: Record<string, React.ElementType> = {
+  LayoutDashboard, Search, Trophy, Store, Paintbrush,
+  Image, Sparkles, Bookmark, Settings, CreditCard, HelpCircle,
+  Home, LayoutTemplate,
 };
 
-const initialPages: ShopifyFeaturePage[] = [
-  { id: "1", name: "Dashboard", route: "/dashboard", type: "Core", status: "Active", planAccess: "All Plans", usageLimit: "-", visible: true, contentEditable: true, lastUpdated: "May 30, 2025", updatedBy: "Admin", icon: Home },
-  { id: "2", name: "Product Research", route: "/product-research", type: "Feature", status: "Active", planAccess: "Starter+", usageLimit: "500 searches / mo", visible: true, contentEditable: true, lastUpdated: "May 30, 2025", updatedBy: "Admin", icon: Search },
-  { id: "3", name: "Winning Products", route: "/winning-products", type: "Feature", status: "Active", planAccess: "Pro+", usageLimit: "200 items / mo", visible: true, contentEditable: true, lastUpdated: "May 29, 2025", updatedBy: "Admin", icon: Trophy },
-  { id: "4", name: "Store Explorer", route: "/store-explorer", type: "Feature", status: "Active", planAccess: "Starter+", usageLimit: "50 lookups / mo", visible: true, contentEditable: true, lastUpdated: "May 29, 2025", updatedBy: "Admin", icon: Store },
-  { id: "5", name: "Store Designs", route: "/store-designs", type: "Feature", status: "Active", planAccess: "Pro+", usageLimit: "50 views / mo", visible: true, contentEditable: true, lastUpdated: "May 29, 2025", updatedBy: "Admin", icon: Paintbrush },
-  { id: "6", name: "Ad Library", route: "/ad-library", type: "Feature", status: "Active", planAccess: "Pro+", usageLimit: "100 lookups / mo", visible: true, contentEditable: true, lastUpdated: "May 28, 2025", updatedBy: "Admin", icon: Image },
-  { id: "7", name: "AI Copy Studio", route: "/ai-copy-studio", type: "Feature", status: "Active", planAccess: "Starter+", usageLimit: "200 generations / mo", visible: true, contentEditable: true, lastUpdated: "May 28, 2025", updatedBy: "Admin", icon: Sparkles },
-  { id: "8", name: "Saved Items", route: "/saved-items", type: "Feature", status: "Active", planAccess: "All Plans", usageLimit: "500 items", visible: true, contentEditable: true, lastUpdated: "May 28, 2025", updatedBy: "Admin", icon: Bookmark },
-  { id: "9", name: "Settings", route: "/settings", type: "Core", status: "Active", planAccess: "All Plans", usageLimit: "-", visible: true, contentEditable: true, lastUpdated: "May 27, 2025", updatedBy: "Admin", icon: Settings },
-  { id: "10", name: "Billing", route: "/billing", type: "Core", status: "Active", planAccess: "All Plans", usageLimit: "-", visible: true, contentEditable: true, lastUpdated: "May 27, 2025", updatedBy: "Admin", icon: CreditCard },
-  { id: "11", name: "Help", route: "/help", type: "Core", status: "Active", planAccess: "All Plans", usageLimit: "-", visible: true, contentEditable: true, lastUpdated: "May 27, 2025", updatedBy: "Admin", icon: HelpCircle },
-];
+function PageIcon({ name }: { name: string | null }) {
+  const Icon = name ? (ICON_MAP[name] ?? LayoutTemplate) : LayoutTemplate;
+  return <Icon className="h-3.5 w-3.5" />;
+}
 
-export default function PagesAndFeaturesControl() {
-  const [pages, setPages] = useState<ShopifyFeaturePage[]>(initialPages);
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
+// ── Props ─────────────────────────────────────────────────────────────────────
+
+interface Props {
+  onManageContent?: (pageKey: string) => void;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export default function PagesAndFeaturesControl({ onManageContent }: Props) {
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
+
+  const {
+    pages,
+    isLoading,
+    fetchPages,
+    updatePage,
+    toggleVisibility,
+    updateStatus,
+    updateSortOrder,
+  } = useShopifyPageSettings();
+
+  const [isAddOpen,     setIsAddOpen]     = useState(false);
+  const [isEditOpen,    setIsEditOpen]    = useState(false);
   const [isReorderOpen, setIsReorderOpen] = useState(false);
-  const [selectedPage, setSelectedPage] = useState<ShopifyFeaturePage | null>(null);
+  const [selectedPage,  setSelectedPage]  = useState<ShopifyPageSetting | null>(null);
+  const [formData,      setFormData]      = useState<Partial<ShopifyPageSetting>>({});
+  const [isSaving,      setIsSaving]      = useState(false);
+  // Local reorder state (confirmed to DB on save)
+  const [reorderList,   setReorderList]   = useState<ShopifyPageSetting[]>([]);
 
-  // Form State
-  const [formData, setFormData] = useState<Partial<ShopifyFeaturePage>>({});
+  useEffect(() => {
+    fetchPages();
+  }, [fetchPages]);
 
-  const handleToggleVisibility = (id: string) => {
-    setPages(pages.map(p => p.id === id ? { ...p, visible: !p.visible } : p));
-    toast.success("Visibility updated successfully.");
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
+  const handleToggleVisibility = async (pageKey: string, current: boolean) => {
+    await toggleVisibility(pageKey, current, userId);
   };
 
-  const handleDelete = (id: string) => {
-    setPages(pages.filter(p => p.id !== id));
-    toast.success("Page removed successfully.");
+  const handleUpdateStatus = async (pageKey: string, status: ShopifyPageSetting['status']) => {
+    await updateStatus(pageKey, status, userId);
   };
 
-  const handleDuplicate = (page: ShopifyFeaturePage) => {
-    const newPage = { ...page, id: Date.now().toString(), name: `${page.name} (Copy)`, route: `${page.route}-copy` };
-    setPages([...pages, newPage]);
-    toast.success("Page duplicated successfully.");
-  };
-
-  const handleSavePage = () => {
-    if (selectedPage) {
-      // Edit
-      setPages(pages.map(p => p.id === selectedPage.id ? { ...p, ...formData, lastUpdated: "Just now" } as ShopifyFeaturePage : p));
-      toast.success("Page updated successfully.");
+  const handleSavePage = async () => {
+    if (!selectedPage || !formData) return;
+    setIsSaving(true);
+    try {
+      await updatePage(selectedPage.page_key, {
+        name:             formData.name,
+        plan_access:      formData.plan_access,
+        usage_limit:      formData.usage_limit,
+        status:           formData.status,
+        is_visible:       formData.is_visible,
+        content_editable: formData.content_editable,
+      }, userId);
+      toast.success('Page settings saved.');
+    } finally {
+      setIsSaving(false);
       setIsEditOpen(false);
-    } else {
-      // Add
-      const newPage: ShopifyFeaturePage = {
-        id: Date.now().toString(),
-        name: formData.name || "New Page",
-        route: formData.route || "/new-page",
-        type: (formData.type as any) || "Custom",
-        status: (formData.status as any) || "Active",
-        planAccess: formData.planAccess || "All Plans",
-        usageLimit: formData.usageLimit || "-",
-        visible: formData.visible !== false,
-        contentEditable: formData.contentEditable !== false,
-        lastUpdated: "Just now",
-        updatedBy: "Admin",
-        icon: LayoutTemplate,
-      };
-      setPages([newPage, ...pages]);
-      toast.success("New page created successfully.");
-      setIsAddOpen(false);
+      setSelectedPage(null);
+      setFormData({});
     }
-    setFormData({});
-    setSelectedPage(null);
   };
 
-  const openEdit = (page: ShopifyFeaturePage) => {
+  const openEdit = (page: ShopifyPageSetting) => {
     setSelectedPage(page);
-    setFormData(page);
+    setFormData({ ...page });
     setIsEditOpen(true);
   };
 
-  const openAdd = () => {
-    setSelectedPage(null);
-    setFormData({ type: "Custom", status: "Active", planAccess: "All Plans", visible: true, contentEditable: true });
-    setIsAddOpen(true);
+  const openReorder = () => {
+    setReorderList([...pages]);
+    setIsReorderOpen(true);
   };
 
   const moveUp = (index: number) => {
     if (index === 0) return;
-    const newPages = [...pages];
-    [newPages[index - 1], newPages[index]] = [newPages[index], newPages[index - 1]];
-    setPages(newPages);
+    const next = [...reorderList];
+    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+    setReorderList(next);
   };
 
   const moveDown = (index: number) => {
-    if (index === pages.length - 1) return;
-    const newPages = [...pages];
-    [newPages[index + 1], newPages[index]] = [newPages[index], newPages[index + 1]];
-    setPages(newPages);
+    if (index === reorderList.length - 1) return;
+    const next = [...reorderList];
+    [next[index + 1], next[index]] = [next[index], next[index + 1]];
+    setReorderList(next);
   };
+
+  const handleSaveReorder = async () => {
+    await updateSortOrder(reorderList.map(p => p.page_key), userId);
+    setIsReorderOpen(false);
+  };
+
+  // ── Status badge ─────────────────────────────────────────────────────────
+
+  const statusClass = (status: string) => {
+    switch (status) {
+      case 'Active':      return 'bg-emerald-50 text-emerald-600 border-emerald-200';
+      case 'Disabled':    return 'bg-rose-50 text-rose-500 border-rose-200';
+      case 'Coming Soon': return 'bg-amber-50 text-amber-600 border-amber-200';
+      case 'Maintenance': return 'bg-slate-100 text-slate-500 border-slate-200';
+      default:            return 'bg-muted text-muted-foreground';
+    }
+  };
+
+  // ── Loading ───────────────────────────────────────────────────────────────
+
+  if (isLoading && pages.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span className="text-xs">Loading page settings…</span>
+      </div>
+    );
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold tracking-tight">Pages & Features Control</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             Manage every page, feature access, limits, content and visibility from one place.
+            Changes are persisted to the database instantly.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setIsReorderOpen(true)} className="h-8 text-xs font-medium">
-            <GripVertical className="mr-2 h-3.5 w-3.5" /> Manage Page Order
+          <Button variant="outline" size="sm" onClick={fetchPages} className="h-8 text-xs font-medium">
+            <RefreshCw className="mr-2 h-3.5 w-3.5" /> Refresh
           </Button>
-          <Button size="sm" onClick={openAdd} className="h-8 text-xs font-medium">
-            <Plus className="mr-2 h-3.5 w-3.5" /> Add New Page
+          <Button variant="outline" size="sm" onClick={openReorder} className="h-8 text-xs font-medium">
+            <GripVertical className="mr-2 h-3.5 w-3.5" /> Manage Page Order
           </Button>
         </div>
       </div>
 
+      {/* Table */}
       <div className="rounded-xl border border-border bg-card overflow-hidden w-full">
         <div className="overflow-x-auto w-full">
-          <Table className="w-full whitespace-nowrap min-w-[800px]">
+          <Table className="w-full whitespace-nowrap min-w-[900px]">
             <TableHeader className="bg-muted/30">
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-[200px] text-[11px] font-semibold">Page / Feature</TableHead>
-                <TableHead className="text-[11px] font-semibold">File / Route</TableHead>
+                <TableHead className="text-[11px] font-semibold">Route</TableHead>
                 <TableHead className="text-[11px] font-semibold">Type</TableHead>
                 <TableHead className="text-[11px] font-semibold">Status</TableHead>
                 <TableHead className="text-[11px] font-semibold">Plan Access</TableHead>
@@ -211,66 +241,153 @@ export default function PagesAndFeaturesControl() {
             <TableBody>
               {pages.map((page) => (
                 <TableRow key={page.id} className="group border-b border-border hover:bg-muted/30">
+                  {/* Name + Icon */}
                   <TableCell className="py-2.5">
                     <div className="flex items-center gap-2">
                       <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                        {page.icon ? <page.icon className="h-3.5 w-3.5" /> : <LayoutTemplate className="h-3.5 w-3.5" />}
+                        <PageIcon name={page.icon_name} />
                       </div>
                       <span className="text-xs font-medium">{page.name}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="py-2.5 text-xs text-muted-foreground">{page.route}</TableCell>
-                  <TableCell className="py-2.5">
-                    <Badge variant="secondary" className="bg-muted/50 text-[10px] font-normal rounded-sm px-1.5">{page.type}</Badge>
+
+                  {/* Route */}
+                  <TableCell className="py-2.5 text-xs text-muted-foreground font-mono">
+                    {page.route}
                   </TableCell>
+
+                  {/* Type */}
                   <TableCell className="py-2.5">
-                    <Badge variant="outline" className={`px-1.5 py-0 text-[10px] rounded-sm ${page.status === 'Active' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-muted text-muted-foreground'}`}>
+                    <Badge variant="secondary" className="bg-muted/50 text-[10px] font-normal rounded-sm px-1.5">
+                      {page.page_type}
+                    </Badge>
+                  </TableCell>
+
+                  {/* Status */}
+                  <TableCell className="py-2.5">
+                    <Badge
+                      variant="outline"
+                      className={`px-1.5 py-0 text-[10px] rounded-sm border ${statusClass(page.status)}`}
+                    >
                       {page.status}
                     </Badge>
                   </TableCell>
-                  <TableCell className="py-2.5 text-xs">{page.planAccess}</TableCell>
-                  <TableCell className="py-2.5 text-xs text-muted-foreground">{page.usageLimit}</TableCell>
+
+                  {/* Plan Access */}
+                  <TableCell className="py-2.5 text-xs">{page.plan_access}</TableCell>
+
+                  {/* Usage Limit */}
+                  <TableCell className="py-2.5 text-xs text-muted-foreground">{page.usage_limit}</TableCell>
+
+                  {/* Visible toggle */}
                   <TableCell className="py-2.5 text-center">
-                    <button onClick={() => handleToggleVisibility(page.id)} className="text-muted-foreground hover:text-foreground transition-colors">
-                      {page.visible ? <Eye className="h-4 w-4 mx-auto" /> : <EyeOff className="h-4 w-4 mx-auto opacity-50" />}
+                    <button
+                      onClick={() => handleToggleVisibility(page.page_key, page.is_visible)}
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                      title={page.is_visible ? 'Hide this page' : 'Show this page'}
+                    >
+                      {page.is_visible
+                        ? <Eye className="h-4 w-4 mx-auto" />
+                        : <EyeOff className="h-4 w-4 mx-auto opacity-50" />}
                     </button>
                   </TableCell>
+
+                  {/* Content editable */}
                   <TableCell className="py-2.5 text-[11px] text-emerald-600 font-medium">
-                    {page.contentEditable ? "Editable" : "Locked"}
+                    {page.content_editable ? 'Editable' : 'Locked'}
                   </TableCell>
+
+                  {/* Last updated */}
                   <TableCell className="py-2.5">
                     <div className="flex flex-col">
-                      <span className="text-[11px]">{page.lastUpdated}</span>
-                      <span className="text-[10px] text-muted-foreground">by {page.updatedBy}</span>
+                      <span className="text-[11px]">
+                        {new Date(page.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">by Admin</span>
                     </div>
                   </TableCell>
+
+                  {/* Actions */}
                   <TableCell className="py-2.5 text-right pr-4">
                     <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" onClick={() => openEdit(page)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 hover:bg-muted"
+                        onClick={() => openEdit(page)}
+                        title="Edit page settings"
+                      >
                         <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted" onClick={() => handleDuplicate(page)}>
-                        <Copy className="h-3.5 w-3.5 text-muted-foreground" />
-                      </Button>
+
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-muted">
                             <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-40 rounded-xl">
-                          <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground uppercase">Actions</DropdownMenuLabel>
+                        <DropdownMenuContent align="end" className="w-44 rounded-xl">
+                          <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground uppercase">
+                            Actions
+                          </DropdownMenuLabel>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-xs" onClick={() => openEdit(page)}>Edit Page</DropdownMenuItem>
-                          <DropdownMenuItem className="text-xs">Manage Access</DropdownMenuItem>
-                          <DropdownMenuItem className="text-xs">Manage Limits</DropdownMenuItem>
-                          <DropdownMenuItem className="text-xs" onClick={() => handleToggleVisibility(page.id)}>
-                            {page.visible ? "Hide Page" : "Show Page"}
+
+                          <DropdownMenuItem className="text-xs" onClick={() => openEdit(page)}>
+                            Edit Settings
                           </DropdownMenuItem>
+
+                          {/* Manage Content — navigates to content manager */}
+                          {page.content_editable && (
+                            <DropdownMenuItem
+                              className="text-xs"
+                              onClick={() => onManageContent?.(page.page_key)}
+                            >
+                              Manage Content
+                            </DropdownMenuItem>
+                          )}
+
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-xs text-rose-600 focus:text-rose-600" onClick={() => handleDelete(page.id)}>
-                            Delete Page
+
+                          <DropdownMenuItem
+                            className="text-xs"
+                            onClick={() => handleToggleVisibility(page.page_key, page.is_visible)}
+                          >
+                            {page.is_visible ? 'Hide from Sidebar' : 'Show in Sidebar'}
                           </DropdownMenuItem>
+
+                          {/* Status changes */}
+                          {page.status !== 'Active' && (
+                            <DropdownMenuItem
+                              className="text-xs text-emerald-600 focus:text-emerald-600"
+                              onClick={() => handleUpdateStatus(page.page_key, 'Active')}
+                            >
+                              Set Active
+                            </DropdownMenuItem>
+                          )}
+                          {page.status !== 'Disabled' && (
+                            <DropdownMenuItem
+                              className="text-xs"
+                              onClick={() => handleUpdateStatus(page.page_key, 'Disabled')}
+                            >
+                              Disable Page
+                            </DropdownMenuItem>
+                          )}
+                          {page.status !== 'Coming Soon' && (
+                            <DropdownMenuItem
+                              className="text-xs"
+                              onClick={() => handleUpdateStatus(page.page_key, 'Coming Soon')}
+                            >
+                              Mark Coming Soon
+                            </DropdownMenuItem>
+                          )}
+                          {page.status !== 'Maintenance' && (
+                            <DropdownMenuItem
+                              className="text-xs"
+                              onClick={() => handleUpdateStatus(page.page_key, 'Maintenance')}
+                            >
+                              Mark Maintenance
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -280,8 +397,12 @@ export default function PagesAndFeaturesControl() {
             </TableBody>
           </Table>
         </div>
+
+        {/* Footer */}
         <div className="border-t border-border bg-muted/20 px-4 py-2 flex items-center justify-between">
-          <span className="text-[11px] text-muted-foreground">Showing {pages.length} of {pages.length} pages</span>
+          <span className="text-[11px] text-muted-foreground">
+            Showing {pages.length} pages · DB-backed
+          </span>
           <div className="flex items-center gap-4 text-[10px] text-muted-foreground font-medium">
             <span className="flex items-center gap-1"><Home className="h-3 w-3" /> Core Page</span>
             <span className="flex items-center gap-1"><Sparkles className="h-3 w-3" /> Feature Page</span>
@@ -296,166 +417,168 @@ export default function PagesAndFeaturesControl() {
       <div className="w-full">
         <h3 className="text-sm font-semibold mb-3">Quick Actions</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 w-full">
-          <div className="flex flex-col gap-1.5 p-3 rounded-lg border border-border bg-card hover:border-primary/50 cursor-pointer transition-colors" onClick={openAdd}>
-            <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded bg-emerald-50 text-emerald-600">
-                <Plus className="h-3.5 w-3.5" />
+          {[
+            { label: 'Refresh Data',    desc: 'Reload from database',      icon: RefreshCw,      onClick: fetchPages      },
+            { label: 'Reorder Pages',   desc: 'Drag and drop to reorder',  icon: GripVertical,   onClick: openReorder     },
+            { label: 'Import Page',     desc: 'Import page from template', icon: Download,       onClick: () => toast.info('Coming soon') },
+            { label: 'Page Templates',  desc: 'Browse page templates',     icon: LayoutTemplate, onClick: () => toast.info('Coming soon') },
+          ].map(item => (
+            <div
+              key={item.label}
+              className="flex flex-col gap-1.5 p-3 rounded-lg border border-border bg-card hover:border-primary/50 cursor-pointer transition-colors"
+              onClick={item.onClick}
+            >
+              <div className="flex items-center gap-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded bg-muted text-muted-foreground">
+                  <item.icon className="h-3.5 w-3.5" />
+                </div>
+                <span className="text-xs font-semibold">{item.label}</span>
               </div>
-              <span className="text-xs font-semibold">Add New Page</span>
+              <span className="text-[10px] text-muted-foreground">{item.desc}</span>
             </div>
-            <span className="text-[10px] text-muted-foreground">Create a new custom page</span>
-          </div>
-          <div className="flex flex-col gap-1.5 p-3 rounded-lg border border-border bg-card hover:border-primary/50 cursor-pointer transition-colors">
-            <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded bg-muted text-muted-foreground">
-                <Download className="h-3.5 w-3.5" />
-              </div>
-              <span className="text-xs font-semibold">Import Page</span>
-            </div>
-            <span className="text-[10px] text-muted-foreground">Import page from template</span>
-          </div>
-          <div className="flex flex-col gap-1.5 p-3 rounded-lg border border-border bg-card hover:border-primary/50 cursor-pointer transition-colors">
-            <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded bg-muted text-muted-foreground">
-                <Copy className="h-3.5 w-3.5" />
-              </div>
-              <span className="text-xs font-semibold">Duplicate Page</span>
-            </div>
-            <span className="text-[10px] text-muted-foreground">Copy and modify existing</span>
-          </div>
-          <div className="flex flex-col gap-1.5 p-3 rounded-lg border border-border bg-card hover:border-primary/50 cursor-pointer transition-colors" onClick={() => setIsReorderOpen(true)}>
-            <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded bg-muted text-muted-foreground">
-                <GripVertical className="h-3.5 w-3.5" />
-              </div>
-              <span className="text-xs font-semibold">Reorder Pages</span>
-            </div>
-            <span className="text-[10px] text-muted-foreground">Drag and drop to reorder</span>
-          </div>
-          <div className="flex flex-col gap-1.5 p-3 rounded-lg border border-border bg-card hover:border-primary/50 cursor-pointer transition-colors">
-            <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded bg-muted text-muted-foreground">
-                <LayoutTemplate className="h-3.5 w-3.5" />
-              </div>
-              <span className="text-xs font-semibold">Page Templates</span>
-            </div>
-            <span className="text-[10px] text-muted-foreground">Browse page templates</span>
-          </div>
+          ))}
         </div>
       </div>
 
-      {/* Modals */}
-
-      {/* Add / Edit Dialog */}
-      <Dialog open={isAddOpen || isEditOpen} onOpenChange={(open) => {
-        if (!open) {
-          setIsAddOpen(false);
-          setIsEditOpen(false);
-        }
+      {/* ── Edit Dialog ──────────────────────────────────────────────────────── */}
+      <Dialog open={isEditOpen} onOpenChange={(open) => {
+        if (!open) { setIsEditOpen(false); setSelectedPage(null); setFormData({}); }
       }}>
         <DialogContent className="sm:max-w-[500px] rounded-xl p-0 overflow-hidden border-border shadow-lg">
           <div className="px-6 py-4 border-b border-border bg-muted/20">
-            <DialogTitle className="text-lg font-semibold">{isEditOpen ? "Edit Page" : "Add New Page"}</DialogTitle>
+            <DialogTitle className="text-lg font-semibold">Edit Page Settings</DialogTitle>
             <DialogDescription className="text-xs">
-              Configure page details, visibility, and access settings.
+              Changes are saved to the database and take effect immediately.
             </DialogDescription>
           </div>
           <div className="px-6 py-4 space-y-4 max-h-[60vh] overflow-y-auto">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold">Page Name</Label>
-                <Input className="h-8 text-xs rounded-md" value={formData.name || ""} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g. Analytics" />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold">Route</Label>
-                <Input className="h-8 text-xs rounded-md" value={formData.route || ""} onChange={(e) => setFormData({ ...formData, route: e.target.value })} placeholder="e.g. /analytics" />
-              </div>
+            {/* Name */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold">Display Name</Label>
+              <Input
+                className="h-8 text-xs rounded-md"
+                value={formData.name ?? ''}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              />
             </div>
-            
+
+            {/* Route (read-only) */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-muted-foreground">Route (read-only)</Label>
+              <Input
+                className="h-8 text-xs rounded-md bg-muted/30 cursor-not-allowed"
+                value={formData.route ?? ''}
+                readOnly
+              />
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold">Page Type</Label>
-                <Select value={formData.type} onValueChange={(val) => setFormData({ ...formData, type: val as any })}>
-                  <SelectTrigger className="h-8 text-xs rounded-md">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl">
-                    <SelectItem value="Core" className="text-xs">Core</SelectItem>
-                    <SelectItem value="Feature" className="text-xs">Feature</SelectItem>
-                    <SelectItem value="Custom" className="text-xs">Custom</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Status */}
               <div className="space-y-2">
                 <Label className="text-xs font-semibold">Status</Label>
-                <Select value={formData.status} onValueChange={(val) => setFormData({ ...formData, status: val as any })}>
+                <Select
+                  value={formData.status}
+                  onValueChange={(val) => setFormData({ ...formData, status: val as ShopifyPageSetting['status'] })}
+                >
                   <SelectTrigger className="h-8 text-xs rounded-md">
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl">
-                    <SelectItem value="Active" className="text-xs">Active</SelectItem>
-                    <SelectItem value="Disabled" className="text-xs">Disabled</SelectItem>
-                    <SelectItem value="Coming Soon" className="text-xs">Coming Soon</SelectItem>
+                    <SelectItem value="Active"       className="text-xs">Active</SelectItem>
+                    <SelectItem value="Disabled"     className="text-xs">Disabled</SelectItem>
+                    <SelectItem value="Coming Soon"  className="text-xs">Coming Soon</SelectItem>
+                    <SelectItem value="Maintenance"  className="text-xs">Maintenance</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
+              {/* Plan Access */}
               <div className="space-y-2">
                 <Label className="text-xs font-semibold">Plan Access</Label>
-                <Select value={formData.planAccess} onValueChange={(val) => setFormData({ ...formData, planAccess: val })}>
+                <Select
+                  value={formData.plan_access}
+                  onValueChange={(val) => setFormData({ ...formData, plan_access: val })}
+                >
                   <SelectTrigger className="h-8 text-xs rounded-md">
                     <SelectValue placeholder="Select access" />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl">
                     <SelectItem value="All Plans" className="text-xs">All Plans</SelectItem>
-                    <SelectItem value="Starter+" className="text-xs">Starter+</SelectItem>
-                    <SelectItem value="Pro+" className="text-xs">Pro+</SelectItem>
-                    <SelectItem value="Agency" className="text-xs">Agency</SelectItem>
+                    <SelectItem value="Starter+"  className="text-xs">Starter+</SelectItem>
+                    <SelectItem value="Pro+"      className="text-xs">Pro+</SelectItem>
+                    <SelectItem value="Agency"    className="text-xs">Agency</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold">Usage Limit</Label>
-                <Input className="h-8 text-xs rounded-md" value={formData.usageLimit || ""} onChange={(e) => setFormData({ ...formData, usageLimit: e.target.value })} placeholder="e.g. 500 / mo" />
-              </div>
             </div>
 
+            {/* Usage Limit */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold">Usage Limit</Label>
+              <Input
+                className="h-8 text-xs rounded-md"
+                value={formData.usage_limit ?? ''}
+                onChange={(e) => setFormData({ ...formData, usage_limit: e.target.value })}
+                placeholder="e.g. 500 / mo"
+              />
+            </div>
+
+            {/* Visibility toggle */}
             <div className="flex items-center justify-between rounded-lg border border-border p-3 bg-muted/20">
               <div className="space-y-0.5">
                 <Label className="text-xs font-semibold">Sidebar Visibility</Label>
                 <p className="text-[10px] text-muted-foreground">Show this page in the user sidebar</p>
               </div>
-              <Switch checked={formData.visible} onCheckedChange={(val) => setFormData({ ...formData, visible: val })} />
+              <Switch
+                checked={formData.is_visible ?? true}
+                onCheckedChange={(val) => setFormData({ ...formData, is_visible: val })}
+              />
             </div>
 
+            {/* Content editable toggle */}
             <div className="flex items-center justify-between rounded-lg border border-border p-3 bg-muted/20">
               <div className="space-y-0.5">
                 <Label className="text-xs font-semibold">Content Editable</Label>
                 <p className="text-[10px] text-muted-foreground">Allow admins to edit page content</p>
               </div>
-              <Switch checked={formData.contentEditable} onCheckedChange={(val) => setFormData({ ...formData, contentEditable: val })} />
+              <Switch
+                checked={formData.content_editable ?? true}
+                onCheckedChange={(val) => setFormData({ ...formData, content_editable: val })}
+              />
             </div>
           </div>
           <div className="px-6 py-4 border-t border-border bg-muted/10 flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => { setIsAddOpen(false); setIsEditOpen(false); }} className="h-8 text-xs rounded-md">Cancel</Button>
-            <Button size="sm" onClick={handleSavePage} className="h-8 text-xs rounded-md">Save Changes</Button>
+            <Button
+              variant="outline" size="sm"
+              onClick={() => { setIsEditOpen(false); setSelectedPage(null); setFormData({}); }}
+              className="h-8 text-xs rounded-md"
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSavePage}
+              disabled={isSaving}
+              className="h-8 text-xs rounded-md"
+            >
+              {isSaving ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
+              Save Changes
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Reorder Dialog */}
+      {/* ── Reorder Dialog ────────────────────────────────────────────────────── */}
       <Dialog open={isReorderOpen} onOpenChange={setIsReorderOpen}>
         <DialogContent className="sm:max-w-[400px] rounded-xl p-0 overflow-hidden border-border shadow-lg">
           <div className="px-6 py-4 border-b border-border bg-muted/20">
             <DialogTitle className="text-lg font-semibold">Reorder Pages</DialogTitle>
             <DialogDescription className="text-xs">
-              Change the order in which pages appear in the sidebar.
+              Use the arrows to reorder pages. Clicking Save will persist the order to the database.
             </DialogDescription>
           </div>
           <div className="px-6 py-4 max-h-[50vh] overflow-y-auto space-y-2">
-            {pages.map((page, index) => (
+            {reorderList.map((page, index) => (
               <div key={page.id} className="flex items-center justify-between rounded-md border border-border p-2 bg-card">
                 <div className="flex items-center gap-2">
                   <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
@@ -463,21 +586,25 @@ export default function PagesAndFeaturesControl() {
                 </div>
                 <div className="flex items-center gap-1">
                   <Button variant="ghost" size="icon" className="h-6 w-6" disabled={index === 0} onClick={() => moveUp(index)}>
-                    &uarr;
+                    ↑
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" disabled={index === pages.length - 1} onClick={() => moveDown(index)}>
-                    &darr;
+                  <Button variant="ghost" size="icon" className="h-6 w-6" disabled={index === reorderList.length - 1} onClick={() => moveDown(index)}>
+                    ↓
                   </Button>
                 </div>
               </div>
             ))}
           </div>
-          <div className="px-6 py-4 border-t border-border bg-muted/10 flex justify-end">
-            <Button size="sm" onClick={() => setIsReorderOpen(false)} className="h-8 text-xs rounded-md">Done</Button>
+          <div className="px-6 py-4 border-t border-border bg-muted/10 flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setIsReorderOpen(false)} className="h-8 text-xs rounded-md">
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleSaveReorder} className="h-8 text-xs rounded-md">
+              Save Order
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }

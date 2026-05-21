@@ -13,6 +13,15 @@ export function TurnstileCaptcha({ onVerify, onError, onExpire }: TurnstileCaptc
   // E.g., import.meta.env.VITE_TURNSTILE_SITE_KEY
   const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || '1x00000000000000000000AA'; // 1x0... is a testing key that always passes
 
+  // Bypass Turnstile entirely in local dev environment
+  if (import.meta.env.DEV) {
+    React.useEffect(() => {
+      // Simulate success immediately
+      onVerify('dev-token-bypass');
+    }, [onVerify]);
+    return null;
+  }
+
   return (
     <div className="flex justify-center w-full my-4">
       <Turnstile
