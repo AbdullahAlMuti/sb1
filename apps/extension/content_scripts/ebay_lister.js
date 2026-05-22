@@ -979,34 +979,78 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
       console.log("📤 Syncing listing to dashboard:", listingData);
 
-      // Use SyncUtils if available
-      if (typeof window.SyncUtils !== 'undefined' && window.SyncUtils.syncListing) {
-        const result = await window.SyncUtils.syncListing(listingData);
-        if (result.success) {
-          console.log("✅ Listing synced to dashboard successfully:", result.data?.summary);
-          if (typeof UIHelper !== 'undefined') {
-            UIHelper.showToast('Listing synced to dashboard', 'success');
-          }
-        } else {
-          console.error("❌ Failed to sync listing:", result.error);
-          if (typeof UIHelper !== 'undefined') {
-            UIHelper.showToast(`Sync failed: ${result.error}`, 'error');
-          }
-          // Add to queue for retry
-          if (window.SyncUtils.syncQueue) {
-            window.SyncUtils.syncQueue.add({ type: 'listing', data: listingData });
-          }
-        }
-      } else {
-        // Fallback: Send message to background script
+      const syncViaBackground = () => new Promise((resolve) => {
         chrome.runtime.sendMessage({
           action: "SYNC_LISTING",
           payload: listingData
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            resolve({
+              success: false,
+              source: 'background',
+              error: chrome.runtime.lastError.message || 'Background sync failed'
+            });
+            return;
+          }
+          resolve(response || { success: false, source: 'background', error: 'No background response' });
         });
+      });
+
+      let syncResult = null;
+
+      // Use SyncUtils if available
+      if (typeof window.SyncUtils !== 'undefined' && window.SyncUtils.syncListing) {
+        try {
+          syncResult = await window.SyncUtils.syncListing(listingData);
+        } catch (syncUtilsErr) {
+          syncResult = {
+            success: false,
+            source: 'sync_utils',
+            error: syncUtilsErr?.message || 'SyncUtils threw an error'
+          };
+        }
+
+        if (!syncResult?.success) {
+          console.warn("⚠️ SyncUtils failed, trying background fallback:", syncResult?.error);
+          syncResult = await syncViaBackground();
+        }
+      } else {
+        syncResult = await syncViaBackground();
         console.log("📤 Sent SYNC_LISTING message to background script");
+      }
+
+      if (syncResult?.success) {
+        console.log("✅ Listing synced to dashboard successfully:", syncResult);
+        if (typeof UIHelper !== 'undefined') {
+          UIHelper.showToast('Listing synced to dashboard', 'success');
+        }
+      } else {
+        const errorMessage = syncResult?.error || 'Unknown listing sync error';
+        console.error("❌ Failed to sync listing after fallback:", syncResult);
+        if (typeof UIHelper !== 'undefined') {
+          UIHelper.showToast(`Sync failed: ${errorMessage}`, 'error');
+        }
+        if (window.SyncUtils?.recordListingSyncError) {
+          await window.SyncUtils.recordListingSyncError({
+            source: syncResult?.source || 'ebay_lister',
+            status: syncResult?.status || null,
+            error: errorMessage,
+            details: syncResult?.details || null,
+            listingData
+          });
+        }
+        if (window.SyncUtils?.syncQueue) {
+          await window.SyncUtils.syncQueue.add({ type: 'listing', data: listingData });
+        }
       }
     } catch (syncErr) {
       console.error("❌ Error syncing listing:", syncErr);
+      if (window.SyncUtils?.recordListingSyncError) {
+        await window.SyncUtils.recordListingSyncError({
+          source: 'ebay_lister',
+          error: syncErr?.message || 'Unexpected listing sync error'
+        });
+      }
     }
 
     // Log to Google Sheets after automation completes

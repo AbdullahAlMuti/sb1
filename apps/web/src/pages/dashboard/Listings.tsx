@@ -463,6 +463,7 @@ export default function Listings() {
         .from("listings")
         .select("*")
         .eq("user_id", user.id)
+        .order("updated_at", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false });
 
       if (error) {

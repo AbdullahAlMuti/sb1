@@ -10,6 +10,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         toggleHelp: document.getElementById('toggleHelp'),
         helpSection: document.getElementById('helpSection'),
         btnLogin: document.getElementById('btnLogin'),
+        btnLegacyLogin: document.getElementById('btnLegacyLogin'),
+        btnPairingLogin: document.getElementById('btnPairingLogin'),
         btnDashboard: document.getElementById('btnDashboard'),
         btnSync: document.getElementById('btnSyncNow'),
         autoSync: document.getElementById('autoSync'),
@@ -17,8 +19,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         syncDays: document.getElementById('syncDays'),
         customDaysInput: document.getElementById('customDays'),
         lastSyncLabel: document.getElementById('lastSyncTime'),
-        btnDisconnect: document.getElementById('btnDisconnect')
+        btnDisconnect: document.getElementById('btnDisconnect'),
+        btnSwitchConnection: document.getElementById('btnSwitchConnection'),
+        
+        pairingCodeDisplay: document.getElementById('pairingCodeDisplay'),
+        pairingStatusText: document.getElementById('pairingStatusText'),
+        btnCancelPairing: document.getElementById('btnCancelPairing')
     };
+
+    let pairingPollInterval = null;
 
     // Helper to get base URL
     const getBaseUrl = () => {
@@ -36,23 +45,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         els.authStatus.className = 'status connecting';
         els.usernameDisplay.classList.add('hidden');
 
-        chrome.runtime.sendMessage({ action: 'CHECK_AUTH' }, (response) => {
-            if (chrome.runtime.lastError) {
-                // Extension context invalidated or other error
+        chrome.runtime.sendMessage({ action: 'GET_EXTENSION_AUTH_STATE' }, (response) => {
+            if (chrome.runtime.lastError || !response) {
                 showView('login');
+                setupLoginButtons({
+                    extension_new_auth_enabled: false,
+                    extension_legacy_fallback_enabled: true
+                });
                 els.authStatus.textContent = 'Error';
                 els.authStatus.className = 'status inactive';
                 return;
             }
 
-            if (response && response.success) {
+            const { config, isValid, type, user } = response;
+
+            if (isValid) {
                 // State: Connected
                 showView('settings');
-                els.authStatus.textContent = 'Connected';
+                els.authStatus.textContent = type === 'new' ? 'Connected (New)' : 'Connected';
                 els.authStatus.className = 'status active';
 
-                if (response.user && response.user.email) {
-                    const name = response.user.email.split('@')[0];
+                if (user && user.email) {
+                    const name = user.email.split('@')[0];
                     els.usernameDisplay.textContent = `Connected as: ${name}`;
                     els.usernameDisplay.classList.remove('hidden');
                 }
@@ -63,19 +77,107 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 });
 
+                if (config && config.extension_new_auth_enabled && type !== 'new') {
+                    if (els.btnSwitchConnection) els.btnSwitchConnection.classList.remove('hidden');
+                } else {
+                    if (els.btnSwitchConnection) els.btnSwitchConnection.classList.add('hidden');
+                }
+
                 loadSettings();
             } else {
                 // State: Not Connected
                 showView('login');
+                setupLoginButtons(config);
                 els.authStatus.textContent = 'Not Connected';
                 els.authStatus.className = 'status inactive';
             }
         });
     };
 
+    const setupLoginButtons = (config) => {
+        els.btnLogin.classList.add('hidden');
+        els.btnLegacyLogin.classList.add('hidden');
+        els.btnPairingLogin.classList.add('hidden');
+
+        if (config && config.extension_new_auth_enabled) {
+            els.btnLogin.classList.remove('hidden');
+            if (config.extension_pairing_fallback_enabled) {
+                els.btnPairingLogin.classList.remove('hidden');
+            }
+        } else {
+            els.btnLegacyLogin.classList.remove('hidden');
+        }
+    };
+
     const showView = (viewName) => {
-        Object.values(views).forEach(el => el.classList.add('hidden'));
-        views[viewName].classList.remove('hidden');
+        Object.values(views).forEach(el => {
+            if (el) el.classList.add('hidden');
+        });
+        const pairings = document.getElementById('pairingView');
+        if (pairings) pairings.classList.add('hidden');
+        
+        if (viewName === 'pairing') {
+            pairings.classList.remove('hidden');
+        } else if (views[viewName]) {
+            views[viewName].classList.remove('hidden');
+        }
+    };
+
+    // Pairing Logic
+    const startPairing = () => {
+        showView('pairing');
+        els.pairingCodeDisplay.textContent = '------';
+        els.pairingStatusText.textContent = 'Starting pairing...';
+        
+        chrome.runtime.sendMessage({ action: 'START_PAIRING' }, (res) => {
+            if (res && res.success) {
+                els.pairingCodeDisplay.textContent = res.pairingCode.match(/.{1,3}/g).join('-');
+                els.pairingStatusText.textContent = 'Waiting for approval...';
+                
+                // Start polling
+                if (pairingPollInterval) clearInterval(pairingPollInterval);
+                pairingPollInterval = setInterval(pollPairingStatus, 2000);
+            } else {
+                els.pairingStatusText.textContent = 'Error starting pairing.';
+            }
+        });
+    };
+
+    const pollPairingStatus = () => {
+        chrome.runtime.sendMessage({ action: 'POLL_PAIRING_STATUS' }, (res) => {
+            if (res && res.success) {
+                if (res.status === 'approved') {
+                    clearInterval(pairingPollInterval);
+                    els.pairingStatusText.textContent = 'Approved! Connecting...';
+                    redeemPairing();
+                } else if (res.status === 'rejected') {
+                    clearInterval(pairingPollInterval);
+                    els.pairingStatusText.textContent = 'Pairing rejected.';
+                    setTimeout(() => showView('login'), 2000);
+                } else if (res.status === 'expired') {
+                    clearInterval(pairingPollInterval);
+                    els.pairingStatusText.textContent = 'Code expired.';
+                    setTimeout(() => showView('login'), 2000);
+                }
+            }
+        });
+    };
+
+    const redeemPairing = () => {
+        chrome.runtime.sendMessage({ action: 'REDEEM_PAIRING' }, (res) => {
+            if (res && res.success) {
+                checkAuth();
+            } else {
+                els.pairingStatusText.textContent = 'Error connecting: ' + (res?.error || 'Unknown');
+                setTimeout(() => showView('login'), 2000);
+            }
+        });
+    };
+
+    const cancelPairing = () => {
+        if (pairingPollInterval) clearInterval(pairingPollInterval);
+        chrome.storage.local.remove(['tempConnectToken', 'tempClientSecret', 'tempPairingExpires']);
+        showView('login');
     };
 
     // 2. Load Settings from Storage
@@ -132,19 +234,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     // Event Listeners
-    els.btnLogin.onclick = () => chrome.tabs.create({ url: `${baseUrl}/auth` });
+    els.btnLogin.onclick = () => chrome.tabs.create({ url: `${baseUrl}/dashboard/settings/extension` });
+    els.btnLegacyLogin.onclick = () => chrome.tabs.create({ url: `${baseUrl}/auth` });
+    els.btnPairingLogin.onclick = startPairing;
+    if (els.btnSwitchConnection) els.btnSwitchConnection.onclick = startPairing;
+    els.btnCancelPairing.onclick = cancelPairing;
     els.btnDashboard.onclick = () => chrome.tabs.create({ url: `${baseUrl}/dashboard` });
 
     // Disconnect / Logout
     if (els.btnDisconnect) {
         els.btnDisconnect.onclick = () => {
-            chrome.runtime.sendMessage({ action: 'LOGOUT' }, () => {
-                chrome.storage.local.remove(['saasToken', 'saasUser', 'userId', 'userEmail', 'userPlan', 'authTimestamp'], () => {
-                    showView('login');
-                    els.authStatus.textContent = 'Not Connected';
-                    els.authStatus.className = 'status inactive';
-                    els.usernameDisplay.classList.add('hidden');
-                });
+            chrome.runtime.sendMessage({ action: 'LOGOUT_EXTENSION_SESSION' }, () => {
+                showView('login');
+                els.authStatus.textContent = 'Not Connected';
+                els.authStatus.className = 'status inactive';
+                els.usernameDisplay.classList.add('hidden');
+                checkAuth();
             });
         };
     }

@@ -17,3 +17,72 @@ verify_jwt = false
 
 [functions.admin-adjust-credits]
 verify_jwt = false
+
+[functions.extension-connect-start]
+verify_jwt = false
+
+[functions.extension-connect-approve]
+verify_jwt = false
+
+[functions.extension-token-redeem]
+verify_jwt = false
+
+[functions.extension-token-refresh]
+verify_jwt = false
+
+[functions.extension-bootstrap]
+verify_jwt = false
+
+[functions.extension-logout]
+verify_jwt = false
+
+[functions.extension-activity]
+verify_jwt = false
+
+[functions.extension-device-revoke]
+verify_jwt = false
+
+[functions.extension-auth-config]
+verify_jwt = false
+
+[functions.extension-config]
+verify_jwt = false
+
+[functions.extension-pairing-start]
+verify_jwt = false
+
+[functions.extension-pairing-status]
+verify_jwt = false
+
+[functions.extension-pairing-approve]
+verify_jwt = false
+
+[functions.auth-status]
+verify_jwt = false
+
+[functions.create-listing]
+verify_jwt = false
+
+[functions.generate-titles]
+verify_jwt = false
+
+[functions.generate-description]
+verify_jwt = false
+
+[functions.get-listings]
+verify_jwt = false
+
+[functions.test-api-key]
+verify_jwt = true
+
+[functions.extension-admin-devices]
+verify_jwt = false
+
+[functions.extension-admin-device-detail]
+verify_jwt = false
+
+[functions.extension-admin-feature-flags]
+verify_jwt = false
+
+[functions.extension-admin-update-feature-flag]
+verify_jwt = false

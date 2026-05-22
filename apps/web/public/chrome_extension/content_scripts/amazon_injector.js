@@ -2832,7 +2832,7 @@ const addEventListenersToPanel = () => {
                                     console.error('═══════════════════════════════════════════════════════');
                                     btn.disabled = false;
                                     btn.textContent = '❌ Error - Try Again';
-                                    alert('Failed to send data to Google Sheets. Error: ' + chrome.runtime.lastError.message);
+                                    alert('Failed to sync to SellerSuit Dashboard. Error: ' + chrome.runtime.lastError.message);
                                     return;
                                 }
 
@@ -2847,8 +2847,8 @@ const addEventListenersToPanel = () => {
                                 console.log('═══════════════════════════════════════════════════════');
 
                                 if (response && response.success) {
-                                    console.log('✅ SUCCESS: Data sent to Google Sheets via background.js');
-                                    btn.textContent = '✅ Sent to Sheets!';
+                                    console.log('✅ SUCCESS: Data sent to SellerSuit Dashboard via background.js');
+                                    btn.textContent = '✅ Synced to Dashboard!';
                                     setTimeout(() => {
                                         btn.disabled = false;
                                         btn.textContent = 'Opti-List';
@@ -2857,7 +2857,7 @@ const addEventListenersToPanel = () => {
                                     console.error('❌ ERROR FROM BACKGROUND.JS:', response.error);
                                     btn.textContent = '⚠️ Error: ' + response.error;
                                     btn.disabled = false;
-                                    alert('Failed to send data to Google Sheets: ' + response.error);
+                                    alert('Failed to sync data to SellerSuit: ' + response.error);
                                 } else {
                                     console.warn('⚠️ No response or unexpected response format');
                                     console.warn('Response received:', response);

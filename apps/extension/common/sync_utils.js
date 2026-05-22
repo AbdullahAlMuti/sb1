@@ -35,6 +35,54 @@ function syncLog(level, message, data = null) {
   }
 }
 
+function getSafeListingIdentity(listingData = {}) {
+  return {
+    sku: listingData.sku || listingData.ebaySku || null,
+    asin: listingData.amazon_asin || listingData.amazonAsin || null
+  };
+}
+
+async function recordListingSyncError({ source = 'sync_utils', status = null, error = 'Unknown sync error', details = null, listingData = {} } = {}) {
+  try {
+    const entry = {
+      timestamp: new Date().toISOString(),
+      status,
+      source,
+      error: String(error || 'Unknown sync error').slice(0, 500),
+      ...getSafeListingIdentity(listingData)
+    };
+
+    if (details && typeof details === 'object') {
+      entry.details = {
+        action: details.action || undefined,
+        code: details.code || undefined,
+        message: details.message ? String(details.message).slice(0, 300) : undefined
+      };
+    }
+
+    const data = await chrome.storage.local.get(['listingSyncErrors']);
+    const errors = Array.isArray(data.listingSyncErrors) ? data.listingSyncErrors : [];
+    const nextErrors = [entry, ...errors].slice(0, 10);
+    await chrome.storage.local.set({
+      listingSyncLastError: entry,
+      listingSyncErrors: nextErrors
+    });
+  } catch (err) {
+    syncLog('warn', 'Failed to record listing sync error', err?.message || err);
+  }
+}
+
+async function parseResponseBody(response) {
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text.slice(0, 500) };
+  }
+}
+
 /**
  * Fetch with retry and exponential backoff
  * @param {string} url - The URL to fetch
@@ -212,7 +260,9 @@ async function syncListing(listingData) {
   const { token } = await getAuthToken();
 
   if (!token) {
-    return { success: false, data: null, error: 'Not authenticated' };
+    const error = 'Not authenticated. Please log in to SellerSuit before syncing listings.';
+    await recordListingSyncError({ source: 'sync_utils', error, listingData });
+    return { success: false, source: 'sync_utils', status: 401, error };
   }
 
   try {
@@ -244,6 +294,7 @@ async function syncListing(listingData) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(enrichedListingData),
@@ -252,18 +303,40 @@ async function syncListing(listingData) {
       1000
     );
 
-    const result = await response.json();
+    const result = await parseResponseBody(response);
 
     if (!response.ok) {
-      syncLog('error', 'Sync listing failed', { status: response.status, error: result.error });
-      return { success: false, data: null, error: result.error || `HTTP ${response.status}` };
+      const error = result?.error || result?.message || `create-listing failed with HTTP ${response.status}`;
+      syncLog('error', 'Sync listing failed', { status: response.status, error });
+      await recordListingSyncError({
+        source: 'sync_utils',
+        status: response.status,
+        error,
+        details: result,
+        listingData
+      });
+      return {
+        success: false,
+        source: 'sync_utils',
+        status: response.status,
+        error,
+        details: result
+      };
     }
 
     syncLog('success', 'Listing synced', { action: result.action, id: result.listing?.id });
-    return { success: true, data: result, error: null };
+    return {
+      success: true,
+      source: 'sync_utils',
+      listingId: result?.listing?.id,
+      status: response.status,
+      details: result
+    };
   } catch (err) {
     syncLog('error', 'Sync listing error', err);
-    return { success: false, data: null, error: err.message };
+    const error = err?.message || 'Listing sync failed';
+    await recordListingSyncError({ source: 'sync_utils', error, listingData });
+    return { success: false, source: 'sync_utils', error };
   }
 }
 
@@ -332,6 +405,7 @@ if (typeof window !== 'undefined') {
     clearAuthData,
     syncListing,
     syncQueue,
+    recordListingSyncError,
     syncLog,
     SUPABASE_URL,
     SUPABASE_ANON_KEY
@@ -348,6 +422,7 @@ if (typeof self !== 'undefined' && typeof self.SyncUtils === 'undefined') {
     clearAuthData,
     syncListing,
     syncQueue,
+    recordListingSyncError,
     syncLog,
     SUPABASE_URL,
     SUPABASE_ANON_KEY

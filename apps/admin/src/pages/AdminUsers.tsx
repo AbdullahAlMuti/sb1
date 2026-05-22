@@ -155,13 +155,11 @@ export default function AdminUsers() {
   const [showRoleDialog, setShowRoleDialog] = useState(false);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showPlanDialog, setShowPlanDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [newRole, setNewRole] = useState<AppRole>('user');
   const [newPlanId, setNewPlanId] = useState<string>('');
   const [plans, setPlans] = useState<Plan[]>([]);
   const [isUpdatingPlan, setIsUpdatingPlan] = useState(false);
   const [isVerifyingEmail, setIsVerifyingEmail] = useState<string | null>(null);
-  const [isDeletingUser, setIsDeletingUser] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [sortField, setSortField] = useState<SortField>('created_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -468,39 +466,6 @@ export default function AdminUsers() {
       toast.error(error.message || 'Failed to verify email');
     } finally {
       setIsVerifyingEmail(null);
-    }
-  };
-
-  const deleteUser = async () => {
-    if (!selectedUser) return;
-
-    setIsDeletingUser(true);
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      
-      const { data, error } = await supabase.functions.invoke('admin-delete-user', {
-        body: { userId: selectedUser.id },
-        headers: {
-          Authorization: `Bearer ${sessionData.session?.access_token}`,
-        },
-      });
-
-      if (error) throw error;
-
-      if (data.success) {
-        setUsers(users.filter(u => u.id !== selectedUser.id));
-        setTotalCount(prev => prev - 1);
-        setShowDeleteDialog(false);
-        setSelectedUser(null);
-        toast.success('User deleted successfully');
-      } else {
-        throw new Error(data.error || 'Failed to delete user');
-      }
-    } catch (error: any) {
-      console.error('Error deleting user:', error);
-      toast.error(error.message || 'Failed to delete user');
-    } finally {
-      setIsDeletingUser(false);
     }
   };
 
@@ -844,11 +809,6 @@ export default function AdminUsers() {
                 <Mail className="h-4 w-4 mr-2" />
                 Email Selected
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive">
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete Selected
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <Button size="sm" className="gap-2 bg-primary">
@@ -1034,17 +994,6 @@ export default function AdminUsers() {
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                                onClick={() => {
-                                  setSelectedUser(user);
-                                  setShowDeleteDialog(true);
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
                             </div>
                           </td>
                         </tr>
@@ -1151,17 +1100,6 @@ export default function AdminUsers() {
                                   }}>
                                     <Settings2 className="h-4 w-4 mr-2" />
                                     Override Limits
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem 
-                                    className="text-destructive"
-                                    onClick={() => {
-                                      setSelectedUser(user);
-                                      setShowDeleteDialog(true);
-                                    }}
-                                  >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Delete User
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -1502,30 +1440,6 @@ export default function AdminUsers() {
             </Button>
             <Button onClick={updateUserPlan} disabled={isUpdatingPlan}>
               {isUpdatingPlan ? 'Updating...' : 'Update Plan'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete User</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete {selectedUser?.email}? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
-              Cancel
-            </Button>
-            <Button 
-              variant="destructive" 
-              onClick={deleteUser}
-              disabled={isDeletingUser}
-            >
-              {isDeletingUser ? 'Deleting...' : 'Delete User'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,10 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { validateUserPlan } from '../_shared/plan-middleware.ts';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
-};
+import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient, corsHeaders } from '../_shared/extension-session.ts';
 
 interface ListingPayload {
   title: string;
@@ -60,38 +56,22 @@ Deno.serve(async (req) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    // Support both Authorization header and x-api-key
-    let authToken = req.headers.get('Authorization')?.replace('Bearer ', '');
-    const apiKey = req.headers.get('x-api-key');
+    // Authenticate using shared resolver
+    const supabaseService = createServiceClient();
+    const authContext = await resolveExtensionOrLegacyAuth(supabaseService, req);
+    const userId = authContext.userId;
 
-    if (!authToken && apiKey && apiKey.includes('.')) {
-      authToken = apiKey;
-    }
+    console.log(`[create-listing] User authenticated: ${userId} (${authContext.authMode})`);
 
-    if (!authToken) {
-      console.log('[create-listing] No auth token found');
+    // Verify feature entitlement
+    const hasAccess = await requireFeatureEntitlement(supabaseService, userId, authContext.workspaceId, "ebay_listing_create");
+    if (!hasAccess && authContext.authMode === "extension_session") {
+      console.warn(`[create-listing] User ${userId} missing ebay_listing_create entitlement`);
       return new Response(
-        JSON.stringify({ success: false, error: 'Missing authorization' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: "Feature not entitled or subscription inactive" }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    // Get user from token
-    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: `Bearer ${authToken}` } },
-    });
-
-    const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
-
-    if (userError || !user) {
-      console.error('[create-listing] Auth error:', userError);
-      return new Response(
-        JSON.stringify({ success: false, error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`[create-listing] User authenticated: ${user.id} (${user.email})`);
 
     if (req.method !== 'POST') {
       return new Response(
@@ -128,8 +108,8 @@ Deno.serve(async (req) => {
     // Ensure user profile exists and get credits
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('credits, plan_id')
-      .eq('id', user.id)
+      .select('credits, plan_id, email, full_name')
+      .eq('id', userId)
       .maybeSingle();
 
     let userCredits = profile?.credits ?? 0;
@@ -147,10 +127,10 @@ Deno.serve(async (req) => {
       const { data: created, error: createErr } = await supabase
         .from('profiles')
         .insert({
-          id: user.id,
-          email: user.email ?? '',
-          full_name: (user.user_metadata as any)?.full_name ?? user.email ?? null,
-          credits: 0,
+          id: userId,
+          email: authContext.profile?.email || '',
+          full_name: authContext.profile?.full_name || '',
+          credits: 20,
           is_active: true,
           plan_id: freePlan?.id ?? null,
         })
@@ -181,7 +161,7 @@ Deno.serve(async (req) => {
       const { data } = await supabase
         .from('listings')
         .select('id')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('sku', normalizedSku)
         .maybeSingle();
       if (data) existingId = data.id;
@@ -191,15 +171,16 @@ Deno.serve(async (req) => {
       const { data } = await supabase
         .from('listings')
         .select('id')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('amazon_asin', normalizedAsin)
         .maybeSingle();
       if (data) existingId = data.id;
     }
 
-    // Only check limits for NEW listings (backend authoritative)
     if (!existingId) {
-      const listingValidation = await validateUserPlan(supabase, user.id, 'listing', 1);
+      /*
+      // TEMPORARILY DISABLED PLAN LIMIT CHECKS
+      const listingValidation = await validateUserPlan(supabase, userId, 'listing', 1);
       if (!listingValidation.allowed) {
         console.log('[create-listing] Listing validation blocked:', listingValidation);
         return new Response(
@@ -215,7 +196,7 @@ Deno.serve(async (req) => {
         );
       }
 
-      const creditValidation = await validateUserPlan(supabase, user.id, 'credit', 1);
+      const creditValidation = await validateUserPlan(supabase, userId, 'credit', 1);
       if (!creditValidation.allowed) {
         console.log('[create-listing] Credit validation blocked:', creditValidation);
         return new Response(
@@ -230,11 +211,13 @@ Deno.serve(async (req) => {
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+      */
     }
+
 
     // Normalize payload
     const normalizedListing = {
-      user_id: user.id,
+      user_id: userId,
       title: inferredTitle.trim().substring(0, 500),
       sku: normalizedSku,
       ebay_price: body.ebayPrice ?? body.ebay_price ?? null,
@@ -295,11 +278,11 @@ Deno.serve(async (req) => {
     await supabase
       .from('profiles')
       .update({ credits: newCredits })
-      .eq('id', user.id);
+      .eq('id', userId);
 
     // Log credit transaction for audit trail
     await supabase.from('credit_transactions').insert({
-      user_id: user.id,
+      user_id: userId,
       amount: -1,
       transaction_type: 'usage',
       balance_after: newCredits,
@@ -312,7 +295,7 @@ Deno.serve(async (req) => {
 
     // Log usage
     await supabase.from('usage_logs').insert({
-      user_id: user.id,
+      user_id: userId,
       action: 'create_listing',
       credits_used: 1,
       metadata: {

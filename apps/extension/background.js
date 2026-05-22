@@ -6,6 +6,7 @@
 // Import config (self-registered in service worker context)
 importScripts(
   'common/config.js',
+  'common/auth-helper.js',
   'common/performance.js',
   'common/message-handler.js'
 );
@@ -122,34 +123,19 @@ async function verifyAuthStatus(forceRefresh = false) {
   }
 
   try {
-    const data = await chrome.storage.local.get(['saasToken', 'authTimestamp']);
-    const token = data.saasToken;
+    const { token, type, isValid } = await AuthHelper.getAuthToken();
 
-    if (!token) {
-      authLog('warn', 'LOCKDOWN: No saasToken found');
+    if (!token || !isValid) {
+      authLog('warn', 'LOCKDOWN: No valid auth token found');
       isExtensionUnlocked = false;
       return false;
     }
 
-    // Call Backend Authority with retry
-    const response = await fetchWithRetry(
-      `${URLS.SUPABASE_FUNCTIONS}/auth-status`,
-      {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          // Supabase Edge Functions gateway requires `apikey`.
-          'apikey': API_KEYS.SUPABASE_ANON,
-          'Content-Type': 'application/json'
-        }
-      },
-      2,
-      500
-    );
+    // Call Backend Authority
+    const response = await AuthHelper.callEdgeFunction('auth-status');
+    const result = response.data || {};
 
-    const result = await response.json().catch(() => ({}));
-
-    if (response.ok && result.success && result.user) {
+    if (!response.error && result.success && result.user) {
       authLog('success', 'Session verified', { userId: result.user.id, email: result.user.email });
 
       // SYNC: Update Extension Storage with fresh data
@@ -807,7 +793,221 @@ async function getReplicateToken() {
   return result.replicateApiKey;
 }
 
+async function parseListingSyncResponse(response) {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text.slice(0, 500) };
+  }
+}
+
+function getSafeListingSyncIdentity(payload = {}) {
+  return {
+    sku: payload.sku || payload.ebaySku || null,
+    asin: payload.amazon_asin || payload.amazonAsin || null
+  };
+}
+
+async function recordListingSyncError({ source = 'background', status = null, error = 'Unknown sync error', details = null, payload = {} } = {}) {
+  try {
+    const entry = {
+      timestamp: new Date().toISOString(),
+      status,
+      source,
+      error: String(error || 'Unknown sync error').slice(0, 500),
+      ...getSafeListingSyncIdentity(payload)
+    };
+
+    if (details && typeof details === 'object') {
+      entry.details = {
+        action: details.action || undefined,
+        code: details.code || undefined,
+        message: details.message ? String(details.message).slice(0, 300) : undefined
+      };
+    }
+
+    const data = await chrome.storage.local.get(['listingSyncErrors']);
+    const errors = Array.isArray(data.listingSyncErrors) ? data.listingSyncErrors : [];
+    await chrome.storage.local.set({
+      listingSyncLastError: entry,
+      listingSyncErrors: [entry, ...errors].slice(0, 10)
+    });
+  } catch (err) {
+    console.warn('[listing-sync] Failed to record sync error:', err?.message || err);
+  }
+}
+
+async function postCreateListing(payload, source = 'background') {
+  const tokenData = await chrome.storage.local.get(['saasToken']);
+  if (!tokenData.saasToken) {
+    const error = 'Not authenticated. Missing legacy saasToken.';
+    await recordListingSyncError({ source, status: 401, error, payload });
+    return { success: false, source, status: 401, error };
+  }
+
+  const response = await fetch(`${URLS.SUPABASE_FUNCTIONS}/create-listing`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${tokenData.saasToken}`,
+      'apikey': API_KEYS.SUPABASE_ANON
+    },
+    body: JSON.stringify(payload)
+  });
+  const data = await parseListingSyncResponse(response);
+
+  if (!response.ok) {
+    const error = data?.error || data?.message || `create-listing failed with HTTP ${response.status}`;
+    await recordListingSyncError({ source, status: response.status, error, details: data, payload });
+    return { success: false, source, status: response.status, error, details: data };
+  }
+
+  return {
+    success: true,
+    source,
+    status: response.status,
+    listingId: data?.listing?.id,
+    data
+  };
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+
+  if (request.action === 'GET_EXTENSION_AUTH_STATE') {
+    AuthHelper.getRemoteConfig().then(config => {
+      AuthHelper.getAuthToken().then(({ token, type, isValid, user }) => {
+        sendResponse({ config, token, type, isValid, user });
+      });
+    });
+    return true;
+  }
+
+  if (request.action === 'LOGOUT_EXTENSION_SESSION') {
+    (async () => {
+      await AuthHelper.clearNewAuthSession();
+      chrome.storage.local.remove(['saasToken', 'saasUser', 'authTimestamp'], () => {
+        sendResponse({ success: true });
+      });
+    })();
+    return true;
+  }
+
+  if (request.action === 'START_PAIRING') {
+    (async () => {
+      try {
+        const installId = (await chrome.storage.local.get('extensionInstallId')).extensionInstallId || crypto.randomUUID();
+        await chrome.storage.local.set({ extensionInstallId: installId });
+
+        const response = await fetch(`${URLS.SUPABASE_FUNCTIONS}/extension-pairing-start`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(API_KEYS.SUPABASE_ANON ? { apikey: API_KEYS.SUPABASE_ANON } : {})
+          },
+          body: JSON.stringify({
+            installId,
+            version: chrome.runtime.getManifest().version
+          })
+        });
+
+        if (!response.ok) throw new Error('Failed to start pairing');
+        const data = await response.json();
+
+        // Store connectToken and clientSecret temporarily in memory or local storage
+        await chrome.storage.local.set({
+          tempConnectToken: data.connectToken,
+          tempClientSecret: data.clientSecret,
+          tempPairingExpires: data.expiresAt
+        });
+
+        sendResponse({ success: true, pairingCode: data.pairingCode, expiresAt: data.expiresAt });
+      } catch (err) {
+        authLog('error', 'Pairing start error', err);
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
+
+  if (request.action === 'POLL_PAIRING_STATUS') {
+    (async () => {
+      try {
+        const temp = await chrome.storage.local.get(['tempConnectToken', 'tempClientSecret']);
+        if (!temp.tempConnectToken) throw new Error('No pairing session');
+
+        const response = await fetch(`${URLS.SUPABASE_FUNCTIONS}/extension-pairing-status`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(API_KEYS.SUPABASE_ANON ? { apikey: API_KEYS.SUPABASE_ANON } : {})
+          },
+          body: JSON.stringify({
+            connectToken: temp.tempConnectToken,
+            clientSecret: temp.tempClientSecret
+          })
+        });
+
+        const data = await response.json();
+        sendResponse({ success: true, status: data.status });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
+
+  if (request.action === 'REDEEM_PAIRING') {
+    (async () => {
+      try {
+        const temp = await chrome.storage.local.get(['tempConnectToken', 'tempClientSecret']);
+        if (!temp.tempConnectToken) throw new Error('No pairing session');
+
+        const response = await fetch(`${URLS.SUPABASE_FUNCTIONS}/extension-token-redeem`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(API_KEYS.SUPABASE_ANON ? { apikey: API_KEYS.SUPABASE_ANON } : {})
+          },
+          body: JSON.stringify({
+            connectToken: temp.tempConnectToken,
+            clientSecret: temp.tempClientSecret
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || 'Failed to redeem pairing code');
+        }
+
+        const data = await response.json();
+
+        if (data.session) {
+          await AuthHelper.setNewAuthSession(data.session);
+          // Cleanup temp secrets immediately
+          await chrome.storage.local.remove(['tempConnectToken', 'tempClientSecret', 'tempPairingExpires']);
+
+          // Trigger Bootstrap
+          const bootstrapRes = await AuthHelper.callEdgeFunction('extension-bootstrap');
+          if (bootstrapRes.data) {
+            await chrome.storage.local.set({ extensionBootstrapCache: bootstrapRes.data });
+          }
+
+          verifyAuthStatus(true);
+          sendResponse({ success: true });
+        } else {
+          throw new Error('No session returned');
+        }
+      } catch (err) {
+        authLog('error', 'Redeem error', err);
+        // Clean up on error too
+        await chrome.storage.local.remove(['tempConnectToken', 'tempClientSecret', 'tempPairingExpires']);
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
 
   if (request.action === 'LOGIN_SUCCESS') {
     verifyAuthStatus().then(success => {
@@ -986,22 +1186,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           await chrome.storage.local.set({ listedCount: (result.listedCount || 0) + 1 });
 
           (async function syncListing() {
+            const payload = {
+              title: request.title, sku: request.sku,
+              ebay_price: request.finalPrice, amazon_price: request.amazonPrice,
+              amazon_url: request.productURL, amazon_asin: request.asin,
+              status: "active",
+              amazon_data: { image: request.mainImage }
+            };
             try {
-              const tokenData = await chrome.storage.local.get('saasToken');
-              if (tokenData.saasToken) {
-                await fetch(`${URLS.SUPABASE_FUNCTIONS}/create-listing`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenData.saasToken}`, 'apikey': API_KEYS.SUPABASE_ANON },
-                  body: JSON.stringify({
-                    title: request.title, sku: request.sku,
-                    ebay_price: request.finalPrice, amazon_price: request.amazonPrice,
-                    amazon_url: request.productURL, amazon_asin: request.asin,
-                    status: "active",
-                    amazon_data: { image: request.mainImage }
-                  })
+              const syncResult = await postCreateListing(payload, 'start_optilist');
+              if (!syncResult.success) {
+                console.warn('[START_OPTILIST] Listing sync failed:', {
+                  status: syncResult.status,
+                  error: syncResult.error,
+                  sku: payload.sku,
+                  asin: payload.amazon_asin
                 });
               }
-            } catch (e) { }
+            } catch (e) {
+              console.warn('[START_OPTILIST] Listing sync error:', e?.message || e);
+              await recordListingSyncError({
+                source: 'start_optilist',
+                error: e?.message || 'START_OPTILIST listing sync failed',
+                payload
+              });
+            }
           })();
         }
 
@@ -1018,7 +1227,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             });
           });
         });
-      } catch (e) { }
+      } catch (e) {
+        console.warn('[START_OPTILIST] Unexpected error:', e?.message || e);
+      }
     })();
     return true;
   } else if (request.action === "logSheet") {
@@ -1031,17 +1242,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === "SYNC_LISTING") {
     (async () => {
       try {
-        const tokenData = await chrome.storage.local.get(['saasToken']);
-        if (tokenData.saasToken) {
-          await fetch(`${URLS.SUPABASE_FUNCTIONS}/create-listing`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenData.saasToken}`, 'apikey': API_KEYS.SUPABASE_ANON },
-            body: JSON.stringify(request.payload)
-          });
-          sendResponse({ success: true });
-        }
+        const result = await postCreateListing(request.payload || {}, 'background');
+        sendResponse(result);
       } catch (e) {
-        sendResponse({ success: false, error: e.message });
+        await recordListingSyncError({
+          source: 'background',
+          error: e?.message || 'Background listing sync failed',
+          payload: request.payload || {}
+        });
+        sendResponse({ success: false, source: 'background', error: e?.message || 'Background listing sync failed' });
       }
     })();
     return true;

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from "../_shared/extension-session.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -60,33 +61,26 @@ serve(async (req) => {
       );
     }
 
-    // Create client with user's auth token to validate authentication
-    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: { Authorization: authHeader },
-      },
-    });
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseAuth.auth.getUser();
-
-    if (userError || !user) {
-      console.error("[generate-titles] Auth error:", userError);
+    // Create service role client for database operations
+    const supabase = createServiceClient();
+    
+    // Authenticate user before processing using dual-auth
+    const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
+    const userId = authContext.userId;
+    
+    console.log(`[generate-titles] User authenticated: ${userId} (${authContext.authMode})`);
+    
+    // Verify feature entitlement
+    const hasAccess = await requireFeatureEntitlement(supabase, userId, authContext.workspaceId, "title_generation");
+    if (!hasAccess && authContext.authMode === "extension_session") {
+      console.warn(`[generate-titles] User ${userId} missing title_generation entitlement`);
       return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized" }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
+        JSON.stringify({ success: false, error: "Feature not entitled or subscription inactive" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[generate-titles] User authenticated: ${user.id}`);
 
-    // Create service role client for database operations
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const rawBody = await req.json();
     console.log("[generate-titles] Received body:", JSON.stringify(rawBody));

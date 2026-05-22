@@ -1,9 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
-};
+import { resolveExtensionOrLegacyAuth, createServiceClient, corsHeaders } from '../_shared/extension-session.ts';
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -12,44 +8,15 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabase = createServiceClient();
     
-    // Support both Authorization header and x-api-key (for extension compatibility)
-    let authToken = req.headers.get('Authorization')?.replace('Bearer ', '');
-    const apiKey = req.headers.get('x-api-key');
-    
-    // If x-api-key is provided and looks like a JWT, use it
-    if (!authToken && apiKey && apiKey.includes('.')) {
-      authToken = apiKey;
-    }
-    
-    if (!authToken) {
-      console.log('[auth-status] No auth token found');
-      return new Response(
-        JSON.stringify({ success: false, error: 'Missing authorization' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // Resolve auth
+    const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
+    const userId = authContext.userId;
 
-    // Create client with user's token
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: `Bearer ${authToken}` } }
-    });
+    console.log(`[auth-status] User authenticated: ${userId} (${authContext.authMode})`);
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
-    if (userError || !user) {
-      console.error('[auth-status] Auth error:', userError);
-      return new Response(
-        JSON.stringify({ success: false, error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`[auth-status] User authenticated: ${user.id} (${user.email})`);
-
-    // Fetch user profile with plan info - use maybeSingle to handle missing profiles
+    // Fetch user profile with plan info
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select(`
@@ -62,7 +29,7 @@ Deno.serve(async (req) => {
           max_auto_orders
         )
       `)
-      .eq('id', user.id)
+      .eq('id', userId)
       .maybeSingle();
 
     if (profileError) {
@@ -75,9 +42,9 @@ Deno.serve(async (req) => {
     const response = {
       success: true,
       user: {
-        id: user.id,
-        email: user.email,
-        full_name: profile?.full_name || user.user_metadata?.full_name || '',
+        id: userId,
+        email: profile?.email || '',
+        full_name: profile?.full_name || '',
         plan: planName,
         plan_display_name: planDisplayName,
         credits: profile?.credits || 0,
@@ -88,7 +55,7 @@ Deno.serve(async (req) => {
       }
     };
 
-    console.log(`[auth-status] Returning user data for ${user.email}`);
+    console.log(`[auth-status] Returning user data for ${profile?.email || userId}`);
 
     return new Response(
       JSON.stringify(response),
@@ -100,7 +67,7 @@ Deno.serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

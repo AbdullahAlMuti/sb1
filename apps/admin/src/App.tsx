@@ -46,6 +46,7 @@ import AdminCoupons from "./pages/AdminCoupons";
 import AdminBestSelling from "./pages/AdminBestSelling";
 import AdminMustSell from "./pages/AdminMustSell";
 import AdminExtension from "./pages/AdminExtension";
+import AdminExtensionControl from "./pages/AdminExtensionControl";
 import AdminCredits from "./pages/AdminCredits";
 import AdminProfitableProducts from "./pages/AdminProfitableProducts";
 import AdminModulePage from "./pages/AdminModulePage";
@@ -96,6 +97,7 @@ const AdminRouteChildren = () => (
     <Route path="automation" element={<AdminPrompts />} />
     <Route path="prompts" element={<AdminPrompts />} />
     <Route path="extension" element={<AdminExtension />} />
+    <Route path="extension-control" element={<AdminExtensionControl />} />
     <Route path="notifications" element={<AdminNotices />} />
     <Route path="notices" element={<AdminNotices />} />
     <Route path="support" element={<AdminModulePage title="Support / Tickets" description="Prioritize customer tickets, failed workflows, support notes, and escalation paths." icon={Bell} primaryAction="Create ticket" moduleType="general" />} />

@@ -91,6 +91,15 @@ const ExtensionConfig = (() => {
     USER_PLAN: 'userPlan',
     USER_CREDITS: 'userCredits',
     AUTH_TIMESTAMP: 'authTimestamp',
+    
+    // New Extension Auth
+    EXTENSION_DEVICE_ID: 'extensionDeviceId',
+    EXTENSION_ACCESS_TOKEN: 'extensionAccessToken',
+    EXTENSION_REFRESH_TOKEN: 'extensionRefreshToken',
+    EXTENSION_TOKEN_EXPIRES_AT: 'extensionTokenExpiresAt',
+    EXTENSION_BOOTSTRAP_CACHE: 'extensionBootstrapCache',
+    EXTENSION_INSTALL_ID: 'extensionInstallId',
+    LEGACY_BACKUP_V1: 'legacyExtensionStorageBackup_v1',
 
     // Settings
     GOOGLE_SHEET_URL: 'googleSheetUrl',
@@ -121,6 +130,11 @@ const ExtensionConfig = (() => {
     LOGOUT: 'LOGOUT',
     SYNC_TOKEN: 'SYNC_TOKEN',
     CHECK_AUTH: 'CHECK_AUTH',
+    START_PAIRING: 'START_PAIRING',
+    POLL_PAIRING_STATUS: 'POLL_PAIRING_STATUS',
+    REDEEM_PAIRING: 'REDEEM_PAIRING',
+    GET_EXTENSION_AUTH_STATE: 'GET_EXTENSION_AUTH_STATE',
+    LOGOUT_EXTENSION_SESSION: 'LOGOUT_EXTENSION_SESSION',
 
     // AI/Processing
     AI_REMOVE_BG: 'AI_REMOVE_BG',
@@ -211,7 +225,13 @@ const ExtensionConfig = (() => {
     ENABLE_CACHING: true,
     ENABLE_AUTO_ORDERS: false,
     ENABLE_ANALYTICS: true,
-    ENABLE_SYNC_QUEUE: true
+    ENABLE_SYNC_QUEUE: true,
+    
+    // Auth Fallback Defaults (Overridden by remote config if available)
+    EXTENSION_NEW_AUTH_ENABLED: false,
+    EXTENSION_LEGACY_FALLBACK_ENABLED: true,
+    EXTENSION_PAIRING_FALLBACK_ENABLED: true,
+    EXTENSION_AUTO_CONNECT_ENABLED: false
   });
 
   // ═══════════════════════════════════════════════════════════

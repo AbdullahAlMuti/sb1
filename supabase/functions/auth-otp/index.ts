@@ -44,14 +44,23 @@ serve(async (req) => {
         );
       }
 
-      const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+      // Find user efficiently (listUsers defaults to 50 items)
+      // Since we don't have an RPC, we fetch a large page. For production with thousands of users,
+      // a dedicated RPC `get_user_id_by_email` would be strictly better.
+      const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers({
+        page: 1,
+        perPage: 5000
+      });
       if (listError) throw listError;
 
       const user = users?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
       if (!user) {
+        // If user is still not found, we shouldn't hard-block them with 'Invalid email or password'
+        // from the pre-flight check. We should let GoTrue make the final decision.
+        // Return success so the frontend continues to the real signInWithPassword.
         return new Response(
-          JSON.stringify({ error: "Invalid email or password." }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 

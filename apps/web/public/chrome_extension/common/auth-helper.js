@@ -17,6 +17,9 @@ const AuthHelper = (() => {
       ? ExtensionConfig.API_KEYS.SUPABASE_ANON
       : undefined;
 
+  let remoteConfigCache = null;
+  let remoteConfigTimestamp = 0;
+
   function log(level, message, data = null) {
     if (!DEBUG && level === 'debug') return;
     const prefix = { debug: '🔍', info: 'ℹ️', success: '✅', warn: '⚠️', error: '❌' }[level] || '📝';
@@ -25,32 +28,153 @@ const AuthHelper = (() => {
   }
 
   /**
+   * Safe fetching of feature flags
+   */
+  async function getRemoteConfig() {
+    if (remoteConfigCache && (Date.now() - remoteConfigTimestamp < 5 * 60 * 1000)) {
+      return remoteConfigCache;
+    }
+    
+    const defaults = {
+      extension_new_auth_enabled: false,
+      extension_legacy_fallback_enabled: true,
+      extension_pairing_fallback_enabled: true,
+      extension_auto_connect_enabled: false
+    };
+
+    try {
+      // Try fetching from a safe public endpoint if it exists
+      // If it 404s or fails, we fallback to defaults silently.
+      const url = `${SUPABASE_URL}/functions/v1/extension-config`;
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(SUPABASE_ANON_KEY ? { apikey: SUPABASE_ANON_KEY } : {})
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        remoteConfigCache = { ...defaults, ...data };
+        remoteConfigTimestamp = Date.now();
+        return remoteConfigCache;
+      }
+    } catch (e) {
+      log('debug', 'Remote config fetch failed, using safe defaults');
+    }
+    
+    // In Dev/Test, if config.js explicitly turns it on, we can respect it if it was overriden locally.
+    // But as per rules, config.js provides safe fallbacks.
+    const configDefaults = (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES) ? {
+      extension_new_auth_enabled: ExtensionConfig.FEATURES.EXTENSION_NEW_AUTH_ENABLED,
+      extension_legacy_fallback_enabled: ExtensionConfig.FEATURES.EXTENSION_LEGACY_FALLBACK_ENABLED,
+      extension_pairing_fallback_enabled: ExtensionConfig.FEATURES.EXTENSION_PAIRING_FALLBACK_ENABLED,
+      extension_auto_connect_enabled: ExtensionConfig.FEATURES.EXTENSION_AUTO_CONNECT_ENABLED
+    } : defaults;
+
+    remoteConfigCache = configDefaults;
+    remoteConfigTimestamp = Date.now();
+    return remoteConfigCache;
+  }
+
+  /**
+   * Create local storage backup if it doesn't exist
+   */
+  async function createLegacyBackupIfNeeded() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(null, (items) => {
+        const backupKey = 'legacyExtensionStorageBackup_v1';
+        if (!items[backupKey]) {
+          log('info', 'Creating legacy storage backup V1');
+          chrome.storage.local.set({ [backupKey]: items }, () => resolve());
+        } else {
+          resolve();
+        }
+      });
+    });
+  }
+
+  /**
+   * Save new auth session
+   */
+  async function setNewAuthSession(sessionData) {
+    await createLegacyBackupIfNeeded();
+    return new Promise((resolve) => {
+      const updates = {
+        extensionAccessToken: sessionData.access_token,
+        extensionRefreshToken: sessionData.refresh_token,
+        extensionTokenExpiresAt: sessionData.expires_at,
+        extensionDeviceId: sessionData.device_id
+      };
+      if (sessionData.user) {
+        updates.saasUser = sessionData.user;
+        updates.userId = sessionData.user.id;
+        updates.userEmail = sessionData.user.email;
+        updates.authTimestamp = Date.now();
+      }
+      chrome.storage.local.set(updates, resolve);
+    });
+  }
+
+  /**
+   * Clear new auth session (if invalid)
+   */
+  async function clearNewAuthSession() {
+    return new Promise((resolve) => {
+      chrome.storage.local.remove([
+        'extensionAccessToken', 
+        'extensionRefreshToken', 
+        'extensionTokenExpiresAt',
+        'extensionBootstrapCache'
+      ], resolve);
+    });
+  }
+
+  /**
    * Get the current auth token from extension storage
    * @returns {Promise<{token: string|null, user: object|null, isValid: boolean}>}
    */
   async function getAuthToken() {
+    const config = await getRemoteConfig();
+    
     return new Promise((resolve) => {
-      chrome.storage.local.get(['saasToken', 'saasUser', 'authTimestamp'], (result) => {
+      chrome.storage.local.get([
+        'saasToken', 'saasUser', 'authTimestamp',
+        'extensionAccessToken', 'extensionTokenExpiresAt'
+      ], (result) => {
+        
+        // 1. Prefer New Auth if Enabled and Token Exists
+        if (config.extension_new_auth_enabled && result.extensionAccessToken) {
+          const isExpired = result.extensionTokenExpiresAt && (Date.now() / 1000) > result.extensionTokenExpiresAt;
+          if (!isExpired) {
+            log('debug', 'Using new extension session token');
+            return resolve({ 
+              token: result.extensionAccessToken, 
+              user: result.saasUser, 
+              isValid: true,
+              type: 'new'
+            });
+          }
+        }
+
+        // 2. Fallback to Legacy Auth
         const token = result.saasToken;
         const user = result.saasUser;
         const timestamp = result.authTimestamp || 0;
         
-        // Check if token exists and is recent (within 1 hour)
-        const isRecent = Date.now() - timestamp < 60 * 60 * 1000;
-        
-        if (token && isRecent) {
-          log('debug', 'Token retrieved from storage', { 
-            hasUser: !!user, 
-            age: Math.round((Date.now() - timestamp) / 1000) + 's' 
-          });
-          resolve({ token, user, isValid: true });
-        } else if (token) {
-          log('warn', 'Token exists but may be stale');
-          resolve({ token, user, isValid: true }); // Still try to use it
-        } else {
-          log('debug', 'No auth token found');
-          resolve({ token: null, user: null, isValid: false });
+        if (config.extension_legacy_fallback_enabled && token) {
+          const isRecent = Date.now() - timestamp < 60 * 60 * 1000;
+          if (isRecent) {
+            log('debug', 'Token retrieved from storage (legacy)', { hasUser: !!user });
+            return resolve({ token, user, isValid: true, type: 'legacy' });
+          } else {
+            log('warn', 'Token exists but may be stale (legacy)');
+            return resolve({ token, user, isValid: true, type: 'legacy' });
+          }
         }
+        
+        log('debug', 'No valid auth token found');
+        resolve({ token: null, user: null, isValid: false, type: 'none' });
       });
     });
   }
@@ -84,7 +208,11 @@ const AuthHelper = (() => {
    * @returns {Promise<{data: any, error: string|null}>}
    */
   async function callEdgeFunction(functionName, body = {}, options = {}) {
-    const { token, isValid } = await getAuthToken();
+    return performEdgeFunctionCall(functionName, body, options, false);
+  }
+
+  async function performEdgeFunctionCall(functionName, body, options, isRetry) {
+    const { token, type } = await getAuthToken();
     
     if (!token) {
       log('warn', `Cannot call ${functionName}: No auth token`);
@@ -132,6 +260,19 @@ const AuthHelper = (() => {
         log('error', `API error: ${response.status}`, clipped);
 
         if (response.status === 401) {
+          // If using new session, try refresh once
+          if (type === 'new' && !isRetry) {
+            log('info', 'Token expired, attempting refresh...');
+            const refreshSuccess = await refreshExtensionToken();
+            if (refreshSuccess) {
+              log('success', 'Refresh succeeded, retrying original request');
+              return performEdgeFunctionCall(functionName, body, options, true);
+            } else {
+              log('error', 'Refresh failed, session marked expired');
+              await clearNewAuthSession();
+              // A subsequent call will automatically try the legacy fallback if enabled
+            }
+          }
           return {
             data: null,
             error: clipped || 'Session expired. Please log in again.'
@@ -173,8 +314,43 @@ const AuthHelper = (() => {
   }
 
   /**
+   * Refresh extension token
+   */
+  async function refreshExtensionToken() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['extensionRefreshToken'], async (result) => {
+        if (!result.extensionRefreshToken) {
+          return resolve(false);
+        }
+
+        try {
+          const url = `${SUPABASE_URL}/functions/v1/extension-token-refresh`;
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(SUPABASE_ANON_KEY ? { apikey: SUPABASE_ANON_KEY } : {})
+            },
+            body: JSON.stringify({ refreshToken: result.extensionRefreshToken })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.session) {
+              await setNewAuthSession(data.session);
+              return resolve(true);
+            }
+          }
+        } catch (e) {
+          log('error', 'Token refresh exception', e);
+        }
+        resolve(false);
+      });
+    });
+  }
+
+  /**
    * Get current user info
-   * @returns {Promise<{id: string, email: string, plan: string}|null>}
    */
   async function getCurrentUser() {
     return new Promise((resolve) => {
@@ -207,6 +383,11 @@ const AuthHelper = (() => {
 
   // Public API
   return {
+    getRemoteConfig,
+    createLegacyBackupIfNeeded,
+    setNewAuthSession,
+    clearNewAuthSession,
+    refreshExtensionToken,
     getAuthToken,
     isAuthenticated,
     getAuthHeaders,

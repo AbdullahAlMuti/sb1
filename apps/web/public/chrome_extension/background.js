@@ -981,28 +981,51 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         if (request.title && request.sku) {
-          sendResponse({ success: true, message: "Processing started" });
           const result = await chrome.storage.local.get('listedCount');
           await chrome.storage.local.set({ listedCount: (result.listedCount || 0) + 1 });
 
-          (async function syncListing() {
-            try {
-              const tokenData = await chrome.storage.local.get('saasToken');
-              if (tokenData.saasToken) {
-                await fetch(`${URLS.SUPABASE_FUNCTIONS}/create-listing`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenData.saasToken}`, 'apikey': API_KEYS.SUPABASE_ANON },
-                  body: JSON.stringify({
-                    title: request.title, sku: request.sku,
-                    ebay_price: request.finalPrice, amazon_price: request.amazonPrice,
-                    amazon_url: request.productURL, amazon_asin: request.asin,
-                    status: "active",
-                    amazon_data: { image: request.mainImage }
-                  })
-                });
+          let syncFailed = false;
+          let syncError = null;
+          
+          try {
+            const tokenData = await chrome.storage.local.get('saasToken');
+            if (tokenData.saasToken) {
+              const res = await fetch(`${URLS.SUPABASE_FUNCTIONS}/create-listing`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tokenData.saasToken}`, 'apikey': API_KEYS.SUPABASE_ANON },
+                body: JSON.stringify({
+                  title: request.title, sku: request.sku,
+                  ebay_price: request.finalPrice, amazon_price: request.amazonPrice,
+                  amazon_url: request.productURL, amazon_asin: request.asin,
+                  status: "active",
+                  amazon_data: { image: request.mainImage }
+                })
+              });
+              
+              if (!res.ok) {
+                 const errorData = await res.json().catch(() => ({}));
+                 syncFailed = true;
+                 syncError = errorData.error || `HTTP ${res.status}`;
               }
-            } catch (e) { }
-          })();
+            } else {
+               syncFailed = true;
+               syncError = "No saasToken found";
+            }
+          } catch (e) {
+             syncFailed = true;
+             syncError = e.message;
+          }
+          
+          if (syncFailed) {
+             sendResponse({ success: false, error: syncError || 'Failed to sync listing' });
+             return; // DO NOT PROCEED TO EBAY
+          }
+          
+          // Send success if the edge function didn't block it
+          sendResponse({ success: true, message: "Processing started" });
+        } else {
+          sendResponse({ success: false, error: "Missing title or sku" });
+          return;
         }
 
         const storageData = { ebayTitle: request.title, ebayCondition: request.condition || "1000" };

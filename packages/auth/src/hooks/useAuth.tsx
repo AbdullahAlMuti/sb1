@@ -156,6 +156,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session?.user ?? null);
         
         if (session?.user) {
+          // Explicitly sync dashboard token to extension after login/session change
+          try {
+            if (typeof window !== 'undefined') {
+              window.postMessage({ type: 'REFRESH_EXTENSION_TOKEN' }, window.location.origin);
+            }
+          } catch (err) {
+            console.warn('Failed to dispatch REFRESH_EXTENSION_TOKEN', err);
+          }
+
           // Defer Supabase calls to avoid potential race conditions
           setTimeout(() => {
             if (isMounted) {
@@ -181,6 +190,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       
       if (session?.user) {
+        // Explicitly sync dashboard token to extension after initial mount/check
+        try {
+          if (typeof window !== 'undefined') {
+            window.postMessage({ type: 'REFRESH_EXTENSION_TOKEN' }, window.location.origin);
+          }
+        } catch (err) {
+          console.warn('Failed to dispatch REFRESH_EXTENSION_TOKEN', err);
+        }
+
         fetchProfile(session.user.id);
         fetchRoles(session.user.id);
       }

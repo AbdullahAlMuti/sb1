@@ -1,9 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
-};
+import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient, corsHeaders } from '../_shared/extension-session.ts';
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -15,38 +11,23 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     
-    // Support both Authorization header and x-api-key (for extension compatibility)
-    let authToken = req.headers.get('Authorization')?.replace('Bearer ', '');
-    const apiKey = req.headers.get('x-api-key');
-    
-    if (!authToken && apiKey && apiKey.includes('.')) {
-      authToken = apiKey;
-    }
-    
-    if (!authToken) {
-      console.log('[get-listings] No auth token found');
+    const supabase = createServiceClient();
+
+    // Authenticate using the shared dual-auth resolver
+    const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
+    const userId = authContext.userId;
+
+    console.log(`[get-listings] Fetching listings for user: ${userId} (Mode: ${authContext.authMode})`);
+
+    // Verify feature entitlement
+    const hasAccess = await requireFeatureEntitlement(supabase, userId, authContext.workspaceId, "listing_access");
+    if (!hasAccess && authContext.authMode === "extension_session") {
+      console.warn(`[get-listings] User ${userId} missing listing_access entitlement`);
       return new Response(
-        JSON.stringify({ success: false, error: 'Missing authorization' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: "Feature not entitled or subscription inactive" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    // Create client with user's token
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: `Bearer ${authToken}` } }
-    });
-
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
-    if (userError || !user) {
-      console.error('[get-listings] Auth error:', userError);
-      return new Response(
-        JSON.stringify({ success: false, error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`[get-listings] Fetching listings for user: ${user.id}`);
 
     // Parse query parameters
     const url = new URL(req.url);
@@ -58,7 +39,7 @@ Deno.serve(async (req) => {
     let query = supabase
       .from('listings')
       .select('*', { count: 'exact' })
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 

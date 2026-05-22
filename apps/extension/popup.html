@@ -284,7 +284,23 @@
             <h3 style="margin: 0; color: #dc3545;">Not Connected</h3>
             <p style="color: #666; font-size: 13px;">Please log in to your dashboard to enable the extension.</p>
         </div>
-        <button id="btnLogin" class="btn-primary" style="width: 100%">Log In to Dashboard</button>
+        <button id="btnLogin" class="btn-primary hidden" style="width: 100%">Continue with SellerSuit</button>
+        <button id="btnLegacyLogin" class="btn-primary hidden" style="width: 100%">Log In to Dashboard</button>
+        <button id="btnPairingLogin" class="btn-secondary hidden" style="width: 100%; margin-top: 10px;">Connect with pairing code</button>
+    </div>
+
+    <!-- Pairing View -->
+    <div id="pairingView" class="content hidden">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <div style="font-size: 48px; margin-bottom: 10px;">🔑</div>
+            <h3 style="margin: 0; color: hsl(var(--accent));">Pairing Code</h3>
+            <p style="color: #666; font-size: 13px;">Enter this code on the website to connect.</p>
+            <div id="pairingCodeDisplay" style="font-size: 32px; letter-spacing: 5px; font-weight: bold; margin: 15px 0; font-family: monospace; color: hsl(var(--text)); background: hsl(var(--bg)); padding: 10px; border-radius: 8px; border: 1px dashed hsl(var(--border));">
+                ------
+            </div>
+            <p id="pairingStatusText" style="color: hsl(var(--muted)); font-size: 12px; margin: 0;">Waiting for approval...</p>
+        </div>
+        <button id="btnCancelPairing" class="btn-secondary" style="width: 100%;">Cancel</button>
     </div>
 
     <!-- Settings View -->
@@ -333,6 +349,7 @@
         </div>
 
         <div class="control-group" style="text-align: center;">
+            <button id="btnSwitchConnection" class="btn-secondary hidden" style="width: 100%; margin-bottom: 10px; color: hsl(var(--accent)); border-color: hsl(var(--accent) / 0.3);">🔄 Upgrade Connection (Pairing Code)</button>
             <button id="btnDisconnect" class="btn-secondary" style="width: 100%; color: hsl(var(--danger-fg)); border-color: hsl(0 70% 86%);">🔓 Disconnect</button>
         </div>
     </div>

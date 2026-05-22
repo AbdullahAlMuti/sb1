@@ -81,8 +81,8 @@ Deno.serve(async (req) => {
       .insert({
         id: user.id,
         full_name: fullName,
-        credits: 0,
-        is_active: false, // Inactive until payment
+        credits: 20,
+        is_active: true, // Active for trial usage
         settings: goal ? { goal } : {},
       })
       .select('*')
