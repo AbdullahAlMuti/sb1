@@ -346,6 +346,11 @@
         <div class="control-group" style="text-align: center;">
             <div id="lastSyncTime" style="font-size: 11px; color: #999; margin-bottom: 5px;">Last Sync: Never</div>
             <button id="btnSyncNow" class="btn-sync">🔄 Sync Now</button>
+            <div id="syncErrorContainer" class="hidden" style="margin-top: 10px; padding: 10px; background: hsl(var(--danger-bg)); border: 1px solid hsl(0 70% 86%); border-radius: 8px; text-align: left; position: relative;">
+                <button id="btnCloseSyncError" style="position: absolute; top: 2px; right: 2px; background: none; border: none; color: hsl(var(--danger-fg)); font-size: 14px; cursor: pointer; padding: 2px 6px; box-shadow: none;">×</button>
+                <strong style="color: hsl(var(--danger-fg)); font-size: 12px; display: block; margin-bottom: 4px;">Sync Error</strong>
+                <span id="syncErrorMessage" style="color: hsl(var(--danger-fg)); font-size: 11px; word-break: break-word;"></span>
+            </div>
         </div>
 
         <div class="control-group" style="text-align: center;">

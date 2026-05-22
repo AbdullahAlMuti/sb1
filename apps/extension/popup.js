@@ -24,7 +24,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         pairingCodeDisplay: document.getElementById('pairingCodeDisplay'),
         pairingStatusText: document.getElementById('pairingStatusText'),
-        btnCancelPairing: document.getElementById('btnCancelPairing')
+        btnCancelPairing: document.getElementById('btnCancelPairing'),
+        syncErrorMessage: document.getElementById('syncErrorMessage'),
+        syncErrorContainer: document.getElementById('syncErrorContainer'),
+        btnCloseSyncError: document.getElementById('btnCloseSyncError')
     };
 
     let pairingPollInterval = null;
@@ -240,6 +243,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (els.btnSwitchConnection) els.btnSwitchConnection.onclick = startPairing;
     els.btnCancelPairing.onclick = cancelPairing;
     els.btnDashboard.onclick = () => chrome.tabs.create({ url: `${baseUrl}/dashboard` });
+    if (els.btnCloseSyncError) {
+        els.btnCloseSyncError.onclick = () => {
+            els.syncErrorContainer.classList.add('hidden');
+        };
+    }
 
     // Disconnect / Logout
     if (els.btnDisconnect) {
@@ -278,8 +286,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     els.btnSync.onclick = () => {
         els.btnSync.textContent = '⏳ Starting...';
         els.btnSync.disabled = true;
+        if (els.syncErrorContainer) els.syncErrorContainer.classList.add('hidden');
+
+        const progressListener = (request) => {
+            if (request.action === 'SYNC_PROGRESS' && els.btnSync.disabled) {
+                els.btnSync.textContent = '⏳ ' + request.status;
+            }
+        };
+        chrome.runtime.onMessage.addListener(progressListener);
 
         chrome.runtime.sendMessage({ action: 'trigger_ebay_sync' }, (response) => {
+            chrome.runtime.onMessage.removeListener(progressListener);
             if (response && response.ok) {
                 els.btnSync.textContent = '✅ Started';
                 setTimeout(() => {
@@ -288,6 +305,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }, 2000);
             } else {
                 els.btnSync.textContent = '❌ Failed';
+                if (els.syncErrorMessage && els.syncErrorContainer) {
+                    els.syncErrorMessage.textContent = response?.error || 'Unknown error occurred.';
+                    els.syncErrorContainer.classList.remove('hidden');
+                }
                 console.error(response?.error);
                 setTimeout(() => {
                     els.btnSync.textContent = '🔄 Sync Now';

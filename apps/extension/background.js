@@ -183,124 +183,206 @@ let isEbayOrderSyncInProgress = false;
 let lastEbayOrderSync = 0;
 
 
-// Top-Level CSV Parser
-async function fetchEbayCsv(syncDays = 90) {
-  // Step 1: Fetch CSRF token from eBay
-  const csrfRes = await fetch('https://www.ebay.com/sh/reports/', { credentials: 'include' });
-  const csrfHtml = await csrfRes.text();
-
-  const extractEbayDownloadCsrfToken = (html) => {
-    if (!html || typeof html !== 'string') return null;
-    const patterns = [
-      /downloadCsrfToken['"]\s*:\s*['"]([A-Za-z0-9_-]+)['"]/,
-      /downloadCsrfToken\s*=\s*['"]([A-Za-z0-9_-]+)['"]/,
-      /['"]srt['"]\s*[:=]\s*['"]([A-Za-z0-9_-]+)['"]/,
-      /name=['"]srt['"][^>]*value=['"]([A-Za-z0-9_-]+)['"]/i,
-    ];
-    for (const re of patterns) {
-      const m = html.match(re);
-      if (m && m[1]) return m[1];
-    }
-    const idx = html.search(/downloadCsrfToken/i);
-    if (idx !== -1) {
-      const snippet = html.slice(Math.max(0, idx - 500), Math.min(html.length, idx + 500));
-      const m = snippet.match(/['"]([A-Za-z0-9_-]{10,})['"]/);
-      if (m && m[1]) return m[1];
-    }
-    return null;
-  };
-
-  const srt = extractEbayDownloadCsrfToken(csrfHtml);
-  if (!srt) {
-    syncLog('warn', 'Failed to extract eBay CSRF token (downloadCsrfToken/srt not found)');
-    throw new Error('Failed to access eBay Seller Hub (not logged in to eBay?)');
-  }
-
-  // Step 2: Build date range
-  const endDate = new Date();
-  endDate.setHours(23, 59, 59, 999);
-  const startDate = new Date();
-  startDate.setDate(endDate.getDate() - syncDays);
-  startDate.setHours(0, 0, 0, 0);
-
-  const dateParam = `CUSTOM&startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`;
-  syncLog('info', `Syncing orders for last ${syncDays} days (${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()})`);
-  syncLog('debug', `Date range param: ${dateParam}`);
-
-  // Step 3: Create report task
-  syncLog('debug', 'Creating eBay report task...');
-  const body = new URLSearchParams();
-  body.append('feedType', 'sh-orders-summary');
-  body.append('domainServiceQueryParameters', `filter=status:ALL_ORDERS,timerange:${dateParam}`);
-  body.append('srt', srt);
-
-  let taskRes;
+async function injectedFetchEbayCsv(syncDays) {
   try {
-    taskRes = await fetch('https://www.ebay.com/sh/fpp/createreporttask', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'x-ebay-client-name': 'sh-orders',
-        'x-requested-with': 'XMLHttpRequest',
-      },
-      body,
-    });
-  } catch (netErr) {
-    throw new Error(`Report Task Network Error: ${netErr.message}`);
-  }
-
-  if (!taskRes.ok) {
-    throw new Error(`Create Task Failed: ${taskRes.status} ${taskRes.statusText}`);
-  }
-
-  const taskJson = await taskRes.json().catch(() => null);
-  if (!taskJson || taskJson.status === 'ERROR' || !taskJson.taskId) {
-    syncLog('error', 'Report Task Error', taskJson);
-    throw new Error('Failed to create eBay orders report task: ' + (taskJson?.errorMessage || 'Unknown error'));
-  }
-
-  const taskIdRaw = String(taskJson.taskId);
-  const taskIdParts = taskIdRaw.split('-');
-  const taskId = taskIdParts.length >= 2 ? taskIdParts[1] : taskIdRaw;
-
-  syncLog('debug', `Report Task Created: ${taskId}`);
-
-  // Step 4: Poll for completion
-  const pollStarted = Date.now();
-  const POLL_TIMEOUT = 90000;
-  const POLL_INTERVAL = 2000;
-
-  while (Date.now() - pollStarted < POLL_TIMEOUT) {
-    const pollRes = await fetch(`https://www.ebay.com/sh/fpp/gettask?client=sh-orders&taskId=task-${taskId}`, {
-      credentials: 'include',
-      headers: { 'x-requested-with': 'XMLHttpRequest' },
-    });
-
-    const pollJson = await pollRes.json().catch(() => null);
-    if (pollJson?.status === 'COMPLETED') {
-      syncLog('debug', 'Report Task Completed');
-      break;
-    }
-    if (pollJson?.status === 'ERROR') {
-      throw new Error('Report Task Failed during processing');
+    // Step 1: Extract CSRF token directly from eBay's Javascript Engine
+    let srt = null;
+    try {
+      if (window.raptor && window.raptor.require) {
+        srt = window.raptor.require('ebay.raptor.engine.Context').get('csrftoken');
+      }
+    } catch (e) {
+      console.log("SellerSuit: raptor context not found");
     }
 
-    await new Promise(r => setTimeout(r, POLL_INTERVAL));
+    if (!srt) {
+      // Fallback: search the global variables for anything that looks like a token
+      const patterns = [
+        /downloadCsrfToken['"]\s*:\s*['"]([A-Za-z0-9_-]+)['"]/,
+        /downloadCsrfToken\s*=\s*['"]([A-Za-z0-9_-]+)['"]/,
+        /['"]srt['"]\s*[:=]\s*['"]([A-Za-z0-9_-]+)['"]/,
+        /name=['"]srt['"][^>]*value=['"]([A-Za-z0-9_-]+)['"]/i,
+        /\"csrftoken\"[\s\:]+[\'\"]([A-Za-z0-9_-]+)[\'\"]/i,
+        /\"srt\"[\s\:]+[\'\"]([A-Za-z0-9_-]+)[\'\"]/i
+      ];
+      const html = document.documentElement.innerHTML;
+      for (const re of patterns) {
+        const m = html.match(re);
+        if (m && m[1]) {
+          srt = m[1];
+          break;
+        }
+      }
+    }
+
+    if (!srt) {
+      throw new Error('Please log in to eBay first.');
+    }
+
+    // Step 2: Build date range
+    const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999);
+    const startDate = new Date();
+    startDate.setDate(endDate.getDate() - syncDays);
+    startDate.setHours(0, 0, 0, 0);
+
+    const dateParam = `CUSTOM&startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`;
+
+    // Step 3: Create report task
+    const body = new URLSearchParams();
+    body.append('feedType', 'sh-orders-summary');
+    body.append('domainServiceQueryParameters', `filter=status:ALL_ORDERS,timerange:${dateParam}`);
+    body.append('srt', srt);
+
+    let taskRes;
+    try {
+      taskRes = await fetch('https://www.ebay.com/sh/fpp/createreporttask', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'x-ebay-client-name': 'sh-orders',
+          'x-requested-with': 'XMLHttpRequest',
+        },
+        body,
+      });
+    } catch (netErr) {
+      throw new Error(`Report Task Network Error: ${netErr.message}`);
+    }
+
+    if (!taskRes.ok) {
+      throw new Error(`Create Task Failed: ${taskRes.status} ${taskRes.statusText}`);
+    }
+
+    const taskJson = await taskRes.json().catch(() => null);
+    if (!taskJson || taskJson.status === 'ERROR' || !taskJson.taskId) {
+      throw new Error('Failed to create eBay orders report task: ' + (taskJson?.errorMessage || 'Unknown error'));
+    }
+
+    const taskIdRaw = String(taskJson.taskId);
+    const taskIdParts = taskIdRaw.split('-');
+    const taskId = taskIdParts.length >= 2 ? taskIdParts[1] : taskIdRaw;
+
+    // Step 4: Poll for completion
+    const pollStarted = Date.now();
+    const POLL_TIMEOUT = 90000;
+    const POLL_INTERVAL = 2000;
+
+    while (Date.now() - pollStarted < POLL_TIMEOUT) {
+      const pollRes = await fetch(`https://www.ebay.com/sh/fpp/gettask?client=sh-orders&taskId=task-${taskId}`, {
+        credentials: 'include',
+        headers: { 'x-requested-with': 'XMLHttpRequest' },
+      });
+
+      const pollJson = await pollRes.json().catch(() => null);
+      if (pollJson?.status === 'COMPLETED') {
+        break;
+      }
+      if (pollJson?.status === 'ERROR') {
+        throw new Error('Report Task Failed during processing');
+      }
+
+      await new Promise(r => setTimeout(r, POLL_INTERVAL));
+    }
+
+    // Step 5: Download CSV
+    const csvRes = await fetch(
+      `https://www.ebay.com/sh/fpp/getfiledetails?client=sh-orders&requestId=${taskId}&filetype=output`,
+      { credentials: 'include' }
+    );
+
+    if (!csvRes.ok) throw new Error(`CSV Download Failed: ${csvRes.status}`);
+
+    const csvText = await csvRes.text();
+    if (!csvText || csvText.length < 10) throw new Error("CSV file was empty or invalid");
+
+    return { success: true, csvText };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+async function fetchEbayCsv(syncDays = 90) {
+  // 1. Tab Management: Search for existing eBay tab (like Orders page)
+  const tabs = await chrome.tabs.query({ url: "*://*.ebay.com/*" });
+  let tabId;
+  let createdTab = false;
+
+  if (tabs.length > 0) {
+    tabId = tabs[0].id;
+    syncLog('info', `Using existing eBay tab: ${tabId}`);
+  } else {
+    syncLog('info', `Creating temporary inactive eBay tab...`);
+    chrome.runtime.sendMessage({ action: 'SYNC_PROGRESS', status: 'Opening eBay...' }).catch(() => {});
+    
+    // We open Orders instead of Reports because not everyone has Reports enabled
+    const newTab = await chrome.tabs.create({ url: 'https://www.ebay.com/sh/ord', active: false });
+    tabId = newTab.id;
+    createdTab = true;
+    
+    // Wait for tab to load
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(listener);
+        reject(new Error("Timeout waiting for eBay tab to load"));
+      }, 30000);
+
+      function listener(tId, info) {
+        if (tId === tabId && info.status === 'complete') {
+          clearTimeout(timeout);
+          chrome.tabs.onUpdated.removeListener(listener);
+          resolve();
+        }
+      }
+      chrome.tabs.onUpdated.addListener(listener);
+    });
   }
 
-  // Step 5: Download CSV
-  syncLog('debug', 'Downloading CSV...');
-  const csvRes = await fetch(
-    `https://www.ebay.com/sh/fpp/getfiledetails?client=sh-orders&requestId=${taskId}&filetype=output`,
-    { credentials: 'include' }
-  );
+  syncLog('info', `Tab loaded, injecting fetch script into tab ${tabId}`);
+  chrome.runtime.sendMessage({ action: 'SYNC_PROGRESS', status: 'Syncing orders...' }).catch(() => {});
 
-  if (!csvRes.ok) throw new Error(`CSV Download Failed: ${csvRes.status}`);
+  let result;
+  try {
+    const executePromise = chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN', // Crucial: Inject into MAIN world so we can read window.raptor
+      func: injectedFetchEbayCsv,
+      args: [syncDays]
+    });
+    
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout waiting for eBay sync (60s)")), 60000));
+    
+    const results = await Promise.race([executePromise, timeoutPromise]);
+    
+    if (results && results[0] && results[0].result) {
+      result = results[0].result;
+    } else {
+      throw new Error("No result returned from tab injection");
+    }
+  } finally {
+    if (createdTab) {
+      if (result && !result.success && result.error && result.error.includes('Please log in')) {
+        try {
+          await chrome.tabs.update(tabId, { active: true });
+          syncLog('info', `Made sign-in tab active: ${tabId}`);
+        } catch(e) {}
+      } else {
+        try {
+          await chrome.tabs.remove(tabId);
+          syncLog('info', `Temporary tab closed: ${tabId}`);
+        } catch (e) {
+          syncLog('warn', `Failed to close temporary tab ${tabId}: ${e.message}`);
+        }
+      }
+    }
+  }
 
-  const csvText = await csvRes.text();
-  if (!csvText || csvText.length < 10) throw new Error("CSV file was empty or invalid");
+  if (!result.success) {
+    throw new Error(result.error || "Unknown error inside eBay tab");
+  }
 
+  const csvText = result.csvText;
+  syncLog('success', `CSV downloaded: ${csvText.length} bytes`);
   return csvText;
 }
 
@@ -570,6 +652,7 @@ async function triggerEbayOrderSync(source = 'manual') {
   } catch (err) {
     syncLog('error', `Sync Failed: ${err.message}`, { stack: err.stack });
     console.error('Full Sync Error:', err);
+    throw err;
   } finally {
     isEbayOrderSyncInProgress = false;
   }
