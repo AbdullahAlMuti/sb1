@@ -1618,8 +1618,10 @@ const addEventListenersToPanel = () => {
                     const titlesToSave = titles.map((t, i) => typeof t === 'object' ? t.title : t);
                     await chrome.storage.local.set({ savedTitles: titlesToSave, selectedEbayTitle: titlesToSave[0] });
 
-                    if (typeof UIHelper !== 'undefined' && typeof UIHelper.showTitleSelectionPopup === 'function') {
-                        UIHelper.showTitleSelectionPopup(titles);
+                    if (typeof window !== 'undefined' && window.UIHelper && typeof window.UIHelper.renderInlineTitles === 'function') {
+                        window.UIHelper.renderInlineTitles(titles);
+                    } else if (typeof UIHelper !== 'undefined' && typeof UIHelper.renderInlineTitles === 'function') {
+                        UIHelper.renderInlineTitles(titles);
                     } else {
                         // Fallback logic
                         const titleDisplay = document.getElementById('ai-generated-title');

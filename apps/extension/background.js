@@ -938,7 +938,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   // First-install specific behavior
   if (details.reason === 'install') {
     await chrome.storage.local.set({ firstInstall: true });
-    const onboardingUrl = 'https://sellersuit.com';
+    const onboardingUrl = URLS.WEB_APP_BASE || 'https://sellersuit.com';
     console.log('🎉 [Background] First Install! Opening onboarding:', onboardingUrl);
     chrome.tabs.create({ url: onboardingUrl });
   }

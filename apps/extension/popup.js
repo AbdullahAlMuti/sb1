@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const getBaseUrl = () => {
         return (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.WEB_APP_BASE)
             ? ExtensionConfig.URLS.WEB_APP_BASE
-            : "https://sellersuit.com";
+            : (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.WEB_APP_BASE) ? ExtensionConfig.URLS.WEB_APP_BASE : "https://sellersuit.com";
     };
 
     const baseUrl = getBaseUrl();

@@ -67,7 +67,7 @@ async function initAuthStatus() {
           // Open web app login page (environment-aware)
           const authUrl = (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.WEB_APP_AUTH)
             ? ExtensionConfig.URLS.WEB_APP_AUTH
-            : 'https://sellersuit.com/auth';
+            : 'https://app.sellersuit.com/auth';
           chrome.tabs.create({ url: authUrl });
         };
       }
@@ -500,6 +500,19 @@ async function generateAITitles() {
       `;
     }
 
+    // Show inline loading state
+    const titleList = document.getElementById('snipe-title-list');
+    if (titleList) {
+      titleList.innerHTML = `
+        <div class="title-loading-state">
+          <svg class="spin-animation" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--btn-primary)" stroke-width="2">
+            <path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.636 5.636l2.122 2.122m8.484 8.484l2.122 2.122M5.636 18.364l2.122-2.122m8.484-8.484l2.122-2.122"/>
+          </svg>
+          <span>Analyzing product data and generating titles...</span>
+        </div>
+      `;
+    }
+
     // Add generating state to title rows for visual feedback
     const titleRows = document.querySelectorAll('.title-row');
     titleRows.forEach(row => {
@@ -565,56 +578,34 @@ async function generateAITitles() {
       throw new Error(result.error || 'Failed to generate titles');
     }
 
-    // Simplified Title Rendering - Single Element
-    const titles = result.titles || [];
-    const bestTitle = titles[0]
-      ? (typeof titles[0] === 'object' ? titles[0].title : titles[0])
-      : '';
-
-    // Display in the SINGLE title container
-    const titleDisplay = document.getElementById('ai-generated-title');
-    const titleCounter = document.getElementById('ai-title-counter');
-    const copyBtn = document.getElementById('copy-title-btn');
-
-    if (titleDisplay && bestTitle) {
-      titleDisplay.innerText = bestTitle;
-      titleDisplay.classList.add('has-title');
-
-      if (titleCounter) {
-        titleCounter.textContent = `${bestTitle.length} characters`;
-      }
-
-      if (copyBtn) {
-        copyBtn.style.display = 'inline-flex';
-      }
-
-      // Save logic
-      chrome.storage.local.set({
-        selectedEbayTitle: bestTitle,
-        generatedAt: Date.now()
-      });
-
-      if (typeof UIHelper !== 'undefined') {
-        UIHelper.showToast('AI Title Generated!', 'success');
-        // Pulse effect for visibility
-        titleDisplay.style.transition = 'none';
-        titleDisplay.style.transform = 'scale(1.02)';
-        setTimeout(() => {
-          titleDisplay.style.transition = 'transform 0.3s ease';
-          titleDisplay.style.transform = 'scale(1)';
-        }, 100);
-      }
+    // Display titles inline using unified global helper
+    if (typeof UIHelper !== 'undefined' && typeof UIHelper.renderInlineTitles === 'function') {
+      UIHelper.renderInlineTitles(titles);
+    } else {
+      // Fallback
+      renderInlineTitles(titles);
     }
 
-    // Show the selection popup with all options
-    showTitleSelectionPopup(titles);
-
-    console.log('[Panel] Title displayed and popup shown:', bestTitle);
+    console.log('[Panel] Titles generated and rendered inline.');
 
   } catch (error) {
     console.error('[Panel] Title generation error:', error);
     if (typeof UIHelper !== 'undefined') {
       UIHelper.showToast(error.message, 'error');
+    }
+
+    const titleList = document.getElementById('snipe-title-list');
+    if (titleList) {
+      titleList.innerHTML = `
+        <div class="title-error-state">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span>${error.message || 'Failed to generate titles.'}</span>
+        </div>
+      `;
     }
 
     // Clear generating state on error
@@ -644,9 +635,135 @@ async function generateAITitles() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// Title Selection Popup
+// Inline Title Rendering
 // ═══════════════════════════════════════════════════════════
+// NOTE: Now handled centrally by UIHelper.renderInlineTitles in common/ui.js
+// This local fallback is kept for safety if UIHelper fails to load.
 
+function renderInlineTitles(titles) {
+  const titleList = document.getElementById('snipe-title-list');
+  if (!titleList) return;
+  // Fallback to minimal implementation or let UIHelper handle it
+  if (typeof UIHelper !== 'undefined' && typeof UIHelper.renderInlineTitles === 'function') {
+    return UIHelper.renderInlineTitles(titles);
+  }
+}
+
+function renderInlineTitles(titles) {
+  const titleList = document.getElementById('snipe-title-list');
+  if (!titleList) return;
+
+  if (!titles || titles.length === 0) {
+    titleList.innerHTML = `
+      <div class="title-empty-state">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span>No titles generated. Please try again.</span>
+      </div>
+    `;
+    return;
+  }
+
+  // Clear container and set to list layout
+  titleList.innerHTML = '';
+  titleList.classList.add('inline-title-list');
+
+  // Process best title first for storage
+  const bestTitleStr = typeof titles[0] === 'object' ? titles[0].title : titles[0];
+  chrome.storage.local.set({
+    selectedEbayTitle: bestTitleStr,
+    generatedAt: Date.now()
+  });
+
+  titles.forEach((titleItem, index) => {
+    // Handle both string arrays and object arrays {title: "...", score: ...}
+    const titleStr = typeof titleItem === 'object' ? titleItem.title : titleItem;
+    
+    // Determine rank/badge
+    let badgeClass = 'alternative';
+    let badgeText = 'Alternative';
+    if (index === 0) {
+      badgeClass = 'best';
+      badgeText = 'Best';
+    } else if (index === 1 || index === 2) {
+      badgeClass = 'recommended';
+      badgeText = 'Recommended';
+    }
+
+    const card = document.createElement('div');
+    card.className = \`inline-title-card \${index === 0 ? 'selected' : ''}\`;
+    card.dataset.title = titleStr;
+
+    card.innerHTML = \`
+      <div class="inline-title-header">
+        <div class="inline-title-badge \${badgeClass}">
+          \${index === 0 ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>' : ''}
+          \${badgeText}
+        </div>
+        <div class="inline-title-meta">
+          <span class="\${titleStr.length > 80 ? 'warning' : ''}">\${titleStr.length} chars</span>
+        </div>
+      </div>
+      <div class="inline-title-text">\${titleStr}</div>
+      <div class="inline-title-actions">
+        <button class="btn btn-sm inline-title-use">\${index === 0 ? 'Selected' : 'Use Title'}</button>
+        <button class="btn btn-sm inline-title-copy">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          Copy
+        </button>
+      </div>
+    \`;
+
+    // Click handler for card selection
+    card.addEventListener('click', (e) => {
+      // Ignore if clicking copy button
+      if (e.target.closest('.inline-title-copy')) return;
+
+      // Update visual selection
+      document.querySelectorAll('.inline-title-card').forEach(c => {
+        c.classList.remove('selected');
+        const btn = c.querySelector('.inline-title-use');
+        if(btn) btn.textContent = 'Use Title';
+      });
+      card.classList.add('selected');
+      const useBtn = card.querySelector('.inline-title-use');
+      if(useBtn) useBtn.textContent = 'Selected';
+
+      // Update storage
+      chrome.storage.local.set({ selectedEbayTitle: titleStr });
+
+      // Trigger standard selection effect
+      if (typeof UIHelper !== 'undefined') {
+        UIHelper.showToast('Title selected', 'success');
+      }
+    });
+
+    // Click handler for copy button
+    const copyBtn = card.querySelector('.inline-title-copy');
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Don't trigger card selection
+      navigator.clipboard.writeText(titleStr).then(() => {
+        if (typeof UIHelper !== 'undefined') {
+          UIHelper.showToast('Copied to clipboard!', 'success');
+        }
+      });
+    });
+
+    titleList.appendChild(card);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// Title Selection Popup (DEPRECATED)
+// ═══════════════════════════════════════════════════════════
+// DEPRECATED: Preserved for rollback safety.
+// Inline title rendering now uses renderInlineTitles().
 function showTitleSelectionPopup(titles) {
   console.log('[Panel] showTitleSelectionPopup called with:', titles);
   const popup = document.getElementById('title-selection-popup');
@@ -802,14 +919,6 @@ function updateSelectedTitleHolder(titleValue) {
     if (copyBtn) {
       copyBtn.style.display = 'inline-flex';
     }
-
-    // Pulse animation
-    titleDisplay.style.transition = 'none';
-    titleDisplay.style.transform = 'scale(1.02)';
-    setTimeout(() => {
-      titleDisplay.style.transition = 'transform 0.3s ease';
-      titleDisplay.style.transform = 'scale(1)';
-    }, 100);
 
     console.log('[Panel] Updated generated title display with:', titleValue.substring(0, 50) + '...');
   }

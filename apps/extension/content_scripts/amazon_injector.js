@@ -2183,7 +2183,7 @@ const addEventListenersToPanel = () => {
                 generateAITitlesBtn.click();
             } else {
                 console.warn('⚠️ Generate AI Titles button not found');
-                UIHelper?.showToast?.('AI title generation not available', 'warning');
+                window.UIHelper?.showToast?.('AI title generation not available', 'warning');
             }
         });
         console.log('✅ Snipe Title button listener added (auto-triggers AI generation)');
@@ -2197,7 +2197,7 @@ const addEventListenersToPanel = () => {
             const completeData = scrapeCompleteProductData();
 
             if (!completeData.title) {
-                UIHelper?.showToast?.('No product title found on page', 'error');
+                window.UIHelper?.showToast?.('No product title found on page', 'error');
                 return;
             }
 
@@ -2250,11 +2250,13 @@ const addEventListenersToPanel = () => {
                     const titlesToSave = titles.map((t, i) => typeof t === 'object' ? t.title : t);
                     await chrome.storage.local.set({ savedTitles: titlesToSave });
 
-                    // TRIGGER POPUP UI
-                    if (UIHelper && typeof UIHelper.showTitleSelectionPopup === 'function') {
-                        UIHelper.showTitleSelectionPopup(titles);
+                    // TRIGGER INLINE UI safely
+                    if (typeof window !== 'undefined' && window.UIHelper && typeof window.UIHelper.renderInlineTitles === 'function') {
+                        window.UIHelper.renderInlineTitles(titles);
+                    } else if (typeof UIHelper !== 'undefined' && typeof UIHelper.renderInlineTitles === 'function') {
+                        UIHelper.renderInlineTitles(titles);
                     } else {
-                        console.error('❌ UIHelper.showTitleSelectionPopup is not available');
+                        console.error('❌ UIHelper.renderInlineTitles is not available globally');
                     }
 
                     // Keep legacy update just in case, but popup is primary now
@@ -2281,13 +2283,13 @@ const addEventListenersToPanel = () => {
                         }
                     });
 
-                    UIHelper?.showToast?.(`AI titles generated using ${bgResp.provider || 'Lovable AI'}!`, 'success');
+                    window.UIHelper?.showToast?.(`AI titles generated using ${bgResp.provider || 'Lovable AI'}!`, 'success');
                 } else {
                     throw new Error('No titles returned');
                 }
             } catch (error) {
                 console.error('❌ Error generating AI titles:', error);
-                UIHelper?.showToast?.(error.message || 'Failed to generate AI titles', 'error');
+                window.UIHelper?.showToast?.(error.message || 'Failed to generate AI titles', 'error');
             } finally {
                 generateAITitlesBtn.disabled = false;
                 generateAITitlesBtn.innerHTML = originalContent;
@@ -2390,7 +2392,7 @@ const addEventListenersToPanel = () => {
 
                 chrome.storage.local.set({ generatedDescription: lastGeneratedDescription });
 
-                UIHelper?.showToast?.(`Description generated using ${bgResp.provider || 'AI'}!`, 'success');
+                window.UIHelper?.showToast?.(`Description generated using ${bgResp.provider || 'AI'}!`, 'success');
                 console.log('✅ AI Description generated:', { provider: bgResp.provider, model: bgResp.model, length: bgResp.length });
             } catch (err) {
                 console.error('═══════════════════════════════════════════════════════');
@@ -2452,7 +2454,7 @@ const addEventListenersToPanel = () => {
                     descriptionPreviewEl.innerHTML = displayHtml;
                 }
 
-                UIHelper?.showToast?.(errorMessage, 'error');
+                window.UIHelper?.showToast?.(errorMessage, 'error');
             } finally {
                 generateDescriptionBtn.disabled = false;
                 generateDescriptionBtn.innerHTML = originalContent;
@@ -2465,15 +2467,15 @@ const addEventListenersToPanel = () => {
         copyDescriptionBtn.addEventListener('click', async () => {
             const text = lastGeneratedDescription || (await chrome.storage.local.get('generatedDescription'))?.generatedDescription || '';
             if (!text) {
-                UIHelper?.showToast?.('No description to copy', 'warning');
+                window.UIHelper?.showToast?.('No description to copy', 'warning');
                 return;
             }
             try {
                 await navigator.clipboard.writeText(text);
-                UIHelper?.showToast?.('Description copied (HTML)!', 'success');
+                window.UIHelper?.showToast?.('Description copied (HTML)!', 'success');
             } catch (e) {
                 console.error('❌ Copy description failed:', e);
-                UIHelper?.showToast?.('Copy failed', 'error');
+                window.UIHelper?.showToast?.('Copy failed', 'error');
             }
         });
         console.log('✅ Copy Description button listener added');
@@ -2578,15 +2580,15 @@ const addEventListenersToPanel = () => {
     if (scrapeCopyJsonBtn) {
         scrapeCopyJsonBtn.addEventListener('click', async () => {
             if (!lastScrapedData) {
-                UIHelper?.showToast?.('No data to copy', 'warning');
+                window.UIHelper?.showToast?.('No data to copy', 'warning');
                 return;
             }
             try {
                 await navigator.clipboard.writeText(JSON.stringify(lastScrapedData, null, 2));
-                UIHelper?.showToast?.('JSON copied to clipboard!', 'success');
+                window.UIHelper?.showToast?.('JSON copied to clipboard!', 'success');
             } catch (e) {
                 console.error('❌ Copy JSON failed:', e);
-                UIHelper?.showToast?.('Copy failed', 'error');
+                window.UIHelper?.showToast?.('Copy failed', 'error');
             }
         });
     }
@@ -2612,7 +2614,7 @@ const addEventListenersToPanel = () => {
             if (input && input.value) {
                 UIHelper?.copyToClipboard?.(input.value);
             } else {
-                UIHelper?.showToast?.('No title to copy', 'warning');
+                window.UIHelper?.showToast?.('No title to copy', 'warning');
             }
         });
     });

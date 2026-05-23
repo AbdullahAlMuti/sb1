@@ -55,8 +55,12 @@
     <div class="container">
         <h1>Settings Moved</h1>
         <p>You can now manage all your settings, SKU rules, and integrations in the new Dashboard.</p>
-        <a href="https://sellersuit.com/dashboard" target="_blank" class="btn">Open Dashboard</a>
+        <a id="dashBtn" href="#" target="_blank" class="btn">Open Dashboard</a>
     </div>
+    <script src="common/config.js"></script>
+    <script>
+        document.getElementById('dashBtn').href = (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.WEB_APP_DASHBOARD) ? ExtensionConfig.URLS.WEB_APP_DASHBOARD : "https://sellersuit.com/dashboard";
+    </script>
 </body>
 
 </html>
