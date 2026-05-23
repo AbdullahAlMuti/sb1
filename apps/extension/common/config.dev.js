@@ -12,10 +12,10 @@ const ExtensionConfig = (() => {
   // Local dev default (you can switch to your domain later).
   // Default web app base URL.
   // IMPORTANT: This should point to the environment where users log in (so AuthSync can copy the Supabase session into the extension).
-  // PRODUCTION: point to sellersuit.com where you log into the web app.
+  // LOCAL DEV: point to localhost where you log into the web app.
   // IMPORTANT: AuthSync reads the Supabase session from the web app's localStorage and copies it into the extension.
   // When you later switch to a real domain, update this value.
-  const WEB_APP_DOMAIN = 'https://sellersuit.com';
+  const WEB_APP_DOMAIN = 'http://localhost:3001';
 
   const URLS = Object.freeze({
     // Supabase
@@ -221,7 +221,7 @@ const ExtensionConfig = (() => {
   // 🛡️ FEATURE FLAGS
   // ═══════════════════════════════════════════════════════════
   const FEATURES = Object.freeze({
-    DEBUG_MODE: false, // Set to false for production
+    DEBUG_MODE: true, // Set to true for development
     ENABLE_CACHING: true,
     ENABLE_AUTO_ORDERS: false,
     ENABLE_ANALYTICS: true,

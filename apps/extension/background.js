@@ -179,8 +179,7 @@ async function verifyAuthStatus(forceRefresh = false) {
 // Sync state
 const EBAY_ORDER_SYNC_INTERVAL = 15 * 60 * 1000; // 15 minutes
 const EBAY_ORDER_SYNC_DAYS = 90;
-let isEbayOrderSyncInProgress = false;
-let lastEbayOrderSync = 0;
+// MV3 State is now stored in chrome.storage.session to survive service worker restarts
 
 
 async function injectedFetchEbayCsv(syncDays) {
@@ -550,7 +549,8 @@ async function getEbayOrdersCache() {
 }
 
 async function triggerEbayOrderSync(source = 'manual') {
-  if (isEbayOrderSyncInProgress) {
+  const sessionData = await chrome.storage.session.get(['isEbayOrderSyncInProgress', 'lastEbayOrderSync']);
+  if (sessionData.isEbayOrderSyncInProgress) {
     syncLog('warn', 'Sync already in progress, skipping');
     return;
   }
@@ -580,11 +580,12 @@ async function triggerEbayOrderSync(source = 'manual') {
   }
 
   // Prevent frequent automatic syncs
-  if (source === 'auto' && !bypassDebounce && Date.now() - lastEbayOrderSync < 5 * 60 * 1000) {
+  const lastSyncTime = sessionData.lastEbayOrderSync || 0;
+  if (source === 'auto' && !bypassDebounce && Date.now() - lastSyncTime < 5 * 60 * 1000) {
     return;
   }
 
-  isEbayOrderSyncInProgress = true;
+  await chrome.storage.session.set({ isEbayOrderSyncInProgress: true });
   syncLog('info', `Starting eBay Order Sync (${source})`);
   await logEbaySyncEvent('info', null, 'extension_sync_started', null, { source, bypassDebounce });
 
@@ -652,7 +653,7 @@ async function triggerEbayOrderSync(source = 'manual') {
     if (orders.length === 0) {
       syncLog('info', 'No orders found in CSV');
       await logEbaySyncEvent('info', null, 'extension_sync_completed', null, { message: 'No orders found in CSV' });
-      isEbayOrderSyncInProgress = false;
+      await chrome.storage.session.set({ isEbayOrderSyncInProgress: false });
       return;
     }
 
@@ -730,8 +731,9 @@ async function triggerEbayOrderSync(source = 'manual') {
       }).catch(console.error);
     }
 
-    lastEbayOrderSync = Date.now();
-    chrome.storage.local.set({ lastSyncTime: lastEbayOrderSync });
+    const now = Date.now();
+    await chrome.storage.session.set({ lastEbayOrderSync: now });
+    chrome.storage.local.set({ lastSyncTime: now });
 
     // Notify popup/UI
     chrome.runtime.sendMessage({
@@ -745,7 +747,7 @@ async function triggerEbayOrderSync(source = 'manual') {
     await logEbaySyncEvent('error', 'unknown', 'extension_sync_failed', null, { error: err.message });
     throw err;
   } finally {
-    isEbayOrderSyncInProgress = false;
+    await chrome.storage.session.set({ isEbayOrderSyncInProgress: false });
   }
 }
 
@@ -936,7 +938,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   // First-install specific behavior
   if (details.reason === 'install') {
     await chrome.storage.local.set({ firstInstall: true });
-    const onboardingUrl = 'http://localhost:3001';
+    const onboardingUrl = 'https://sellersuit.com';
     console.log('🎉 [Background] First Install! Opening onboarding:', onboardingUrl);
     chrome.tabs.create({ url: onboardingUrl });
   }
@@ -996,7 +998,7 @@ async function logToSheet(data) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data)
     });
-    console.log("✅ Logged to sheet:", data);
+    if (typeof FEATURES !== 'undefined' && FEATURES.DEBUG_MODE) console.log("✅ Logged to sheet (data hidden in prod)", data);
   } catch (err) {
     console.error("❌ Sheet logging failed:", err);
   }
@@ -1112,6 +1114,19 @@ async function postCreateListing(payload, source = 'background') {
   };
 }
 
+const LOGOUT_STORAGE_KEYS = [
+  "saasToken",
+  "saasUser",
+  "userId",
+  "userEmail",
+  "userPlan",
+  "userCredits",
+  "authTimestamp",
+  "ebay_orders_cache_v1",
+  "fulfillmentTask",
+  "copyButtonData"
+];
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'GET_EXTENSION_AUTH_STATE') {
@@ -1126,7 +1141,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'LOGOUT_EXTENSION_SESSION') {
     (async () => {
       await AuthHelper.clearNewAuthSession();
-      chrome.storage.local.remove(['saasToken', 'saasUser', 'authTimestamp'], () => {
+      chrome.storage.local.remove(LOGOUT_STORAGE_KEYS, () => {
         sendResponse({ success: true });
       });
     })();
@@ -1348,10 +1363,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         stopEbayOrderSyncInterval();
-        await chrome.storage.local.remove([
-          'saasToken', 'saasUser', 'userId', 'userEmail',
-          'userPlan', 'userCredits', 'authTimestamp'
-        ]);
+        await chrome.storage.local.remove(LOGOUT_STORAGE_KEYS);
         isExtensionUnlocked = false;
         lastAuthCheck = 0;
         sendResponse({ success: true });
@@ -1585,7 +1597,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     };
 
     chrome.storage.local.set({ fulfillmentTask: task }, () => {
-      console.log('📦 FULFILLMENT: Task saved, opening Amazon...', task);
+      if (typeof FEATURES !== 'undefined' && FEATURES.DEBUG_MODE) console.log('📦 FULFILLMENT: Task saved, opening Amazon...', task);
 
       // 2. Open Amazon URL in new tab
       if (request.order && request.order.url) {
@@ -1596,13 +1608,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   } else if (request.action === 'ORDER_COMPLETED') {
-    console.log('🎉 ORDER COMPLETED:', request.payload);
+    if (typeof FEATURES !== 'undefined' && FEATURES.DEBUG_MODE) console.log('🎉 ORDER COMPLETED (payload hidden in prod)', request.payload);
 
     // Broadcast to Dashboard (so it can update DB)
     chrome.tabs.query({ url: "*://*/*" }, (tabs) => {
       for (const tab of tabs) {
         // We look for our dashboard tab (optional: filter by URL)
-        // Since we don't know exact localhost port or domain, we try all or rely on auth_sync
+        // Since we don't know exact sellersuit domain, we try all or rely on auth_sync
         chrome.tabs.sendMessage(tab.id, {
           action: 'ORDER_COMPLETED_BROADCAST',
           payload: request.payload

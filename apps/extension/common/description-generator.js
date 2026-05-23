@@ -220,7 +220,7 @@ const DescriptionGenerator = (() => {
       // Copy bullets to features
       data.features = [...data.bulletPoints];
       
-      console.log('[DescriptionGenerator] Scraped data:', {
+      if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('[DescriptionGenerator] Scraped data:', {
         title: data.title?.substring(0, 30) + '...',
         bulletCount: data.bulletPoints.length,
         hasDesc: !!data.description,
@@ -310,7 +310,7 @@ const DescriptionGenerator = (() => {
       // Get product data
       const productData = await getProductData();
       
-      console.log('[DescriptionGenerator] Product data retrieved:', {
+      if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('[DescriptionGenerator] Product data retrieved:', {
         title: productData.title?.substring(0, 40),
         bulletCount: productData.bulletPoints?.length,
         hasDescription: !!productData.description,
@@ -372,7 +372,7 @@ const DescriptionGenerator = (() => {
         UIHelper.showToast('Description generated successfully!', 'success');
       }
 
-      console.log('[DescriptionGenerator] Generated:', {
+      if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('[DescriptionGenerator] Generated:', {
         provider: result.provider,
         model: result.model,
         length: result.length

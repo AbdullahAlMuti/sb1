@@ -259,7 +259,7 @@ const scrapeCompleteProductData = () => {
     }
 
     console.log('[Scraper] Extraction complete. Fields captured:', Object.keys(productData).length);
-    console.log('[Scraper] Product data:', productData);
+    if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('[Scraper] Product data (hidden in prod)', productData);
 
     return productData;
 }
@@ -403,7 +403,7 @@ const scrapeAndStoreProductData = async () => {
             productDataTimestamp: Date.now()
         });
 
-        console.log('✅ [ProductScraper] Product data saved to storage:', {
+        if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('✅ [ProductScraper] Product data saved to storage:', {
             title: productData.title?.substring(0, 50) + '...',
             bulletPoints: productData.bulletPoints?.length || 0,
             hasDescription: !!productData.description,
@@ -2331,8 +2331,10 @@ const addEventListenersToPanel = () => {
                 // 1) Scrape ALL product data and print it to the console (what you asked for)
                 const productData = scrapeFullProductData();
                 console.log('═══════════════════════════════════════════════════════');
-                console.log('📦 DESCRIPTION: FULL SCRAPED PRODUCT DATA');
-                console.log(productData);
+                if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) {
+                    console.log('📦 DESCRIPTION [PROD GUARDED]: FULL SCRAPED PRODUCT DATA');
+                    console.log('DATA:', productData);
+                }
                 console.log('═══════════════════════════════════════════════════════');
 
                 if (!productData?.title) {
@@ -2536,8 +2538,10 @@ const addEventListenersToPanel = () => {
             scrapeJsonEl.innerHTML = syntaxHighlightJSON(data);
         }
         console.log('═══════════════════════════════════════════════════════');
-        console.log('📋 SCRAPE PREVIEW: Full scraped data');
-        console.log(data);
+        if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) {
+            console.log('📋 SCRAPE PREVIEW [PROD GUARDED]: Full scraped data');
+            console.log('SCRAPE_DATA:', data);
+        }
         console.log('═══════════════════════════════════════════════════════');
     };
 
@@ -2776,7 +2780,7 @@ const addEventListenersToPanel = () => {
 
                         // Save to Chrome storage with explicit keys
                         await chrome.storage.local.set(listingData);
-                        console.log('✅ All listing data saved:', listingData);
+                        if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('✅ All listing data saved (hidden in prod)', listingData);
 
                         // Convert Copy button data format to format expected by START_OPTILIST
                         // Parse prices - handle both string and number formats
@@ -2928,7 +2932,7 @@ const addEventListenersToPanel = () => {
 
                 const tabSeparatedData = formatDataForCopy(productData);
                 console.log('📋 Tab-separated data to copy:');
-                console.log(tabSeparatedData);
+                if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log(tabSeparatedData);
                 console.log('═══════════════════════════════════════════════════════');
 
                 // Copy to clipboard
@@ -3167,7 +3171,7 @@ const generateAiTitle = async (inputElement, rowElement, generateBtn, useBtn) =>
         ...details // Spread the scraped details (brand, model, description, etc.)
     };
 
-    console.log('🤖 AI Title Request Data:', productData);
+    if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('🤖 AI Title Request Data (hidden in prod)', productData);
 
     // Get API Key and Prompt from storage
     const settings = await chrome.storage.local.get(['geminiApiKey', 'titleGenerationPrompt', 'geminiModel']);
@@ -4530,7 +4534,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 ASIN: window.location.pathname.match(/\/dp\/([A-Z0-9]{10})/)?.[1] || ''
             };
 
-            console.log('[Amazon Injector] Scraped product data:', productData);
+            if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('[Amazon Injector] Scraped product data (hidden in prod)', productData);
 
             sendResponse({
                 success: true,

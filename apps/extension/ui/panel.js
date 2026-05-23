@@ -67,7 +67,7 @@ async function initAuthStatus() {
           // Open web app login page (environment-aware)
           const authUrl = (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.WEB_APP_AUTH)
             ? ExtensionConfig.URLS.WEB_APP_AUTH
-            : 'http://localhost:3001/auth';
+            : 'https://sellersuit.com/auth';
           chrome.tabs.create({ url: authUrl });
         };
       }
@@ -983,7 +983,7 @@ function initActionButtons() {
           throw new Error(response?.error || 'Failed to scrape product data');
         }
 
-        console.log('[Panel] Complete product data scraped:', response.data);
+        if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('[Panel] Complete product data scraped (hidden in prod)', response.data);
 
         // Show success with data summary
         const message = `Scraped ${response.fieldsCount} fields, ${response.specsCount} specifications!`;
@@ -994,7 +994,7 @@ function initActionButtons() {
         }
 
         // Log the data for inspection
-        console.log('[Panel] Product Data:', response.data);
+        if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('[Panel] Product Data (hidden in prod)', response.data);
         console.log('[Panel] Title:', response.data.title);
         console.log('[Panel] Price:', response.data.price);
         console.log('[Panel] Images:', response.data.allImages?.length);

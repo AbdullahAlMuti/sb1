@@ -448,7 +448,7 @@ async function findElementWithSelectors(selectors, timeout = 15000) {
 // 🚀 Main Automation
 // ─────────────────────────────────────────────
 async function runEbayAutomation(data) {
-  console.log("🚀 Starting eBay automation with data:", data);
+  if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log("🚀 Starting eBay automation with data (hidden in prod)", data);
 
   // Utility: React-safe setter
   const reactInput = (el, value) => {
@@ -886,7 +886,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
       "productTitle", "pricingConfig", "amazonPrice", "selectedEbayDescription", "generatedDescription"
     ]);
 
-    console.log("📦 Retrieved data from storage:", {
+    if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log("📦 Retrieved data from storage:", {
       hasTitle: !!(data.ebayTitle || data.productTitle),
       hasPrice: !!data.ebayPrice,
       hasSku: !!data.ebaySku,
@@ -977,7 +977,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         } : {})
       };
 
-      console.log("📤 Syncing listing to dashboard:", listingData);
+      if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log("📤 Syncing listing to dashboard (hidden in prod)", listingData);
 
       const syncViaBackground = () => new Promise((resolve) => {
         chrome.runtime.sendMessage({
@@ -1332,7 +1332,7 @@ async function attemptAutoFill() {
     "selectedEbayTitle", "selectedTitleTimestamp"
   ]);
 
-  console.log("📦 [attemptAutoFill] Raw storage data:", {
+  if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log("📦 [attemptAutoFill] Raw storage data:", {
     selectedEbayTitle: data.selectedEbayTitle ? data.selectedEbayTitle.substring(0, 50) + '...' : null,
     selectedTitleTimestamp: data.selectedTitleTimestamp,
     ebayTitle: data.ebayTitle ? data.ebayTitle.substring(0, 50) + '...' : null,

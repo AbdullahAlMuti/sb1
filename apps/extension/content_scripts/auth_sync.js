@@ -5,7 +5,7 @@
 // This script acts as the "Bridge" between the Web App (Dashboard) and the Chrome Extension.
 //
 // HOW IT WORKS:
-// 1. 🔍 DETECT: It runs ONLY on the web app domain (sellersuit.com/localhost).
+// 1. 🔍 DETECT: It runs ONLY on the web app domain (sellersuit.com).
 // 2. 📖 READ: It watches the browser's `localStorage` for the Supabase Auth Token.
 //    - Key Name: `sb-<PROJECT_ID>-auth-token` (Must match Supabase Client config)
 // 3. 📡 SEND: When a token is found or changes (login/refresh), it sends it to the Extension.
@@ -18,7 +18,7 @@
 (function () {
     'use strict';
 
-    const DEBUG = true; // TEMP: re-enabled for localhost testing
+    const DEBUG = false; // Set to false for production
     // IMPORTANT: Must match the web app's project id (used in localStorage key: sb-<projectId>-auth-token)
     const PROJECT_ID = 'ojxzssooylmydystjvdo';
     const TOKEN_KEY = `sb-${PROJECT_ID}-auth-token`;

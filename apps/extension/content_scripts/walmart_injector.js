@@ -1821,7 +1821,7 @@ const addEventListenersToPanel = () => {
                     };
 
                     await chrome.storage.local.set(listingData);
-                    console.log('✅ All listing data saved:', listingData);
+                    if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('✅ All listing data saved (hidden in prod)', listingData);
                     
                     const finalPrice = exportData.sellPrice === 'No price' ? '0' : String(exportData.sellPrice);
                     const walmartPrice = (exportData.walmartPrice || exportData.amazonPrice) === 'No price found' ? '0' : String(exportData.walmartPrice || exportData.amazonPrice);
@@ -1916,7 +1916,7 @@ const addEventListenersToPanel = () => {
                 
                 const tabSeparatedData = formatDataForCopy(productData);
                 console.log('📋 Tab-separated data to copy:');
-                console.log(tabSeparatedData);
+                if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log(tabSeparatedData);
                 
                 await navigator.clipboard.writeText(tabSeparatedData);
                 
