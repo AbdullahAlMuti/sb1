@@ -3,6 +3,8 @@
 // Handles the "Fulfill" workflow by auto-filling shipping details.
 
 (async () => {
+    const AMAZON_AUTO_ORDER_ENABLED = false;
+
     let IS_RUNNING = false;
     let POLLING_INTERVAL = null;
 
@@ -381,7 +383,11 @@
     };
 
     // 🏁 START ENGINE
-    logToOverlay('Amazon Automation Ready. Waiting for Trigger...', 'success');
-    POLLING_INTERVAL = setInterval(runAutomationLoop, 1500);
+    if (AMAZON_AUTO_ORDER_ENABLED) {
+        logToOverlay('Amazon Automation Ready. Waiting for Trigger...', 'success');
+        POLLING_INTERVAL = setInterval(runAutomationLoop, 1500);
+    } else {
+        console.info("Amazon auto-ordering is disabled in this build.");
+    }
 
 })();

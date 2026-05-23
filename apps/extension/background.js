@@ -1589,6 +1589,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     })();
     return true;
   } else if (request.action === 'START_FULFILLMENT') {
+    const AMAZON_AUTO_ORDER_ENABLED = false;
+    if (!AMAZON_AUTO_ORDER_ENABLED) {
+      console.info("Amazon auto-ordering is disabled in this build.");
+      sendResponse({ success: false, error: "Auto-ordering is currently disabled." });
+      return true;
+    }
+
     // 1. Save Task State
     const task = {
       status: 'INIT',

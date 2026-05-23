@@ -303,6 +303,12 @@
 
             // Forward Amazon Fulfillment Request
             if (event.data.type === 'TRIGGER_AMAZON_FULFILLMENT') {
+                const AMAZON_AUTO_ORDER_ENABLED = false;
+                if (!AMAZON_AUTO_ORDER_ENABLED) {
+                    log('info', 'Amazon fulfillment requested, but feature is disabled in this build');
+                    return;
+                }
+
                 log('info', 'Amazon fulfillment requested', { orderId: event.data.order?.id });
                 if (chrome?.runtime?.sendMessage) {
                     chrome.runtime.sendMessage({
