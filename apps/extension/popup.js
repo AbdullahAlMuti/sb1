@@ -27,7 +27,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnCancelPairing: document.getElementById('btnCancelPairing'),
         syncErrorMessage: document.getElementById('syncErrorMessage'),
         syncErrorContainer: document.getElementById('syncErrorContainer'),
-        btnCloseSyncError: document.getElementById('btnCloseSyncError')
+        btnCloseSyncError: document.getElementById('btnCloseSyncError'),
+        ebaySessionRequiredBanner: document.getElementById('ebaySessionRequiredBanner'),
+        btnBannerOpenEbay: document.getElementById('btnBannerOpenEbay'),
+        btnBannerSyncNow: document.getElementById('btnBannerSyncNow'),
+        btnBannerDismiss: document.getElementById('btnBannerDismiss')
     };
 
     let pairingPollInterval = null;
@@ -74,9 +78,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     els.usernameDisplay.classList.remove('hidden');
                 }
 
-                chrome.storage.local.get(['lastSyncTime'], (data) => {
+                chrome.storage.local.get(['lastSyncTime', 'ebaySessionRequired'], (data) => {
                     if (data.lastSyncTime) {
                         els.lastSyncLabel.textContent = `Last Sync: ${new Date(data.lastSyncTime).toLocaleTimeString()}`;
+                    }
+                    if (data.ebaySessionRequired) {
+                        els.ebaySessionRequiredBanner.classList.remove('hidden');
+                    } else {
+                        els.ebaySessionRequiredBanner.classList.add('hidden');
                     }
                 });
 
@@ -248,6 +257,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             els.syncErrorContainer.classList.add('hidden');
         };
     }
+
+    if (els.btnBannerOpenEbay) els.btnBannerOpenEbay.onclick = () => chrome.tabs.create({ url: 'https://www.ebay.com/sh/ord' });
+    if (els.btnBannerSyncNow) els.btnBannerSyncNow.onclick = () => {
+        els.btnSync.click();
+    };
+    if (els.btnBannerDismiss) els.btnBannerDismiss.onclick = () => {
+        els.ebaySessionRequiredBanner.classList.add('hidden');
+    };
 
     // Disconnect / Logout
     if (els.btnDisconnect) {

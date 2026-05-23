@@ -42,6 +42,65 @@ interface SyncRequest {
   orders: EbayOrderPayload[];
 }
 
+// -------------------------------------------------------------------------------------------------
+// SYNC LOGGING HELPER
+// -------------------------------------------------------------------------------------------------
+async function logSyncEvent(
+  supabase: any,
+  userId: string | null,
+  status: 'success' | 'warning' | 'error' | 'info',
+  error_category: string | null,
+  message: string,
+  rawPayload: any = null,
+  metadata: any = null
+) {
+  if (!userId) return; // Cannot log without a user
+
+  try {
+    // Sanitize payload preview (remove PII, limit length)
+    let payloadPreview: any = null;
+    if (rawPayload) {
+      // Clone if it's an object to avoid mutating original
+      let p = JSON.parse(JSON.stringify(rawPayload));
+      
+      // If array, limit to 2 items
+      if (Array.isArray(p)) {
+        p = p.slice(0, 2);
+        p.forEach((item: any) => maskPII(item));
+      } else if (typeof p === 'object') {
+        maskPII(p);
+      } else {
+        // String or other
+        p = String(p).substring(0, 500);
+      }
+      payloadPreview = p;
+    }
+
+    await supabase.from('ebay_sync_logs').insert({
+      user_id: userId,
+      status: status,
+      error_category: error_category,
+      payload_preview: payloadPreview,
+      metadata: metadata ? { message, ...metadata } : { message }
+    });
+  } catch (err) {
+    console.error("[sync-ebay-orders] Failed to write sync log:", err);
+  }
+}
+
+function maskPII(obj: any) {
+  if (!obj || typeof obj !== 'object') return;
+  const sensitiveKeys = ['buyer_name', 'buyer_username', 'buyer_email', 'shipping_address', 'buyer_zip', 'phone', 'csrf', 'token', 'cookie', 'authorization', 'secret', 'password', 'jwt'];
+  for (const key of Object.keys(obj)) {
+    if (sensitiveKeys.includes(key.toLowerCase()) || key.toLowerCase().includes('token')) {
+      obj[key] = '***MASKED***';
+    } else if (typeof obj[key] === 'object') {
+      maskPII(obj[key]);
+    }
+  }
+}
+// -------------------------------------------------------------------------------------------------
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -58,6 +117,7 @@ Deno.serve(async (req) => {
     const userId = authContext.userId;
 
     console.log(`[sync-ebay-orders] Authenticated user: ${userId} (Mode: ${authContext.authMode})`);
+    await logSyncEvent(supabase, userId, 'info', null, 'sync_received', null, { authMode: authContext.authMode });
 
     // Verify feature entitlement
     const hasAccess = await requireFeatureEntitlement(supabase, userId, authContext.workspaceId, "ebay_order_sync");
@@ -75,11 +135,22 @@ Deno.serve(async (req) => {
     }
 
     // Parse request body
-    const body: SyncRequest = await req.json();
+    let body: SyncRequest;
+    try {
+      body = await req.json();
+    } catch (e: any) {
+      await logSyncEvent(supabase, userId, 'error', 'backend_sync', 'payload_parse_failed', null, { error: e.message });
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid JSON body" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
     const { orders } = body;
 
     if (!orders || !Array.isArray(orders)) {
       console.error("[sync-ebay-orders] Invalid payload: orders array required");
+      await logSyncEvent(supabase, userId, 'error', 'backend_sync', 'validation_failed', null, { reason: 'orders array required' });
       return new Response(
         JSON.stringify({ success: false, error: "Invalid payload: orders array required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -88,6 +159,7 @@ Deno.serve(async (req) => {
 
     if (orders.length === 0) {
       console.log("[sync-ebay-orders] No orders to sync");
+      await logSyncEvent(supabase, userId, 'info', null, 'sync_completed', null, { message: 'No orders provided' });
       return new Response(
         JSON.stringify({ success: true, synced: 0, skipped: 0 }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -95,6 +167,7 @@ Deno.serve(async (req) => {
     }
 
     console.log(`[sync-ebay-orders] Processing ${orders.length} orders`);
+    await logSyncEvent(supabase, userId, 'info', null, 'orders_upsert_started', orders.length, { count: orders.length });
 
     let synced = 0;
     let updated = 0;
@@ -267,8 +340,14 @@ Deno.serve(async (req) => {
         console.error(`[sync-ebay-orders] Order ${order.ebay_order_id} failed:`, err.message);
         errors.push(`${order.ebay_order_id}: ${err.message}`);
         skipped++;
+        // Log individual upsert failure (using database category)
+        await logSyncEvent(supabase, userId, 'error', 'database', 'database_upsert_failed', { ebay_order_id: order.ebay_order_id }, { error: err.message });
       }
     }
+
+    await logSyncEvent(supabase, userId, errors.length > 0 ? 'warning' : 'success', null, 'orders_upsert_completed', null, { 
+      synced, updated, skipped, error_count: errors.length 
+    });
 
     return new Response(
       JSON.stringify({ success: true, synced, updated, skipped, errors: errors.length > 0 ? errors : undefined }),
@@ -277,6 +356,9 @@ Deno.serve(async (req) => {
 
   } catch (error: any) {
     console.error("[sync-ebay-orders] Fatal error:", error.message);
+    // Since we might not have a reliable supabase client or userId if auth failed, 
+    // we only log to DB if we successfully initialized them.
+    // Auth failures themselves shouldn't normally log to ebay_sync_logs unless we want to.
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

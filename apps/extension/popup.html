@@ -277,6 +277,17 @@
         If it fails, try reloading the page or refreshing the extension in chrome://extensions.
     </div>
 
+    <!-- eBay Session Required Banner -->
+    <div id="ebaySessionRequiredBanner" class="info-box hidden" style="background: hsl(var(--warn-bg)); border-color: hsl(48 85% 82%); margin-bottom: 10px;">
+        <strong style="color: hsl(var(--warn-fg));">eBay Session Required</strong><br>
+        <span style="color: hsl(var(--warn-fg));">Open eBay Seller Hub in this browser, make sure you are logged in, then click Sync Now.</span>
+        <div style="display: flex; gap: 5px; margin-top: 8px;">
+            <button id="btnBannerOpenEbay" class="btn-primary" style="padding: 4px; font-size: 10px;">Open eBay</button>
+            <button id="btnBannerSyncNow" class="btn-sync" style="margin-top: 0; padding: 4px; font-size: 10px;">Sync Now</button>
+            <button id="btnBannerDismiss" class="btn-secondary" style="padding: 4px; font-size: 10px;">Dismiss</button>
+        </div>
+    </div>
+
     <!-- Login Prompt -->
     <div id="loginView" class="content hidden">
         <div style="text-align: center; margin-bottom: 20px;">

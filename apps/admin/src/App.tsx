@@ -51,6 +51,7 @@ import AdminCredits from "./pages/AdminCredits";
 import AdminProfitableProducts from "./pages/AdminProfitableProducts";
 import AdminModulePage from "./pages/AdminModulePage";
 import AdminShopifyApp from "./pages/AdminShopifyApp";
+import AdminEbayApp from "./pages/AdminEbayApp";
 
 const queryClient = new QueryClient();
 
@@ -112,6 +113,7 @@ const AdminRouteChildren = () => (
     <Route path="profitable-products" element={<AdminProfitableProducts />} />
     <Route path="product-intelligence" element={<AdminProfitableProducts />} />
     <Route path="shopify-app" element={<AdminShopifyApp />} />
+    <Route path="ebay-app" element={<AdminEbayApp />} />
   </>
 );
 

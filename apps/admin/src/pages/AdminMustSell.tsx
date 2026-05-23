@@ -150,7 +150,7 @@ function SortableRow({ item, onEdit, onDelete, onToggleActive }: SortableRowProp
   );
 }
 
-export default function AdminMustSell() {
+export default function AdminMustSell({ hideHeader }: { hideHeader?: boolean } = {}) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MustSellItem | null>(null);
   const [formData, setFormData] = useState(emptyFormData);
@@ -343,11 +343,13 @@ export default function AdminMustSell() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Must Sell Items</h1>
-          <p className="text-muted-foreground">Manage trending eBay products for users. Drag to reorder.</p>
-        </div>
+      <div className={`flex items-center gap-4 ${hideHeader ? 'justify-end' : 'justify-between'}`}>
+        {!hideHeader && (
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Must Sell Items</h1>
+            <p className="text-muted-foreground">Manage trending eBay products for users. Drag to reorder.</p>
+          </div>
+        )}
         <Dialog open={isDialogOpen} onOpenChange={(open) => { if (!open) resetForm(); setIsDialogOpen(open); }}>
           <DialogTrigger asChild>
             <Button><Plus className="h-4 w-4 mr-2" />Add Item</Button>

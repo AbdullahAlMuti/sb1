@@ -79,7 +79,7 @@ const emptyForm = {
   is_active: true,
 };
 
-export default function AdminBestSelling() {
+export default function AdminBestSelling({ hideHeader }: { hideHeader?: boolean } = {}) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
@@ -217,13 +217,15 @@ export default function AdminBestSelling() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-display font-semibold text-foreground">Best Selling Items</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Manage the 500 best selling eBay items shown to users
-          </p>
-        </div>
+      <div className={`flex flex-col sm:flex-row sm:items-center gap-4 ${hideHeader ? 'justify-end' : 'justify-between'}`}>
+        {!hideHeader && (
+          <div>
+            <h1 className="text-2xl font-display font-semibold text-foreground">Best Selling Items</h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Manage the 500 best selling eBay items shown to users
+            </p>
+          </div>
+        )}
         <Button onClick={() => { setSelectedItem(null); setFormData(emptyForm); setIsDialogOpen(true); }}>
           <Plus className="h-4 w-4 mr-2" />
           Add Item

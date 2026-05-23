@@ -87,6 +87,7 @@ const navGroups: AdminNavGroup[] = [
     items: [
       { label: "AI / Automation", href: "/ai", icon: Bot },
       { label: "Shopify App", href: "/shopify-app", icon: ShoppingBag },
+      { label: "eBay App", href: "/ebay-app", icon: ShoppingBag },
       { label: "Extension Setup", href: "/extension", icon: PlugZap },
       { label: "Extension Control", href: "/extension-control", icon: ShieldCheck },
       { label: "Notices", href: "/notices", icon: Megaphone, badge: 12 },

@@ -166,7 +166,7 @@ function SortableRow({ item, onEdit, onDelete, onToggleActive }: SortableRowProp
   );
 }
 
-export default function AdminProfitableProducts() {
+export default function AdminProfitableProducts({ hideHeader }: { hideHeader?: boolean } = {}) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ProfitableProduct | null>(null);
   const [formData, setFormData] = useState(emptyFormData);
@@ -432,11 +432,13 @@ export default function AdminProfitableProducts() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Profitable Products</h1>
-          <p className="text-muted-foreground">Manage high-margin products. Drag to reorder.</p>
-        </div>
+      <div className={`flex items-center gap-4 ${hideHeader ? 'justify-end' : 'justify-between'}`}>
+        {!hideHeader && (
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Profitable Products</h1>
+            <p className="text-muted-foreground">Manage high-margin products. Drag to reorder.</p>
+          </div>
+        )}
         <div className="flex gap-2">
           <Button
             variant="outline"

@@ -302,7 +302,7 @@ async function injectedFetchEbayCsv(syncDays) {
   }
 }
 
-async function fetchEbayCsv(syncDays = 90) {
+async function fetchEbayCsv(syncDays = 90, source = 'manual') {
   // 1. Tab Management: Search for existing eBay tab (like Orders page)
   const tabs = await chrome.tabs.query({ url: "*://*.ebay.com/*" });
   let tabId;
@@ -311,14 +311,23 @@ async function fetchEbayCsv(syncDays = 90) {
   if (tabs.length > 0) {
     tabId = tabs[0].id;
     syncLog('info', `Using existing eBay tab: ${tabId}`);
+    await logEbaySyncEvent('info', null, 'existing_ebay_tab_reused', null, { source, tabId });
   } else {
+    if (source !== 'manual') {
+      syncLog('warn', `Tab open blocked for auto source: ${source}`);
+      await logEbaySyncEvent('warn', 'ebay_session', 'tab_open_blocked_auto_source', null, { source });
+      throw new Error('ebay_session_required');
+    }
+
     syncLog('info', `Creating temporary inactive eBay tab...`);
+    await logEbaySyncEvent('info', null, 'tab_open_requested', null, { source });
     chrome.runtime.sendMessage({ action: 'SYNC_PROGRESS', status: 'Opening eBay...' }).catch(() => {});
     
     // We open Orders instead of Reports because not everyone has Reports enabled
     const newTab = await chrome.tabs.create({ url: 'https://www.ebay.com/sh/ord', active: false });
     tabId = newTab.id;
     createdTab = true;
+    await logEbaySyncEvent('info', null, 'manual_sync_opened_ebay_tab', null, { tabId });
     
     // Wait for tab to load
     await new Promise((resolve, reject) => {
@@ -546,22 +555,49 @@ async function triggerEbayOrderSync(source = 'manual') {
     return;
   }
 
+  const { saasToken, userId, userEbaySettings } = await chrome.storage.local.get(['saasToken', 'userId', 'userEbaySettings']);
+  
+  // 0. Process Admin Overrides & Debounce
+  let bypassDebounce = false;
+  if (userEbaySettings) {
+    if (userEbaySettings.is_sync_enabled === false) {
+      syncLog('info', 'eBay auto-sync is DISABLED by admin/user settings.');
+      if (source === 'manual') syncLog('warn', 'Sync disabled by settings.');
+      return;
+    }
+    if (userEbaySettings.sync_state === 'reset_requested') {
+      bypassDebounce = true;
+      syncLog('info', 'Admin requested manual resync. Bypassing debounce.');
+      await logEbaySyncEvent('info', null, 'reset_requested_consumed', null, { source });
+      if (saasToken && userId) {
+        await fetch(`${URLS.SUPABASE_URL}/rest/v1/user_ebay_settings?user_id=eq.${userId}`, {
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${saasToken}`, 'apikey': API_KEYS.SUPABASE_ANON, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sync_state: 'syncing' })
+        });
+      }
+    }
+  }
+
   // Prevent frequent automatic syncs
-  if (source === 'auto' && Date.now() - lastEbayOrderSync < 5 * 60 * 1000) {
+  if (source === 'auto' && !bypassDebounce && Date.now() - lastEbayOrderSync < 5 * 60 * 1000) {
     return;
   }
 
   isEbayOrderSyncInProgress = true;
   syncLog('info', `Starting eBay Order Sync (${source})`);
+  await logEbaySyncEvent('info', null, 'extension_sync_started', null, { source, bypassDebounce });
 
   try {
     const isAuth = await verifyAuthStatus();
     if (!isAuth) {
+      await logEbaySyncEvent('error', 'extension_dependency', 'extension_sync_failed', null, { reason: 'User not authenticated' });
       throw new Error("User not authenticated");
     }
-
-    const { saasToken } = await chrome.storage.local.get(['saasToken']);
-    if (!saasToken) throw new Error("No auth token found");
+    if (!saasToken) {
+      await logEbaySyncEvent('error', 'extension_dependency', 'extension_sync_failed', null, { reason: 'No auth token found' });
+      throw new Error("No auth token found");
+    }
 
     // 1. Get Settings
     const settings = await chrome.storage.local.get(['ebaySyncDays']);
@@ -569,15 +605,53 @@ async function triggerEbayOrderSync(source = 'manual') {
 
     // 2. Fetch CSV
     syncLog('info', `Fetching CSV report (Last ${days} days)...`);
-    const csvText = await fetchEbayCsv(days);
-    if (!csvText) throw new Error("Failed to fetch CSV");
+    await logEbaySyncEvent('info', null, 'csv_download_started', null, { days });
+    let csvText;
+    try {
+      csvText = await fetchEbayCsv(days, source);
+      if (!csvText) throw new Error("Failed to fetch CSV - no data returned");
+      await logEbaySyncEvent('info', null, 'csv_download_completed', null, { bytes: csvText.length });
+      
+      // Clear the session required flag on successful fetch
+      await chrome.storage.local.set({ ebaySessionRequired: false });
+      await logEbaySyncEvent('info', null, 'ebay_session_required_flag_cleared', null, {});
+      
+    } catch(e) {
+      if (e.message === 'ebay_session_required') {
+        syncLog('warn', 'eBay Session Required - auto-sync paused until user opens eBay');
+        await logEbaySyncEvent('warn', 'ebay_session', 'sync_waiting_for_user_session', null, { source });
+        await chrome.storage.local.set({ ebaySessionRequired: true });
+        await logEbaySyncEvent('info', null, 'ebay_session_required_flag_set', null, {});
+        
+        // If admin requested reset, move state to waiting_for_user_session
+        if (bypassDebounce && saasToken && userId) {
+          await fetch(`${URLS.SUPABASE_URL}/rest/v1/user_ebay_settings?user_id=eq.${userId}`, {
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${saasToken}`, 'apikey': API_KEYS.SUPABASE_ANON, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sync_state: 'waiting_for_user_session' })
+          }).catch(console.error);
+        }
+      } else {
+        await logEbaySyncEvent('error', 'csv_download', 'csv_download_failed', null, { error: e.message });
+      }
+      throw e;
+    }
 
     // 3. Parse CSV
-    const orders = parseEbayCsv(csvText);
-    syncLog('success', `Parsed ${orders.length} orders from CSV`);
+    await logEbaySyncEvent('info', null, 'csv_parse_started');
+    let orders;
+    try {
+      orders = parseEbayCsv(csvText);
+      syncLog('success', `Parsed ${orders.length} orders from CSV`);
+      await logEbaySyncEvent('info', null, 'csv_parse_completed', null, { count: orders.length });
+    } catch(e) {
+      await logEbaySyncEvent('error', 'csv_parser', 'csv_parse_failed', null, { error: e.message });
+      throw e;
+    }
 
     if (orders.length === 0) {
       syncLog('info', 'No orders found in CSV');
+      await logEbaySyncEvent('info', null, 'extension_sync_completed', null, { message: 'No orders found in CSV' });
       isEbayOrderSyncInProgress = false;
       return;
     }
@@ -629,6 +703,7 @@ async function triggerEbayOrderSync(source = 'manual') {
       } catch (batchErr) {
         console.error(`❌ Batch ${batchNum} failed:`, batchErr);
         syncLog('error', `Batch ${batchNum} Error`, { message: batchErr.message });
+        await logEbaySyncEvent('error', 'backend_sync', 'backend_sync_failed', null, { batchNum, error: batchErr.message });
         errorCount++;
         // Continue to next batch instead of stopping entirely
       }
@@ -639,6 +714,21 @@ async function triggerEbayOrderSync(source = 'manual') {
 
     const summary = `Sync Complete. Synced: ${totalSynced}, Updated: ${totalUpdated}, Skipped: ${totalSkipped}, Errors: ${errorCount} batches.`;
     syncLog(errorCount > 0 ? 'warn' : 'success', summary);
+
+    if (errorCount === 0) {
+      await logEbaySyncEvent('success', null, 'extension_sync_completed', null, { totalSynced, totalUpdated });
+    } else {
+      await logEbaySyncEvent('warning', null, 'extension_sync_completed', null, { totalSynced, totalUpdated, errorCount });
+    }
+
+    // Reset sync state to idle if we were resetting
+    if (saasToken && userId) {
+      await fetch(`${URLS.SUPABASE_URL}/rest/v1/user_ebay_settings?user_id=eq.${userId}`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${saasToken}`, 'apikey': API_KEYS.SUPABASE_ANON, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sync_state: 'idle' })
+      }).catch(console.error);
+    }
 
     lastEbayOrderSync = Date.now();
     chrome.storage.local.set({ lastSyncTime: lastEbayOrderSync });
@@ -652,9 +742,64 @@ async function triggerEbayOrderSync(source = 'manual') {
   } catch (err) {
     syncLog('error', `Sync Failed: ${err.message}`, { stack: err.stack });
     console.error('Full Sync Error:', err);
+    await logEbaySyncEvent('error', 'unknown', 'extension_sync_failed', null, { error: err.message });
     throw err;
   } finally {
     isEbayOrderSyncInProgress = false;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// SECURE EXTENSION SYNC LOGGING
+// -----------------------------------------------------------------------------
+async function logEbaySyncEvent(status, error_category, message, payload_preview = null, metadata = null) {
+  try {
+    const data = await chrome.storage.local.get(['saasToken', 'userId']);
+    const token = data.saasToken;
+    const userId = data.userId;
+    if (!token || !userId) return;
+
+    let sanitized = null;
+    if (payload_preview) {
+      let p = JSON.parse(JSON.stringify(payload_preview));
+      if (typeof p === 'string') {
+        sanitized = p.substring(0, 500);
+      } else {
+        const maskPII = (obj) => {
+          if (!obj || typeof obj !== 'object') return;
+          const sensitiveKeys = ['buyer_name', 'buyer_username', 'buyer_email', 'shipping_address', 'buyer_zip', 'phone', 'csrf', 'token', 'cookie', 'authorization', 'secret', 'password', 'jwt'];
+          for (const key of Object.keys(obj)) {
+            if (sensitiveKeys.includes(key.toLowerCase()) || key.toLowerCase().includes('token')) obj[key] = '***MASKED***';
+            else if (typeof obj[key] === 'object') maskPII(obj[key]);
+          }
+        };
+        if (Array.isArray(p)) {
+          p = p.slice(0, 2);
+          p.forEach(maskPII);
+        } else {
+          maskPII(p);
+        }
+        sanitized = p;
+      }
+    }
+
+    await fetch(`${URLS.SUPABASE_URL}/rest/v1/ebay_sync_logs`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'apikey': API_KEYS.SUPABASE_ANON,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        status: status,
+        error_category: error_category,
+        payload_preview: sanitized,
+        metadata: metadata ? { message, ...metadata } : { message }
+      })
+    });
+  } catch (err) {
+    console.error('Failed to write sync log:', err);
   }
 }
 
@@ -685,6 +830,17 @@ async function syncSettings() {
     if (response.ok) {
       const settingsData = await response.json();
       const updates = {};
+
+      try {
+        const userSettingsRes = await fetch(`${saasUrl}/rest/v1/user_ebay_settings?select=*`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${token}`, 'apikey': saasKey, 'Prefer': 'return=representation' }
+        });
+        if (userSettingsRes.ok) {
+          const userSet = await userSettingsRes.json();
+          if (userSet && userSet.length > 0) updates.userEbaySettings = userSet[0];
+        }
+      } catch(e) {}
 
       settingsData.forEach(setting => {
         if (setting.key === 'gemini_api_key') updates.geminiApiKey = setting.value;
