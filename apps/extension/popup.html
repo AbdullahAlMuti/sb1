@@ -4,32 +4,15 @@
 <head>
     <style>
         :root {
-            /* Core */
-            --bg: 210 40% 98%;
-            --card: 0 0% 100%;
-            --text: 222 47% 11%;
-            --muted: 215 16% 47%;
-            --border: 214 24% 90%;
-
-            /* Brand (teal, premium) */
-            --accent: 173 80% 33%;
-            --accent-2: 200 90% 45%;
-            --accent-contrast: 210 40% 98%;
-
-            /* Status */
-            --success-bg: 152 44% 92%;
-            --success-fg: 160 84% 18%;
-            --warn-bg: 48 96% 90%;
-            --warn-fg: 25 95% 22%;
-            --danger-bg: 0 84% 94%;
-            --danger-fg: 0 74% 30%;
-
-            /* Effects */
-            --radius-sm: 10px;
-            --radius-md: 12px;
-            --shadow-sm: 0 1px 2px hsl(222 47% 11% / 0.06);
-            --shadow-md: 0 10px 30px -16px hsl(222 47% 11% / 0.28);
-            --ring: 0 0 0 3px hsl(var(--accent) / 0.22);
+            --color-primary: #1D9E75;
+            --color-primary-hover: #0F6E56;
+            --color-border: rgba(0, 0, 0, 0.12);
+            --color-surface: #F9F9F8;
+            --color-text: #1a1a1a;
+            --color-text-muted: #6b6b6b;
+            --color-focus: #378ADD;
+            --radius-md: 6px;
+            --radius-lg: 8px;
         }
 
         * {
@@ -37,222 +20,369 @@
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             width: 320px;
             margin: 0;
             padding: 0;
-            color: hsl(var(--text));
-            background: linear-gradient(180deg, hsl(var(--bg)) 0%, hsl(210 40% 96%) 100%);
+            color: var(--color-text);
+            background-color: #ffffff;
+            font-size: 14px;
         }
 
+        :focus-visible {
+            outline: 2px solid var(--color-focus);
+            outline-offset: 2px;
+        }
+
+        /* Typography */
+        .text-xs { font-size: 12px; }
+        .text-sm { font-size: 13px; }
+        .text-base { font-size: 14px; }
+        .text-muted { color: var(--color-text-muted); }
+        .font-medium { font-weight: 500; }
+        .font-semibold { font-weight: 600; }
+        
+        .hidden { display: none !important; }
+
+        /* Header */
         .header {
-            background:
-                radial-gradient(100% 140% at 0% 0%, hsl(var(--accent) / 0.16) 0%, transparent 55%),
-                radial-gradient(100% 140% at 100% 0%, hsl(var(--accent-2) / 0.14) 0%, transparent 55%),
-                hsl(var(--card));
-            padding: 14px 14px;
-            border-bottom: 1px solid hsl(var(--border));
-            box-shadow: var(--shadow-sm);
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--color-border);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 10px;
+            background-color: #ffffff;
         }
 
         .title {
             font-weight: 600;
-            font-size: 16px;
-            color: hsl(var(--text));
-            letter-spacing: -0.01em;
-        }
-
-        .status {
-            font-size: 12px;
-            padding: 5px 10px;
-            border-radius: 999px;
-            background-color: hsl(210 20% 95%);
-            color: hsl(var(--muted));
-            border: 1px solid hsl(var(--border));
-            box-shadow: 0 1px 0 hsl(0 0% 100% / 0.7) inset;
-            white-space: nowrap;
-        }
-
-        .status.connecting {
-            background-color: hsl(var(--warn-bg));
-            color: hsl(var(--warn-fg));
-            border-color: hsl(48 85% 82%);
+            font-size: 14px;
+            color: var(--color-text);
         }
 
         .user-info {
             display: flex;
             flex-direction: column;
             align-items: flex-end;
-            gap: 3px;
+            gap: 4px;
         }
 
         .username {
-            font-size: 11px;
-            color: hsl(var(--accent));
-            font-weight: 600;
+            font-size: 12px;
+            color: var(--color-text-muted);
         }
 
-        .help-tip {
-            font-size: 11px;
-            color: hsl(var(--accent-2));
-            cursor: pointer;
-            text-decoration: none;
-            margin-top: 0;
-            padding: 2px 6px;
+        /* Status Pills (with ::before dot trick to survive JS textContent overwrite) */
+        .status {
+            font-size: 12px;
+            padding: 4px 10px;
             border-radius: 999px;
-            border: 1px solid transparent;
-            transition: background-color 0.15s ease, border-color 0.15s ease;
+            background-color: var(--color-surface);
+            color: var(--color-text-muted);
+            border: 1px solid var(--color-border);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+            font-weight: 500;
         }
 
-        .help-tip:hover {
-            background-color: hsl(var(--accent-2) / 0.08);
-            border-color: hsl(var(--accent-2) / 0.18);
+        .status::before {
+            content: "";
+            display: block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #9ca3af;
         }
 
-        .info-box {
-            background:
-                radial-gradient(80% 120% at 0% 0%, hsl(var(--accent-2) / 0.10) 0%, transparent 60%),
-                hsl(var(--card));
-            border: 1px solid hsl(var(--border));
-            color: hsl(220 40% 18%);
-            padding: 10px 11px;
-            border-radius: var(--radius-md);
-            font-size: 11px;
-            margin: 10px 14px 0 14px;
-            line-height: 1.45;
-            box-shadow: var(--shadow-sm);
+        .status.connecting {
+            background-color: #eff6ff;
+            color: #1d4ed8;
+            border-color: #bfdbfe;
+        }
+        .status.connecting::before {
+            background-color: #3b82f6;
+            animation: pulse 1.5s infinite;
         }
 
         .status.active {
-            background-color: hsl(var(--success-bg));
-            color: hsl(var(--success-fg));
-            border-color: hsl(152 35% 82%);
+            background-color: #ecfdf5;
+            color: #047857;
+            border-color: #a7f3d0;
+        }
+        .status.active::before {
+            background-color: #10b981;
         }
 
         .status.inactive {
-            background-color: hsl(var(--danger-bg));
-            color: hsl(var(--danger-fg));
-            border-color: hsl(0 70% 86%);
+            background-color: #fef2f2;
+            color: #b91c1c;
+            border-color: #fecaca;
+        }
+        .status.inactive::before {
+            background-color: #ef4444;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; }
+        }
+
+        .help-tip {
+            font-size: 12px;
+            color: var(--color-text-muted);
+            cursor: pointer;
+            text-decoration: none;
+            padding: 2px 6px;
+            border-radius: var(--radius-md);
+            border: 1px solid transparent;
+        }
+
+        .help-tip:hover {
+            background-color: var(--color-surface);
+            color: var(--color-text);
         }
 
         .content {
-            padding: 14px;
+            padding: 16px;
         }
 
         .control-group {
-            margin-bottom: 15px;
-            background: hsl(var(--card));
-            padding: 10px;
-            border-radius: var(--radius-md);
-            border: 1px solid hsl(var(--border));
-            box-shadow: var(--shadow-sm);
+            margin-bottom: 16px;
         }
 
         label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 6px;
             font-size: 13px;
-            color: hsl(var(--muted));
+            color: var(--color-text);
             font-weight: 500;
         }
 
+        /* Forms */
         select,
         input[type="text"],
         input[type="number"] {
             width: 100%;
-            padding: 8px 10px;
+            padding: 8px 30px 8px 12px;
             font-size: 14px;
-            border: 1px solid hsl(var(--border));
-            border-radius: 10px;
-            box-sizing: border-box;
-            background: hsl(0 0% 100%);
-            color: hsl(var(--text));
-            box-shadow: 0 1px 0 hsl(0 0% 100% / 0.8) inset;
-            transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            background-color: #ffffff;
+            color: var(--color-text);
+            font-family: inherit;
         }
 
-        select:focus,
-        input[type="text"]:focus,
-        input[type="number"]:focus {
-            outline: none;
-            border-color: hsl(var(--accent) / 0.6);
-            box-shadow: var(--ring), 0 1px 0 hsl(0 0% 100% / 0.8) inset;
+        select {
+            appearance: none;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%236b6b6b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>');
+            background-repeat: no-repeat;
+            background-position: right 8px center;
         }
 
+        /* Checkbox Toggle Switch */
         .checkbox-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 10px;
+            gap: 12px;
+            cursor: pointer;
+        }
+        
+        .toggle-input-wrapper {
+            position: relative;
+            width: 36px;
+            height: 20px;
+        }
+        
+        .toggle-input-wrapper input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+            position: absolute;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #e5e7eb;
+            transition: .2s;
+            border-radius: 20px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .2s;
+            border-radius: 50%;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        input:checked + .slider {
+            background-color: var(--color-primary);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(16px);
+        }
+
+        input:focus-visible + .slider {
+            outline: 2px solid var(--color-focus);
+            outline-offset: 2px;
+        }
+
+        /* Buttons */
+        button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: var(--radius-md);
+            border: 1px solid transparent;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 13px;
+            font-family: inherit;
+            transition: background-color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .btn-primary, .btn-sync {
+            background-color: var(--color-primary);
+            color: #ffffff;
+        }
+
+        .btn-primary:hover, .btn-sync:hover {
+            background-color: var(--color-primary-hover);
+        }
+
+        .btn-secondary {
+            background-color: #ffffff;
+            border-color: var(--color-border);
+            color: var(--color-text);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--color-surface);
+        }
+
+        .btn-danger {
+            background-color: #ffffff;
+            border-color: var(--color-border);
+            color: #dc2626;
+        }
+        .btn-danger:hover {
+            background-color: #fef2f2;
+            border-color: #fca5a5;
         }
 
         .footer {
-            padding: 12px 14px;
-            background: hsl(var(--card));
-            border-top: 1px solid hsl(var(--border));
+            padding: 12px 16px;
+            background-color: var(--color-surface);
+            border-top: 1px solid var(--color-border);
             display: flex;
             gap: 10px;
         }
 
-        button {
-            flex: 1;
-            padding: 8px;
-            border-radius: 10px;
+        /* Alerts */
+        .alert {
+            display: flex;
+            gap: 10px;
+            padding: 12px;
+            border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+            margin-bottom: 16px;
+            text-align: left;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .alert-info {
+            border-left: 3px solid #3b82f6;
+            background-color: #eff6ff;
+            color: #1e3a8a;
+        }
+
+        .alert-warning {
+            border-left: 3px solid #f59e0b;
+            background-color: #fffbeb;
+            color: #92400e;
+        }
+
+        .alert-error {
+            border-left: 3px solid #ef4444;
+            background-color: #fef2f2;
+            color: #991b1b;
+            position: relative;
+        }
+
+        .alert-title {
+            font-weight: 600;
+            font-size: 13px;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .alert-desc {
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .alert-close {
+            background: none;
             border: none;
+            padding: 4px;
             cursor: pointer;
-            font-weight: 500;
-            transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease, background-color 0.15s ease;
-            box-shadow: 0 8px 18px -14px hsl(222 47% 11% / 0.35);
+            color: inherit;
+            opacity: 0.7;
+            width: auto;
+            border-radius: 4px;
+        }
+        .alert-close:hover {
+            opacity: 1;
+            background-color: rgba(0,0,0,0.05);
         }
 
-        button:hover {
-            transform: translateY(-1px);
-            filter: brightness(1.02);
-            box-shadow: 0 10px 22px -14px hsl(222 47% 11% / 0.40);
+        /* Layout Helpers */
+        .text-center { text-align: center; }
+        .mt-2 { margin-top: 8px; }
+        .mt-3 { margin-top: 12px; }
+        .mt-4 { margin-top: 16px; }
+        .mb-4 { margin-bottom: 16px; }
+        .mb-2 { margin-bottom: 8px; }
+        .flex { display: flex; }
+        .gap-2 { gap: 8px; }
+
+        .big-icon {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 12px;
+        }
+        .big-icon svg {
+            width: 48px;
+            height: 48px;
         }
 
-        button:active {
-            transform: translateY(0);
-            box-shadow: 0 7px 16px -14px hsl(222 47% 11% / 0.35);
-        }
-
-        button:focus-visible {
-            outline: none;
-            box-shadow: var(--ring), 0 10px 22px -14px hsl(222 47% 11% / 0.40);
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, hsl(var(--accent-2)) 0%, hsl(var(--accent)) 100%);
-            color: hsl(var(--accent-contrast));
-        }
-
-        .btn-secondary {
-            background: hsl(210 40% 98%);
-            border: 1px solid hsl(var(--border));
-            color: hsl(var(--text));
-            box-shadow: none;
-        }
-
-        .btn-sync {
-            background: linear-gradient(135deg, hsl(160 84% 33%) 0%, hsl(173 80% 33%) 100%);
-            color: hsl(var(--accent-contrast));
-            width: 100%;
-            margin-top: 5px;
-        }
-
-        .hidden {
-            display: none;
-        }
-
-        /* Small polish for the checkbox in compact UI */
-        input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            accent-color: hsl(var(--accent));
+        .pairing-code {
+            font-size: 28px;
+            letter-spacing: 4px;
+            font-weight: 700;
+            font-family: monospace;
+            color: var(--color-text);
+            background-color: var(--color-surface);
+            padding: 12px;
+            border-radius: var(--radius-lg);
+            border: 1px dashed var(--color-border);
+            margin: 16px 0;
+            text-align: center;
         }
     </style>
 </head>
@@ -263,68 +393,81 @@
         <div class="user-info">
             <span id="authStatus" class="status">Checking...</span>
             <span id="usernameDisplay" class="username hidden"></span>
-            <span id="toggleHelp" class="help-tip">Help?</span>
+            <span id="toggleHelp" class="help-tip" tabindex="0" role="button">Help?</span>
         </div>
     </div>
 
     <!-- Help Section -->
-    <div id="helpSection" class="info-box hidden">
-        <strong>How to Connect:</strong><br>
-        1. Click "Open Dashboard" below.<br>
-        2. Log in to your account.<br>
-        3. Refresh this extension.<br>
-        <br>
-        If it fails, try reloading the page or refreshing the extension in chrome://extensions.
+    <div id="helpSection" class="alert alert-info hidden" style="margin: 16px 16px 0 16px;">
+        <div>
+            <span class="alert-title">How to Connect:</span>
+            <span class="alert-desc">
+                1. Click "Open Dashboard" below.<br>
+                2. Log in to your account.<br>
+                3. Refresh this extension.<br><br>
+                If it fails, try reloading the page or refreshing the extension in chrome://extensions.
+            </span>
+        </div>
     </div>
 
     <!-- eBay Session Required Banner -->
-    <div id="ebaySessionRequiredBanner" class="info-box hidden" style="background: hsl(var(--warn-bg)); border-color: hsl(48 85% 82%); margin-bottom: 10px;">
-        <strong style="color: hsl(var(--warn-fg));">eBay Session Required</strong><br>
-        <span style="color: hsl(var(--warn-fg));">Open eBay Seller Hub in this browser, make sure you are logged in, then click Sync Now.</span>
-        <div style="display: flex; gap: 5px; margin-top: 8px;">
-            <button id="btnBannerOpenEbay" class="btn-primary" style="padding: 4px; font-size: 10px;">Open eBay</button>
-            <button id="btnBannerSyncNow" class="btn-sync" style="margin-top: 0; padding: 4px; font-size: 10px;">Sync Now</button>
-            <button id="btnBannerDismiss" class="btn-secondary" style="padding: 4px; font-size: 10px;">Dismiss</button>
+    <div id="ebaySessionRequiredBanner" class="alert alert-warning hidden" style="margin: 16px 16px 0 16px; flex-direction: column;">
+        <div>
+            <span class="alert-title">eBay Session Required</span>
+            <span class="alert-desc">Open eBay Seller Hub in this browser, make sure you are logged in, then click Sync Now.</span>
+        </div>
+        <div class="flex gap-2 mt-2">
+            <button id="btnBannerOpenEbay" class="btn-primary">Open eBay</button>
+            <button id="btnBannerSyncNow" class="btn-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                Sync Now
+            </button>
+            <button id="btnBannerDismiss" class="btn-secondary" aria-label="Dismiss banner">Dismiss</button>
         </div>
     </div>
 
     <!-- Login Prompt -->
     <div id="loginView" class="content hidden">
-        <div style="text-align: center; margin-bottom: 20px;">
-            <div style="font-size: 48px; margin-bottom: 10px;">🔴</div>
-            <h3 style="margin: 0; color: #dc3545;">Not Connected</h3>
-            <p style="color: #666; font-size: 13px;">Please log in to your dashboard to enable the extension.</p>
+        <div class="text-center mb-4">
+            <div class="big-icon" style="color: #ef4444;">
+                <div class="status-dot" style="width: 24px; height: 24px; background-color: #ef4444; border-radius: 50%; display: inline-block;"></div>
+            </div>
+            <h3 style="margin: 0; color: var(--color-text); font-size: 16px;">Not Connected</h3>
+            <p class="text-muted text-sm mt-2">Please log in to your dashboard to enable the extension.</p>
         </div>
-        <button id="btnLogin" class="btn-primary hidden" style="width: 100%">Continue with SellerSuit</button>
-        <button id="btnLegacyLogin" class="btn-primary hidden" style="width: 100%">Log In to Dashboard</button>
-        <button id="btnPairingLogin" class="btn-secondary hidden" style="width: 100%; margin-top: 10px;">Connect with pairing code</button>
+        <button id="btnLogin" class="btn-primary hidden mb-2">Continue with SellerSuit</button>
+        <button id="btnLegacyLogin" class="btn-primary hidden mb-2">Log In to Dashboard</button>
+        <button id="btnPairingLogin" class="btn-secondary hidden mt-3">Connect with pairing code</button>
     </div>
 
     <!-- Pairing View -->
     <div id="pairingView" class="content hidden">
-        <div style="text-align: center; margin-bottom: 20px;">
-            <div style="font-size: 48px; margin-bottom: 10px;">🔑</div>
-            <h3 style="margin: 0; color: hsl(var(--accent));">Pairing Code</h3>
-            <p style="color: #666; font-size: 13px;">Enter this code on the website to connect.</p>
-            <div id="pairingCodeDisplay" style="font-size: 32px; letter-spacing: 5px; font-weight: bold; margin: 15px 0; font-family: monospace; color: hsl(var(--text)); background: hsl(var(--bg)); padding: 10px; border-radius: 8px; border: 1px dashed hsl(var(--border));">
-                ------
+        <div class="text-center mb-4">
+            <div class="big-icon" style="color: var(--color-primary);">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>
             </div>
-            <p id="pairingStatusText" style="color: hsl(var(--muted)); font-size: 12px; margin: 0;">Waiting for approval...</p>
+            <h3 style="margin: 0; color: var(--color-text); font-size: 16px;">Pairing Code</h3>
+            <p class="text-muted text-sm mt-2">Enter this code on the website to connect.</p>
+            <div id="pairingCodeDisplay" class="pairing-code">------</div>
+            <p id="pairingStatusText" class="text-muted text-xs">Waiting for approval...</p>
         </div>
-        <button id="btnCancelPairing" class="btn-secondary" style="width: 100%;">Cancel</button>
+        <button id="btnCancelPairing" class="btn-secondary">Cancel</button>
     </div>
 
     <!-- Settings View -->
     <div id="settingsView" class="content hidden">
         <div class="control-group">
-            <div class="checkbox-row">
-                <label for="autoSync" style="margin:0">Auto-Sync Enabled</label>
-                <input type="checkbox" id="autoSync">
-            </div>
+            <label class="checkbox-row" for="autoSync">
+                <span class="font-medium text-sm">Auto-Sync Enabled</span>
+                <div class="toggle-input-wrapper">
+                    <input type="checkbox" id="autoSync">
+                    <span class="slider"></span>
+                </div>
+            </label>
         </div>
 
         <div class="control-group">
-            <label>Sync Interval</label>
+            <label for="syncInterval">Sync Interval</label>
             <select id="syncInterval">
                 <option value="30">Every 30 Minutes</option>
                 <option value="60">Every 1 Hour</option>
@@ -337,7 +480,7 @@
         </div>
 
         <div class="control-group">
-            <label>Sync Period (Lookback)</label>
+            <label for="syncDays">Sync Period (Lookback)</label>
             <select id="syncDays">
                 <option value="1">Last 24 Hours</option>
                 <option value="3">Last 3 Days</option>
@@ -350,23 +493,36 @@
                 <option value="1825">Last 5 Years</option>
                 <option value="custom">Custom...</option>
             </select>
-            <input type="number" id="customDays" placeholder="Enter days (e.g. 3650)" class="hidden"
-                style="margin-top: 5px;">
+            <input type="number" id="customDays" placeholder="Enter days (e.g. 3650)" class="hidden mt-2">
         </div>
 
-        <div class="control-group" style="text-align: center;">
-            <div id="lastSyncTime" style="font-size: 11px; color: #999; margin-bottom: 5px;">Last Sync: Never</div>
-            <button id="btnSyncNow" class="btn-sync">🔄 Sync Now</button>
-            <div id="syncErrorContainer" class="hidden" style="margin-top: 10px; padding: 10px; background: hsl(var(--danger-bg)); border: 1px solid hsl(0 70% 86%); border-radius: 8px; text-align: left; position: relative;">
-                <button id="btnCloseSyncError" style="position: absolute; top: 2px; right: 2px; background: none; border: none; color: hsl(var(--danger-fg)); font-size: 14px; cursor: pointer; padding: 2px 6px; box-shadow: none;">×</button>
-                <strong style="color: hsl(var(--danger-fg)); font-size: 12px; display: block; margin-bottom: 4px;">Sync Error</strong>
-                <span id="syncErrorMessage" style="color: hsl(var(--danger-fg)); font-size: 11px; word-break: break-word;"></span>
+        <div class="control-group mt-4 mb-4">
+            <div id="lastSyncTime" class="text-center text-xs text-muted mb-2">Last Sync: Never</div>
+            <button id="btnSyncNow" class="btn-sync">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                Sync Now
+            </button>
+            
+            <div id="syncErrorContainer" class="alert alert-error hidden mt-3">
+                <div style="flex-grow: 1;">
+                    <span class="alert-title">Sync Error</span>
+                    <span id="syncErrorMessage" class="alert-desc"></span>
+                </div>
+                <button id="btnCloseSyncError" class="alert-close" aria-label="Dismiss error">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
             </div>
         </div>
 
-        <div class="control-group" style="text-align: center;">
-            <button id="btnSwitchConnection" class="btn-secondary hidden" style="width: 100%; margin-bottom: 10px; color: hsl(var(--accent)); border-color: hsl(var(--accent) / 0.3);">🔄 Upgrade Connection (Pairing Code)</button>
-            <button id="btnDisconnect" class="btn-secondary" style="width: 100%; color: hsl(var(--danger-fg)); border-color: hsl(0 70% 86%);">🔓 Disconnect</button>
+        <div class="control-group">
+            <button id="btnSwitchConnection" class="btn-secondary hidden mb-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                Upgrade Connection (Pairing Code)
+            </button>
+            <button id="btnDisconnect" class="btn-danger">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+                Disconnect
+            </button>
         </div>
     </div>
 
@@ -377,5 +533,4 @@
     <script src="common/config.js"></script>
     <script src="popup.js"></script>
 </body>
-
 </html>
