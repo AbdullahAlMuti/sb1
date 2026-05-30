@@ -11,7 +11,18 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@repo/ui/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@repo/ui/components/ui/table";
 import { StatusBadge } from "./StatusBadge";
-import type { IntegrationRecord } from "./DetailDrawer";
+export interface IntegrationRecord {
+  id: string;
+  account: string;
+  subtext: string;
+  provider: "Shopify" | "eBay" | "Amazon";
+  workspace: string;
+  health: string;
+  lastSync: string;
+  duration: string;
+  issues: number;
+  nextAction: string;
+}
 
 const providerStyles = {
   Shopify: "bg-emerald-50 text-emerald-700 border-emerald-200",

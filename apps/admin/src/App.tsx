@@ -52,6 +52,7 @@ import AdminProfitableProducts from "./pages/AdminProfitableProducts";
 import AdminModulePage from "./pages/AdminModulePage";
 import AdminShopifyApp from "./pages/AdminShopifyApp";
 import AdminEbayApp from "./pages/AdminEbayApp";
+import AdminIntegrationDetail from "./pages/AdminIntegrationDetail";
 
 const queryClient = new QueryClient();
 
@@ -72,7 +73,7 @@ const AdminRouteChildren = () => (
     <Route path="stores" element={<AdminModulePage title="Stores" description="Monitor connected seller stores, provider accounts, store health, sync coverage, and operational status." icon={Store} primaryAction="Add store" moduleType="commerce" />} />
     <Route path="stores/:storeId" element={<AdminModulePage title="Store Details" description="Inspect store integrations, products, listings, orders, sync jobs, and recent operational history." icon={Store} primaryAction="Run store check" moduleType="commerce" />} />
     <Route path="integrations" element={<AdminModulePage title="Integrations" description="Manage marketplace accounts across eBay, Shopify, Amazon, and future providers with provider-aware filters." icon={PlugZap} primaryAction="Connect provider" moduleType="operations" />} />
-    <Route path="integrations/:marketplaceAccountId" element={<AdminModulePage title="Integration Details" description="Inspect OAuth status, scopes, webhooks, sync jobs, errors, and audit history for a marketplace account." icon={PlugZap} primaryAction="Retry sync" moduleType="operations" />} />
+    <Route path="integrations/:marketplaceAccountId" element={<AdminIntegrationDetail />} />
     <Route path="products" element={<AdminModulePage title="Products / Services" description="Review normalized products, variants, source data, listing coverage, and marketplace readiness." icon={Package} primaryAction="Add product" moduleType="commerce" />} />
     <Route path="products/:productId" element={<AdminModulePage title="Product Details" description="Inspect variants, listing mappings, provider metadata, inventory, and sync history." icon={Package} primaryAction="Sync product" moduleType="commerce" />} />
     <Route path="listings" element={<AdminModulePage title="Listings" description="Operate marketplace listings across eBay, Shopify, and future Amazon with sync status and issue handling." icon={Tags} primaryAction="Create listing" moduleType="commerce" />} />

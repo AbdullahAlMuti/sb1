@@ -12,14 +12,14 @@ import {
   Ticket,
   Users,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@repo/ui/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@repo/ui/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@repo/ui/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@repo/ui/components/ui/tabs";
 import { supabase } from "@repo/api-client/supabase/client";
 import { ActionCenter } from "@/components/admin-dashboard/ActionCenter";
-import { DetailDrawer, type IntegrationRecord } from "@/components/admin-dashboard/DetailDrawer";
-import { IntegrationWorkQueue } from "@/components/admin-dashboard/IntegrationWorkQueue";
+import { IntegrationWorkQueue, type IntegrationRecord } from "@/components/admin-dashboard/IntegrationWorkQueue";
 import { MetricCard } from "@/components/admin-dashboard/MetricCard";
 import { StatusBadge } from "@/components/admin-dashboard/StatusBadge";
 
@@ -129,8 +129,7 @@ const recentJobs = [
 export default function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats>(fallbackStats);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedRecord, setSelectedRecord] = useState<IntegrationRecord | null>(integrationRecords[0]);
-  const [drawerOpen, setDrawerOpen] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let mounted = true;
@@ -235,8 +234,7 @@ export default function AdminDashboard() {
   );
 
   const handleSelectRecord = (record: IntegrationRecord) => {
-    setSelectedRecord(record);
-    setDrawerOpen(true);
+    navigate(`/integrations/${record.id}`);
   };
 
   return (
@@ -385,8 +383,6 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
-
-      <DetailDrawer record={selectedRecord} open={drawerOpen} onOpenChange={setDrawerOpen} />
     </div>
   );
 }

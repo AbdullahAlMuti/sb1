@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@repo/ui/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@repo/ui/components/ui/select";
-import { DetailDrawer, type IntegrationRecord } from "@/components/admin-dashboard/DetailDrawer";
+import { useNavigate } from "react-router-dom";
 import { MetricCard } from "@/components/admin-dashboard/MetricCard";
 import { StatusBadge } from "@/components/admin-dashboard/StatusBadge";
 
@@ -36,18 +36,7 @@ interface AdminModulePageProps {
   moduleType?: "users" | "commerce" | "operations" | "billing" | "security" | "general";
 }
 
-const sampleRecord: IntegrationRecord = {
-  id: "module",
-  account: "Dreamy Home Store",
-  subtext: "Selected admin record",
-  provider: "Shopify",
-  workspace: "Dreamy Home",
-  health: "Healthy",
-  lastSync: "May 31, 2025",
-  duration: "38s",
-  issues: 0,
-  nextAction: "Review",
-};
+
 
 export default function AdminModulePage({
   title,
@@ -56,7 +45,7 @@ export default function AdminModulePage({
   primaryAction = "Create",
   moduleType = "general",
 }: AdminModulePageProps) {
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const navigate = useNavigate();
 
   const rows = useMemo(
     () => [
@@ -198,8 +187,8 @@ export default function AdminModulePage({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.name} className="cursor-pointer hover:bg-slate-50" onClick={() => setDrawerOpen(true)}>
+                {rows.map((row, index) => (
+                  <TableRow key={row.name} className="cursor-pointer hover:bg-slate-50" onClick={() => navigate(`/integrations/${index}`)}>
                     <TableCell onClick={(event) => event.stopPropagation()}><Checkbox /></TableCell>
                     <TableCell>
                       <div className="font-semibold text-slate-900">{row.name}</div>
@@ -217,7 +206,7 @@ export default function AdminModulePage({
                     </TableCell>
                     <TableCell onClick={(event) => event.stopPropagation()} className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg border-slate-200" onClick={() => setDrawerOpen(true)}>
+                        <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg border-slate-200" onClick={() => navigate(`/integrations/${index}`)}>
                           <Eye className="h-4 w-4" />
                         </Button>
                         <DropdownMenu>
@@ -250,8 +239,6 @@ export default function AdminModulePage({
           </div>
         </CardContent>
       </Card>
-
-      <DetailDrawer record={sampleRecord} open={drawerOpen} onOpenChange={setDrawerOpen} />
     </div>
   );
 }
