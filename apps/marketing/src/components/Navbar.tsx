@@ -3,7 +3,6 @@ import { Menu, X } from "lucide-react";
 import { Button } from "@repo/ui/components/ui/button";
 import { ThemeToggle } from "@repo/ui/theme/ThemeToggle";
 import SellerSuitLogo from "@repo/ui/brand/SellerSuitLogo";
-import { useAuth } from "@repo/auth/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@repo/ui/lib/utils";
 
@@ -19,7 +18,6 @@ const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
-  const { user } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 12);
@@ -38,10 +36,6 @@ const Navbar = () => {
   };
 
   const handlePrimaryAction = () => {
-    if (user) {
-      navigate("/dashboard");
-      return;
-    }
     navigate("/register");
   };
 
@@ -90,20 +84,12 @@ const Navbar = () => {
 
           <div className="hidden items-center gap-2 md:flex">
             <ThemeToggle />
-            {user ? (
-              <Button size="sm" onClick={() => navigate("/dashboard")}>
-                Dashboard
-              </Button>
-            ) : (
-              <>
-                <Button variant="ghost" size="sm" onClick={() => navigate("/auth")}>
-                  Log in
-                </Button>
-                <Button size="sm" onClick={handlePrimaryAction}>
-                  Start free
-                </Button>
-              </>
-            )}
+            <Button variant="ghost" size="sm" onClick={() => navigate("/auth")}>
+              Log in
+            </Button>
+            <Button size="sm" onClick={handlePrimaryAction}>
+              Start free
+            </Button>
           </div>
 
           <button
@@ -147,20 +133,12 @@ const Navbar = () => {
 
             <div className="mt-3 grid grid-cols-[auto_1fr_1fr] items-center gap-2">
               <ThemeToggle />
-              {user ? (
-                <Button className="col-span-2" size="sm" onClick={() => navigate("/dashboard")}>
-                  Dashboard
-                </Button>
-              ) : (
-                <>
-                  <Button variant="outline" size="sm" onClick={() => navigate("/auth")}>
-                    Log in
-                  </Button>
-                  <Button size="sm" onClick={goToPricing}>
-                    View plans
-                  </Button>
-                </>
-              )}
+              <Button variant="outline" size="sm" onClick={() => navigate("/auth")}>
+                Log in
+              </Button>
+              <Button size="sm" onClick={goToPricing}>
+                View plans
+              </Button>
             </div>
           </div>
         )}

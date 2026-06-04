@@ -1,7 +1,6 @@
 import { ArrowRight, BarChart3, CheckCircle2, Chrome, Clock3, PackageCheck, ShieldCheck, Sparkles, TrendingUp, Zap } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@repo/ui/components/ui/button";
-import { useAuth } from "@repo/auth/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@repo/ui/lib/utils";
 
@@ -25,10 +24,9 @@ const tableRows = [
 
 const HeroSection = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
 
   const handlePrimary = () => {
-    navigate(user ? "/dashboard" : "/register");
+    navigate("/register");
   };
 
   const handleSecondary = () => {
@@ -66,7 +64,7 @@ const HeroSection = () => {
 
             <div className="mt-7 flex flex-col gap-3 sm:flex-row">
               <Button onClick={handlePrimary} size="lg" className="h-12 rounded-lg px-6">
-                {user ? "Open dashboard" : "Start free"}
+                Start free
                 <ArrowRight className="h-4 w-4" />
               </Button>
               <Button onClick={handleSecondary} variant="outline" size="lg" className="h-12 rounded-lg px-6">

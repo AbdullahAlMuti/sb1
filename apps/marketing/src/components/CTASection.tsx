@@ -1,12 +1,10 @@
 import { forwardRef } from "react";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { Button } from "@repo/ui/components/ui/button";
-import { useAuth } from "@repo/auth/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 
 const CTASection = forwardRef<HTMLElement>((_, ref) => {
   const navigate = useNavigate();
-  const { user } = useAuth();
 
   return (
     <section ref={ref} className="bg-background py-20 sm:py-24">
@@ -27,8 +25,8 @@ const CTASection = forwardRef<HTMLElement>((_, ref) => {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
-            <Button className="h-12 rounded-lg px-6" onClick={() => navigate(user ? "/dashboard" : "/register")}>
-              {user ? "Open dashboard" : "Create account"}
+            <Button className="h-12 rounded-lg px-6" onClick={() => navigate("/register")}>
+              Create account
               <ArrowRight className="h-4 w-4" />
             </Button>
             <Button variant="outline" className="h-12 rounded-lg px-6" onClick={() => navigate("/documentation")}>

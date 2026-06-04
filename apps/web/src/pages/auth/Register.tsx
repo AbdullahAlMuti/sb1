@@ -45,10 +45,12 @@ export default function Register() {
   const location = useLocation();
   const { plans, isLoading: plansLoading, getPlanByName } = usePlans();
 
-  // Get selected plan from location state or localStorage
+  // Get selected plan from URL query param, location state, or localStorage
+  const query = new URLSearchParams(location.search);
+  const urlPlan = query.get('plan');
   const stateSelectedPlan = (location.state as { selectedPlan?: string })?.selectedPlan;
   const storedPlan = localStorage.getItem('selectedPlan');
-  const selectedPlanKey = stateSelectedPlan || storedPlan || 'starter';
+  const selectedPlanKey = urlPlan || stateSelectedPlan || storedPlan || 'starter';
   const selectedPlan = getPlanByName(selectedPlanKey) || plans.find(p => p.price_monthly > 0);
 
   // Store selected plan in localStorage for persistence

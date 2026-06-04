@@ -2,10 +2,8 @@ import { forwardRef, useState } from "react";
 import { Building2, Check, Crown, Loader2, Rocket, Zap } from "lucide-react";
 import { Button } from "@repo/ui/components/ui/button";
 import { CheckoutDialog } from "./checkout/CheckoutDialog";
-import { useAuth } from "@repo/auth/hooks/useAuth";
 import { usePlans, type Plan } from "@repo/api-client/hooks/usePlans";
-import { useSubscription } from "@repo/auth/hooks/useSubscription";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, createSearchParams } from "react-router-dom";
 import { cn } from "@repo/ui/lib/utils";
 
 const planIcons: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -17,34 +15,15 @@ const planIcons: Record<string, React.ComponentType<{ className?: string }>> = {
 
 const PricingSection = forwardRef<HTMLElement>((_, ref) => {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { createCheckout, planName: currentPlanName } = useSubscription();
   const { plans, isLoading } = usePlans();
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
 
   const handlePlanSelect = (plan: Plan) => {
-    if (!user) {
-      localStorage.setItem("selectedPlanId", plan.id);
-      localStorage.setItem("selectedPlanName", plan.name);
-      localStorage.setItem("selectedPlan", plan.name);
-      navigate("/register", { state: { selectedPlan: plan.name } });
-      return;
-    }
-
-    if (plan.stripe_price_id_monthly) {
-      setSelectedPlan(plan);
-      setCheckoutDialogOpen(true);
-      return;
-    }
-
-    navigate("/dashboard/subscription");
-  };
-
-  const handleCheckout = async (couponCode?: string) => {
-    if (!selectedPlan?.stripe_price_id_monthly) return;
-    const { url } = await createCheckout(selectedPlan.stripe_price_id_monthly, false, couponCode);
-    if (url) window.location.href = url;
+    localStorage.setItem("selectedPlanId", plan.id);
+    localStorage.setItem("selectedPlanName", plan.name);
+    localStorage.setItem("selectedPlan", plan.name);
+    navigate(`/register?plan=${plan.name}`);
   };
 
   return (
@@ -78,7 +57,6 @@ const PricingSection = forwardRef<HTMLElement>((_, ref) => {
           >
             {plans.map((plan) => {
               const Icon = planIcons[plan.name] || Zap;
-              const isCurrentPlan = currentPlanName === plan.name && Boolean(user);
               const isFeatured = plan.is_popular || (plans.length <= 2 && plan.price_monthly > 0);
               const isPaid = plan.price_monthly > 0;
               const features = plan.features.length
@@ -95,17 +73,11 @@ const PricingSection = forwardRef<HTMLElement>((_, ref) => {
                   className={cn(
                     "relative flex flex-col rounded-lg border bg-card p-6 shadow-sm",
                     isFeatured ? "border-primary shadow-soft-lg" : "border-border",
-                    isCurrentPlan && "ring-2 ring-success/60",
                   )}
                 >
-                  {isFeatured && !isCurrentPlan && (
+                  {isFeatured && (
                     <div className="absolute right-4 top-4 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground">
                       Popular
-                    </div>
-                  )}
-                  {isCurrentPlan && (
-                    <div className="absolute right-4 top-4 rounded-md bg-success px-2.5 py-1 text-xs font-semibold text-primary-foreground">
-                      Current
                     </div>
                   )}
 
@@ -135,10 +107,9 @@ const PricingSection = forwardRef<HTMLElement>((_, ref) => {
                     <Button
                       variant={isFeatured ? "default" : "outline"}
                       className="h-11 w-full rounded-lg"
-                      disabled={isCurrentPlan}
                       onClick={() => handlePlanSelect(plan)}
                     >
-                      {isCurrentPlan ? "Current plan" : isPaid ? "Upgrade" : "Start free"}
+                      {isPaid ? "Upgrade" : "Start free"}
                     </Button>
                   </div>
                 </article>
@@ -152,13 +123,6 @@ const PricingSection = forwardRef<HTMLElement>((_, ref) => {
           in your project structure.
         </p>
       </div>
-
-      <CheckoutDialog
-        open={checkoutDialogOpen}
-        onOpenChange={setCheckoutDialogOpen}
-        plan={selectedPlan}
-        onCheckout={handleCheckout}
-      />
     </section>
   );
 });
