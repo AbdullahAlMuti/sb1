@@ -94,14 +94,17 @@ export default function BulkJobDashboard() {
     });
 
     setQueue(prev => [...prev, ...newItems]);
-    setActivities(prev => [{
-      id: crypto.randomUUID(),
-      time: new Date().toLocaleTimeString('en-US', { hour12: false }),
-      type: 'queued',
-      text: `Added ${newItems.length} items to queue`,
-      subtext: 'Ready to process',
-      icon: <Clock className="w-3 h-3 text-amber-600" />
-    }, ...prev].slice(0, 50));
+    setActivities(prev => {
+      const newAct: Activity = {
+        id: crypto.randomUUID(),
+        time: new Date().toLocaleTimeString('en-US', { hour12: false }),
+        type: 'queued',
+        text: `Added ${newItems.length} items to queue`,
+        subtext: 'Ready to process',
+        icon: <Clock className="w-3 h-3 text-amber-600" />
+      };
+      return [newAct, ...prev].slice(0, 50);
+    });
     setPasteInput('');
   };
 
@@ -135,16 +138,19 @@ export default function BulkJobDashboard() {
           // Look up title safely without causing dependency loops
           setQueue(currentQueue => {
             const title = currentQueue[payload.index]?.title || `Item ${payload.index}`;
-            setActivities(prev => [{
-              id: crypto.randomUUID(),
-              time: new Date().toLocaleTimeString('en-US', { hour12: false }),
-              type: payload.isCompleted ? 'success' : payload.isError ? 'failed' : 'processing',
-              text: payload.status,
-              subtext: title,
-              icon: payload.isCompleted ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : 
-                    payload.isError ? <XCircle className="w-3 h-3 text-red-600" /> : 
-                    <Loader2 className="w-3 h-3 text-blue-600 animate-spin" />
-            }, ...prev].slice(0, 50));
+            setActivities(prev => {
+              const newAct: Activity = {
+                id: crypto.randomUUID(),
+                time: new Date().toLocaleTimeString('en-US', { hour12: false }),
+                type: payload.isCompleted ? 'success' : payload.isError ? 'failed' : 'processing',
+                text: payload.status,
+                subtext: title,
+                icon: payload.isCompleted ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : 
+                      payload.isError ? <XCircle className="w-3 h-3 text-red-600" /> : 
+                      <Loader2 className="w-3 h-3 text-blue-600 animate-spin" />
+              };
+              return [newAct, ...prev].slice(0, 50);
+            });
             return currentQueue;
           });
         }
@@ -157,26 +163,32 @@ export default function BulkJobDashboard() {
 
       if (data.type === 'BULK_JOB_DEBUG') {
         console.log('DEBUG:', data.message);
-        setActivities(prev => [{
+        setActivities(prev => {
+          const newAct: Activity = {
             id: crypto.randomUUID(),
             time: new Date().toLocaleTimeString('en-US', { hour12: false }),
-            type: 'queued',
+            type: 'info',
             text: 'DEBUG',
             subtext: data.message,
             icon: <Clock className="w-3 h-3 text-purple-600" />
-        }, ...prev].slice(0, 50));
+          };
+          return [newAct, ...prev].slice(0, 50);
+        });
       }
 
       if (data.type === 'BULK_JOB_FINISHED') {
         setIsRunning(false);
-        setActivities(prev => [{
-          id: crypto.randomUUID(),
-          time: new Date().toLocaleTimeString('en-US', { hour12: false }),
-          type: 'success',
-          text: 'Job Finished',
-          subtext: 'All items processed',
-          icon: <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-        }, ...prev].slice(0, 50));
+        setActivities(prev => {
+          const newAct: Activity = {
+            id: crypto.randomUUID(),
+            time: new Date().toLocaleTimeString('en-US', { hour12: false }),
+            type: 'success',
+            text: 'Job Finished',
+            subtext: 'All items processed',
+            icon: <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+          };
+          return [newAct, ...prev].slice(0, 50);
+        });
       }
     };
 
@@ -245,14 +257,17 @@ export default function BulkJobDashboard() {
       currentQueue = [...currentQueue, ...newItems];
       setQueue(currentQueue);
       setPasteInput('');
-      setActivities(prev => [{
-        id: crypto.randomUUID(),
-        time: new Date().toLocaleTimeString('en-US', { hour12: false }),
-        type: 'queued',
-        text: `Added ${newItems.length} items to queue`,
-        subtext: 'Ready to process',
-        icon: <Clock className="w-3 h-3 text-amber-600" />
-      }, ...prev].slice(0, 50));
+      setActivities(prev => {
+        const newAct: Activity = {
+          id: crypto.randomUUID(),
+          time: new Date().toLocaleTimeString('en-US', { hour12: false }),
+          type: 'queued',
+          text: `Added ${newItems.length} items to queue`,
+          subtext: 'Ready to process',
+          icon: <Clock className="w-3 h-3 text-amber-600" />
+        };
+        return [newAct, ...prev].slice(0, 50);
+      });
     }
     
     if (currentQueue.length === 0) {
@@ -582,7 +597,7 @@ export default function BulkJobDashboard() {
               {queue.length > 0 ? queue.slice(0, 100).map((item, idx) => {
                 let bg = "bg-muted border border-border/50";
                 let icon = null;
-                if (item.status === 'completed' || item.status === 'success') {
+                if (item.status === 'success') {
                   bg = "bg-emerald-500 border border-emerald-600";
                   icon = <Check className="w-2 h-2 text-white" strokeWidth={3} />;
                 } else if (item.status === 'processing') {

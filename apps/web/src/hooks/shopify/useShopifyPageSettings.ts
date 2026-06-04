@@ -11,13 +11,12 @@ export function useShopifyPageSettings() {
 
     async function fetchSettings() {
       try {
-        const { data, error } = await supabase
-          .from('shopify_page_settings')
+        const { data, error } = await (supabase.from as any)('shopify_page_settings')
           .select('*')
           .order('sort_order', { ascending: true });
         
         if (!error && data && mounted) {
-          setSettings(data as ShopifyPageSetting[]);
+          setSettings(data as any as ShopifyPageSetting[]);
         }
       } catch (err) {
         console.error('Error fetching page settings:', err);

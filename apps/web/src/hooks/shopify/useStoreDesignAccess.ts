@@ -17,13 +17,13 @@ export function useStoreDesignAccess() {
       }
 
       try {
-        const { data, error } = await supabase.rpc('get_user_plan_name', { check_user_id: user.id });
+        const { data, error } = await (supabase.rpc as any)('get_user_plan_name', { check_user_id: user.id });
         
         if (error) throw error;
         
         // Ensure plan name maps to the correct hierarchy naming
         // Database plan names might already be correct (e.g. 'growth', 'agency')
-        setUserPlanName(data || null);
+        setUserPlanName((data as string) || null);
       } catch (err) {
         console.error('Error fetching user plan:', err);
         setUserPlanName(null);

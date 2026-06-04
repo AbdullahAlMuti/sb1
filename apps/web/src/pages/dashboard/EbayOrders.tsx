@@ -1097,9 +1097,10 @@ export default function EbayOrders() {
             </div>
           ) : (
             <div className="overflow-x-auto scrollbar-thin">
-              <Table>
-                {/* Columns always render (even when there are 0 rows) */}
-                <TableHeader className="sticky top-0 z-20 bg-muted/80 backdrop-blur supports-[backdrop-filter]:bg-muted/70">
+              <div className="overflow-x-auto">
+                <Table className="min-w-[900px]">
+                  {/* Columns always render (even when there are 0 rows) */}
+                  <TableHeader className="sticky top-0 z-20 bg-muted/80 backdrop-blur supports-[backdrop-filter]:bg-muted/70">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="w-[44px] h-10 px-3 text-xs">
                       <Checkbox
@@ -1342,6 +1343,7 @@ export default function EbayOrders() {
                   )}
                 </TableBody>
               </Table>
+              </div>
 
               {/* Pagination */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-border p-3">

@@ -1469,8 +1469,9 @@ export default function Listings() {
       {/* Listings Table */}
       <Card className="border-border/50 overflow-hidden">
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
+          <div className="overflow-x-auto">
+            <Table className="min-w-[900px]">
+              <TableHeader>
               <TableRow className="border-border/50 hover:bg-transparent bg-muted/30">
                 <TableHead className="w-8 py-2 px-2">
                   <Checkbox
@@ -1667,6 +1668,7 @@ export default function Listings() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

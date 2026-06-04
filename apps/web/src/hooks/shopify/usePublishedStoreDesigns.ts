@@ -29,8 +29,7 @@ export function usePublishedStoreDesigns() {
   // Fetch unique categories and niches for filters
   const fetchFilterOptions = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('store_designs')
+      const { data, error } = await (supabase.from as any)('store_designs')
         .select('category, niche')
         .eq('is_published', true)
         .eq('is_visible', true);
@@ -48,8 +47,7 @@ export function usePublishedStoreDesigns() {
   }, []);
 
   const buildQuery = (filters: StoreDesignFilters, sortBy: StoreDesignSortBy) => {
-    let query = supabase
-      .from('store_designs')
+    let query = (supabase.from as any)('store_designs')
       .select(USER_SELECT_FIELDS)
       .eq('is_published', true)
       .eq('is_visible', true);
@@ -116,7 +114,7 @@ export function usePublishedStoreDesigns() {
       let query = buildQuery(filters, sortBy);
       query = query.limit(PAGE_SIZE);
       
-      const { data, error } = await query;
+      const { data, error } = await query as any;
       
       if (error) throw error;
       
@@ -178,7 +176,7 @@ export function usePublishedStoreDesigns() {
       }
       
       query = query.limit(PAGE_SIZE);
-      const { data, error } = await query;
+      const { data, error } = await query as any;
       
       if (error) throw error;
       

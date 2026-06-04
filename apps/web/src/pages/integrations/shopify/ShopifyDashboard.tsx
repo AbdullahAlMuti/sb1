@@ -11,7 +11,7 @@ import { Badge } from '@repo/ui/components/ui/badge';
 import {
   MOCK_KPIS, MOCK_PROBLEM_SOLVERS, MOCK_TRENDING_NICHES,
   MOCK_WINNING_PRODUCTS, MOCK_TOP_STORES, MOCK_AD_WINNERS,
-  MOCK_STORE_DESIGNS,
+
   type ShopifyKPI, type ProblemSolver,
 } from './shopify.mock';
 
