@@ -3,6 +3,7 @@ import { Button } from "@repo/ui/components/ui/button";
 import { ArrowLeft, User, Mail, CreditCard, Activity, Box, ShoppingCart, RefreshCcw, Shield, AlertCircle, Copy, CheckCircle2, XCircle, Info, Coins } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@repo/ui/components/ui/card";
 import { Badge } from "@repo/ui/components/ui/badge";
+import { Skeleton } from "@repo/ui/components/ui/skeleton";
 import { toast } from "sonner";
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@repo/api-client/supabase/client';

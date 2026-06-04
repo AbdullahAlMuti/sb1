@@ -36,6 +36,8 @@ interface SubscriptionState {
 
 // No free plan - users must pay to access the system
 
+type BillingInterval = 'monthly' | 'yearly';
+
 export function useSubscription() {
   const { user, session } = useAuth();
   const [subscription, setSubscription] = useState<SubscriptionState>({
@@ -116,19 +118,26 @@ export function useSubscription() {
     }
   }, [session?.access_token]);
 
-  const createCheckout = async (priceId: string, isYearly: boolean = false, couponCode?: string): Promise<{ url?: string; error?: string }> => {
+  const createCheckout = async (
+    planId: string,
+    billingInterval: BillingInterval = 'monthly',
+    couponCode?: string,
+    priceId?: string
+  ): Promise<{ url?: string; error?: string }> => {
     if (!session?.access_token) {
       toast.error('Please log in to subscribe');
       return { error: 'Please log in to subscribe' };
     }
 
-    if (!priceId) {
+    if (!planId) {
       return { error: 'Invalid plan configuration' };
     }
 
     try {
       const { data, error } = await supabase.functions.invoke('create-checkout', {
         body: {
+          planId,
+          billingInterval,
           priceId,
           couponCode: couponCode || undefined,
         },

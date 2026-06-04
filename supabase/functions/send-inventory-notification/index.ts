@@ -1,13 +1,10 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
+import { resolveCorsHeaders } from "../_shared/cors.ts";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
 
 interface NotificationRequest {
   userId: string;
@@ -44,8 +41,18 @@ function getEmailSubject(type: string, title: string): string {
   }
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function getEmailHtml(data: NotificationRequest): string {
   const { notificationType, listingTitle, oldValue, newValue, percentageChange } = data;
+  const safeListingTitle = escapeHtml(listingTitle);
   
   let alertColor = '#f59e0b';
   let alertIcon = '📦';
@@ -55,22 +62,22 @@ function getEmailHtml(data: NotificationRequest): string {
     case 'out_of_stock':
       alertColor = '#ef4444';
       alertIcon = '⚠️';
-      alertMessage = `<strong>${listingTitle}</strong> is now <span style="color: ${alertColor}; font-weight: bold;">OUT OF STOCK</span> on Amazon.`;
+      alertMessage = `<strong>${safeListingTitle}</strong> is now <span style="color: ${alertColor}; font-weight: bold;">OUT OF STOCK</span> on Amazon.`;
       break;
     case 'low_stock':
       alertColor = '#f59e0b';
       alertIcon = '📦';
-      alertMessage = `<strong>${listingTitle}</strong> has <span style="color: ${alertColor}; font-weight: bold;">LOW STOCK</span> (${newValue} units remaining).`;
+      alertMessage = `<strong>${safeListingTitle}</strong> has <span style="color: ${alertColor}; font-weight: bold;">LOW STOCK</span> (${newValue} units remaining).`;
       break;
     case 'price_increase':
       alertColor = '#ef4444';
       alertIcon = '📈';
-      alertMessage = `<strong>${listingTitle}</strong> price <span style="color: ${alertColor}; font-weight: bold;">INCREASED</span> from $${oldValue?.toFixed(2)} to $${newValue?.toFixed(2)} (${percentageChange?.toFixed(1)}% increase).`;
+      alertMessage = `<strong>${safeListingTitle}</strong> price <span style="color: ${alertColor}; font-weight: bold;">INCREASED</span> from $${oldValue?.toFixed(2)} to $${newValue?.toFixed(2)} (${percentageChange?.toFixed(1)}% increase).`;
       break;
     case 'price_decrease':
       alertColor = '#22c55e';
       alertIcon = '📉';
-      alertMessage = `<strong>${listingTitle}</strong> price <span style="color: ${alertColor}; font-weight: bold;">DECREASED</span> from $${oldValue?.toFixed(2)} to $${newValue?.toFixed(2)} (${Math.abs(percentageChange || 0).toFixed(1)}% decrease).`;
+      alertMessage = `<strong>${safeListingTitle}</strong> price <span style="color: ${alertColor}; font-weight: bold;">DECREASED</span> from $${oldValue?.toFixed(2)} to $${newValue?.toFixed(2)} (${Math.abs(percentageChange || 0).toFixed(1)}% decrease).`;
       break;
   }
 
@@ -132,17 +139,55 @@ function getEmailHtml(data: NotificationRequest): string {
 }
 
 serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ success: false, error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const internalSecret = Deno.env.get('INTERNAL_FUNCTION_SECRET');
+    const providedSecret = req.headers.get('X-Internal-Function-Secret');
+
+    if (!internalSecret || providedSecret !== internalSecret) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: 'send-inventory-notification:ip',
+      key: getClientIp(req),
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
 
     const data: NotificationRequest = await req.json();
-    console.log('[Notification] Processing notification request:', data);
+    console.log('[Notification] Processing notification request', {
+      userId: data.userId,
+      listingId: data.listingId,
+      notificationType: data.notificationType,
+    });
+
+    const userLimit = await checkRateLimit(supabase, {
+      bucket: 'send-inventory-notification:user',
+      key: data.userId,
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
 
     // Get user's notification settings
     const { data: settings, error: settingsError } = await supabase
@@ -210,7 +255,11 @@ serve(async (req) => {
     const subject = getEmailSubject(data.notificationType, data.listingTitle);
     const html = getEmailHtml(data);
 
-    console.log('[Notification] Sending email to:', recipientEmail);
+    console.log('[Notification] Sending email', {
+      userId: data.userId,
+      listingId: data.listingId,
+      notificationType: data.notificationType,
+    });
 
     // Send email
     const emailResponse = await resend.emails.send({
@@ -220,7 +269,16 @@ serve(async (req) => {
       html: html,
     });
 
-    console.log('[Notification] Email sent:', emailResponse);
+    if (emailResponse.error) {
+      console.error('[Notification] Email provider failed', {
+        userId: data.userId,
+        listingId: data.listingId,
+        message: emailResponse.error.message,
+      });
+      throw new Error('Email provider failed');
+    }
+
+    console.log('[Notification] Email sent', { userId: data.userId, listingId: data.listingId });
 
     // Log the notification
     await supabase.from('notification_logs').insert({
@@ -234,7 +292,7 @@ serve(async (req) => {
     });
 
     return new Response(
-      JSON.stringify({ success: true, emailResponse }),
+      JSON.stringify({ success: true, id: emailResponse.data?.id ?? null }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 

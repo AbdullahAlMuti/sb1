@@ -117,25 +117,9 @@ export default function Auth() {
     setIsProcessingCheckout(true);
     
     try {
-      // Fetch the plan to get stripe_price_id
-      const { data: plan, error: planError } = await supabase
-        .from('plans')
-        .select('stripe_price_id_monthly')
-        .eq('id', planId)
-        .single();
-
-      if (planError || !plan?.stripe_price_id_monthly) {
-        toast.error('Failed to load plan details. Please select a plan again.');
-        localStorage.removeItem('selectedPlanId');
-        localStorage.removeItem('selectedPlanName');
-        localStorage.removeItem('appliedCouponCode');
-        navigate('/#pricing', { replace: true });
-        return;
-      }
-
       const { url, error } = await createCheckout(
-        plan.stripe_price_id_monthly,
-        false,
+        planId,
+        'monthly',
         couponCode || undefined
       );
 

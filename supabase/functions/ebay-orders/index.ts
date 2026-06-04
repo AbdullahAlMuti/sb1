@@ -204,51 +204,21 @@ Deno.serve(async (req) => {
       }
 
 
-      // 2. Get Revenue Sum (filtered by SAME criteria as main list)
-      // Note: PostgREST max_rows limit (usually 1000) applies even to Service Key via HTTP.
-      // We must paginate to get all rows.
-      let allRevenueRows: any[] = [];
-      let batchSize = 1000;
-      let hasMore = true;
-      let batchPage = 0;
+      const { data: summaryRows, error: summaryError } = await supabaseAdmin.rpc("get_ebay_order_summary", {
+        p_user_id: userId,
+        p_status: status,
+        p_search: search,
+        p_date_from: dateFrom,
+        p_date_to: dateTo,
+      });
 
-      while (hasMore) {
-        // USE supabaseAdmin to be safe
-        let q = supabaseAdmin.from("ebay_orders").select("total_amount");
-        q = applyFilters(q, status);
-
-        if (status === "all") {
-          q = q
-            .not("order_status", "ilike", "cancelled")
-            .neq("total_amount", 0);
-        }
-
-        // Fetch batch
-        q = q.range(batchPage * batchSize, (batchPage + 1) * batchSize - 1);
-
-        const { data: batchData, error: batchError } = await q;
-
-        if (batchError) {
-          console.error("Revenue batch error:", batchError);
-          break;
-        }
-
-        if (batchData && batchData.length > 0) {
-          allRevenueRows = allRevenueRows.concat(batchData);
-          if (batchData.length < batchSize) {
-            hasMore = false;
-          }
-        } else {
-          hasMore = false;
-        }
-        batchPage++;
-        // Safety: Limit complexity to ~100k orders
-        if (batchPage > 100) break;
+      if (summaryError) {
+        console.error("[ebay-orders] summary error", summaryError);
       }
 
-      const revenueData = allRevenueRows;
-      const distinctRows = revenueData.length;
-      const totalRevenue = revenueData.reduce((sum: number, o: any) => sum + (Number(o.total_amount) || 0), 0) || 0;
+      const summary = Array.isArray(summaryRows) ? summaryRows[0] : summaryRows;
+      const distinctRows = Number(summary?.distinct_rows ?? 0);
+      const totalRevenue = Number(summary?.total_revenue ?? 0);
 
       // console.log(`[Revenue Debug] Status: ${status}, Rows: ${distinctRows}, Total: ${totalRevenue}`);
 

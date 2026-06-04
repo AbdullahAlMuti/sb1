@@ -1,10 +1,6 @@
 import { resolveExtensionOrLegacyAuth, createServiceClient } from "../_shared/extension-session.ts";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { requireAllowedOrigin, resolveCorsHeaders } from "../_shared/cors.ts";
 
 interface AutoOrderPayload {
   order_id?: string;
@@ -22,10 +18,37 @@ interface AutoOrderPayload {
   listing_id?: string;
 }
 
+async function readLimitedJson(req: Request, maxBytes = 8192): Promise<AutoOrderPayload> {
+  const body = await req.text();
+  if (body.length > maxBytes) throw new Error("Request body is too large");
+  const parsed = JSON.parse(body) as AutoOrderPayload;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Request body must be a JSON object");
+  }
+  return parsed;
+}
+
+function parseNumber(val: unknown): number | null {
+  if (val === null || val === undefined) return null;
+  const str = String(val).replace(/[^0-9.-]/g, "");
+  const num = parseFloat(str);
+  return Number.isFinite(num) ? num : null;
+}
+
 Deno.serve(async (req) => {
-  // Handle CORS preflight
+  const corsHeaders = resolveCorsHeaders(req, { extension: true });
+  const originError = requireAllowedOrigin(req, { extension: true });
+  if (originError) return originError;
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ success: false, error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   try {
@@ -52,97 +75,18 @@ Deno.serve(async (req) => {
     });
     if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
 
-    // Get user's plan and order limits from database
-    const { data: userPlan } = await supabase
-      .from("user_plans")
-      .select("plan_id, orders_used, current_period_end")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("plan_id")
-      .eq("id", userId)
-      .single();
-
-    const planId = userPlan?.plan_id || profile?.plan_id;
-
-    // Get plan limits dynamically
-    let maxAutoOrders = 0;
-    let planName = "free";
-    
-    if (planId) {
-      const { data: planData } = await supabase
-        .from("plans")
-        .select("name, max_auto_orders")
-        .eq("id", planId)
-        .single();
-      
-      if (planData) {
-        maxAutoOrders = planData.max_auto_orders ?? 0;
-        planName = planData.name;
-      }
-    }
-
-    // Check order limit
-    const ordersUsed = userPlan?.orders_used ?? 0;
-
-    if (maxAutoOrders === 0) {
-      console.log("[create-auto-order] Auto orders not available on plan:", planName);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Auto orders are not available on your current plan",
-          limitType: "orders",
-          current: ordersUsed,
-          limit: maxAutoOrders,
-          upgradeRequired: true,
-        }),
-        { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    if (ordersUsed >= maxAutoOrders) {
-      console.log("[create-auto-order] Order limit reached:", ordersUsed, "/", maxAutoOrders);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Order limit reached for this billing period",
-          limitType: "orders",
-          current: ordersUsed,
-          limit: maxAutoOrders,
-          upgradeRequired: true,
-        }),
-        { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Parse request body
-    const payload: AutoOrderPayload = await req.json();
-    console.log("[create-auto-order] Received payload:", JSON.stringify(payload));
-
-    // Validate required fields
+    const payload = await readLimitedJson(req);
     const ebayOrderId = payload.ebay_order_id || payload.order_id;
     if (!ebayOrderId) {
-      console.error("[create-auto-order] Missing order ID");
       return new Response(
         JSON.stringify({ success: false, error: "Missing ebay_order_id or order_id" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // Parse numeric values safely
-    const parseNumber = (val: unknown): number | null => {
-      if (val === null || val === undefined) return null;
-      const str = String(val).replace(/[^0-9.-]/g, "");
-      const num = parseFloat(str);
-      return isNaN(num) ? null : num;
-    };
-
-    // Build insert payload with user_id from session
-    const insertPayload = {
-      user_id: userId,
-      ebay_order_id: ebayOrderId,
+    const rpcPayload = {
+      ebay_order_id: String(ebayOrderId).slice(0, 100),
+      order_id: String(ebayOrderId).slice(0, 100),
       ebay_sku: payload.ebay_sku || payload.sku || null,
       buyer_name: payload.buyer_name || null,
       buyer_address: payload.buyer_address || payload.shipping_address || {},
@@ -154,108 +98,46 @@ Deno.serve(async (req) => {
       listing_id: payload.listing_id || null,
     };
 
-    console.log("[create-auto-order] Insert payload:", JSON.stringify(insertPayload));
+    const { data: rpcResult, error: rpcError } = await supabase.rpc("create_auto_order_with_usage", {
+      p_user_id: userId,
+      p_order: rpcPayload,
+    });
 
-    // Check for existing order with same ebay_order_id for this user
-    const { data: existingOrder } = await supabase
-      .from("auto_orders")
-      .select("id, status")
-      .eq("user_id", userId)
-      .eq("ebay_order_id", ebayOrderId)
-      .maybeSingle();
-
-    if (existingOrder) {
-      console.log("[create-auto-order] Order already exists:", existingOrder.id);
+    if (rpcError || !rpcResult) {
+      const message = rpcError?.message || "Failed to create auto order";
+      const status = /(limit|plan|subscription|blocked)/i.test(message) ? 402 : 500;
+      console.error("[create-auto-order] Atomic create error:", { message });
       return new Response(
-        JSON.stringify({
-          success: true,
-          message: "Order already exists",
-          id: existingOrder.id,
-          status: existingOrder.status,
-          isExisting: true,
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ success: false, error: message, upgradeRequired: status === 402 }),
+        { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // Insert new order
-    const { data: newOrder, error: insertError } = await supabase
-      .from("auto_orders")
-      .insert(insertPayload)
-      .select("id, status, created_at")
-      .single();
+    const order = rpcResult.order;
+    const action = rpcResult.action === "existing" ? "existing" : "created";
+    const status = action === "existing" ? 200 : 201;
 
-    if (insertError) {
-      console.error("[create-auto-order] Insert error:", insertError);
-      return new Response(
-        JSON.stringify({ success: false, error: insertError.message }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Increment orders_used in user_plans
-    const newOrdersUsed = ordersUsed + 1;
-    if (userPlan) {
-      await supabase
-        .from("user_plans")
-        .update({ orders_used: newOrdersUsed, updated_at: new Date().toISOString() })
-        .eq("user_id", userId);
-    } else {
-      // Create user_plans entry if it doesn't exist
-      await supabase.from("user_plans").insert({
-        user_id: userId,
-        plan_id: planId,
-        orders_used: 1,
-        status: "active",
-      });
-    }
-
-    // Log order transaction for audit trail
-    await supabase.from("order_transactions").insert({
-      user_id: userId,
-      order_id: newOrder.id,
-      transaction_type: "order_placed",
-      orders_used_after: newOrdersUsed,
-      description: `Auto order placed: ${ebayOrderId}`,
-      metadata: {
-        ebay_order_id: ebayOrderId,
-        limit: maxAutoOrders,
-      },
-    });
-
-    // Log usage
-    await supabase.from("usage_logs").insert({
-      user_id: userId,
-      action: "create_auto_order",
-      credits_used: 0,
-      metadata: {
-        order_id: newOrder.id,
-        ebay_order_id: ebayOrderId,
-      },
-    });
-
-    console.log("[create-auto-order] Order created:", newOrder.id, "Orders used:", newOrdersUsed, "/", maxAutoOrders);
+    console.log("[create-auto-order] Order handled", { action, orderId: order?.id });
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: "Auto order created",
-        id: newOrder.id,
-        status: newOrder.status,
-        created_at: newOrder.created_at,
-        isExisting: false,
-        ordersRemaining: maxAutoOrders - newOrdersUsed,
+        message: action === "existing" ? "Order already exists" : "Auto order created",
+        id: order?.id,
+        status: order?.status,
+        created_at: order?.created_at,
+        isExisting: action === "existing",
+        ordersRemaining: rpcResult.orders_remaining,
       }),
-      { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Internal server error";
     console.error("[create-auto-order] Unexpected error:", errorMessage);
     const status = /(authorization|auth token|session)/i.test(errorMessage) ? 401 : 500;
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
-      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });

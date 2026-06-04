@@ -118,13 +118,17 @@ async function sendNotification(supabase: any, payload: NotificationPayload) {
     console.log('[Notification] Sending notification:', payload.notificationType);
     
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const internalSecret = Deno.env.get('INTERNAL_FUNCTION_SECRET')!;
+    if (!internalSecret) {
+      console.error('[Notification] INTERNAL_FUNCTION_SECRET is not configured');
+      return;
+    }
     
     const response = await fetch(`${supabaseUrl}/functions/v1/send-inventory-notification`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseAnonKey}`,
+        'X-Internal-Function-Secret': internalSecret,
       },
       body: JSON.stringify(payload),
     });

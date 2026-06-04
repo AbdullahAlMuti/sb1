@@ -1557,6 +1557,226 @@ export type Database = {
         }
         Relationships: []
       }
+      shopify_page_settings: {
+        Row: {
+          content_editable: boolean
+          icon_name: string | null
+          id: string
+          is_visible: boolean
+          name: string
+          page_key: string
+          page_type: string
+          plan_access: string
+          route: string
+          sort_order: number
+          status: string
+          updated_at: string
+          updated_by: string | null
+          usage_limit: string
+        }
+        Insert: {
+          content_editable?: boolean
+          icon_name?: string | null
+          id?: string
+          is_visible?: boolean
+          name: string
+          page_key: string
+          page_type?: string
+          plan_access?: string
+          route: string
+          sort_order?: number
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          usage_limit?: string
+        }
+        Update: {
+          content_editable?: boolean
+          icon_name?: string | null
+          id?: string
+          is_visible?: boolean
+          name?: string
+          page_key?: string
+          page_type?: string
+          plan_access?: string
+          route?: string
+          sort_order?: number
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          usage_limit?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shopify_page_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_design_events: {
+        Row: {
+          created_at: string
+          design_id: string
+          event_type: string
+          id: string
+          metadata: Json
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          design_id: string
+          event_type: string
+          id?: string
+          metadata?: Json
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          design_id?: string
+          event_type?: string
+          id?: string
+          metadata?: Json
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_design_events_design_id_fkey"
+            columns: ["design_id"]
+            isOneToOne: false
+            referencedRelation: "store_designs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      store_designs: {
+        Row: {
+          access_level: string
+          allowed_plans: string[]
+          category: string | null
+          compare_at_price: number | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          demo_url: string | null
+          description: string | null
+          gallery_images: string[]
+          id: string
+          is_featured: boolean
+          is_free: boolean
+          is_premium: boolean
+          is_published: boolean
+          is_trending: boolean
+          is_visible: boolean
+          metadata: Json
+          niche: string | null
+          preview_image: string | null
+          price: number
+          seo_description: string | null
+          seo_title: string | null
+          short_description: string | null
+          slug: string
+          sort_order: number
+          status: string
+          tags: string[]
+          template_url: string | null
+          thumbnail_image: string | null
+          title: string
+          updated_at: string
+          updated_by: string | null
+          upgrade_message: string | null
+        }
+        Insert: {
+          access_level?: string
+          allowed_plans?: string[]
+          category?: string | null
+          compare_at_price?: number | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          demo_url?: string | null
+          description?: string | null
+          gallery_images?: string[]
+          id?: string
+          is_featured?: boolean
+          is_free?: boolean
+          is_premium?: boolean
+          is_published?: boolean
+          is_trending?: boolean
+          is_visible?: boolean
+          metadata?: Json
+          niche?: string | null
+          preview_image?: string | null
+          price?: number
+          seo_description?: string | null
+          seo_title?: string | null
+          short_description?: string | null
+          slug: string
+          sort_order?: number
+          status?: string
+          tags?: string[]
+          template_url?: string | null
+          thumbnail_image?: string | null
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+          upgrade_message?: string | null
+        }
+        Update: {
+          access_level?: string
+          allowed_plans?: string[]
+          category?: string | null
+          compare_at_price?: number | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          demo_url?: string | null
+          description?: string | null
+          gallery_images?: string[]
+          id?: string
+          is_featured?: boolean
+          is_free?: boolean
+          is_premium?: boolean
+          is_published?: boolean
+          is_trending?: boolean
+          is_visible?: boolean
+          metadata?: Json
+          niche?: string | null
+          preview_image?: string | null
+          price?: number
+          seo_description?: string | null
+          seo_title?: string | null
+          short_description?: string | null
+          slug?: string
+          sort_order?: number
+          status?: string
+          tags?: string[]
+          template_url?: string | null
+          thumbnail_image?: string | null
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+          upgrade_message?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "store_designs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "store_designs_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       usage_logs: {
         Row: {
           action: string

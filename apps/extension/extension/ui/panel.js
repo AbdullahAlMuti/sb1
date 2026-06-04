@@ -5,6 +5,15 @@
 
 console.log('[Panel] Initializing...');
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Wait for DOM to be ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initPanel);
@@ -176,12 +185,17 @@ function displayImages(images) {
 
   // Fallback to optimized vanilla implementation
   if (!images || images.length === 0) {
-    gallery.innerHTML = '<div class="gallery-empty"><span>No images available</span></div>';
+    const empty = document.createElement('div');
+    empty.className = 'gallery-empty';
+    const label = document.createElement('span');
+    label.textContent = 'No images available';
+    empty.appendChild(label);
+    gallery.replaceChildren(empty);
     return;
   }
 
   // Clear and prepare container
-  gallery.innerHTML = '';
+  gallery.replaceChildren();
   gallery.style.contain = 'layout style';
 
   // Create fragment for batch DOM insertion
@@ -681,6 +695,7 @@ function renderInlineTitles(titles) {
   titles.forEach((titleItem, index) => {
     // Handle both string arrays and object arrays {title: "...", score: ...}
     const titleStr = typeof titleItem === 'object' ? titleItem.title : titleItem;
+    const escapedTitleStr = escapeHtml(titleStr);
     
     // Determine rank/badge
     let badgeClass = 'alternative';
@@ -707,7 +722,7 @@ function renderInlineTitles(titles) {
           <span class="\${titleStr.length > 80 ? 'warning' : ''}">\${titleStr.length} chars</span>
         </div>
       </div>
-      <div class="inline-title-text">\${titleStr}</div>
+      <div class="inline-title-text">\${escapedTitleStr}</div>
       <div class="inline-title-actions">
         <button class="btn btn-sm inline-title-use">\${index === 0 ? 'Selected' : 'Use Title'}</button>
         <button class="btn btn-sm inline-title-copy">

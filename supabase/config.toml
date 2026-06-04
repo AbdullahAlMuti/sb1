@@ -1,27 +1,87 @@
 project_id = "ojxzssooylmydystjvdo"
 
+# Browser/user JWT endpoints. Keep platform JWT verification enabled.
+[functions.create-checkout]
+verify_jwt = true
+
+[functions.customer-portal]
+verify_jwt = true
+
+[functions.validate-coupon]
+verify_jwt = true
+
+[functions.test-api-key]
+verify_jwt = true
+
+[functions.ebay-orders]
+verify_jwt = true
+
+[functions.orders-dashboard]
+verify_jwt = true
+
+[functions.admin-adjust-credits]
+verify_jwt = true
+
+[functions.auth-status]
+verify_jwt = true
+
+[functions.get-listings]
+verify_jwt = true
+
+[functions.extension-connect-start]
+verify_jwt = true
+
+[functions.extension-connect-approve]
+verify_jwt = true
+
+[functions.extension-pairing-approve]
+verify_jwt = true
+
+[functions.extension-admin-devices]
+verify_jwt = true
+
+[functions.extension-admin-device-detail]
+verify_jwt = true
+
+[functions.extension-admin-feature-flags]
+verify_jwt = true
+
+[functions.extension-admin-update-feature-flag]
+verify_jwt = true
+
+[functions.whatsapp-config]
+verify_jwt = true
+
+# Public/auth alternatives. These handlers must enforce their own auth/signature/secret checks.
+[functions.stripe-webhook]
+verify_jwt = false # Stripe signs requests; no Supabase user JWT is available.
+
+[functions.auth-otp]
+verify_jwt = false # Public OTP request/verify flow; handler applies OTP-specific rate limits.
+
+[functions.send-inventory-notification]
+verify_jwt = false # Internal service-to-service call guarded by X-Internal-Function-Secret.
+
+[functions.queue-worker]
+verify_jwt = false # Internal worker endpoint guarded by X-Internal-Function-Secret.
+
+# Extension/custom-token endpoints. Platform JWT verification would reject extension session tokens.
 [functions.sync-ebay-orders]
 verify_jwt = false
 
-[functions.create-checkout]
+[functions.create-listing]
 verify_jwt = false
 
-[functions.whatsapp-config]
+[functions.create-auto-order]
 verify_jwt = false
 
-[functions.ebay-orders]
+[functions.generate-titles]
 verify_jwt = false
 
-[functions.orders-dashboard]
+[functions.generate-description]
 verify_jwt = false
 
-[functions.admin-adjust-credits]
-verify_jwt = false
-
-[functions.extension-connect-start]
-verify_jwt = false
-
-[functions.extension-connect-approve]
+[functions.generate-description-v2]
 verify_jwt = false
 
 [functions.extension-token-redeem]
@@ -52,37 +112,4 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.extension-pairing-status]
-verify_jwt = false
-
-[functions.extension-pairing-approve]
-verify_jwt = false
-
-[functions.auth-status]
-verify_jwt = false
-
-[functions.create-listing]
-verify_jwt = false
-
-[functions.generate-titles]
-verify_jwt = false
-
-[functions.generate-description]
-verify_jwt = false
-
-[functions.get-listings]
-verify_jwt = false
-
-[functions.test-api-key]
-verify_jwt = true
-
-[functions.extension-admin-devices]
-verify_jwt = false
-
-[functions.extension-admin-device-detail]
-verify_jwt = false
-
-[functions.extension-admin-feature-flags]
-verify_jwt = false
-
-[functions.extension-admin-update-feature-flag]
 verify_jwt = false

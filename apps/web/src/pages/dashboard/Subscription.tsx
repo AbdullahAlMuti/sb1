@@ -138,7 +138,7 @@ export default function Subscription() {
                     className="w-full"
                     variant={isCurrentPlan ? 'secondary' : 'default'}
                     disabled={isCurrentPlan || !isPaid || !plan.stripe_price_id_monthly}
-                    onClick={() => isPaid && plan.stripe_price_id_monthly && createCheckout(plan.stripe_price_id_monthly)}
+                    onClick={() => isPaid && plan.stripe_price_id_monthly && createCheckout(plan.id, "monthly", undefined, plan.stripe_price_id_monthly)}
                   >
                     {isCurrentPlan 
                       ? 'Current Plan' 

@@ -48,7 +48,7 @@ export default function PaymentRequired() {
 
     setIsProcessing(true);
     try {
-      const { url } = await createCheckout(selectedPlan.stripe_price_id_monthly);
+      const { url } = await createCheckout(selectedPlan.id, "monthly", undefined, selectedPlan.stripe_price_id_monthly);
       if (url) {
         window.location.href = url;
       }

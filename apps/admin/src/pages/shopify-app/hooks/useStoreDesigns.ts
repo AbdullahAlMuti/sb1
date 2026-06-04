@@ -41,7 +41,7 @@ async function writeAuditLog(
   metadata?: Record<string, unknown>,
 ) {
   try {
-    await supabase.from(AUDIT_TABLE).insert({
+    await (supabase as any).from(AUDIT_TABLE).insert({
       user_id:     userId,
       action,
       entity_type: 'store_design',

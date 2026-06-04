@@ -140,6 +140,7 @@ serve(async (req) => {
         });
 
         const userId = session.metadata?.user_id;
+        const stripeCustomerId = typeof session.customer === "string" ? session.customer : null;
 
         if (userId && session.subscription) {
           // Fetch subscription details
@@ -182,13 +183,16 @@ serve(async (req) => {
               await supabase.from("user_plans").insert(planPayload);
             }
 
-            // Update profile with new plan and credits
+            // Update profile with new plan, credits, and canonical Stripe customer id.
+            const profileUpdate: Record<string, unknown> = {
+              plan_id: planData.id,
+              credits: planData.credits_per_month,
+            };
+            if (stripeCustomerId) profileUpdate.stripe_customer_id = stripeCustomerId;
+
             await supabase
               .from("profiles")
-              .update({ 
-                plan_id: planData.id, 
-                credits: planData.credits_per_month 
-              })
+              .update(profileUpdate)
               .eq("id", userId);
 
             // Log credit transaction

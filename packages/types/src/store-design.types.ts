@@ -145,6 +145,9 @@ export interface StoreDesignFormValues {
   // SEO
   seo_title:         string;
   seo_description:   string;
+
+  // Analytics / optional template metadata
+  metadata:          StoreDesignMetadata;
 }
 
 // ── Filter / query params ─────────────────────────────────────────────────────

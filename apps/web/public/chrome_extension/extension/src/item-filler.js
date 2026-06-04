@@ -232,11 +232,15 @@ class SimpleItemFillerSystem {
             if (descriptionEditor && descriptionEditor.contentDocument) {
                 const editorBody = descriptionEditor.contentDocument.body;
                 if (!editorBody.innerText || editorBody.innerText.trim() === '') {
-                    const formattedDescription = result.description
-                        .replace(/\n\n/g, '</p><p>')
-                        .replace(/\n/g, '<br>');
-                    
-                    editorBody.innerHTML = `<p>${formattedDescription}</p>`;
+                    editorBody.replaceChildren();
+                    String(result.description).split(/\n{2,}/).forEach((paragraphText) => {
+                        const paragraph = descriptionEditor.contentDocument.createElement('p');
+                        paragraphText.split('\n').forEach((line, index) => {
+                            if (index > 0) paragraph.appendChild(descriptionEditor.contentDocument.createElement('br'));
+                            paragraph.appendChild(descriptionEditor.contentDocument.createTextNode(line));
+                        });
+                        editorBody.appendChild(paragraph);
+                    });
                     this.logger.info('✅ Description filled in iframe editor.');
                 } else {
                     this.logger.info('ℹ️ Description field already contains text. Skipping.');

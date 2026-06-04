@@ -122,14 +122,11 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Ensure user profile exists and get credits
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile } = await supabase
       .from('profiles')
-      .select('credits, plan_id, email, full_name')
+      .select('id')
       .eq('id', userId)
       .maybeSingle();
-
-    let userCredits = profile?.credits ?? 0;
-    let planId = profile?.plan_id;
 
     // Auto-create profile if missing
     if (!profile) {
@@ -140,7 +137,7 @@ Deno.serve(async (req) => {
         .eq('name', 'free')
         .maybeSingle();
 
-      const { data: created, error: createErr } = await supabase
+      const { error: createErr } = await supabase
         .from('profiles')
         .insert({
           id: userId,
@@ -150,7 +147,7 @@ Deno.serve(async (req) => {
           is_active: true,
           plan_id: freePlan?.id ?? null,
         })
-        .select('credits, plan_id')
+        .select('id')
         .single();
 
       if (createErr) {
@@ -160,8 +157,6 @@ Deno.serve(async (req) => {
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      userCredits = created?.credits ?? 0;
-      planId = created?.plan_id;
     }
 
     // Check listing limit BEFORE credit check (for new listings only)
@@ -240,8 +235,8 @@ Deno.serve(async (req) => {
       ebay_item_id: (body.ebay_item_id ?? body.ebayItemId)?.trim().substring(0, 50) || null,
       status: body.status || 'active',
       auto_order_enabled: body.auto_order_enabled ?? false,
-      amazon_data: (body as any).amazon_data ?? amazonData,
-      ebay_data: (body as any).ebay_data ?? ebayData,
+      amazon_data: amazonData,
+      ebay_data: ebayData,
     };
 
     if (existingId) {
@@ -271,62 +266,35 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Insert new listing
-    const { data: created, error: insertErr } = await supabase
-      .from('listings')
-      .insert(normalizedListing)
-      .select()
-      .single();
+    const { data: rpcResult, error: rpcErr } = await supabase.rpc('create_listing_with_usage', {
+      p_user_id: userId,
+      p_listing: normalizedListing,
+    });
 
-    if (insertErr) {
-      console.error('[create-listing] Insert error:', insertErr);
+    if (rpcErr || !rpcResult) {
+      const message = rpcErr?.message || 'Failed to create listing';
+      const status = /(limit|credit|subscription|blocked|plan)/i.test(message) ? 402 : 500;
+      console.error('[create-listing] Atomic create error:', { message });
       return new Response(
-        JSON.stringify({ success: false, error: insertErr.message }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: message, upgradeRequired: status === 402 }),
+        { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Deduct 1 credit
-    const newCredits = Math.max(0, userCredits - 1);
-    await supabase
-      .from('profiles')
-      .update({ credits: newCredits })
-      .eq('id', userId);
+    const created = rpcResult.listing;
+    const action = rpcResult.action === 'existing' ? 'existing' : 'created';
+    const responseStatus = action === 'existing' ? 200 : 201;
 
-    // Log credit transaction for audit trail
-    await supabase.from('credit_transactions').insert({
-      user_id: userId,
-      amount: -1,
-      transaction_type: 'usage',
-      balance_after: newCredits,
-      description: `Created listing: ${created.title?.substring(0, 50)}`,
-      metadata: {
-        listing_id: created.id,
-        action: 'create_listing',
-      },
-    });
-
-    // Log usage
-    await supabase.from('usage_logs').insert({
-      user_id: userId,
-      action: 'create_listing',
-      credits_used: 1,
-      metadata: {
-        listing_id: created.id,
-        title: created.title,
-      },
-    });
-
-    console.log(`[create-listing] Created listing: ${created.id}, deducted 1 credit`);
+    console.log(`[create-listing] ${action} listing: ${created?.id}`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        action: 'created',
+        action,
         listing: created,
-        creditsRemaining: newCredits,
+        creditsRemaining: rpcResult.credits_remaining,
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: responseStatus, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
     console.error('[create-listing] Error:', error);

@@ -2,28 +2,97 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
+import {
+  getAllowedReturnOrigin,
+  requireAllowedOrigin,
+  resolveCorsHeaders,
+} from "../_shared/cors.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+type BillingInterval = "monthly" | "yearly";
 
-const logStep = (step: string, details?: any) => {
-  const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PRICE_ID_RE = /^price_[a-zA-Z0-9]+$/;
+
+const logStep = (step: string, details?: Record<string, unknown>) => {
+  const detailsStr = details ? ` - ${JSON.stringify(details)}` : "";
   console.log(`[CREATE-CHECKOUT] ${step}${detailsStr}`);
 };
 
+async function readLimitedJson(req: Request, maxBytes = 4096): Promise<Record<string, unknown>> {
+  const body = await req.text();
+  if (body.length > maxBytes) throw new Error("Request body is too large");
+  if (!body) return {};
+  const parsed = JSON.parse(body);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Request body must be a JSON object");
+  }
+  return parsed as Record<string, unknown>;
+}
+
+async function persistStripeCustomerId(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  userId: string,
+  customerId: string,
+) {
+  const { error } = await supabaseAdmin
+    .from("profiles")
+    .update({ stripe_customer_id: customerId })
+    .eq("id", userId);
+
+  if (error) {
+    console.error("[CREATE-CHECKOUT] Failed to persist Stripe customer id", {
+      userId,
+      message: error.message,
+    });
+  }
+}
+
+async function resolveStripeCustomerId(
+  stripe: Stripe,
+  supabaseAdmin: ReturnType<typeof createClient>,
+  userId: string,
+  userEmail: string,
+  existingCustomerId: string | null,
+): Promise<string> {
+  if (existingCustomerId) return existingCustomerId;
+
+  const customers = await stripe.customers.list({ email: userEmail, limit: 2 });
+  if (customers.data.length > 1) {
+    throw new Error("Multiple Stripe customers match this account. Contact support.");
+  }
+
+  const customer =
+    customers.data[0] ??
+    (await stripe.customers.create({
+      email: userEmail,
+      metadata: { user_id: userId },
+    }));
+
+  await persistStripeCustomerId(supabaseAdmin, userId, customer.id);
+  return customer.id;
+}
+
 serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req);
+  const originError = requireAllowedOrigin(req);
+  if (originError) return originError;
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 405,
+    });
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-
-  // Service-role client for privileged DB operations (coupon write, etc.)
-  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
+  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
 
   try {
     logStep("Function started");
@@ -36,22 +105,25 @@ serve(async (req) => {
     });
     if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
 
-    const requestBody = await req.json();
-    
-    // SECURITY: Input validation
-    const priceId = typeof requestBody.priceId === 'string' ? requestBody.priceId.slice(0, 100) : null;
-    const planId = typeof requestBody.planId === 'string' ? requestBody.planId.slice(0, 100) : null;
-    const couponCode = typeof requestBody.couponCode === 'string' ? requestBody.couponCode.slice(0, 50).toUpperCase().trim() : null;
-    
-    if (!priceId || !/^price_[a-zA-Z0-9]+$/.test(priceId)) {
-      throw new Error("Valid Price ID is required");
-    }
-    logStep("Request parsed", { priceId, planId, couponCode: couponCode ? "provided" : "none" });
+    const requestBody = await readLimitedJson(req);
+    const planId = typeof requestBody.planId === "string" ? requestBody.planId.trim() : "";
+    const billingInterval: BillingInterval = requestBody.billingInterval === "yearly" ? "yearly" : "monthly";
+    const expectedPriceId = typeof requestBody.priceId === "string" ? requestBody.priceId.trim() : null;
+    const couponCode =
+      typeof requestBody.couponCode === "string"
+        ? requestBody.couponCode.slice(0, 50).toUpperCase().trim()
+        : null;
 
-    // Auth: Use bearer token claims (edge functions don't have a browser session)
+    if (!UUID_RE.test(planId)) {
+      throw new Error("Valid planId is required");
+    }
+
+    if (expectedPriceId && !PRICE_ID_RE.test(expectedPriceId)) {
+      throw new Error("Invalid priceId format");
+    }
+
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      logStep("Unauthorized - missing bearer token", { hasAuthHeader: Boolean(authHeader) });
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 401,
@@ -59,26 +131,12 @@ serve(async (req) => {
     }
 
     const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-
-    // Basic JWT sanity check to avoid confusing "Auth session missing" errors
-    const tokenParts = token.split('.');
-    if (!token || tokenParts.length !== 3) {
-      logStep("Unauthorized - invalid JWT format", { tokenPresent: Boolean(token), parts: tokenParts.length });
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 401,
-      });
-    }
-
-    // Stateless auth: validate JWT and load the user
     const supabaseAuthClient = createClient(supabaseUrl, supabaseAnonKey, {
       auth: { persistSession: false },
       global: { headers: { Authorization: authHeader } },
     });
 
-    // Prefer getUser(token) (works reliably in Edge, no session required)
     const { data: userData, error: userError } = await supabaseAuthClient.auth.getUser(token);
-
     if (userError || !userData?.user?.id) {
       logStep("Unauthorized", { message: userError?.message });
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -99,69 +157,80 @@ serve(async (req) => {
     if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
 
     if (!userEmail) {
-      logStep("Missing email on user", { userId });
       return new Response(JSON.stringify({ error: "Email not available for this user" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 400,
       });
     }
 
-    logStep("User authenticated", { userId, email: userEmail });
+    const { data: plan, error: planError } = await supabaseAdmin
+      .from("plans")
+      .select("id, name, display_name, stripe_price_id_monthly, stripe_price_id_yearly, is_active")
+      .eq("id", planId)
+      .eq("is_active", true)
+      .maybeSingle();
 
-    const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
-      apiVersion: "2025-08-27.basil",
-    });
-
-    // Check for existing customer
-    const customers = await stripe.customers.list({ email: userEmail, limit: 1 });
-    let customerId;
-    if (customers.data.length > 0) {
-      customerId = customers.data[0].id;
-      logStep("Existing customer found", { customerId });
+    if (planError || !plan) {
+      throw new Error("Selected plan is unavailable");
     }
 
-    // Handle coupon if provided
-    let stripeCouponId = null;
-    let couponData = null;
+    const stripePriceId =
+      billingInterval === "yearly" ? plan.stripe_price_id_yearly : plan.stripe_price_id_monthly;
+
+    if (!stripePriceId || !PRICE_ID_RE.test(stripePriceId)) {
+      throw new Error("Selected plan is not configured for checkout");
+    }
+
+    if (expectedPriceId && expectedPriceId !== stripePriceId) {
+      throw new Error("Submitted priceId does not match the selected plan");
+    }
+
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("stripe_customer_id")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
+    const customerId = await resolveStripeCustomerId(
+      stripe,
+      supabaseAdmin,
+      userId,
+      userEmail,
+      typeof profile?.stripe_customer_id === "string" ? profile.stripe_customer_id : null,
+    );
+
+    let stripeCouponId: string | null = null;
+    let couponData: Record<string, any> | null = null;
 
     if (couponCode) {
-      // Validate coupon from our database
       const { data: coupon, error: couponError } = await supabaseAdmin
         .from("coupons")
         .select("*")
-        .eq("code", couponCode.toUpperCase().trim())
+        .eq("code", couponCode)
         .eq("is_active", true)
         .single();
 
       if (couponError || !coupon) {
-        logStep("Coupon not found or inactive", { couponCode });
         throw new Error("Invalid coupon code");
       }
 
-      // Validate coupon dates
       const now = new Date();
       const validFrom = new Date(coupon.valid_from);
       const validUntil = coupon.valid_until ? new Date(coupon.valid_until) : null;
 
-      if (now < validFrom) {
-        throw new Error("This coupon is not yet active");
-      }
-      if (validUntil && now > validUntil) {
-        throw new Error("This coupon has expired");
-      }
-
-      // Validate usage limits
+      if (now < validFrom) throw new Error("This coupon is not yet active");
+      if (validUntil && now > validUntil) throw new Error("This coupon has expired");
       if (coupon.usage_limit !== null && coupon.used_count >= coupon.usage_limit) {
         throw new Error("This coupon has reached its usage limit");
       }
 
-      // Check one-time per user
       if (coupon.is_one_time_per_user) {
         const { data: existingUsage } = await supabaseAdmin
           .from("coupon_usages")
           .select("id")
           .eq("coupon_id", coupon.id)
-           .eq("user_id", userId)
+          .eq("user_id", userId)
           .limit(1);
 
         if (existingUsage && existingUsage.length > 0) {
@@ -169,93 +238,72 @@ serve(async (req) => {
         }
       }
 
-      // Check applicable plans
-      if (coupon.applicable_plans && coupon.applicable_plans.length > 0) {
-        if (!coupon.applicable_plans.includes(planId)) {
-          throw new Error("This coupon is not valid for the selected plan");
-        }
+      if (coupon.applicable_plans?.length && !coupon.applicable_plans.includes(planId)) {
+        throw new Error("This coupon is not valid for the selected plan");
       }
 
-      logStep("Coupon validated", { couponId: coupon.id, discountType: coupon.discount_type });
+      const stripeCouponParams: Stripe.CouponCreateParams = {
+        duration: "once",
+        metadata: {
+          internal_coupon_id: coupon.id,
+          internal_coupon_code: coupon.code,
+        },
+      };
+
+      if (coupon.discount_type === "percentage") {
+        stripeCouponParams.percent_off = coupon.discount_value;
+      } else {
+        stripeCouponParams.amount_off = Math.round(coupon.discount_value * 100);
+        stripeCouponParams.currency = "usd";
+      }
+
+      const stripeCoupon = await stripe.coupons.create(stripeCouponParams);
+      stripeCouponId = stripeCoupon.id;
       couponData = coupon;
-
-      // Create a Stripe coupon for this checkout
-      try {
-        const stripeCouponParams: Stripe.CouponCreateParams = {
-          duration: 'once',
-          metadata: {
-            internal_coupon_id: coupon.id,
-            internal_coupon_code: coupon.code
-          }
-        };
-
-        if (coupon.discount_type === 'percentage') {
-          stripeCouponParams.percent_off = coupon.discount_value;
-        } else {
-          stripeCouponParams.amount_off = Math.round(coupon.discount_value * 100); // Convert to cents
-          stripeCouponParams.currency = 'usd';
-        }
-
-        const stripeCoupon = await stripe.coupons.create(stripeCouponParams);
-        stripeCouponId = stripeCoupon.id;
-        logStep("Stripe coupon created", { stripeCouponId });
-      } catch (stripeError) {
-        logStep("Error creating Stripe coupon", { error: stripeError });
-        throw new Error("Failed to apply coupon");
-      }
+      logStep("Coupon validated", { couponId: coupon.id, discountType: coupon.discount_type });
     }
 
-    // Create checkout session
+    const returnOrigin = getAllowedReturnOrigin(req);
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       customer: customerId,
-      customer_email: customerId ? undefined : userEmail,
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
+      line_items: [{ price: stripePriceId, quantity: 1 }],
       mode: "subscription",
-      success_url: `${req.headers.get("origin")}/checkout/success?plan=${planId}`,
-      cancel_url: `${req.headers.get("origin")}/#pricing`,
-           metadata: {
+      success_url: `${returnOrigin}/checkout/success?plan=${encodeURIComponent(planId)}`,
+      cancel_url: `${returnOrigin}/#pricing`,
+      metadata: {
         user_id: userId,
         plan_id: planId,
+        billing_interval: billingInterval,
         coupon_id: couponData?.id || null,
         coupon_code: couponData?.code || null,
       },
     };
 
-    // Apply coupon discount if we have one
     if (stripeCouponId) {
       sessionParams.discounts = [{ coupon: stripeCouponId }];
     }
 
     const session = await stripe.checkout.sessions.create(sessionParams);
+    logStep("Checkout session created", {
+      sessionId: session.id,
+      userId,
+      planId,
+      billingInterval,
+      hasCoupon: Boolean(stripeCouponId),
+    });
 
-    logStep("Checkout session created", { sessionId: session.id, url: session.url, hasCoupon: !!stripeCouponId });
-
-    // If we have a coupon, record the usage attempt (will be confirmed by webhook later)
     if (couponData) {
-      // Update used_count optimistically
       await supabaseAdmin
         .from("coupons")
         .update({ used_count: couponData.used_count + 1 })
         .eq("id", couponData.id);
 
-      // Record usage
-      await supabaseAdmin
-        .from("coupon_usages")
-        .insert({
-          coupon_id: couponData.id,
-          user_id: userId,
-          stripe_session_id: session.id,
-          discount_applied: couponData.discount_type === 'percentage' 
-            ? 0 // Will be calculated after payment
-            : couponData.discount_value
-        });
-
-      logStep("Coupon usage recorded", { couponId: couponData.id });
+      await supabaseAdmin.from("coupon_usages").insert({
+        coupon_id: couponData.id,
+        user_id: userId,
+        stripe_session_id: session.id,
+        discount_applied: couponData.discount_type === "percentage" ? 0 : couponData.discount_value,
+      });
     }
 
     return new Response(JSON.stringify({ url: session.url }), {
@@ -267,7 +315,7 @@ serve(async (req) => {
     logStep("ERROR", { message: errorMessage });
     return new Response(JSON.stringify({ error: errorMessage }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500,
+      status: errorMessage.includes("Origin") ? 403 : 500,
     });
   }
 });

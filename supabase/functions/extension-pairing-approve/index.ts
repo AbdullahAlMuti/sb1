@@ -16,6 +16,7 @@ import {
   isFeatureEnabled,
   requireExtensionNewAuthEnabled,
   optionalString,
+  verifyWorkspaceMembership,
 } from "../_shared/extension-session.ts";
 import { checkRateLimit, getClientIp as getRateLimitIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
@@ -51,9 +52,9 @@ Deno.serve(async (req) => {
     const pairingCode = requireString(body, "pairingCode");
     const requestedWorkspaceId = optionalString(body, "workspaceId");
 
-    // We can also verify workspace membership if explicitly provided, else use default.
+    // Explicit workspace selection must prove membership; otherwise use the caller's default workspace.
     const { workspace } = requestedWorkspaceId 
-      ? { workspace: { id: requestedWorkspaceId } } // In a real app we'd verify membership here if provided
+      ? { workspace: await verifyWorkspaceMembership(supabase, user.id, requestedWorkspaceId) }
       : await ensureDefaultWorkspace(supabase, user.id);
 
     const pairingCodeHash = await sha256(pairingCode);

@@ -170,7 +170,8 @@ serve(async (req) => {
     const rateLimit = await enforceAuthRateLimits(supabaseAdmin, req, String(action || "unknown"), email);
     if (!rateLimit.allowed) return rateLimitResponse(rateLimit, corsHeaders);
 
-    console.log(`[auth-otp] Action: ${action}, Email: ${email}`);
+    const emailHash = (await sha256(`auth-otp-log:${email}`)).slice(0, 12);
+    console.log(`[auth-otp] Action: ${action}, EmailHash: ${emailHash}`);
 
     if (action === "validate-login-context") {
       if (loginContext !== "user" && loginContext !== "admin") {
