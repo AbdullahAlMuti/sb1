@@ -1,4 +1,5 @@
 import {
+  corsHeaders,
   createServiceClient,
   getFeatureFlags,
   getSubscriptionSnapshot,
@@ -8,6 +9,7 @@ import {
   requireExtensionNewAuthEnabled,
   validateExtensionAccessToken,
 } from "../_shared/extension-session.ts";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 function getLimits(plan: Record<string, unknown> | null, userPlan: Record<string, unknown> | null) {
   const overrides = (userPlan?.admin_override_limits ?? {}) as Record<string, number>;
@@ -27,8 +29,24 @@ Deno.serve(async (req) => {
 
   const supabase = createServiceClient();
   try {
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: "extension-bootstrap:ip",
+      key: getClientIp(req),
+      limit: 120,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
+
     await requireExtensionNewAuthEnabled(supabase);
     const context = await validateExtensionAccessToken(supabase, req);
+    const userLimit = await checkRateLimit(supabase, {
+      bucket: "extension-bootstrap:user",
+      key: context.session.user_id,
+      limit: 120,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
+
     const flags = await getFeatureFlags(supabase);
     const { subscription, userPlan, plan } = await getSubscriptionSnapshot(
       supabase,

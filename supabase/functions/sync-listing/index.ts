@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { validateUserPlan } from '../_shared/plan-middleware.ts';
+import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -60,6 +61,15 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: 'sync-listing:ip',
+      key: getClientIp(req),
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
     
     // Support both Authorization header and x-api-key (for extension compatibility)
     let authToken = req.headers.get('Authorization')?.replace('Bearer ', '');
@@ -95,8 +105,13 @@ Deno.serve(async (req) => {
 
     console.log(`[sync-listing] User authenticated: ${user.id} (${user.email})`);
 
-    // Use service role for database operations
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const userLimit = await checkRateLimit(supabase, {
+      bucket: 'sync-listing:user',
+      key: user.id,
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
 
     if (req.method === 'POST') {
       const body = await req.json();

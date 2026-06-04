@@ -1,4 +1,5 @@
 import {
+  corsHeaders,
   createServiceClient,
   getClientIp,
   getUserAgent,
@@ -15,6 +16,7 @@ import {
   validateExtensionAccessToken,
   verifyWebUser,
 } from "../_shared/extension-session.ts";
+import { checkRateLimit, getClientIp as getRateLimitIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 Deno.serve(async (req) => {
   const methodResponse = requireMethod(req, ["POST"]);
@@ -22,6 +24,14 @@ Deno.serve(async (req) => {
 
   const supabase = createServiceClient();
   try {
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: "extension-device-revoke:ip",
+      key: getRateLimitIp(req),
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
+
     await requireExtensionNewAuthEnabled(supabase);
     const body = await readJson(req);
     const reason = optionalString(body, "reason") || "revoked";

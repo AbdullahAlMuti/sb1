@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { resolveExtensionOrLegacyAuth, createServiceClient } from '../_shared/extension-session.ts';
+import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,8 +32,6 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
     
     if (!lovableApiKey) {
@@ -46,26 +45,25 @@ serve(async (req) => {
       });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createServiceClient();
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: 'generate-blog-post:ip',
+      key: getClientIp(req),
+      limit: 15,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
 
-    // Get user from auth header
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
+    const userId = authContext.userId;
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    
-    if (authError || !user) {
-      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    const userLimit = await checkRateLimit(supabase, {
+      bucket: 'generate-blog-post:user',
+      key: userId,
+      limit: 20,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
 
     const { 
       listingIds, 
@@ -117,7 +115,7 @@ serve(async (req) => {
       .from('listings')
       .select('id, title, amazon_asin, amazon_url, amazon_price, sku')
       .in('id', listingIds)
-      .eq('user_id', user.id);
+      .eq('user_id', userId);
 
     if (listingsError || !listings || listings.length === 0) {
       console.error('Error fetching listings:', listingsError);
@@ -206,7 +204,7 @@ serve(async (req) => {
         const { data: blogPost, error: insertError } = await supabase
           .from('blog_posts')
           .insert({
-            user_id: user.id,
+            user_id: userId,
             listing_id: listing.id,
             title: parsedContent.title,
             content: parsedContent.content,
@@ -270,11 +268,12 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in generate-blog-post function:', error);
+    const status = error instanceof Error && /(authorization|auth token|session)/i.test(error.message) ? 401 : 500;
     return new Response(JSON.stringify({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error'
     }), {
-      status: 500,
+      status,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

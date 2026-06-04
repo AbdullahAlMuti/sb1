@@ -1,0 +1,84 @@
+flowchart TB
+  subgraph Users["Users and External Actors"]
+    Visitor["Visitor"]
+    Seller["Seller user"]
+    Admin["Admin user"]
+    ExtensionUser["Browser extension user"]
+    Stripe["Stripe"]
+    Resend["Resend email API"]
+    Marketplaces["eBay / Shopify / Amazon / Walmart"]
+  end
+
+  subgraph Frontends["Frontend Applications"]
+    Marketing["apps/marketing\nPublic Vite React app"]
+    Web["apps/web\nCustomer SaaS app"]
+    AdminApp["apps/admin\nAdmin console"]
+    Extension["apps/extension\nChrome extension"]
+  end
+
+  subgraph SharedPackages["Shared Packages"]
+    AuthPkg["packages/auth\nAuthProvider and ProtectedRoute"]
+    ApiClient["packages/api-client\nSupabase client"]
+    UiPkg["packages/ui\nShared UI"]
+    TypesPkg["packages/types\nShared types"]
+    UtilsPkg["packages/utils\nUtilities"]
+  end
+
+  subgraph Supabase["Supabase Platform"]
+    SupabaseAuth["Supabase Auth"]
+    EdgeFunctions["Supabase Edge Functions"]
+    Postgres["Postgres database\nRLS, policies, functions, indexes"]
+    Storage["Supabase Storage"]
+  end
+
+  subgraph FunctionGroups["Function Domains"]
+    AuthOTP["auth-otp"]
+    BillingFns["create-checkout\ncustomer-portal\nstripe-webhook"]
+    ListingFns["create-listing\nsync-listing\nget-listings"]
+    OrderFns["ebay-orders\norders-dashboard"]
+    ExtensionFns["extension-auth\nextension-session\nextension-config\nextension-sync"]
+    AdminFns["admin operations\ncredits, settings, support"]
+    AiFns["generate-titles\ngenerate-description"]
+  end
+
+  Visitor --> Marketing
+  Seller --> Web
+  Admin --> AdminApp
+  ExtensionUser --> Extension
+
+  Marketing --> UiPkg
+  Web --> AuthPkg
+  Web --> ApiClient
+  Web --> UiPkg
+  AdminApp --> AuthPkg
+  AdminApp --> ApiClient
+  Extension --> ApiClient
+
+  AuthPkg --> SupabaseAuth
+  ApiClient --> SupabaseAuth
+  ApiClient --> EdgeFunctions
+  ApiClient --> Postgres
+
+  EdgeFunctions --> AuthOTP
+  EdgeFunctions --> BillingFns
+  EdgeFunctions --> ListingFns
+  EdgeFunctions --> OrderFns
+  EdgeFunctions --> ExtensionFns
+  EdgeFunctions --> AdminFns
+  EdgeFunctions --> AiFns
+
+  AuthOTP --> SupabaseAuth
+  AuthOTP --> Postgres
+  AuthOTP --> Resend
+  BillingFns --> Stripe
+  BillingFns --> Postgres
+  ListingFns --> Postgres
+  ListingFns --> Marketplaces
+  OrderFns --> Postgres
+  ExtensionFns --> Postgres
+  ExtensionFns --> Marketplaces
+  AdminFns --> Postgres
+  AiFns --> Postgres
+
+  Postgres --> Storage
+

@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.6'
+import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,6 +17,13 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: 'extension-config:ip',
+      key: getClientIp(req),
+      limit: 120,
+      windowSeconds: 60,
+    })
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders)
 
     // Fetch feature flags from app_feature_flags
     const { data: flagsData, error } = await supabase

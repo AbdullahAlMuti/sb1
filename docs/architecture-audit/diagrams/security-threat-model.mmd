@@ -1,0 +1,36 @@
+flowchart TB
+  Attacker["External attacker"] --> PublicFns["Public Edge Function surface"]
+  Attacker --> BrowserXSS["Browser XSS / supply chain"]
+  Attacker --> ExtensionSurface["Extension content scripts and messages"]
+  Attacker --> CredentialLeak["Leaked source or secret material"]
+
+  PublicFns --> Cors["Wildcard CORS"]
+  PublicFns --> NoJwt["verify_jwt false functions"]
+  PublicFns --> NoRateLimit["No verified rate limiting"]
+  PublicFns --> ServiceRole["Service-role DB access"]
+
+  BrowserXSS --> LocalStorage["Supabase session in localStorage"]
+  BrowserXSS --> AdminSPA["Admin SPA"]
+
+  ExtensionSurface --> HostPerms["Broad host permissions"]
+  ExtensionSurface --> WebResources["Web-accessible resources"]
+  ExtensionSurface --> ExtensionTokens["Extension access tokens"]
+
+  CredentialLeak --> EmailKey["Hardcoded email API key"]
+  CredentialLeak --> AdminDefaults["Hardcoded admin login defaults"]
+  CredentialLeak --> EnvFiles["Tracked env/public config material"]
+
+  ServiceRole --> DataExposure["Cross-tenant or privileged data exposure"]
+  LocalStorage --> AccountTakeover["Account takeover"]
+  ExtensionTokens --> MarketplaceAbuse["Marketplace data/listing abuse"]
+  EmailKey --> EmailAbuse["Email abuse and quota burn"]
+  AdminDefaults --> AdminCompromise["Admin compromise"]
+  NoRateLimit --> DoS["Quota burn and denial of service"]
+
+  DataExposure --> Impact["Business impact:\nprivacy breach, fraud, revenue loss,\nincident response, reputation damage"]
+  AccountTakeover --> Impact
+  MarketplaceAbuse --> Impact
+  EmailAbuse --> Impact
+  AdminCompromise --> Impact
+  DoS --> Impact
+

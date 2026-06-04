@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { resolveExtensionOrLegacyAuth, createServiceClient } from '../_shared/extension-session.ts';
+import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,31 +14,27 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createServiceClient();
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: 'ai-product-research:ip',
+      key: getClientIp(req),
+      limit: 20,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
 
-    // SECURITY: Authenticate user before processing
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Authentication required' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
+    const userId = authContext.userId;
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: userData, error: userError } = await supabase.auth.getUser(token);
-    
-    if (userError || !userData.user) {
-      console.error('Auth error:', userError);
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    const userLimit = await checkRateLimit(supabase, {
+      bucket: 'ai-product-research:user',
+      key: userId,
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
 
-    console.log(`[ai-product-research] User authenticated: ${userData.user.id}`);
+    console.log(`[ai-product-research] User authenticated: ${userId} (${authContext.authMode})`);
 
     const requestBody = await req.json();
     
@@ -180,8 +177,9 @@ Provide 5 specific product recommendations with the following JSON structure:
   } catch (error) {
     console.error('Error in ai-product-research function:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const status = error instanceof Error && /(authorization|auth token|session)/i.test(error.message) ? 401 : 500;
     return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
+      status,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

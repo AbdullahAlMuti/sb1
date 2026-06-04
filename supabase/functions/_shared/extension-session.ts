@@ -617,15 +617,21 @@ export async function requireFeatureEntitlement(
   workspaceId: string | null,
   featureKey: string
 ) {
-  // Check override
-  const { data: override } = await supabase
+  let overrideQuery = supabase
     .from("feature_overrides")
-    .select("is_enabled")
-    .eq("feature_key", featureKey)
-    .eq("user_id", userId)
-    .maybeSingle();
+    .select("enabled, expires_at")
+    .eq("feature_key", featureKey);
 
-  if (override && override.is_enabled) return true;
+  overrideQuery = workspaceId
+    ? overrideQuery.or(`user_id.eq.${userId},workspace_id.eq.${workspaceId}`)
+    : overrideQuery.eq("user_id", userId);
+
+  const { data: overrides } = await overrideQuery;
+  for (const override of overrides || []) {
+    if (override.expires_at && new Date(override.expires_at).getTime() <= Date.now()) continue;
+    if (override.enabled === false) return false;
+    if (override.enabled === true) return true;
+  }
 
   if (!workspaceId) return false;
 
@@ -637,7 +643,16 @@ export async function requireFeatureEntitlement(
 
   if (!plan || !plan.features) return false;
 
+  const { data: entitlement } = await supabase
+    .from("feature_entitlements")
+    .select("enabled")
+    .eq("feature_key", featureKey)
+    .eq("plan_id", plan.id)
+    .maybeSingle();
+
+  if (entitlement) return Boolean(entitlement.enabled);
+
   const features = plan.features as any;
+  if (Array.isArray(features)) return features.includes(featureKey);
   return Boolean(features[featureKey]);
 }
-

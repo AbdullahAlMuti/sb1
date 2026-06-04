@@ -1,0 +1,33 @@
+flowchart TB
+  Root["sb1 repository"]
+
+  Root --> Apps["apps"]
+  Apps --> Marketing["marketing\npublic site"]
+  Apps --> Web["web\nseller dashboard"]
+  Apps --> Admin["admin\nadmin console"]
+  Apps --> Extension["extension\nChrome extension"]
+  Apps --> BackupTemp["backup_temp"]
+
+  Root --> Packages["packages"]
+  Packages --> ApiClient["api-client"]
+  Packages --> Auth["auth"]
+  Packages --> Config["config"]
+  Packages --> MarketplaceCore["marketplace-core"]
+  Packages --> Types["types"]
+  Packages --> UI["ui"]
+  Packages --> Utils["utils"]
+
+  Root --> Supabase["supabase"]
+  Supabase --> Functions["functions\nEdge Functions"]
+  Supabase --> Migrations["migrations\nschema, policies, indexes"]
+  Supabase --> SupabaseConfig["config.toml"]
+
+  Root --> Services["services"]
+  Services --> MarketplaceAdapters["marketplace-adapters\namazon, ebay, shopify placeholders"]
+  Services --> SyncWorkers["sync-workers\nplaceholder"]
+  Services --> Webhooks["webhooks\nplaceholder"]
+
+  Root --> Scripts["scripts"]
+  Root --> Docs["docs"]
+  Root --> RootConfig["package.json\nvercel.json\nvite/ts/eslint configs"]
+

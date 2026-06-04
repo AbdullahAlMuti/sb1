@@ -1,9 +1,11 @@
 import {
+  corsHeaders,
   createServiceClient,
   getFeatureFlags,
   jsonResponse,
   requireMethod,
 } from "../_shared/extension-session.ts";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 Deno.serve(async (req) => {
   const methodResponse = requireMethod(req, ["GET", "POST"]);
@@ -11,6 +13,14 @@ Deno.serve(async (req) => {
 
   const supabase = createServiceClient();
   try {
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: "extension-auth-config:ip",
+      key: getClientIp(req),
+      limit: 120,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
+
     const flags = await getFeatureFlags(supabase);
     const pick = (key: string) => {
       const value = flags[key] as { enabled?: boolean; rolloutPercentage?: number } | undefined;

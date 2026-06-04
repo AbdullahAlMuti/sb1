@@ -1,0 +1,49 @@
+flowchart TB
+  subgraph ClientSide["Client side"]
+    Browser["Browser"]
+    Extension["Chrome extension"]
+  end
+
+  subgraph Hosting["Frontend hosting"]
+    CDN["CDN / Vercel edge"]
+    MarketingDist["apps/marketing/dist"]
+    WebDist["apps/web/dist"]
+    AdminDist["apps/admin/dist"]
+  end
+
+  subgraph SupabaseCloud["Supabase project"]
+    Auth["Supabase Auth"]
+    Functions["Edge Functions"]
+    Database["Postgres"]
+    Storage["Storage"]
+    Secrets["Function secrets"]
+  end
+
+  subgraph External["External services"]
+    Stripe["Stripe"]
+    Email["Resend"]
+    Marketplaces["Marketplace APIs"]
+    AI["AI provider"]
+  end
+
+  Browser --> CDN
+  CDN --> MarketingDist
+  CDN --> WebDist
+  CDN --> AdminDist
+  Browser --> Auth
+  Browser --> Functions
+  Browser --> Database
+  Extension --> Functions
+  Extension --> Auth
+  Functions --> Auth
+  Functions --> Database
+  Functions --> Storage
+  Functions --> Secrets
+  Functions --> Stripe
+  Functions --> Email
+  Functions --> Marketplaces
+  Functions --> AI
+
+  Missing["Not verified in repository:\nWAF, CI/CD, Redis, queue workers,\ncentral monitoring, IaC, backups/PITR config"] -.-> Hosting
+  Missing -.-> SupabaseCloud
+

@@ -1,5 +1,6 @@
 import {
   addSeconds,
+  corsHeaders,
   createOpaqueToken,
   createServiceClient,
   getClientIp,
@@ -17,6 +18,7 @@ import {
   verifyWebUser,
   verifyWorkspaceMembership,
 } from "../_shared/extension-session.ts";
+import { checkRateLimit, getClientIp as getRateLimitIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 Deno.serve(async (req) => {
   const methodResponse = requireMethod(req, ["POST"]);
@@ -24,8 +26,24 @@ Deno.serve(async (req) => {
 
   const supabase = createServiceClient();
   try {
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: "extension-connect-approve:ip",
+      key: getRateLimitIp(req),
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
+
     await requireExtensionNewAuthEnabled(supabase);
     const user = await verifyWebUser(supabase, req);
+    const userLimit = await checkRateLimit(supabase, {
+      bucket: "extension-connect-approve:user",
+      key: user.id,
+      limit: 30,
+      windowSeconds: 300,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
+
     const body = await readJson(req);
     const requestId = requireString(body, "requestId");
 

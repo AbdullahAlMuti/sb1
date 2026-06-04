@@ -1,4 +1,5 @@
 import {
+  corsHeaders,
   createServiceClient,
   getClientIp,
   getUserAgent,
@@ -10,6 +11,7 @@ import {
   requireExtensionNewAuthEnabled,
   validateExtensionAccessToken,
 } from "../_shared/extension-session.ts";
+import { checkRateLimit, getClientIp as getRateLimitIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 Deno.serve(async (req) => {
   const methodResponse = requireMethod(req, ["POST"]);
@@ -17,8 +19,24 @@ Deno.serve(async (req) => {
 
   const supabase = createServiceClient();
   try {
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: "extension-activity:ip",
+      key: getRateLimitIp(req),
+      limit: 240,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
+
     await requireExtensionNewAuthEnabled(supabase);
     const context = await validateExtensionAccessToken(supabase, req);
+    const sessionLimit = await checkRateLimit(supabase, {
+      bucket: "extension-activity:session",
+      key: context.session.id,
+      limit: 120,
+      windowSeconds: 60,
+    });
+    if (!sessionLimit.allowed) return rateLimitResponse(sessionLimit, corsHeaders);
+
     const body = await readJson(req);
     const eventType = requireString(body, "eventType");
     const severity = typeof body.severity === "string" ? body.severity : "info";

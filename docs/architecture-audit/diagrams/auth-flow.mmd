@@ -1,0 +1,34 @@
+sequenceDiagram
+  autonumber
+  participant User as User
+  participant Web as Web/Admin app
+  participant AuthProvider as AuthProvider
+  participant AuthOTP as auth-otp function
+  participant SupabaseAuth as Supabase Auth
+  participant DB as Postgres
+  participant Resend as Email provider
+
+  User->>Web: Submit signup or login
+  Web->>AuthProvider: signUp, signIn, or verifyOtp
+  alt Signup with OTP
+    AuthProvider->>AuthOTP: signup action
+    AuthOTP->>SupabaseAuth: Create or update unconfirmed user
+    AuthOTP->>DB: Store OTP record
+    AuthOTP->>Resend: Send OTP email
+    Resend-->>User: OTP email
+    User->>Web: Enter OTP
+    Web->>AuthProvider: verifyOtp
+    AuthProvider->>AuthOTP: verify action
+    AuthOTP->>DB: Validate unused OTP and profile
+    AuthOTP->>SupabaseAuth: Confirm user metadata/state
+  else Password login
+    AuthProvider->>AuthOTP: validate-login-context
+    AuthOTP->>SupabaseAuth: Admin user lookup
+    AuthOTP-->>AuthProvider: Context result
+    AuthProvider->>SupabaseAuth: signInWithPassword
+    SupabaseAuth-->>AuthProvider: Session
+  end
+  AuthProvider->>DB: Load profile and roles
+  DB-->>AuthProvider: Profile, role, plan data
+  AuthProvider-->>Web: Authenticated app state
+

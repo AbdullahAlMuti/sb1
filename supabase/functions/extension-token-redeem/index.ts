@@ -1,5 +1,6 @@
 import {
   createSessionTokens,
+  corsHeaders,
   createServiceClient,
   getClientIp,
   getUserAgent,
@@ -14,6 +15,7 @@ import {
   sha256,
   verifyWorkspaceMembership,
 } from "../_shared/extension-session.ts";
+import { checkRateLimit, getClientIp as getRateLimitIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 Deno.serve(async (req) => {
   const methodResponse = requireMethod(req, ["POST"]);
@@ -22,10 +24,30 @@ Deno.serve(async (req) => {
   const supabase = createServiceClient();
   try {
     await requireExtensionNewAuthEnabled(supabase);
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: "extension-token-redeem:ip",
+      key: getRateLimitIp(req),
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, {
+      ...corsHeaders,
+    });
+
     const body = await readJson(req);
     const grantToken = typeof body.grantToken === "string" ? body.grantToken.trim() : "";
     const connectToken = typeof body.connectToken === "string" ? body.connectToken.trim() : "";
     const clientSecret = typeof body.clientSecret === "string" ? body.clientSecret.trim() : "";
+
+    const tokenLimit = await checkRateLimit(supabase, {
+      bucket: "extension-token-redeem:token",
+      key: grantToken || connectToken || clientSecret || getRateLimitIp(req),
+      limit: 10,
+      windowSeconds: 300,
+    });
+    if (!tokenLimit.allowed) return rateLimitResponse(tokenLimit, {
+      ...corsHeaders,
+    });
 
     let redeemContext:
       | {

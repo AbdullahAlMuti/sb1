@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { validateUserPlan } from '../_shared/plan-middleware.ts';
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient, corsHeaders } from '../_shared/extension-session.ts';
+import { checkRateLimit, getClientIp as getRateLimitIp, rateLimitResponse } from '../_shared/rate-limit.ts';
 
 interface ListingPayload {
   title: string;
@@ -53,19 +54,34 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
     // Authenticate using shared resolver
     const supabaseService = createServiceClient();
+    const ipLimit = await checkRateLimit(supabaseService, {
+      bucket: 'create-listing:ip',
+      key: getRateLimitIp(req),
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
+
     const authContext = await resolveExtensionOrLegacyAuth(supabaseService, req);
     const userId = authContext.userId;
 
     console.log(`[create-listing] User authenticated: ${userId} (${authContext.authMode})`);
 
+    const userLimit = await checkRateLimit(supabaseService, {
+      bucket: 'create-listing:user',
+      key: userId,
+      limit: 120,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
+
     // Verify feature entitlement
     const hasAccess = await requireFeatureEntitlement(supabaseService, userId, authContext.workspaceId, "ebay_listing_create");
-    if (!hasAccess && authContext.authMode === "extension_session") {
+    if (!hasAccess) {
       console.warn(`[create-listing] User ${userId} missing ebay_listing_create entitlement`);
       return new Response(
         JSON.stringify({ success: false, error: "Feature not entitled or subscription inactive" }),
@@ -178,8 +194,6 @@ Deno.serve(async (req) => {
     }
 
     if (!existingId) {
-      /*
-      // TEMPORARILY DISABLED PLAN LIMIT CHECKS
       const listingValidation = await validateUserPlan(supabase, userId, 'listing', 1);
       if (!listingValidation.allowed) {
         console.log('[create-listing] Listing validation blocked:', listingValidation);
@@ -211,7 +225,6 @@ Deno.serve(async (req) => {
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-      */
     }
 
 
@@ -318,9 +331,10 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('[create-listing] Error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const status = /(authorization|auth token|session)/i.test(errorMessage) ? 401 : 500;
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

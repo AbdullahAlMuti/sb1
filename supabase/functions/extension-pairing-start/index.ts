@@ -1,5 +1,6 @@
 import {
   addSeconds,
+  corsHeaders,
   createOpaqueToken,
   createServiceClient,
   getClientIp,
@@ -13,10 +14,20 @@ import {
   isFeatureEnabled,
   requireExtensionNewAuthEnabled,
 } from "../_shared/extension-session.ts";
+import { checkRateLimit, getClientIp as getRateLimitIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 function generatePairingCode(): string {
-  // Generate a random 6 digit number
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  const codeSpace = 900_000;
+  const maxUnbiased = Math.floor(0x100000000 / codeSpace) * codeSpace;
+  const random = new Uint32Array(1);
+
+  let value = 0;
+  do {
+    crypto.getRandomValues(random);
+    value = random[0];
+  } while (value >= maxUnbiased);
+
+  return String(100_000 + (value % codeSpace));
 }
 
 Deno.serve(async (req) => {
@@ -25,6 +36,14 @@ Deno.serve(async (req) => {
 
   const supabase = createServiceClient();
   try {
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: "extension-pairing-start:ip",
+      key: getRateLimitIp(req),
+      limit: 20,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
+
     await requireExtensionNewAuthEnabled(supabase);
     if (!(await isFeatureEnabled(supabase, "extension_pairing_fallback_enabled"))) {
       throw new Error("Extension pairing fallback is disabled");

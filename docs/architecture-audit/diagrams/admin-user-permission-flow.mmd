@@ -1,0 +1,21 @@
+flowchart TB
+  Login["User logs in"] --> SupabaseAuth["Supabase Auth session"]
+  SupabaseAuth --> LoadProfile["AuthProvider loads profile"]
+  LoadProfile --> ProfileRole["profile.role"]
+  LoadProfile --> UserRoles["user_roles rows"]
+
+  ProfileRole --> IsAdmin{"admin or super_admin?"}
+  UserRoles --> RoleList["roles array"]
+  RoleList --> UIFlags["UI role flags"]
+
+  IsAdmin -- No --> UserDashboard["User dashboard routes"]
+  IsAdmin -- Yes --> AdminGuard["ProtectedRoute requireAdmin"]
+  AdminGuard --> AdminApp["Admin console"]
+
+  AdminApp --> AdminFunctions["Admin Edge Functions / admin RPCs"]
+  AdminFunctions --> FunctionRoleCheck["Function or SQL role checks"]
+  FunctionRoleCheck --> AdminMutation["Credits, settings, support, user operations"]
+
+  Inconsistency["Role consistency risk:\nfrontend allows moderator in role list,\nshared extension admin check accepts admin/super_admin only"] -.-> UIFlags
+  Inconsistency -.-> FunctionRoleCheck
+

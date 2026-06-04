@@ -1,4 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { resolveExtensionOrLegacyAuth, createServiceClient } from "../_shared/extension-session.ts";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,6 +13,24 @@ serve(async (req) => {
   }
 
   try {
+    const supabase = createServiceClient();
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: 'test-ai-generation:ip',
+      key: getClientIp(req),
+      limit: 10,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
+
+    const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
+    const userLimit = await checkRateLimit(supabase, {
+      bucket: 'test-ai-generation:user',
+      key: authContext.userId,
+      limit: 10,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
+
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
     
     if (!lovableApiKey) {
@@ -152,11 +172,12 @@ Output clean text only, no HTML.`;
 
   } catch (error) {
     console.error('[test-ai-generation] Error:', error);
+    const status = error instanceof Error && /(authorization|auth token|session)/i.test(error.message) ? 401 : 500;
     return new Response(JSON.stringify({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error'
     }), {
-      status: 500,
+      status,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

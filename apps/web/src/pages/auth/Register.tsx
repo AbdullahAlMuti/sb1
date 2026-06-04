@@ -21,9 +21,14 @@ const passwordSchema = z.string()
   .regex(/[0-9]/, 'Password must contain at least one number')
   .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character');
 
+type SellerGoal = 'ebay' | 'shopify' | 'both';
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
+
 export default function Register() {
   const [signUpStep, setSignUpStep] = useState<1 | 2 | 3>(1);
-  const [selectedGoal, setSelectedGoal] = useState<'ebay' | 'shopify' | 'both' | null>(null);
+  const [selectedGoal, setSelectedGoal] = useState<SellerGoal | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -32,7 +37,6 @@ export default function Register() {
   const [code, setCode] = useState<string[]>(Array(6).fill(''));
   const [isVerifying, setIsVerifying] = useState(false);
   const [resending, setResending] = useState(false);
-  const [sandboxOtp, setSandboxOtp] = useState<string | null>(null);
   const [errors, setErrors] = useState<{ email?: string; password?: string; fullName?: string }>({});
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
@@ -98,12 +102,7 @@ export default function Register() {
     try {
       const res = await signUp(email, password, fullName, selectedGoal || undefined);
       if (!res.error) {
-        if (res.isSandbox && res.otpCode) {
-          setSandboxOtp(res.otpCode);
-          toast.success('Sandbox mode: Verification code generated!');
-        } else {
-          toast.success('Account created! Please check your email for the verification code.');
-        }
+        toast.success('Account created! Please check your email for the verification code.');
         if (selectedPlan) {
           localStorage.setItem('selectedPlanId', selectedPlan.id);
         }
@@ -113,8 +112,8 @@ export default function Register() {
         }
         setSignUpStep(3);
       }
-    } catch (error: any) {
-      toast.error(error.message || 'An error occurred');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'An error occurred'));
     } finally {
       setIsSubmitting(false);
     }
@@ -146,8 +145,8 @@ export default function Register() {
         localStorage.removeItem('selectedGoal');
         navigate(getDashboardPathForGoal(goal), { replace: true });
       }
-    } catch (error: any) {
-      toast.error(error.message || 'Verification failed');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Verification failed'));
     } finally {
       setIsVerifying(false);
     }
@@ -158,15 +157,10 @@ export default function Register() {
     try {
       const res = await resendVerificationEmail(email);
       if (!res.error) {
-        if (res.isSandbox && res.otpCode) {
-          setSandboxOtp(res.otpCode);
-          toast.success('Sandbox mode: New verification code generated!');
-        } else {
-          toast.success('Verification code resent successfully.');
-        }
+        toast.success('Verification code resent successfully.');
       }
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to resend code');
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to resend code'));
     } finally {
       setResending(false);
     }
@@ -182,7 +176,12 @@ export default function Register() {
     return `${firstLetter}${middlePart}${lastLetter}@${domain}`;
   };
 
-  const options = [
+  const options: Array<{
+    id: SellerGoal;
+    title: string;
+    logoBg: string;
+    renderLogo: () => JSX.Element;
+  }> = [
     {
       id: 'ebay',
       title: 'eBay Seller',
@@ -295,7 +294,7 @@ export default function Register() {
                   <button
                     key={option.id}
                     type="button"
-                    onClick={() => setSelectedGoal(option.id as any)}
+                    onClick={() => setSelectedGoal(option.id)}
                     className={cn(
                       "w-full flex items-center justify-center gap-3.5 p-4 rounded-xl border transition-all duration-200 bg-card hover:border-primary/50",
                       isSelected 
@@ -551,20 +550,6 @@ export default function Register() {
               Please enter the code below to activate your account.
             </p>
           </div>
-
-          {sandboxOtp && (
-            <div className="bg-amber-500/10 dark:bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 text-center space-y-2">
-              <div className="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400 tracking-wider">
-                Developer Sandbox Mode
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Resend key sandbox limitation activated. Use the code below to verify:
-              </p>
-              <div className="text-2xl font-mono font-extrabold tracking-widest text-amber-600 dark:text-amber-400">
-                {sandboxOtp}
-              </div>
-            </div>
-          )}
 
           <form onSubmit={handleVerifyOtp} className="space-y-6">
             {/* Digit Inputs */}

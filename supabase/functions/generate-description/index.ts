@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from '../_shared/extension-session.ts';
+import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -85,13 +85,17 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
 
     // Create service role client for database operations
     const supabase = createServiceClient();
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: 'generate-description:ip',
+      key: getClientIp(req),
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
 
     // Authenticate user before processing using dual-auth
     const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
@@ -99,9 +103,17 @@ serve(async (req) => {
 
     console.log(`[generate-description] User authenticated: ${userId} (${authContext.authMode})`);
 
+    const userLimit = await checkRateLimit(supabase, {
+      bucket: 'generate-description:user',
+      key: userId,
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
+
     // Verify feature entitlement
     const hasAccess = await requireFeatureEntitlement(supabase, userId, authContext.workspaceId, "description_generation");
-    if (!hasAccess && authContext.authMode === "extension_session") {
+    if (!hasAccess) {
       console.warn(`[generate-description] User ${userId} missing description_generation entitlement`);
       return new Response(JSON.stringify({ success: false, error: 'Feature not entitled or subscription inactive' }), {
         status: 403,

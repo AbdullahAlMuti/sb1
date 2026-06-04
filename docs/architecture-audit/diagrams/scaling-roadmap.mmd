@@ -1,0 +1,15 @@
+flowchart LR
+  Stage1["Stage 1\nSafe beta\n100-500 users"] --> Stage2["Stage 2\nLaunch\n500-2,000 users"]
+  Stage2 --> Stage3["Stage 3\nGrowth\n2,000-10,000 users"]
+  Stage3 --> Stage4["Stage 4\nBeyond 10,000 users"]
+
+  Stage1 --> Fixes1["P0 fixes:\nsecrets, OTP, rate limits,\nentitlements, audit fixes,\nCI baseline"]
+  Stage2 --> Fixes2["Queues and summaries:\nsync workers, email/AI jobs,\nStripe idempotency,\nRLS tests"]
+  Stage3 --> Fixes3["Scale controls:\nRedis cache, worker scaling,\nslow query monitoring,\nalerts, backup drills"]
+  Stage4 --> Fixes4["Advanced scale:\nread replicas, warehouse,\nsearch/indexing,\ndomain service split"]
+
+  Fixes1 --> Infra1["Security headers\nstrict CORS\nSentry basics"]
+  Fixes2 --> Infra2["Queue runtime\nRedis\nworker retry/dead-letter"]
+  Fixes3 --> Infra3["pg_stat_statements\nquery budgets\nobservability SLOs"]
+  Fixes4 --> Infra4["BI/warehouse\nreplicas\nprovider quota platform"]
+

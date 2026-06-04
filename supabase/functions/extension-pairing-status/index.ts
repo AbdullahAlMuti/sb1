@@ -1,4 +1,5 @@
 import {
+  corsHeaders,
   createServiceClient,
   isExpired,
   jsonResponse,
@@ -8,6 +9,7 @@ import {
   isFeatureEnabled,
   requireExtensionNewAuthEnabled,
 } from "../_shared/extension-session.ts";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 Deno.serve(async (req) => {
   const methodResponse = requireMethod(req, ["POST"]);
@@ -15,6 +17,14 @@ Deno.serve(async (req) => {
 
   const supabase = createServiceClient();
   try {
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: "extension-pairing-status:ip",
+      key: getClientIp(req),
+      limit: 120,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
+
     await requireExtensionNewAuthEnabled(supabase);
     if (!(await isFeatureEnabled(supabase, "extension_pairing_fallback_enabled"))) {
       throw new Error("Extension pairing fallback is disabled");

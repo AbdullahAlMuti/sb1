@@ -1,0 +1,104 @@
+flowchart TB
+  subgraph Actors["Actors"]
+    Visitor["Visitor"]
+    Seller["Seller"]
+    Admin["Admin"]
+    ExtUser["Extension user"]
+  end
+
+  subgraph Apps["Application Surfaces"]
+    Marketing["Marketing app"]
+    Web["Customer web app"]
+    AdminApp["Admin app"]
+    ChromeExt["Chrome extension"]
+  end
+
+  subgraph Shared["Shared Application Layer"]
+    AuthPkg["Auth package\nsessions, profiles, roles"]
+    ApiPkg["API client package\nSupabase client"]
+    UiTypesUtils["UI, types, utils,\nmarketplace core"]
+  end
+
+  subgraph Backend["Supabase Backend"]
+    Auth["Supabase Auth"]
+    Functions["Edge Functions"]
+    DB["Postgres\nRLS + policies + RPC"]
+    Storage["Storage"]
+  end
+
+  subgraph Domains["Business Domains"]
+    AuthDomain["Auth and OTP"]
+    BillingDomain["Billing and coupons"]
+    ListingDomain["Listings and AI content"]
+    OrdersDomain["Orders and dashboards"]
+    ExtensionDomain["Extension sessions,\nworkspaces, devices"]
+    AdminDomain["Admin command center"]
+    StoreDomain["Store designs and Shopify settings"]
+  end
+
+  subgraph External["External Providers"]
+    Stripe["Stripe"]
+    Email["Resend"]
+    MarketplaceApis["Marketplace APIs"]
+    AI["AI provider"]
+  end
+
+  subgraph MissingControls["Required production controls"]
+    WAF["WAF and bot protection"]
+    Redis["Redis cache and rate limits"]
+    Queue["Queue and workers"]
+    Observability["Logs, metrics, traces, alerts"]
+    CI["CI/CD, audit, secret scanning"]
+    Vault["Vault/KMS secrets"]
+  end
+
+  Visitor --> Marketing
+  Seller --> Web
+  Admin --> AdminApp
+  ExtUser --> ChromeExt
+
+  Marketing --> UiTypesUtils
+  Web --> AuthPkg
+  Web --> ApiPkg
+  AdminApp --> AuthPkg
+  AdminApp --> ApiPkg
+  ChromeExt --> ApiPkg
+
+  AuthPkg --> Auth
+  ApiPkg --> Auth
+  ApiPkg --> Functions
+  ApiPkg --> DB
+
+  Functions --> AuthDomain
+  Functions --> BillingDomain
+  Functions --> ListingDomain
+  Functions --> OrdersDomain
+  Functions --> ExtensionDomain
+  Functions --> AdminDomain
+  Functions --> StoreDomain
+
+  AuthDomain --> Auth
+  AuthDomain --> DB
+  AuthDomain --> Email
+  BillingDomain --> Stripe
+  BillingDomain --> DB
+  ListingDomain --> MarketplaceApis
+  ListingDomain --> AI
+  ListingDomain --> DB
+  OrdersDomain --> MarketplaceApis
+  OrdersDomain --> DB
+  ExtensionDomain --> MarketplaceApis
+  ExtensionDomain --> DB
+  AdminDomain --> DB
+  StoreDomain --> Storage
+  StoreDomain --> DB
+
+  WAF -. needed .-> Functions
+  Redis -. needed .-> Functions
+  Queue -. needed .-> Functions
+  Observability -. needed .-> Apps
+  Observability -. needed .-> Backend
+  CI -. needed .-> Apps
+  CI -. needed .-> Backend
+  Vault -. needed .-> Functions
+

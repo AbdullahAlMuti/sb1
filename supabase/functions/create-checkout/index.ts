@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,6 +27,14 @@ serve(async (req) => {
 
   try {
     logStep("Function started");
+
+    const ipLimit = await checkRateLimit(supabaseAdmin, {
+      bucket: "create-checkout:ip",
+      key: getClientIp(req),
+      limit: 20,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
 
     const requestBody = await req.json();
     
@@ -80,6 +89,14 @@ serve(async (req) => {
 
     const userId = userData.user.id;
     const userEmail = userData.user.email ?? null;
+
+    const userLimit = await checkRateLimit(supabaseAdmin, {
+      bucket: "create-checkout:user",
+      key: userId,
+      limit: 10,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
 
     if (!userEmail) {
       logStep("Missing email on user", { userId });

@@ -1,0 +1,139 @@
+erDiagram
+  PROFILES {
+    uuid id
+    uuid user_id
+    text email
+    text role
+    jsonb settings
+    timestamptz created_at
+  }
+
+  USER_ROLES {
+    uuid id
+    uuid user_id
+    app_role role
+  }
+
+  PLANS {
+    uuid id
+    text name
+    numeric price
+    jsonb features
+  }
+
+  USER_PLANS {
+    uuid id
+    uuid user_id
+    uuid plan_id
+    text status
+  }
+
+  LISTINGS {
+    uuid id
+    uuid user_id
+    text title
+    text marketplace
+    timestamptz created_at
+  }
+
+  EBAY_ORDERS {
+    uuid id
+    uuid user_id
+    text order_id
+    text order_status
+    numeric total
+    timestamptz created_at
+  }
+
+  ORDER_ENRICHMENTS {
+    uuid id
+    uuid user_id
+    uuid order_id
+    jsonb enrichment
+  }
+
+  WORKSPACES {
+    uuid id
+    uuid owner_user_id
+    text name
+    timestamptz created_at
+  }
+
+  WORKSPACE_MEMBERS {
+    uuid id
+    uuid workspace_id
+    uuid user_id
+    text role
+  }
+
+  EXTENSION_DEVICES {
+    uuid id
+    uuid workspace_id
+    uuid user_id
+    text status
+  }
+
+  EXTENSION_SESSIONS {
+    uuid id
+    uuid workspace_id
+    uuid device_id
+    text status
+    timestamptz expires_at
+  }
+
+  SUBSCRIPTIONS {
+    uuid id
+    uuid workspace_id
+    text status
+    text plan_name
+  }
+
+  FEATURE_ENTITLEMENTS {
+    uuid id
+    uuid workspace_id
+    text feature_key
+    boolean enabled
+  }
+
+  COUPONS {
+    uuid id
+    text code
+    integer used_count
+  }
+
+  STORE_DESIGNS {
+    uuid id
+    text category
+    text niche
+    numeric price
+  }
+
+  SHOPIFY_PAGE_SETTINGS {
+    uuid id
+    uuid user_id
+    jsonb settings
+  }
+
+  AUDIT_LOGS {
+    uuid id
+    uuid user_id
+    text action
+    jsonb metadata
+    timestamptz created_at
+  }
+
+  PROFILES ||--o{ USER_ROLES : has
+  PROFILES ||--o{ USER_PLANS : subscribes
+  PLANS ||--o{ USER_PLANS : selected
+  PROFILES ||--o{ LISTINGS : owns
+  PROFILES ||--o{ EBAY_ORDERS : owns
+  EBAY_ORDERS ||--o{ ORDER_ENRICHMENTS : enriches
+  PROFILES ||--o{ AUDIT_LOGS : writes
+  PROFILES ||--o{ WORKSPACE_MEMBERS : member
+  WORKSPACES ||--o{ WORKSPACE_MEMBERS : contains
+  WORKSPACES ||--o{ EXTENSION_DEVICES : registers
+  EXTENSION_DEVICES ||--o{ EXTENSION_SESSIONS : opens
+  WORKSPACES ||--o{ SUBSCRIPTIONS : has
+  WORKSPACES ||--o{ FEATURE_ENTITLEMENTS : grants
+  PROFILES ||--o{ SHOPIFY_PAGE_SETTINGS : configures
+

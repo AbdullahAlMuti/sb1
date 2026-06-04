@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -97,9 +98,25 @@ Deno.serve(async (req) => {
     // Use Service Role client for heavy queries that exceed RLS/Anon limits (like total revenue over 1000 rows)
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
+    const ipLimit = await checkRateLimit(supabaseAdmin, {
+      bucket: "ebay-orders:ip",
+      key: getClientIp(req),
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
+
     const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
     const userId = !claimsError && claimsData?.claims?.sub ? (claimsData.claims.sub as string) : null;
     if (!userId) return json(401, { error: "Unauthorized" });
+
+    const userLimit = await checkRateLimit(supabaseAdmin, {
+      bucket: "ebay-orders:user",
+      key: userId,
+      limit: 120,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
 
     if (req.method !== "POST") return json(405, { error: "Method not allowed" });
 

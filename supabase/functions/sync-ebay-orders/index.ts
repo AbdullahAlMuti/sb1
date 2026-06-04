@@ -1,5 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient, corsHeaders } from "../_shared/extension-session.ts";
+import { checkRateLimit, getClientIp as getRateLimitIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 interface EbayOrderPayload {
   ebay_order_id: string;
@@ -111,6 +111,13 @@ Deno.serve(async (req) => {
     console.log("[sync-ebay-orders] Request received");
 
     const supabase = createServiceClient();
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: "sync-ebay-orders:ip",
+      key: getRateLimitIp(req),
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
     
     // Authenticate using the shared dual-auth resolver
     const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
@@ -119,14 +126,17 @@ Deno.serve(async (req) => {
     console.log(`[sync-ebay-orders] Authenticated user: ${userId} (Mode: ${authContext.authMode})`);
     await logSyncEvent(supabase, userId, 'info', null, 'sync_received', null, { authMode: authContext.authMode });
 
+    const userLimit = await checkRateLimit(supabase, {
+      bucket: "sync-ebay-orders:user",
+      key: userId,
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
+
     // Verify feature entitlement
     const hasAccess = await requireFeatureEntitlement(supabase, userId, authContext.workspaceId, "ebay_order_sync");
-    if (!hasAccess && authContext.authMode === "extension_session") {
-      // We strictly enforce for new extension sessions to avoid breaking legacy completely
-      // unless we want to enforce for all. 
-      // The prompt says "Apply subscription and feature entitlement checks centrally where possible".
-      // Let's enforce it generally but log if they don't have it.
-      // Wait, let's enforce it.
+    if (!hasAccess) {
       console.warn(`[sync-ebay-orders] User ${userId} missing ebay_order_sync entitlement`);
       return new Response(
         JSON.stringify({ success: false, error: "Feature not entitled or subscription inactive" }),

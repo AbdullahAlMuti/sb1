@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from '../_shared/extension-session.ts';
+import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -97,28 +98,34 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createServiceClient();
 
-    // Auth (robust errors)
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(JSON.stringify({ success: false, error: 'Authentication required' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: 'generate-description-v2:ip',
+      key: getClientIp(req),
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+    const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
+    const userId = authContext.userId;
 
-    if (userError || !userData.user) {
-      console.error('[generate-description-v2] Auth error:', userError);
-      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
-        status: 401,
+    const userLimit = await checkRateLimit(supabase, {
+      bucket: 'generate-description-v2:user',
+      key: userId,
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
+
+    const hasAccess = await requireFeatureEntitlement(supabase, userId, authContext.workspaceId, 'description_generation');
+    if (!hasAccess) {
+      console.warn(`[generate-description-v2] User ${userId} missing description_generation entitlement`);
+      return new Response(JSON.stringify({ success: false, error: 'Feature not entitled or subscription inactive' }), {
+        status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -176,7 +183,7 @@ serve(async (req) => {
     const useOpenAI = !!openaiApiKey;
     const model = useOpenAI ? 'gpt-4o-mini' : 'google/gemini-2.5-flash';
 
-    console.log(`[generate-description-v2] user=${userData.user.id} provider=${useOpenAI ? 'openai' : 'lovable'} model=${model}`);
+    console.log(`[generate-description-v2] user=${userId} provider=${useOpenAI ? 'openai' : 'lovable'} model=${model}`);
 
     let responseContent = '';
 
@@ -292,13 +299,14 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error('[generate-description-v2] Error:', error);
+    const status = error instanceof Error && /(authorization|auth token|session)/i.test(error.message) ? 401 : 500;
     return new Response(
       JSON.stringify({
         success: false,
         error: error instanceof Error ? error.message : 'Failed to generate description. Please try again.',
       }),
       {
-        status: 500,
+        status,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     );

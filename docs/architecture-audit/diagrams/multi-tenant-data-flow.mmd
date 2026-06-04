@@ -1,0 +1,22 @@
+flowchart LR
+  User["Authenticated user"] --> Auth["Supabase Auth user id"]
+  Auth --> Profile["profiles.user_id"]
+  Profile --> UserScoped["User scoped tables\nlistings, ebay_orders, user_plans, settings"]
+  UserScoped --> RLSUser["RLS owner policies"]
+
+  User --> WorkspaceResolver["extension-session resolver"]
+  WorkspaceResolver --> Workspace["workspace"]
+  Workspace --> Membership["workspace_members"]
+  Workspace --> WorkspaceScoped["Workspace scoped tables\ndevices, sessions, subscriptions, entitlements"]
+  Membership --> RLSWorkspace["RLS workspace membership policies"]
+
+  RLSUser --> DB["Postgres data access"]
+  RLSWorkspace --> DB
+
+  ServiceRole["Edge Function service role"] --> FunctionChecks["Function auth and tenant checks"]
+  FunctionChecks --> DB
+
+  Risk["Risk: mixed user and workspace tenant models"] -.-> UserScoped
+  Risk -.-> WorkspaceScoped
+  Risk -.-> FunctionChecks
+

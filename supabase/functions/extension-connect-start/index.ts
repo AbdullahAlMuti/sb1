@@ -2,6 +2,7 @@ import {
   addSeconds,
   CONNECT_REQUEST_TTL_SECONDS,
   createOpaqueToken,
+  corsHeaders,
   createServiceClient,
   getClientIp,
   getUserAgent,
@@ -19,6 +20,7 @@ import {
   isFeatureEnabled,
   requireExtensionNewAuthEnabled,
 } from "../_shared/extension-session.ts";
+import { checkRateLimit, getClientIp as getRateLimitIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 Deno.serve(async (req) => {
   const methodResponse = requireMethod(req, ["POST"]);
@@ -26,12 +28,28 @@ Deno.serve(async (req) => {
 
   const supabase = createServiceClient();
   try {
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: "extension-connect-start:ip",
+      key: getRateLimitIp(req),
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
+
     await requireExtensionNewAuthEnabled(supabase);
     if (!(await isFeatureEnabled(supabase, "extension_auto_connect_enabled"))) {
       throw new Error("Extension auto-connect is disabled");
     }
 
     const user = await verifyWebUser(supabase, req);
+    const userLimit = await checkRateLimit(supabase, {
+      bucket: "extension-connect-start:user",
+      key: user.id,
+      limit: 20,
+      windowSeconds: 300,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
+
     const body = await readJson(req);
     const installId = requireString(body, "installId");
     const installIdHash = await sha256(installId);

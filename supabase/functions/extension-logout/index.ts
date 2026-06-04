@@ -1,4 +1,5 @@
 import {
+  corsHeaders,
   createServiceClient,
   getClientIp,
   getUserAgent,
@@ -12,6 +13,7 @@ import {
   sha256,
   validateExtensionAccessToken,
 } from "../_shared/extension-session.ts";
+import { checkRateLimit, getClientIp as getRateLimitIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 Deno.serve(async (req) => {
   const methodResponse = requireMethod(req, ["POST"]);
@@ -19,6 +21,14 @@ Deno.serve(async (req) => {
 
   const supabase = createServiceClient();
   try {
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: "extension-logout:ip",
+      key: getRateLimitIp(req),
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
+
     await requireExtensionNewAuthEnabled(supabase);
     let context;
     try {
@@ -37,6 +47,14 @@ Deno.serve(async (req) => {
       if (!session) throw new Error("Extension session not found");
       context = { session, device: { id: session.device_id }, workspace: { id: session.workspace_id }, profile: { id: session.user_id } };
     }
+
+    const userLimit = await checkRateLimit(supabase, {
+      bucket: "extension-logout:user",
+      key: context.session.user_id,
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
 
     await revokeSession(supabase, context.session.id, "extension_logout", context.profile.id);
     await logExtensionActivity(supabase, {

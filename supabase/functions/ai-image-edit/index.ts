@@ -1,4 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { resolveExtensionOrLegacyAuth, createServiceClient } from "../_shared/extension-session.ts";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,6 +14,24 @@ serve(async (req) => {
   }
 
   try {
+    const supabase = createServiceClient();
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: "ai-image-edit:ip",
+      key: getClientIp(req),
+      limit: 10,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
+
+    const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
+    const userLimit = await checkRateLimit(supabase, {
+      bucket: "ai-image-edit:user",
+      key: authContext.userId,
+      limit: 20,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
+
     const { image, prompt } = await req.json();
 
     if (!image) {
@@ -119,9 +139,10 @@ serve(async (req) => {
   } catch (error: unknown) {
     console.error("Error in ai-image-edit function:", error);
     const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
+    const status = error instanceof Error && /(authorization|auth token|session)/i.test(error.message) ? 401 : 500;
     return new Response(
       JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

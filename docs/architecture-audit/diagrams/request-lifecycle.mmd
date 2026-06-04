@@ -1,0 +1,27 @@
+sequenceDiagram
+  autonumber
+  participant User as Seller browser
+  participant SPA as apps/web SPA
+  participant Auth as packages/auth
+  participant Client as Supabase client
+  participant Function as Edge Function
+  participant DB as Supabase Postgres
+  participant External as External provider
+
+  User->>SPA: Open protected dashboard route
+  SPA->>Auth: Restore session and profile
+  Auth->>Client: getSession and load profile
+  Client->>DB: Query profile, roles, plan through RLS
+  DB-->>Client: User scoped data
+  Auth-->>SPA: Auth state, role, plan, subscription
+  SPA->>Function: Invoke domain API with bearer token
+  Function->>Function: Parse request and validate auth/session
+  Function->>DB: Read/write through anon or service role client
+  alt Provider workflow
+    Function->>External: Call marketplace, Stripe, AI, or email API
+    External-->>Function: Provider response
+  end
+  DB-->>Function: Result
+  Function-->>SPA: JSON response
+  SPA-->>User: Update UI
+

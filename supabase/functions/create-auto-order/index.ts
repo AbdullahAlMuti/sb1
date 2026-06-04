@@ -1,4 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveExtensionOrLegacyAuth, createServiceClient } from "../_shared/extension-session.ts";
+import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,44 +31,26 @@ Deno.serve(async (req) => {
   try {
     console.log("[create-auto-order] Function started");
 
-    // Get authorization header
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      console.error("[create-auto-order] No authorization header");
-      return new Response(
-        JSON.stringify({ success: false, error: "Missing authorization header" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const token = authHeader.replace("Bearer ", "");
-
-    // Create Supabase client with user token
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
+    const supabase = createServiceClient();
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: "create-auto-order:ip",
+      key: getClientIp(req),
+      limit: 30,
+      windowSeconds: 60,
     });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
 
-    // Verify user session
-    const { data: userData, error: userError } = await supabaseUser.auth.getUser();
+    const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
+    const userId = authContext.userId;
+    console.log(`[create-auto-order] Authenticated user: ${userId} (${authContext.authMode})`);
 
-    if (userError || !userData?.user) {
-      console.error("[create-auto-order] Auth error:", userError?.message);
-      return new Response(
-        JSON.stringify({ success: false, error: "Invalid or expired session" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const userId = userData.user.id;
-    const userEmail = userData.user.email;
-    console.log(`[create-auto-order] Authenticated user: ${userId} (${userEmail})`);
-
-    // Use service role for DB operations
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const userLimit = await checkRateLimit(supabase, {
+      bucket: "create-auto-order:user",
+      key: userId,
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
 
     // Get user's plan and order limits from database
     const { data: userPlan } = await supabase
@@ -269,9 +252,10 @@ Deno.serve(async (req) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Internal server error";
     console.error("[create-auto-order] Unexpected error:", errorMessage);
+    const status = /(authorization|auth token|session)/i.test(errorMessage) ? 401 : 500;
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

@@ -1,4 +1,3 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient, corsHeaders } from '../_shared/extension-session.ts';
 
 Deno.serve(async (req) => {
@@ -8,9 +7,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    
     const supabase = createServiceClient();
 
     // Authenticate using the shared dual-auth resolver
@@ -21,7 +17,7 @@ Deno.serve(async (req) => {
 
     // Verify feature entitlement
     const hasAccess = await requireFeatureEntitlement(supabase, userId, authContext.workspaceId, "listing_access");
-    if (!hasAccess && authContext.authMode === "extension_session") {
+    if (!hasAccess) {
       console.warn(`[get-listings] User ${userId} missing listing_access entitlement`);
       return new Response(
         JSON.stringify({ success: false, error: "Feature not entitled or subscription inactive" }),

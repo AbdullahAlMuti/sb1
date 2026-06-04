@@ -15,8 +15,19 @@ interface Profile {
 
 interface UserRole {
   // NOTE: Some older DBs/extensions may still use 'moderator'. Treat it as admin-like.
-  role: 'user' | 'admin' | 'super_admin' | 'moderator';
+  role: 'user' | 'admin' | 'super_admin' | 'moderator' | 'staff';
 }
+
+type RoleRow = {
+  role: UserRole['role'];
+};
+
+type EnsuredProfileResponse = {
+  profile?: Profile & { settings?: unknown };
+};
+
+const toError = (error: unknown, fallback: string) =>
+  error instanceof Error ? error : new Error(fallback);
 
 interface AuthContextType {
   user: User | null;
@@ -28,11 +39,11 @@ interface AuthContextType {
   isLoading: boolean;
   isEmailVerified: boolean;
   signIn: (email: string, password: string, loginContext?: 'user' | 'admin') => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, fullName?: string, goal?: string) => Promise<{ error: Error | null; isSandbox?: boolean; otpCode?: string | null }>;
+  signUp: (email: string, password: string, fullName?: string, goal?: string) => Promise<{ error: Error | null }>;
   verifyOtp: (email: string, token: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
-  resendVerificationEmail: (email?: string) => Promise<{ error: Error | null; isSandbox?: boolean; otpCode?: string | null }>;
+  resendVerificationEmail: (email?: string) => Promise<{ error: Error | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -70,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const ensuredProfile = (ensured as any)?.profile;
+        const ensuredProfile = (ensured as EnsuredProfileResponse | null)?.profile;
 
         if (ensuredProfile) {
           const profileData: Profile = {
@@ -123,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const rows = (data as any[]) || [];
+      const rows = (data || []) as RoleRow[];
       const mappedRoles: UserRole[] = rows.map((r) => ({
         role: r.role as UserRole['role'],
       }));
@@ -230,8 +241,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         toast.error(errMsg);
         return { error: new Error(errMsg) };
       }
-    } catch (err: any) {
-      const errMsg = err.message || 'Unable to validate login access';
+    } catch (err: unknown) {
+      const errMsg = toError(err, 'Unable to validate login access').message;
       toast.error(errMsg);
       return { error: new Error(errMsg) };
     }
@@ -257,7 +268,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: new Error('Unable to validate account access.') };
     }
 
-    const hasAdminRole = ((roleRows as any[]) || []).some((row) => isAdminRole(row.role));
+    const hasAdminRole = ((roleRows || []) as RoleRow[]).some((row) => isAdminRole(row.role));
     if (loginContext === 'user' && hasAdminRole) {
       await supabase.auth.signOut();
       const errMsg = 'This account cannot be used from the user login panel. Please use the admin login page.';
@@ -299,14 +310,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const rawErrMsg = await getFunctionErrorMessage(error);
         const errMsg = data?.error || rawErrMsg || 'An error occurred during signup';
         toast.error(errMsg);
-        return { error: new Error(errMsg), isSandbox: false, otpCode: null };
+        return { error: new Error(errMsg) };
       }
 
-      toast.success(data?.isSandbox ? 'Sandbox mode: verification code generated.' : 'Please check your email for the verification code!');
-      return { error: null, isSandbox: !!data?.isSandbox, otpCode: data?.otpCode || null };
-    } catch (err: any) {
-      toast.error(err.message || 'An error occurred during signup');
-      return { error: err, isSandbox: false, otpCode: null };
+      toast.success('Please check your email for the verification code!');
+      return { error: null };
+    } catch (err: unknown) {
+      const error = toError(err, 'An error occurred during signup');
+      toast.error(error.message);
+      return { error };
     }
   };
 
@@ -329,9 +341,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       toast.success('Email verified successfully!');
       return { error: null };
-    } catch (err: any) {
-      toast.error(err.message || 'Verification failed');
-      return { error: err };
+    } catch (err: unknown) {
+      const error = toError(err, 'Verification failed');
+      toast.error(error.message);
+      return { error };
     }
   };
 
@@ -347,7 +360,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const resendVerificationEmail = async (email?: string) => {
     const targetEmail = email || user?.email;
     if (!targetEmail) {
-      return { error: new Error('No email found'), isSandbox: false, otpCode: null };
+      return { error: new Error('No email found') };
     }
 
     try {
@@ -362,14 +375,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const rawErrMsg = await getFunctionErrorMessage(error);
         const errMsg = rawErrMsg || data?.error || 'Failed to resend code';
         toast.error(errMsg);
-        return { error: new Error(errMsg), isSandbox: false, otpCode: null };
+        return { error: new Error(errMsg) };
       }
 
-      toast.success(data?.isSandbox ? 'Sandbox mode: new code generated.' : 'Verification code resent successfully.');
-      return { error: null, isSandbox: !!data?.isSandbox, otpCode: data?.otpCode || null };
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to resend code');
-      return { error: err, isSandbox: false, otpCode: null };
+      toast.success('Verification code resent successfully.');
+      return { error: null };
+    } catch (err: unknown) {
+      const error = toError(err, 'Failed to resend code');
+      toast.error(error.message);
+      return { error };
     }
   };
 
