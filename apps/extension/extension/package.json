@@ -1,0 +1,11 @@
+{
+  "name": "@sellersuit/extension",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "prepare:dev": "node scripts/prepare-extension-dev.js",
+    "prepare:prod": "node scripts/prepare-extension-prod.js",
+    "verify:prod": "node scripts/verify-extension-prod.js"
+  }
+}

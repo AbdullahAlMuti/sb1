@@ -57,7 +57,7 @@
     font-size: 14px;
     color: #495057;
     cursor: pointer;
-    transition: all 0.2s ease;
+    /* removed */
 }
 
 .sku-select:focus {
@@ -97,7 +97,7 @@
     border: 2px solid #ced4da;
     border-radius: 4px;
     margin-right: 10px;
-    transition: all 0.2s ease;
+    /* removed */
 }
 
 .checkbox-label:hover .checkmark {
@@ -118,7 +118,7 @@
     height: 10px;
     border: solid white;
     border-width: 0 2px 2px 0;
-    transform: rotate(45deg);
+    /* removed */
 }
 
 /* Actions */
@@ -139,7 +139,7 @@
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    /* removed */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -148,19 +148,19 @@
 
 .save-btn:hover {
     background: linear-gradient(135deg, #218838, #1ea085);
-    transform: translateY(-1px);
+    /* removed */
     box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
 }
 
 .save-btn:active {
-    transform: translateY(0);
+    /* removed */
     box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
 }
 
 .save-btn:disabled {
     background: #6c757d;
     cursor: not-allowed;
-    transform: none;
+    /* removed */
     box-shadow: none;
 }
 
@@ -175,7 +175,7 @@
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    /* removed */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -184,12 +184,12 @@
 
 .admin-btn:hover {
     background: linear-gradient(135deg, #5a32a3, #4a2a8a);
-    transform: translateY(-1px);
+    /* removed */
     box-shadow: 0 4px 8px rgba(111, 66, 193, 0.3);
 }
 
 .admin-btn:active {
-    transform: translateY(0);
+    /* removed */
     box-shadow: 0 2px 4px rgba(111, 66, 193, 0.3);
 }
 
@@ -226,16 +226,16 @@
 @keyframes fadeIn {
     from {
         opacity: 0;
-        transform: translateY(-10px);
+        /* removed */
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        /* removed */
     }
 }
 
 .popup-container {
-    animation: fadeIn 0.3s ease-out;
+    /* removed */
 }
 
 /* Success State */

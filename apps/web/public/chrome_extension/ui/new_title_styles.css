@@ -16,7 +16,7 @@
   font-weight: 600;
   color: #586069;
   margin-bottom: 8px;
-  text-transform: uppercase;
+  text-/* removed */
   letter-spacing: 0.5px;
 }
 
@@ -30,7 +30,7 @@
   border-radius: 6px;
   min-height: 60px;
   word-break: break-word;
-  transition: all 0.2s ease;
+  /* removed */
 }
 
 .ai-title-display.has-title {
@@ -63,7 +63,7 @@
   border-radius: 4px;
   color: #24292e;
   cursor: pointer;
-  transition: all 0.2s;
+  /* removed */
 }
 
 .btn-copy-title:hover {

@@ -3,6 +3,8 @@
 // ═══════════════════════════════════════════════════════════
 
 const UIHelper = (() => {
+  const typingTimers = new Map();
+
   /**
    * Show toast notification
    * @param {string} message - Message to display
@@ -331,7 +333,8 @@ const UIHelper = (() => {
     formatDate,
     debounce,
     showTitleSelectionPopup,
-    selectTitle
+    selectTitle,
+    renderInlineTitles
   };
 
   // ═══════════════════════════════════════════════════════════
@@ -339,7 +342,8 @@ const UIHelper = (() => {
   // ═══════════════════════════════════════════════════════════
 
   function showTitleSelectionPopup(titles) {
-    console.log('[UIHelper] showTitleSelectionPopup called with:', titles);
+    console.warn('[UIHelper] Deprecated: showTitleSelectionPopup is disabled. Routing to inline title rendering.');
+    return renderInlineTitles(titles);
     const popup = document.getElementById('title-selection-popup');
     const popupList = document.getElementById('title-popup-list');
     const closeBtn = document.getElementById('title-popup-close-btn');
@@ -427,13 +431,7 @@ const UIHelper = (() => {
       titleDisplay.innerText = titleValue;
       titleDisplay.classList.add('has-title');
 
-      // Animation
-      titleDisplay.style.transition = 'none';
-      titleDisplay.style.transform = 'scale(1.02)';
-      setTimeout(() => {
-        titleDisplay.style.transition = 'transform 0.3s ease';
-        titleDisplay.style.transform = 'scale(1)';
-      }, 100);
+      // Animation removed per user request
     }
 
     if (titleCounter) {
@@ -467,9 +465,177 @@ const UIHelper = (() => {
       console.warn('[UIHelper] Could not copy to clipboard:', err);
     });
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // 🏷️ INLINE TITLE RENDERING
+  // ═══════════════════════════════════════════════════════════
+
+  // ═══════════════════════════════════════════════════════════
+  // ⌨️ TYPING EFFECT
+  // ═══════════════════════════════════════════════════════════
+
+  function typeIntoElement(element, text, speed = 10) {
+    if (!element) return;
+    
+    // Clear old timers for this element
+    if (typingTimers.has(element)) {
+      clearInterval(typingTimers.get(element));
+      typingTimers.delete(element);
+    }
+    
+    // Check reduced motion
+    const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) {
+      element.innerText = text;
+      element.classList.remove('typing-active');
+      return;
+    }
+
+    element.innerText = '';
+    element.classList.add('typing-active');
+    
+    let i = 0;
+    const timer = setInterval(() => {
+      if (i < text.length) {
+        element.innerText += text.charAt(i);
+        i++;
+      } else {
+        clearInterval(timer);
+        typingTimers.delete(element);
+        element.classList.remove('typing-active');
+      }
+    }, speed);
+    
+    typingTimers.set(element, timer);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 🏷️ STATIC TITLE POPULATION
+  // ═══════════════════════════════════════════════════════════
+
+  function selectTitleFromSlot(titleStr, selectedOptionNum) {
+    if (chrome && chrome.storage) {
+      chrome.storage.local.set({
+        selectedEbayTitle: titleStr,
+        generatedAt: Date.now()
+      });
+    }
+
+    const titleDisplay = document.getElementById('ai-generated-title');
+    const titleCounter = document.getElementById('ai-title-counter');
+    if (titleDisplay) {
+      typeIntoElement(titleDisplay, titleStr, 5); // Faster typing on selection
+      titleDisplay.classList.add('has-title');
+      if (titleCounter) {
+        titleCounter.innerHTML = `${titleStr.length} / 80 chars <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>`;
+      }
+    }
+
+    for (let i = 1; i <= 3; i++) {
+      const card = document.getElementById(`ai-title-option-${i}`);
+      const useBtn = document.getElementById(`ai-title-option-${i}-use`);
+      if (card && useBtn) {
+        if (i === selectedOptionNum) {
+          card.classList.add('selected');
+          useBtn.textContent = 'Selected';
+        } else {
+          card.classList.remove('selected');
+          useBtn.textContent = 'Use Title';
+        }
+      }
+    }
+  }
+
+  function populateStaticTitleSlots(titles) {
+    console.debug('[Titles] populateStaticTitleSlots called');
+    
+    let normalizedTitles = [];
+    if (Array.isArray(titles)) {
+      normalizedTitles = titles;
+    } else if (titles && Array.isArray(titles.titles)) {
+      normalizedTitles = titles.titles;
+    } else if (titles && titles.data && Array.isArray(titles.data.titles)) {
+      normalizedTitles = titles.data.titles;
+    }
+
+    if (!normalizedTitles || normalizedTitles.length === 0) return;
+
+    // Save selectedEbayTitle immediately (source of truth)
+    const bestTitleStr = typeof normalizedTitles[0] === 'object' ? normalizedTitles[0].title : normalizedTitles[0];
+    if (chrome && chrome.storage) {
+      chrome.storage.local.set({
+        selectedEbayTitle: bestTitleStr,
+        generatedAt: Date.now()
+      });
+    }
+
+    // Main selected title
+    const titleDisplay = document.getElementById('ai-generated-title');
+    const titleCounter = document.getElementById('ai-title-counter');
+    if (titleDisplay) {
+      titleDisplay.classList.add('has-title');
+      typeIntoElement(titleDisplay, bestTitleStr, 10);
+      if (titleCounter) {
+        titleCounter.innerHTML = `${bestTitleStr.length} / 80 chars <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>`;
+      }
+    }
+
+    // Populate static slots (up to 3)
+    for (let i = 0; i < 3; i++) {
+      if (i >= normalizedTitles.length) break;
+      const titleItem = normalizedTitles[i];
+      const titleStr = typeof titleItem === 'object' ? titleItem.title : titleItem;
+      
+      const optionNum = i + 1;
+      const card = document.getElementById(`ai-title-option-${optionNum}`);
+      const textEl = document.getElementById(`ai-title-option-${optionNum}-text`);
+      const countEl = document.getElementById(`ai-title-option-${optionNum}-count`);
+      const useBtn = document.getElementById(`ai-title-option-${optionNum}-use`);
+      const copyBtn = document.getElementById(`ai-title-option-${optionNum}-copy`);
+
+      if (card && textEl && countEl && useBtn && copyBtn) {
+        textEl.classList.remove('text-muted');
+        typeIntoElement(textEl, titleStr, 10);
+        countEl.textContent = `${titleStr.length} chars`;
+        countEl.className = titleStr.length > 80 ? 'warning' : '';
+        
+        // Reset state
+        card.classList.remove('selected');
+        if (i === 0) {
+          card.classList.add('selected');
+          useBtn.textContent = 'Selected';
+        } else {
+          useBtn.textContent = 'Use Title';
+        }
+
+        // Attach events cleanly
+        useBtn.onclick = () => selectTitleFromSlot(titleStr, optionNum);
+        card.onclick = (e) => {
+          if (!e.target.closest('.inline-title-copy') && !e.target.closest('.inline-title-use')) {
+             selectTitleFromSlot(titleStr, optionNum);
+          }
+        };
+        copyBtn.onclick = (e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(titleStr);
+          const originalText = copyBtn.textContent;
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => { copyBtn.textContent = originalText; }, 2000);
+        };
+      }
+    }
+  }
+
+  // Alias for backward compatibility
+  function renderInlineTitles(titles) {
+    return populateStaticTitleSlots(titles);
+  }
 })();
 
 // Make it available globally or as a module
+if (typeof window !== 'undefined') {
+  window.UIHelper = UIHelper;
+}
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = UIHelper;
 }

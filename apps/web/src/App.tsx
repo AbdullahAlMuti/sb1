@@ -30,6 +30,7 @@ import Orders from "./pages/dashboard/Orders";
 import EbayOrders from "./pages/dashboard/EbayOrders";
 import Listings from "./pages/dashboard/Listings";
 import NewListing from "./pages/dashboard/NewListing";
+import BulkLister from "./pages/dashboard/BulkLister";
 import ExtensionConnect from "./pages/dashboard/ExtensionConnect";
 import Subscription from "./pages/dashboard/Subscription";
 import BillingUsage from "./pages/dashboard/BillingUsage";
@@ -113,6 +114,7 @@ const EbayRoutes = () => (
       <Route path="overview" element={<Dashboard />} />
       <Route path="listings" element={<Listings />} />
       <Route path="listings/new" element={<NewListing />} />
+      <Route path="bulk-lister" element={<BulkLister />} />
       <Route path="orders" element={<EbayOrders />} />
       <Route path="auto-orders" element={<Orders />} />
       <Route path="product-research" element={<ProductResearch />} />

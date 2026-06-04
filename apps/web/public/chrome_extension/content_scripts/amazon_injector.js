@@ -259,7 +259,7 @@ const scrapeCompleteProductData = () => {
     }
 
     console.log('[Scraper] Extraction complete. Fields captured:', Object.keys(productData).length);
-    console.log('[Scraper] Product data:', productData);
+    if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('[Scraper] Product data (hidden in prod)', productData);
 
     return productData;
 }
@@ -403,7 +403,7 @@ const scrapeAndStoreProductData = async () => {
             productDataTimestamp: Date.now()
         });
 
-        console.log('✅ [ProductScraper] Product data saved to storage:', {
+        if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('✅ [ProductScraper] Product data saved to storage:', {
             title: productData.title?.substring(0, 50) + '...',
             bulletPoints: productData.bulletPoints?.length || 0,
             hasDescription: !!productData.description,
@@ -1851,7 +1851,7 @@ const scrapeAndDisplayImages = async () => {
         // Re-enable buttons after successful processing
         if (optiListBtn) {
             optiListBtn.disabled = false;
-            optiListBtn.textContent = 'Opti-List';
+            optiListBtn.textContent = 'List on eBay';
         }
         if (downloadBtn) {
             downloadBtn.disabled = false;
@@ -1874,7 +1874,7 @@ const scrapeAndDisplayImages = async () => {
         // Re-enable buttons on error
         if (optiListBtn) {
             optiListBtn.disabled = false;
-            optiListBtn.textContent = 'Opti-List';
+            optiListBtn.textContent = 'List on eBay';
         }
         if (downloadBtn) {
             downloadBtn.disabled = false;
@@ -2173,6 +2173,63 @@ const generateTitleVariations = (originalTitle) => {
 // Adds event listeners to the buttons inside our injected panel.
 const addEventListenersToPanel = () => {
 
+    // ═══════════════════════════════════════════════════════════
+    // Editable Title (Live Character Count)
+    // ═══════════════════════════════════════════════════════════
+    const titleDisplay = document.getElementById('ai-generated-title');
+    const titleCounter = document.getElementById('ai-title-counter');
+    if (titleDisplay && titleCounter) {
+        titleDisplay.addEventListener('input', () => {
+            const currentText = titleDisplay.innerText || '';
+            titleCounter.textContent = `${currentText.length} / 80 chars`;
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // Panel Controls (Header)
+    // ═══════════════════════════════════════════════════════════
+    const nightModeBtn = document.getElementById('panel-night-mode-btn');
+    if (nightModeBtn) {
+        nightModeBtn.addEventListener('click', () => {
+            const rootWrapper = document.getElementById('snipe-root-wrapper');
+            if (rootWrapper) {
+                rootWrapper.classList.toggle('ss-dark-mode');
+            } else {
+                document.body.classList.toggle('ss-dark-mode');
+            }
+        });
+    }
+
+    const minimizeBtn = document.getElementById('panel-minimize-btn');
+    if (minimizeBtn) {
+        minimizeBtn.addEventListener('click', () => {
+            const rootWrapper = document.getElementById('snipe-root-wrapper');
+            if (rootWrapper) {
+                rootWrapper.classList.toggle('panel-minimized');
+                const isMin = rootWrapper.classList.contains('panel-minimized');
+                Array.from(rootWrapper.children).forEach(child => {
+                    if (!child.classList.contains('ss-header')) {
+                        child.style.display = isMin ? 'none' : '';
+                    }
+                });
+            }
+        });
+    }
+
+    const closeBtn = document.getElementById('panel-close-btn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            const rootWrapper = document.getElementById('snipe-root-wrapper');
+            if (rootWrapper) {
+                rootWrapper.remove();
+                uiInjected = false;
+                const startBtn = document.getElementById('initial-list-button') || document.querySelector('.floating-snipe-btn');
+                if (startBtn) {
+                    startBtn.style.display = 'flex';
+                }
+            }
+        });
+    }
     // Snipe Title button
     const snipeTitleBtn = document.getElementById('snipe-title-btn');
     if (snipeTitleBtn) {
@@ -2183,7 +2240,7 @@ const addEventListenersToPanel = () => {
                 generateAITitlesBtn.click();
             } else {
                 console.warn('⚠️ Generate AI Titles button not found');
-                UIHelper?.showToast?.('AI title generation not available', 'warning');
+                window.UIHelper?.showToast?.('AI title generation not available', 'warning');
             }
         });
         console.log('✅ Snipe Title button listener added (auto-triggers AI generation)');
@@ -2197,7 +2254,7 @@ const addEventListenersToPanel = () => {
             const completeData = scrapeCompleteProductData();
 
             if (!completeData.title) {
-                UIHelper?.showToast?.('No product title found on page', 'error');
+                window.UIHelper?.showToast?.('No product title found on page', 'error');
                 return;
             }
 
@@ -2250,11 +2307,13 @@ const addEventListenersToPanel = () => {
                     const titlesToSave = titles.map((t, i) => typeof t === 'object' ? t.title : t);
                     await chrome.storage.local.set({ savedTitles: titlesToSave });
 
-                    // TRIGGER POPUP UI
-                    if (UIHelper && typeof UIHelper.showTitleSelectionPopup === 'function') {
-                        UIHelper.showTitleSelectionPopup(titles);
+                    // TRIGGER INLINE UI safely
+                    if (typeof window !== 'undefined' && window.UIHelper && typeof window.UIHelper.renderInlineTitles === 'function') {
+                        window.UIHelper.renderInlineTitles(titles);
+                    } else if (typeof UIHelper !== 'undefined' && typeof UIHelper.renderInlineTitles === 'function') {
+                        UIHelper.renderInlineTitles(titles);
                     } else {
-                        console.error('❌ UIHelper.showTitleSelectionPopup is not available');
+                        console.error('❌ UIHelper.renderInlineTitles is not available globally');
                     }
 
                     // Keep legacy update just in case, but popup is primary now
@@ -2281,13 +2340,13 @@ const addEventListenersToPanel = () => {
                         }
                     });
 
-                    UIHelper?.showToast?.(`AI titles generated using ${bgResp.provider || 'Lovable AI'}!`, 'success');
+                    window.UIHelper?.showToast?.(`AI titles generated using ${bgResp.provider || 'Lovable AI'}!`, 'success');
                 } else {
                     throw new Error('No titles returned');
                 }
             } catch (error) {
                 console.error('❌ Error generating AI titles:', error);
-                UIHelper?.showToast?.(error.message || 'Failed to generate AI titles', 'error');
+                window.UIHelper?.showToast?.(error.message || 'Failed to generate AI titles', 'error');
             } finally {
                 generateAITitlesBtn.disabled = false;
                 generateAITitlesBtn.innerHTML = originalContent;
@@ -2331,8 +2390,10 @@ const addEventListenersToPanel = () => {
                 // 1) Scrape ALL product data and print it to the console (what you asked for)
                 const productData = scrapeFullProductData();
                 console.log('═══════════════════════════════════════════════════════');
-                console.log('📦 DESCRIPTION: FULL SCRAPED PRODUCT DATA');
-                console.log(productData);
+                if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) {
+                    console.log('📦 DESCRIPTION [PROD GUARDED]: FULL SCRAPED PRODUCT DATA');
+                    console.log('DATA:', productData);
+                }
                 console.log('═══════════════════════════════════════════════════════');
 
                 if (!productData?.title) {
@@ -2388,7 +2449,7 @@ const addEventListenersToPanel = () => {
 
                 chrome.storage.local.set({ generatedDescription: lastGeneratedDescription });
 
-                UIHelper?.showToast?.(`Description generated using ${bgResp.provider || 'AI'}!`, 'success');
+                window.UIHelper?.showToast?.(`Description generated using ${bgResp.provider || 'AI'}!`, 'success');
                 console.log('✅ AI Description generated:', { provider: bgResp.provider, model: bgResp.model, length: bgResp.length });
             } catch (err) {
                 console.error('═══════════════════════════════════════════════════════');
@@ -2450,7 +2511,7 @@ const addEventListenersToPanel = () => {
                     descriptionPreviewEl.innerHTML = displayHtml;
                 }
 
-                UIHelper?.showToast?.(errorMessage, 'error');
+                window.UIHelper?.showToast?.(errorMessage, 'error');
             } finally {
                 generateDescriptionBtn.disabled = false;
                 generateDescriptionBtn.innerHTML = originalContent;
@@ -2463,15 +2524,15 @@ const addEventListenersToPanel = () => {
         copyDescriptionBtn.addEventListener('click', async () => {
             const text = lastGeneratedDescription || (await chrome.storage.local.get('generatedDescription'))?.generatedDescription || '';
             if (!text) {
-                UIHelper?.showToast?.('No description to copy', 'warning');
+                window.UIHelper?.showToast?.('No description to copy', 'warning');
                 return;
             }
             try {
                 await navigator.clipboard.writeText(text);
-                UIHelper?.showToast?.('Description copied (HTML)!', 'success');
+                window.UIHelper?.showToast?.('Description copied (HTML)!', 'success');
             } catch (e) {
                 console.error('❌ Copy description failed:', e);
-                UIHelper?.showToast?.('Copy failed', 'error');
+                window.UIHelper?.showToast?.('Copy failed', 'error');
             }
         });
         console.log('✅ Copy Description button listener added');
@@ -2536,8 +2597,10 @@ const addEventListenersToPanel = () => {
             scrapeJsonEl.innerHTML = syntaxHighlightJSON(data);
         }
         console.log('═══════════════════════════════════════════════════════');
-        console.log('📋 SCRAPE PREVIEW: Full scraped data');
-        console.log(data);
+        if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) {
+            console.log('📋 SCRAPE PREVIEW [PROD GUARDED]: Full scraped data');
+            console.log('SCRAPE_DATA:', data);
+        }
         console.log('═══════════════════════════════════════════════════════');
     };
 
@@ -2574,15 +2637,15 @@ const addEventListenersToPanel = () => {
     if (scrapeCopyJsonBtn) {
         scrapeCopyJsonBtn.addEventListener('click', async () => {
             if (!lastScrapedData) {
-                UIHelper?.showToast?.('No data to copy', 'warning');
+                window.UIHelper?.showToast?.('No data to copy', 'warning');
                 return;
             }
             try {
                 await navigator.clipboard.writeText(JSON.stringify(lastScrapedData, null, 2));
-                UIHelper?.showToast?.('JSON copied to clipboard!', 'success');
+                window.UIHelper?.showToast?.('JSON copied to clipboard!', 'success');
             } catch (e) {
                 console.error('❌ Copy JSON failed:', e);
-                UIHelper?.showToast?.('Copy failed', 'error');
+                window.UIHelper?.showToast?.('Copy failed', 'error');
             }
         });
     }
@@ -2608,7 +2671,7 @@ const addEventListenersToPanel = () => {
             if (input && input.value) {
                 UIHelper?.copyToClipboard?.(input.value);
             } else {
-                UIHelper?.showToast?.('No title to copy', 'warning');
+                window.UIHelper?.showToast?.('No title to copy', 'warning');
             }
         });
     });
@@ -2675,7 +2738,7 @@ const addEventListenersToPanel = () => {
                             console.warn('   Please click Copy button first to save the data.');
                             alert('⚠️ No saved data found!\n\nPlease click the Copy button first to save the product data.');
                             btn.disabled = false;
-                            btn.textContent = 'Opti-List';
+                            btn.textContent = 'List on eBay';
                             return;
                         }
 
@@ -2695,7 +2758,7 @@ const addEventListenersToPanel = () => {
                             console.warn('⚠️ WARNING: No title in saved data!');
                             alert('⚠️ No title in saved data!\n\nPlease click Copy button again after selecting a title.');
                             btn.disabled = false;
-                            btn.textContent = 'Opti-List';
+                            btn.textContent = 'List on eBay';
                             return;
                         }
 
@@ -2703,7 +2766,7 @@ const addEventListenersToPanel = () => {
                             console.warn('⚠️ WARNING: No SKU in saved data!');
                             alert('⚠️ No SKU in saved data!\n\nPlease click Copy button again after generating a SKU.');
                             btn.disabled = false;
-                            btn.textContent = 'Opti-List';
+                            btn.textContent = 'List on eBay';
                             return;
                         }
 
@@ -2712,7 +2775,7 @@ const addEventListenersToPanel = () => {
                             console.warn('⚠️ WARNING: No calculated price in saved data!');
                             alert('⚠️ No calculated price in saved data!\n\nPlease click Copy button again after calculating the price.');
                             btn.disabled = false;
-                            btn.textContent = 'Opti-List';
+                            btn.textContent = 'List on eBay';
                             return;
                         }
 
@@ -2776,7 +2839,7 @@ const addEventListenersToPanel = () => {
 
                         // Save to Chrome storage with explicit keys
                         await chrome.storage.local.set(listingData);
-                        console.log('✅ All listing data saved:', listingData);
+                        if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('✅ All listing data saved (hidden in prod)', listingData);
 
                         // Convert Copy button data format to format expected by START_OPTILIST
                         // Parse prices - handle both string and number formats
@@ -2832,7 +2895,7 @@ const addEventListenersToPanel = () => {
                                     console.error('═══════════════════════════════════════════════════════');
                                     btn.disabled = false;
                                     btn.textContent = '❌ Error - Try Again';
-                                    alert('Failed to sync to SellerSuit Dashboard. Error: ' + chrome.runtime.lastError.message);
+                                    alert('Failed to send data to Google Sheets. Error: ' + chrome.runtime.lastError.message);
                                     return;
                                 }
 
@@ -2847,17 +2910,17 @@ const addEventListenersToPanel = () => {
                                 console.log('═══════════════════════════════════════════════════════');
 
                                 if (response && response.success) {
-                                    console.log('✅ SUCCESS: Data sent to SellerSuit Dashboard via background.js');
-                                    btn.textContent = '✅ Synced to Dashboard!';
+                                    console.log('✅ SUCCESS: Data sent to Google Sheets via background.js');
+                                    btn.textContent = '✅ Sent to Sheets!';
                                     setTimeout(() => {
                                         btn.disabled = false;
-                                        btn.textContent = 'Opti-List';
+                                        btn.textContent = 'List on eBay';
                                     }, 3000);
                                 } else if (response && response.error) {
                                     console.error('❌ ERROR FROM BACKGROUND.JS:', response.error);
                                     btn.textContent = '⚠️ Error: ' + response.error;
                                     btn.disabled = false;
-                                    alert('Failed to sync data to SellerSuit: ' + response.error);
+                                    alert('Failed to send data to Google Sheets: ' + response.error);
                                 } else {
                                     console.warn('⚠️ No response or unexpected response format');
                                     console.warn('Response received:', response);
@@ -2865,7 +2928,7 @@ const addEventListenersToPanel = () => {
                                     btn.textContent = '✅ Sent (no response)';
                                     setTimeout(() => {
                                         btn.disabled = false;
-                                        btn.textContent = 'Opti-List';
+                                        btn.textContent = 'List on eBay';
                                     }, 2000);
                                 }
                             });
@@ -2886,7 +2949,7 @@ const addEventListenersToPanel = () => {
                     } catch (error) {
                         console.error('Error in Opti-List process:', error);
                         btn.disabled = false;
-                        btn.textContent = 'Opti-List';
+                        btn.textContent = 'List on eBay';
                     }
                 } else {
                     alert("Please select a title first.");
@@ -2928,7 +2991,7 @@ const addEventListenersToPanel = () => {
 
                 const tabSeparatedData = formatDataForCopy(productData);
                 console.log('📋 Tab-separated data to copy:');
-                console.log(tabSeparatedData);
+                if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log(tabSeparatedData);
                 console.log('═══════════════════════════════════════════════════════');
 
                 // Copy to clipboard
@@ -3167,7 +3230,7 @@ const generateAiTitle = async (inputElement, rowElement, generateBtn, useBtn) =>
         ...details // Spread the scraped details (brand, model, description, etc.)
     };
 
-    console.log('🤖 AI Title Request Data:', productData);
+    if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('🤖 AI Title Request Data (hidden in prod)', productData);
 
     // Get API Key and Prompt from storage
     const settings = await chrome.storage.local.get(['geminiApiKey', 'titleGenerationPrompt', 'geminiModel']);
@@ -4530,7 +4593,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 ASIN: window.location.pathname.match(/\/dp\/([A-Z0-9]{10})/)?.[1] || ''
             };
 
-            console.log('[Amazon Injector] Scraped product data:', productData);
+            if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('[Amazon Injector] Scraped product data (hidden in prod)', productData);
 
             sendResponse({
                 success: true,

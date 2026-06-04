@@ -11,7 +11,7 @@
     backdrop-filter: blur(2px);
     opacity: 0;
     visibility: hidden;
-    transition: opacity 0.2s ease, visibility 0.2s;
+    /* removed */
 }
 
 /* Logic to show the popup when style="display: block/flex" is set by JS */
@@ -34,7 +34,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    animation: popupSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    /* removed */
     position: relative;
     z-index: 10001;
 }
@@ -42,11 +42,11 @@
 @keyframes popupSlideUp {
     from {
         opacity: 0;
-        transform: translateY(20px) scale(0.96);
+        /* removed */
     }
 
     to {
         opacity: 1;
-        transform: translateY(0) scale(1);
+        /* removed */
     }
 }

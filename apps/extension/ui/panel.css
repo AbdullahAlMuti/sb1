@@ -543,6 +543,7 @@
     grid-template-columns: 1fr;
   }
 }
+
 @media (max-width: 800px) {
   .ss-title-row {
     grid-template-columns: 28px minmax(0, 1fr);
@@ -570,6 +571,92 @@
   }
   .ss-action-group {
     justify-content: center;
+  }
+}
+
+@media (max-width: 600px) {
+  /* Tighter grid spacing */
+  .ss-grid-layout {
+    padding: var(--ss-space-2);
+    gap: var(--ss-space-2);
+  }
+  .ss-card {
+    padding: var(--ss-space-3);
+  }
+  
+  /* Hide long header text */
+  .ss-tool-name {
+    display: none;
+  }
+  
+  /* Stack bottom bar items */
+  .ss-action-group {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+  .ss-action-group .ss-btn {
+    width: 100%;
+  }
+  
+  /* Expand inputs */
+  .ss-price-input, .ss-sku-input, .ss-select, .input-inline {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  
+  /* Action right area stacking */
+  .ss-action-right {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ss-space-2);
+  }
+  .ss-action-right > * {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Ultra-narrow cleanup */
+  .ss-header {
+    padding: 0 var(--ss-space-2);
+  }
+  .ss-header-left .ss-badge {
+    display: none;
+  }
+  
+  /* Compact titles */
+  .ss-title-row {
+    padding: var(--ss-space-2);
+  }
+  .ss-title-actions {
+    flex-direction: column;
+  }
+  .ss-title-actions .ss-btn {
+    width: 100%;
+  }
+  
+  /* Editable title box actions */
+  .ss-selected-title-body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ss-selected-actions {
+    width: 100%;
+    margin-top: var(--ss-space-2);
+  }
+  .ss-selected-actions .ss-btn {
+    width: 100%;
+  }
+  
+  /* Description footer actions */
+  .ss-desc-footer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ss-space-2);
+  }
+  .ss-desc-footer .ss-btn {
+    width: 100%;
   }
 }
 

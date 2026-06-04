@@ -142,10 +142,12 @@
     {
       "matches": [
         "https://sellersuit.com/*",
-        "https://*.sellersuit.com/*"
+        "https://*.sellersuit.com/*",
+        "http://localhost:3001/*"
       ],
       "js": [
-        "content_scripts/auth_sync.js"
+        "content_scripts/auth_sync.js",
+        "content_scripts/dashboard_bridge.js"
       ],
       "run_at": "document_start",
       "all_frames": true

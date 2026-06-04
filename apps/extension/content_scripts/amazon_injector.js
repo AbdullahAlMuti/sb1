@@ -1851,7 +1851,7 @@ const scrapeAndDisplayImages = async () => {
         // Re-enable buttons after successful processing
         if (optiListBtn) {
             optiListBtn.disabled = false;
-            optiListBtn.textContent = 'Opti-List';
+            optiListBtn.textContent = 'List on eBay';
         }
         if (downloadBtn) {
             downloadBtn.disabled = false;
@@ -1874,7 +1874,7 @@ const scrapeAndDisplayImages = async () => {
         // Re-enable buttons on error
         if (optiListBtn) {
             optiListBtn.disabled = false;
-            optiListBtn.textContent = 'Opti-List';
+            optiListBtn.textContent = 'List on eBay';
         }
         if (downloadBtn) {
             downloadBtn.disabled = false;
@@ -2173,6 +2173,63 @@ const generateTitleVariations = (originalTitle) => {
 // Adds event listeners to the buttons inside our injected panel.
 const addEventListenersToPanel = () => {
 
+    // ═══════════════════════════════════════════════════════════
+    // Editable Title (Live Character Count)
+    // ═══════════════════════════════════════════════════════════
+    const titleDisplay = document.getElementById('ai-generated-title');
+    const titleCounter = document.getElementById('ai-title-counter');
+    if (titleDisplay && titleCounter) {
+        titleDisplay.addEventListener('input', () => {
+            const currentText = titleDisplay.innerText || '';
+            titleCounter.textContent = `${currentText.length} / 80 chars`;
+        });
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // Panel Controls (Header)
+    // ═══════════════════════════════════════════════════════════
+    const nightModeBtn = document.getElementById('panel-night-mode-btn');
+    if (nightModeBtn) {
+        nightModeBtn.addEventListener('click', () => {
+            const rootWrapper = document.getElementById('snipe-root-wrapper');
+            if (rootWrapper) {
+                rootWrapper.classList.toggle('ss-dark-mode');
+            } else {
+                document.body.classList.toggle('ss-dark-mode');
+            }
+        });
+    }
+
+    const minimizeBtn = document.getElementById('panel-minimize-btn');
+    if (minimizeBtn) {
+        minimizeBtn.addEventListener('click', () => {
+            const rootWrapper = document.getElementById('snipe-root-wrapper');
+            if (rootWrapper) {
+                rootWrapper.classList.toggle('panel-minimized');
+                const isMin = rootWrapper.classList.contains('panel-minimized');
+                Array.from(rootWrapper.children).forEach(child => {
+                    if (!child.classList.contains('ss-header')) {
+                        child.style.display = isMin ? 'none' : '';
+                    }
+                });
+            }
+        });
+    }
+
+    const closeBtn = document.getElementById('panel-close-btn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            const rootWrapper = document.getElementById('snipe-root-wrapper');
+            if (rootWrapper) {
+                rootWrapper.remove();
+                uiInjected = false;
+                const startBtn = document.getElementById('initial-list-button') || document.querySelector('.floating-snipe-btn');
+                if (startBtn) {
+                    startBtn.style.display = 'flex';
+                }
+            }
+        });
+    }
     // Snipe Title button
     const snipeTitleBtn = document.getElementById('snipe-title-btn');
     if (snipeTitleBtn) {
@@ -2681,7 +2738,7 @@ const addEventListenersToPanel = () => {
                             console.warn('   Please click Copy button first to save the data.');
                             alert('⚠️ No saved data found!\n\nPlease click the Copy button first to save the product data.');
                             btn.disabled = false;
-                            btn.textContent = 'Opti-List';
+                            btn.textContent = 'List on eBay';
                             return;
                         }
 
@@ -2701,7 +2758,7 @@ const addEventListenersToPanel = () => {
                             console.warn('⚠️ WARNING: No title in saved data!');
                             alert('⚠️ No title in saved data!\n\nPlease click Copy button again after selecting a title.');
                             btn.disabled = false;
-                            btn.textContent = 'Opti-List';
+                            btn.textContent = 'List on eBay';
                             return;
                         }
 
@@ -2709,7 +2766,7 @@ const addEventListenersToPanel = () => {
                             console.warn('⚠️ WARNING: No SKU in saved data!');
                             alert('⚠️ No SKU in saved data!\n\nPlease click Copy button again after generating a SKU.');
                             btn.disabled = false;
-                            btn.textContent = 'Opti-List';
+                            btn.textContent = 'List on eBay';
                             return;
                         }
 
@@ -2718,7 +2775,7 @@ const addEventListenersToPanel = () => {
                             console.warn('⚠️ WARNING: No calculated price in saved data!');
                             alert('⚠️ No calculated price in saved data!\n\nPlease click Copy button again after calculating the price.');
                             btn.disabled = false;
-                            btn.textContent = 'Opti-List';
+                            btn.textContent = 'List on eBay';
                             return;
                         }
 
@@ -2857,7 +2914,7 @@ const addEventListenersToPanel = () => {
                                     btn.textContent = '✅ Sent to Sheets!';
                                     setTimeout(() => {
                                         btn.disabled = false;
-                                        btn.textContent = 'Opti-List';
+                                        btn.textContent = 'List on eBay';
                                     }, 3000);
                                 } else if (response && response.error) {
                                     console.error('❌ ERROR FROM BACKGROUND.JS:', response.error);
@@ -2871,7 +2928,7 @@ const addEventListenersToPanel = () => {
                                     btn.textContent = '✅ Sent (no response)';
                                     setTimeout(() => {
                                         btn.disabled = false;
-                                        btn.textContent = 'Opti-List';
+                                        btn.textContent = 'List on eBay';
                                     }, 2000);
                                 }
                             });
@@ -2892,7 +2949,7 @@ const addEventListenersToPanel = () => {
                     } catch (error) {
                         console.error('Error in Opti-List process:', error);
                         btn.disabled = false;
-                        btn.textContent = 'Opti-List';
+                        btn.textContent = 'List on eBay';
                     }
                 } else {
                     alert("Please select a title first.");

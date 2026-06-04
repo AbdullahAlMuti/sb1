@@ -17,6 +17,7 @@ import {
   ShoppingCart,
   TrendingUp,
   Truck,
+  Layers,
 } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
 import { useAuth } from '@repo/auth/hooks/useAuth';
@@ -27,6 +28,7 @@ const EBAY_NAV_ITEMS = [
   { key: 'overview', path: '/dashboard/ebay', icon: LayoutDashboard, label: 'Overview' },
   { key: 'listings', path: '/dashboard/ebay/listings', icon: Package, label: 'Listings' },
   { key: 'new-listing', path: '/dashboard/ebay/listings/new', icon: ListPlus, label: 'New Listing' },
+  { key: 'bulk-lister', path: '/dashboard/ebay/bulk-lister', icon: Layers, label: 'Amazon Bulk Lister' },
   { key: 'orders', path: '/dashboard/ebay/orders', icon: ShoppingCart, label: 'eBay Orders' },
   { key: 'auto-orders', path: '/dashboard/ebay/auto-orders', icon: Truck, label: 'Auto Orders' },
   { key: 'product-research', path: '/dashboard/ebay/product-research', icon: Search, label: 'Product Research' },

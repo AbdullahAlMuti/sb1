@@ -818,6 +818,24 @@ async function runEbayAutomation(data) {
   if (typeof UIHelper !== 'undefined') {
     UIHelper.showToast('eBay Automation Completed', 'success');
   }
+
+  // If this is a bulk job, auto-click "Save for later"
+  if (data.isBulkJob) {
+    console.log("🚀 Bulk job detected, attempting to click 'Save for later'...");
+    await wait(2000); // Let React state settle
+    
+    // Find Save for later button
+    const buttons = Array.from(document.querySelectorAll('button'));
+    const saveBtn = buttons.find(b => b.textContent && b.textContent.toLowerCase().includes('save for later'));
+    
+    if (saveBtn) {
+      console.log("✅ Found 'Save for later' button, but skipping click for testing as requested.");
+      // saveBtn.click();
+      chrome.storage.local.remove(['isBulkJob']);
+    } else {
+      console.warn("⚠️ Could not find 'Save for later' button");
+    }
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -1329,7 +1347,7 @@ async function attemptAutoFill() {
   const data = await chrome.storage.local.get([
     "ebayTitle", "ebayPrice", "ebaySku", "productTitle", 
     "selectedEbayDescription", "generatedDescription",
-    "selectedEbayTitle", "selectedTitleTimestamp"
+    "selectedEbayTitle", "selectedTitleTimestamp", "isBulkJob"
   ]);
 
   if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log("📦 [attemptAutoFill] Raw storage data:", {
@@ -1432,7 +1450,8 @@ async function attemptAutoFill() {
         ebayTitle: title,
         ebayPrice: data.ebayPrice,
         ebaySku: data.ebaySku,
-        ebayDescription: ebayDescription
+        ebayDescription: ebayDescription,
+        isBulkJob: data.isBulkJob
       });
     } else {
       console.log("ℹ️ No SKU/Price/Description data found, skipping field auto-fill");

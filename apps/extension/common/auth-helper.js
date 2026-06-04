@@ -46,13 +46,17 @@ const AuthHelper = (() => {
       // Try fetching from a safe public endpoint if it exists
       // If it 404s or fails, we fallback to defaults silently.
       const url = `${SUPABASE_URL}/functions/v1/extension-config`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
       const res = await fetch(url, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           ...(SUPABASE_ANON_KEY ? { apikey: SUPABASE_ANON_KEY } : {})
-        }
+        },
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
       if (res.ok) {
         const data = await res.json();
         remoteConfigCache = { ...defaults, ...data };
@@ -227,6 +231,8 @@ const AuthHelper = (() => {
     log('info', `Calling edge function: ${functionName}`, { hasToken: true });
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 7000);
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -235,8 +241,10 @@ const AuthHelper = (() => {
           'Authorization': `Bearer ${token}`,
           ...options.headers
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorText = await response.text();

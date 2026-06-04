@@ -21,6 +21,7 @@ function initPanel() {
   initTitleGeneration();
   initActionButtons();
   initCalculator();
+  initPanelControls(); // Added controls initialization
 
   console.log('[Panel] All components initialized');
 }
@@ -332,6 +333,29 @@ chrome.storage.local.get(['selectedEbayTitle', 'generatedAt'], (result) => {
     }
   }
 });
+
+// Inline editable title sync
+const editableTitleDisplay = document.getElementById('ai-generated-title');
+if (editableTitleDisplay) {
+  editableTitleDisplay.addEventListener('input', (e) => {
+    const newTitle = e.target.innerText.replace(/\n/g, ' ').trim();
+    const titleCounter = document.getElementById('ai-title-counter');
+    
+    // Update character count
+    if (titleCounter) {
+      titleCounter.textContent = `${newTitle.length} characters`;
+      titleCounter.classList.remove('warning', 'error');
+      if (newTitle.length > 200) titleCounter.classList.add('error');
+      else if (newTitle.length >= 180) titleCounter.classList.add('warning');
+    }
+    
+    // Sync to storage for Opti-List, Paste to eBay, etc.
+    chrome.storage.local.set({
+      selectedEbayTitle: newTitle,
+      selectedTitleTimestamp: Date.now()
+    });
+  });
+}
 
 // Paste selected title to eBay listing page
 async function pasteSelectedTitleToEbay() {
@@ -1202,5 +1226,54 @@ function quickCalculate() {
   const sellInput = document.getElementById('sell-it-for-input');
   if (sellInput) {
     sellInput.value = price.toFixed(2);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Panel Layout Controls (Header Buttons)
+// ═══════════════════════════════════════════════════════════
+function initPanelControls() {
+  const nightModeBtn = document.getElementById('panel-night-mode-btn');
+  const minimizeBtn = document.getElementById('panel-minimize-btn');
+  const closeBtn = document.getElementById('panel-close-btn');
+
+  if (nightModeBtn) {
+    nightModeBtn.addEventListener('click', () => {
+      const rootWrapper = document.getElementById('snipe-root-wrapper');
+      if (rootWrapper) {
+        rootWrapper.classList.toggle('ss-dark-mode');
+      } else {
+        document.body.classList.toggle('ss-dark-mode');
+      }
+    });
+  }
+
+  if (minimizeBtn) {
+    minimizeBtn.addEventListener('click', () => {
+      const rootWrapper = document.getElementById('snipe-root-wrapper');
+      if (rootWrapper) {
+        rootWrapper.classList.toggle('panel-minimized');
+        const isMin = rootWrapper.classList.contains('panel-minimized');
+        Array.from(rootWrapper.children).forEach(child => {
+          if (!child.classList.contains('ss-header')) {
+            child.style.display = isMin ? 'none' : '';
+          }
+        });
+      }
+    });
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      const rootWrapper = document.getElementById('snipe-root-wrapper');
+      if (rootWrapper) {
+        rootWrapper.remove();
+        
+        const startBtn = document.getElementById('initial-list-button');
+        if (startBtn) {
+          startBtn.style.display = 'flex';
+        }
+      }
+    });
   }
 }

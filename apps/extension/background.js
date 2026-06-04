@@ -8,7 +8,8 @@ importScripts(
   'common/config.js',
   'common/auth-helper.js',
   'common/performance.js',
-  'common/message-handler.js'
+  'common/message-handler.js',
+  'background/amazon_bulk_runner.js'
 );
 
 // ═══════════════════════════════════════════════════════════
@@ -153,16 +154,33 @@ async function verifyAuthStatus(forceRefresh = false) {
     }
 
     // Auth failed
-    authLog('warn', 'LOCKDOWN: Invalid session', { status: response.status, error: result.error });
+    authLog('warn', 'LOCKDOWN: Invalid session', { status: response.status, error: result.error || response.error });
+    
+    // If it's a network error or edge function timeout, and we JUST got this token from the web app
+    const storage = await chrome.storage.local.get('authTimestamp');
+    const justSynced = storage.authTimestamp && (Date.now() - storage.authTimestamp < 60 * 1000);
+    
+    if (response.error && justSynced) {
+       authLog('info', 'Edge function failed but token was just synced from web app. Trusting it temporarily.');
+       isExtensionUnlocked = true;
+       lastAuthCheck = Date.now();
+       return true;
+    }
+    
     isExtensionUnlocked = false;
     return false;
 
   } catch (e) {
     authLog('error', 'Auth Check Error', { message: e.message });
 
+    const storage = await chrome.storage.local.get('authTimestamp');
+    const justSynced = storage.authTimestamp && (Date.now() - storage.authTimestamp < 60 * 1000);
+
     // If network error but we have recent valid auth, stay unlocked temporarily
-    if (isExtensionUnlocked && Date.now() - lastAuthCheck < 30 * 60 * 1000) {
-      authLog('info', 'Network error but using cached auth status');
+    if ((isExtensionUnlocked && Date.now() - lastAuthCheck < 30 * 60 * 1000) || justSynced) {
+      authLog('info', 'Network error but using cached/synced auth status');
+      isExtensionUnlocked = true;
+      lastAuthCheck = Date.now();
       return true;
     }
 
@@ -1485,6 +1503,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   } else if (request.action === "logSheet") {
     logToSheet(request.payload);
+    return true;
+  } else if (request.action === 'GET_PRODUCT_META') {
+    sendResponse({ success: true, meta: { activeTab: sender.tab.id } });
+    return true;
+  } else if (request.action === 'START_BULK_JOB') {
+    const dashboardTabId = sender?.tab?.id;
+    startBulkJob(request.payload, dashboardTabId).then(sendResponse);
+    return true;
+  } else if (request.action === 'PAUSE_BULK_JOB') {
+    pauseBulkJob();
+    sendResponse({ success: true });
+    return true;
+  } else if (request.action === 'RESUME_BULK_JOB') {
+    const dashboardTabId = sender?.tab?.id;
+    startBulkJob({}, dashboardTabId).then(sendResponse);
+    return true;
+  } else if (request.action === 'STOP_BULK_JOB') {
+    stopBulkJob();
+    sendResponse({ success: true });
     return true;
   } else if (request.action === "LOG_TO_SHEET") {
     logProductToSheet(request.payload);

@@ -13,10 +13,8 @@
     <!-- Top Header -->
     <header class="ss-header">
       <div class="ss-header-left">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="var(--ss-blue)"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-        <span class="ss-brand-name">SellerSuit</span>
-        <span class="ss-header-divider"></span>
-        <span class="ss-tool-name">AI Title & Description Generator</span>
+        <img src="../icons/icon48.png" alt="SellerSuit Logo" width="24" height="24" style="border-radius: 4px; object-fit: contain;">
+        <span class="ss-tool-name" style="margin-left: 8px;">AI Title & Description Generator</span>
         <span class="ss-badge ss-badge-blue">3 Options</span>
       </div>
       <div class="ss-header-right">
@@ -26,10 +24,10 @@
           <span class="auth-status-text" id="auth-status-text"></span>
           <button class="btn-auth" id="auth-action-btn">Login</button>
         </div>
-        <button class="ss-icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg></button>
-        <button class="ss-icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
-        <button class="ss-icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
-        <button class="ss-icon-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+        <button class="ss-icon-btn" id="panel-night-mode-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg></button>
+        <button class="ss-icon-btn" id="panel-settings-btn" style="display: none;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
+        <button class="ss-icon-btn" id="panel-minimize-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+        <button class="ss-icon-btn" id="panel-close-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
       </div>
     </header>
 
@@ -38,10 +36,9 @@
       <div class="ss-card-header">
         <div class="ss-card-title">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ss-blue)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-          Product Image Overview
         </div>
         <div class="ss-card-actions">
-          <button class="ss-btn ss-btn-outline-green btn-mode-toggle" id="image-mode-toggle" title="Switch between Fast (passive) and Complete (interactive) extraction modes"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg><span id="mode-label">Fast Mode</span></button>
+          <button class="ss-btn ss-btn-outline-green btn-mode-toggle" id="image-mode-toggle" title="Switch between Fast (passive) and Complete (interactive) extraction modes" style="display: none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg><span id="mode-label">Fast Mode</span></button>
           <button class="ss-btn ss-btn-outline" id="refresh-images-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>Refresh Images</button>
           <button class="ss-btn ss-btn-outline" id="download-images-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Download All</button>
         </div>
@@ -72,15 +69,15 @@
             <span class="ss-badge ss-badge-blue">3 Options</span>
           </div>
           <div class="ss-card-actions">
-            <select class="ss-select select-title-count" id="title-count-select" title="Number of titles to generate">
+            <select class="ss-select select-title-count" id="title-count-select" title="Number of titles to generate" style="display: none;">
               <option value="3">3 Titles</option>
               <option value="5">5 Titles</option>
               <option value="10">10 Titles</option>
             </select>
-            <button class="ss-btn ss-btn-outline btn-clear-titles" id="clear-titles-btn" title="Clear all titles"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>Clear</button>
-            <button class="ss-btn ss-btn-outline btn-edit-toggle" id="toggle-edit-titles-btn" title="Toggle edit mode"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg><span id="edit-toggle-label">Edit</span></button>
-            <button class="ss-btn ss-btn-green" id="paste-title-to-ebay-btn" title="Paste selected title to eBay listing"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>Paste to eBay</button>
-            <button class="ss-btn ss-btn-blue" id="generate-ai-titles-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>Generate</button>
+            <button class="ss-btn ss-btn-outline btn-clear-titles" id="clear-titles-btn" title="Clear all titles" style="display: none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>Clear</button>
+            <button class="ss-btn ss-btn-outline btn-edit-toggle" id="toggle-edit-titles-btn" title="Toggle edit mode" style="display: none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg><span id="edit-toggle-label">Edit</span></button>
+            <button class="ss-btn ss-btn-green" id="paste-title-to-ebay-btn" title="Paste selected title to eBay listing" style="display: none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>Paste to eBay</button>
+            <button class="ss-btn ss-btn-blue" id="generate-ai-titles-btn" style="display: none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>Generate</button>
           </div>
         </div>
 
@@ -91,7 +88,7 @@
             <span class="ss-char-count ai-title-counter st-char-count" id="ai-title-counter">0 / 80 chars</span>
           </div>
           <div class="ss-selected-title-body">
-            <div class="ss-title-text ai-title-display st-text" id="ai-generated-title">Click "Generate" to create optimized eBay title...</div>
+            <div class="ss-title-text ai-title-display st-text" id="ai-generated-title" contenteditable="true" spellcheck="false" style="outline: none; border-bottom: 1px dashed transparent; transition: border-color 0.2s; padding: 4px; min-height: 24px;" onfocus="this.style.borderBottom='1px dashed var(--ss-blue)'" onblur="this.style.borderBottom='1px dashed transparent'">Click "Generate" to create optimized eBay title...</div>
             <div class="ss-selected-actions">
               <button class="ss-btn ss-btn-outline ss-btn-small btn-slate btn-copy-title" id="copy-title-btn" style="display:none;">Copy</button>
             </div>
@@ -189,16 +186,16 @@
     <!-- Bottom Sticky Action Bar -->
     <footer class="ss-action-bar bottom-action-toolbar actions-row">
       <div class="ss-action-group">
-        <button class="ss-btn ss-btn-green btn-solid" id="snipe-title-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>Snipe Title</button>
-        <button class="ss-btn ss-btn-blue btn-solid" id="opti-list-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>Opti-List</button>
-        <button class="ss-btn ss-btn-dark btn-slate btn-solid" id="copy-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy</button>
-        <button class="ss-btn ss-btn-blue btn-blue-bright btn-solid" id="product-details-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>Product Details</button>
+        <button class="ss-btn ss-btn-green btn-solid" id="snipe-title-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>Generate Title</button>
+        <button class="ss-btn ss-btn-blue btn-solid" id="opti-list-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>List on eBay</button>
+        <button class="ss-btn ss-btn-dark btn-slate btn-solid" id="copy-btn" style="display: none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>Copy</button>
+        <button class="ss-btn ss-btn-blue btn-blue-bright btn-solid" id="product-details-btn" style="display: none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>Product Details</button>
         <button class="ss-btn ss-btn-orange btn-orange btn-solid" id="scrape-preview-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>Scrape Preview</button>
-        <button class="ss-btn ss-btn-outline btn-slate btn-outline" id="scrape-all-data-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Scrape All Data</button>
+        <button class="ss-btn ss-btn-outline btn-slate btn-outline" id="scrape-all-data-btn" style="display: none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Scrape All Data</button>
       </div>
       <div class="ss-action-group ss-action-right">
         <button class="ss-btn ss-btn-teal btn-teal btn-solid" id="calculator-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"></rect><line x1="8" y1="6" x2="16" y2="6"></line></svg>Calculator</button>
-        <button class="ss-btn ss-btn-gold btn-gold btn-solid toolbar-small-btn" id="quick-calc-btn">$</button>
+        <button class="ss-btn ss-btn-gold btn-gold btn-solid toolbar-small-btn" id="quick-calc-btn" style="display: none;">$</button>
         <div class="input-inline">
           <input type="text" class="ss-input ss-price-input" id="sell-it-for-input" placeholder="62.56">
         </div>
