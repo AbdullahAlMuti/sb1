@@ -1,9 +1,11 @@
 import { chromium } from 'playwright';
 import path from 'path';
+import { assertFileDoesNotTargetProduction } from './scripts/production-target-guard.mjs';
 
 (async () => {
     const pathToExtension = path.join(process.cwd(), 'apps/extension');
     const userDataDir = path.join(process.cwd(), '.playwright_data');
+    assertFileDoesNotTargetProduction(path.join(pathToExtension, 'common', 'config.js'));
 
     console.log('Loading extension from:', pathToExtension);
 

@@ -142,8 +142,7 @@
     {
       "matches": [
         "https://sellersuit.com/*",
-        "https://*.sellersuit.com/*",
-        "http://localhost:3001/*"
+        "https://*.sellersuit.com/*"
       ],
       "js": [
         "content_scripts/auth_sync.js",

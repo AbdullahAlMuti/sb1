@@ -3,8 +3,8 @@
  * Manages the background state machine for bulk listing items from Amazon to eBay.
  */
 
-const URLS = typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.URLS : null;
-const API_KEYS = typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.API_KEYS : null;
+const getUrls = () => typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.URLS : null;
+const getApiKeys = () => typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.API_KEYS : null;
 
 const bulkState = {
     urls: [],
@@ -224,12 +224,12 @@ async function runSmartEngine(scrapedData, url) {
     // AI: Attempt to generate Title via Supabase
     try {
         const tokenData = await chrome.storage.local.get(['saasToken']);
-        if (tokenData.saasToken && URLS && URLS.SUPABASE_FUNCTIONS) {
-            const resp = await fetch(`${URLS.SUPABASE_FUNCTIONS}/generate-titles`, {
+        if (tokenData.saasToken && ExtensionConfig && ExtensionConfig.URLS && ExtensionConfig.URLS.SUPABASE_FUNCTIONS) {
+            const resp = await fetch(`${ExtensionConfig.URLS.SUPABASE_FUNCTIONS}/generate-titles`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json', 
-                    'apikey': API_KEYS.SUPABASE_ANON, 
+                    'apikey': ExtensionConfig.API_KEYS.SUPABASE_ANON, 
                     'Authorization': `Bearer ${tokenData.saasToken}` 
                 },
                 body: JSON.stringify(scrapedData)

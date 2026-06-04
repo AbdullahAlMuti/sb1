@@ -570,7 +570,10 @@ export async function resolveExtensionOrLegacyAuth(
   } else {
     // Treat as legacy Supabase JWT
     const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data.user) throw new Error("Invalid legacy auth token");
+    if (error || !data.user) {
+      console.error("[resolveExtensionOrLegacyAuth] getUser error:", error);
+      throw new Error("Invalid legacy auth token");
+    }
 
     const { data: profile } = await supabase
       .from("profiles")

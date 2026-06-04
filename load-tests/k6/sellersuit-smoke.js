@@ -6,6 +6,12 @@ const APP_URL = __ENV.APP_URL || 'https://sellersuit.com';
 const ANON_KEY = __ENV.SUPABASE_ANON_KEY || '';
 const USER_JWT = __ENV.USER_JWT || '';
 const INTERNAL_FUNCTION_SECRET = __ENV.INTERNAL_FUNCTION_SECRET || '';
+const PRODUCTION_TARGET_ERROR = 'This script appears to target production. Refusing to run without ALLOW_PRODUCTION=true.';
+const PRODUCTION_SUPABASE_HOST = 'ojxzssooylmydystjvdo.supabase.co';
+
+if (__ENV.ALLOW_PRODUCTION !== 'true' && String(BASE_URL).includes(PRODUCTION_SUPABASE_HOST)) {
+  throw new Error(PRODUCTION_TARGET_ERROR);
+}
 
 export const options = {
   scenarios: {

@@ -22,7 +22,10 @@
     "typecheck:web": "npm --workspace @sellersuit/web run typecheck",
     "typecheck:admin": "npm --workspace @sellersuit/admin run typecheck",
     "lint": "eslint .",
+    "env:check:local": "node scripts/check-local-env.mjs",
     "security:static": "node scripts/static-security-checks.mjs",
+    "check:local": "npm run env:check:local && npm run security:static && npm run typecheck && npm run lint && npm run build",
+    "release:ready": "npm run check:local",
     "preview": "npm --workspace @sellersuit/web run preview"
   },
   "dependencies": {

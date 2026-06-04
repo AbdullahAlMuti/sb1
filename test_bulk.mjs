@@ -1,10 +1,12 @@
 import { chromium } from '@playwright/test';
 import path from 'path';
+import { assertFileDoesNotTargetProduction } from './scripts/production-target-guard.mjs';
 
 (async () => {
     try {
         console.log('Launching browser with extension...');
         const extensionPath = path.resolve('apps/extension/dist/extension-dev');
+        assertFileDoesNotTargetProduction(path.join(extensionPath, 'common', 'config.js'));
         
         const context = await chromium.launchPersistentContext('', {
             headless: false,

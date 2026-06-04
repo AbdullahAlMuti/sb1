@@ -24,32 +24,9 @@ const ImageRenderer = (() => {
   // Performance-optimized CSS (GPU-only animations)
   // ─────────────────────────────────────────────────────────
   const PERFORMANCE_STYLES = `
-    /* GPU-accelerated fade-in animation */
-    @keyframes ssImageFadeIn {
-      from {
-        opacity: 0;
-        transform: translate3d(0, 8px, 0);
-      }
-      to {
-        opacity: 1;
-        transform: translate3d(0, 0, 0);
-      }
-    }
-
-    /* Skeleton shimmer animation - GPU friendly */
-    @keyframes ssSkeletonShimmer {
-      0% {
-        transform: translateX(-100%);
-      }
-      100% {
-        transform: translateX(100%);
-      }
-    }
-
     /* Base container - uses contain for paint isolation */
     .ss-gallery-container {
       contain: layout style;
-      will-change: contents;
     }
 
     /* Skeleton placeholder */
@@ -64,23 +41,10 @@ const ImageRenderer = (() => {
       margin: 5px;
       display: inline-block;
       vertical-align: top;
+      border: 1px solid #dbe4ee;
     }
 
-    .ss-image-skeleton::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(
-        90deg,
-        transparent 0%,
-        rgba(255, 255, 255, 0.6) 50%,
-        transparent 100%
-      );
-      animation: ssSkeletonShimmer 1.2s ease-in-out infinite;
-      will-change: transform;
-    }
-
-    /* Image container - optimized for GPU compositing */
+    /* Image container */
     .ss-image-item {
       position: relative;
       display: inline-block;
@@ -88,15 +52,14 @@ const ImageRenderer = (() => {
       vertical-align: top;
       border-radius: 6px;
       overflow: hidden;
-      opacity: 0;
-      transform: translate3d(0, 8px, 0);
-      will-change: opacity, transform;
+      opacity: 1;
+      transform: none;
       contain: layout paint style;
-      backface-visibility: hidden;
     }
 
     .ss-image-item.ss-visible {
-      animation: ssImageFadeIn ${CONFIG.FADE_DURATION}ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      opacity: 1;
+      transform: none;
     }
 
     .ss-image-item.ss-instant {
@@ -104,7 +67,7 @@ const ImageRenderer = (() => {
       transform: none;
     }
 
-    /* Image element - hardware accelerated */
+    /* Image element */
     .ss-image-item img {
       display: block;
       width: 140px;
@@ -112,25 +75,17 @@ const ImageRenderer = (() => {
       object-fit: contain;
       background: #fafafa;
       border-radius: 4px;
-      transform: translateZ(0);
     }
 
-    /* Overlay elements - use opacity only for transitions */
+    /* Overlay elements */
     .ss-image-overlay {
       position: absolute;
       inset: 0;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 150ms ease;
-      will-change: opacity;
-    }
-
-    .ss-image-item:hover .ss-image-overlay {
       opacity: 1;
       pointer-events: auto;
     }
 
-    /* Button overlays - minimal paint impact */
+    /* Button overlays */
     .ss-overlay-btn {
       position: absolute;
       width: 24px;
@@ -145,13 +100,10 @@ const ImageRenderer = (() => {
       justify-content: center;
       font-size: 14px;
       font-weight: bold;
-      transition: background-color 150ms ease, transform 150ms ease;
-      transform: translateZ(0);
     }
 
     .ss-overlay-btn:hover {
       background: rgba(0, 0, 0, 0.9);
-      transform: translateZ(0) scale(1.05);
     }
 
     .ss-overlay-btn.ss-delete {
@@ -196,18 +148,11 @@ const ImageRenderer = (() => {
     }
 
     .ss-gallery-loading::before {
-      content: '';
-      width: 16px;
-      height: 16px;
-      border: 2px solid #e2e8f0;
-      border-top-color: #3b82f6;
-      border-radius: 50%;
+      content: '•';
+      width: auto;
+      height: auto;
+      border: 0;
       margin-right: 8px;
-      animation: spin 0.8s linear infinite;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
     }
   `;
 
