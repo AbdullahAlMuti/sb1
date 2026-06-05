@@ -928,26 +928,7 @@ class AmazonImageExtractor {
         await this.waitForPageLoad();
 
         // ═══════════════════════════════════════════════════════════
-        // PRIORITY 1: Interactive Full-View Modal Extraction
-        // This is the MOST RELIABLE method - gets same quality as main image
-        // ═══════════════════════════════════════════════════════════
-        try {
-            console.log('🎯 Attempting interactive full-view modal extraction...');
-            await this.extractFromFullViewModal();
-
-            // If we got multiple images, we're done!
-            if (this.images.size >= 2) {
-                console.log(`✅ Interactive extraction successful! Got ${this.images.size} images`);
-                this.transformToHighRes();
-                await this.validateImageQuality();
-                return this.highQualityImages;
-            }
-        } catch (error) {
-            console.warn('⚠️ Interactive extraction failed, falling back to passive methods:', error);
-        }
-
-        // ═══════════════════════════════════════════════════════════
-        // FALLBACK: Passive extraction methods
+        // Passive extraction methods
         // ═══════════════════════════════════════════════════════════
         console.log('📋 Using passive extraction methods...');
         const approaches = [
