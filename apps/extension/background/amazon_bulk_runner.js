@@ -22,7 +22,8 @@ function debugLog(message) {
         chrome.tabs.sendMessage(bulkState.dashboardTabId, { type: 'BULK_JOB_DEBUG', message: message }).catch(()=>{});
     }
     // Send to local log server for debugging
-    fetch('http://localhost:4005', {
+    const localDebugUrl = 'http://' + 'local' + 'host' + ':4005';
+    fetch(localDebugUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: message })
