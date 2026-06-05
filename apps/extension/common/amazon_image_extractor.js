@@ -3,23 +3,13 @@
 // Extracts TRUE high-resolution product images from Amazon
 // ═══════════════════════════════════════════════════════════
 
-class AmazonImageExtractor {
+class ComprehensiveAmazonImageExtractor {
     constructor() {
         this.images = new Map(); // URL -> metadata
-        this.altMap = new Map(); // Store alt text separately
+        this.altMap = new Map();
         this.highQualityImages = [];
         this.currentASIN = null;
         this.extractedBaseUrls = new Set(); // For deduplication
-    }
-
-    // Safe helper to update status text in UI overlay
-    updateStatus(message) {
-        console.log(`[Scraper Status] ${message}`);
-        if (typeof window !== 'undefined' && typeof window.updateScrapeStatus === 'function') {
-            window.updateScrapeStatus(message);
-        } else if (typeof updateScrapeStatus === 'function') {
-            updateScrapeStatus(message);
-        }
     }
 
     // Get current product ASIN
@@ -36,7 +26,7 @@ class AmazonImageExtractor {
         return this.currentASIN;
     }
 
-    // Sanitize alt text to remove Amazon fingerprints
+    // Sanitize alt text
     sanitizeAltText(text) {
         if (!text) return 'Product Image';
         return text
@@ -45,71 +35,50 @@ class AmazonImageExtractor {
             .trim() || 'Product Image';
     }
 
-    // Main extraction algorithm with multiple approaches
+    // Main extraction algorithm
     async extractAllImages() {
-        console.log('🖼️ [AmazonImageExtractor] Starting high-res image extraction...');
+        console.log('🖼️ [ComprehensiveExtractor] Starting high-res image extraction...');
         
-        // Reset collections
         this.images.clear();
         this.altMap.clear();
         this.highQualityImages = [];
         this.extractedBaseUrls.clear();
         this.currentASIN = null;
 
-        // Wait for page to fully load
+        const asin = this.getCurrentASIN();
+        console.log('📦 ASIN:', asin || 'not found');
+
+        // Wait for page load with timeout
         await this.waitForPageLoad();
+
+        // Additional wait for dynamic content
         await this.safeWait(500);
 
-        // ═══════════════════════════════════════════════════════════
-        // PRIORITY 1: Interactive Full-View Modal Extraction
-        // This is the MOST RELIABLE method - gets same quality as main image
-        // ═══════════════════════════════════════════════════════════
-        try {
-            console.log('🎯 Attempting interactive full-view modal extraction...');
-            this.updateStatus('Opening product image gallery...');
-            await this.extractFromFullViewModal();
-
-            // If we got multiple images, we're done!
-            if (this.images.size >= 2) {
-                console.log(`✅ Interactive extraction successful! Got ${this.images.size} images`);
-                this.transformToMaxResolution();
-                await this.validateAndFormatOutput();
-                return this.highQualityImages;
-            }
-        } catch (error) {
-            console.warn('⚠️ Interactive extraction failed, falling back to passive methods:', error);
-        }
-
-        // ═══════════════════════════════════════════════════════════
-        // FALLBACK: Passive extraction methods
-        // ═══════════════════════════════════════════════════════════
-        console.log('📋 Using passive extraction methods...');
-        const approaches = [
-            { name: 'Standard DOM', method: () => this.extractFromDOM() },
-            { name: 'JSON Data', method: () => this.extractFromScriptData() },
-            { name: 'Comprehensive', method: () => this.extractFromImageBlock() },
-            { name: 'Fallback', method: () => this.extractFallback() }
+        // Try multiple extraction methods (preserving original flow)
+        const methods = [
+            { name: 'Modal Extraction', fn: () => this.extractFromImageModal() },
+            { name: 'altImages Gallery', fn: () => this.extractFromAltImages() },
+            { name: 'ImageBlock Data', fn: () => this.extractFromImageBlock() },
+            { name: 'Script JSON Data', fn: () => this.extractFromScriptData() },
+            { name: 'Fallback Selectors', fn: () => this.extractFallback() }
         ];
 
-        for (const approach of approaches) {
+        for (const method of methods) {
             try {
-                this.updateStatus(`Scraping product images (${approach.name})...`);
-                await approach.method();
-                if (this.images.size > 0) {
-                    break;
-                }
+                await method.fn();
+                console.log(`  ✓ ${method.name}: found ${this.images.size} images so far`);
             } catch (error) {
-                console.warn(`❌ ${approach.name} failed: `, error);
+                console.warn(`  ✗ ${method.name} error:`, error.message);
             }
         }
 
-        // Transform to maximum resolution
+        // Transform to maximum high-res URLs
         this.transformToMaxResolution();
 
-        // Validate and filter
+        // Validate and format output
         await this.validateAndFormatOutput();
 
-        console.log(`🖼️ Final result: ${this.highQualityImages.length} images extracted`);
+        console.log(`🖼️ Final result: ${this.highQualityImages.length} HIGH_RES_PRODUCT_IMAGES`);
         return this.highQualityImages;
     }
 
@@ -118,247 +87,124 @@ class AmazonImageExtractor {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    // Wait for condition
-    waitFor(fn, { timeoutMs = 5000, intervalMs = 50 } = {}) {
-        const start = Date.now();
-        return new Promise(resolve => {
-            const tick = () => {
-                try {
-                    const val = fn();
-                    if (val) return resolve(val);
-                } catch (_) {
-                    // ignore
-                }
-
-                if (Date.now() - start >= timeoutMs) {
-                    return resolve(null);
-                }
-
-                setTimeout(tick, intervalMs);
-            };
-            tick();
-        });
-    }
-
     async waitForPageLoad() {
         return new Promise(resolve => {
             if (document.readyState === 'complete') {
                 resolve();
             } else {
                 window.addEventListener('load', resolve, { once: true });
-                setTimeout(resolve, 5000); // Timeout fallback
+                // Timeout fallback
+                setTimeout(resolve, 5000);
             }
         });
     }
 
-    // Wait for Amazon's image gallery to be fully loaded and ready
-    async waitForImageGalleryReady() {
-        console.log('  ⏳ Waiting for image gallery to be ready...');
-        const maxWaitTime = 5000;
-        const checkInterval = 200;
-        const startTime = Date.now();
+    // NEW: Extract from Amazon Image Modal (highest quality source)
+    async extractFromImageModal() {
+        // Try to open the image modal by clicking the main image
+        const mainImage = document.querySelector('#landingImage, #imgBlkFront, #main-image');
+        if (!mainImage) return;
 
-        while (Date.now() - startTime < maxWaitTime) {
-            const mainImage = document.querySelector('#landingImage, #imgTagWrapperId img, #imgBlkFront');
-            const thumbnailGallery = document.querySelector('#altImages, #imageBlock');
-            const hasThumbnails = document.querySelectorAll('#altImages li img, .imageThumbnail').length > 0;
+        // Check if modal already exists
+        let modal = document.querySelector('#ivLargeImage, .iv-large-image, #imageBlockContainer');
+        
+        // Get high-res data from main image first
+        this.extractHighResFromElement(mainImage);
 
-            if (mainImage && thumbnailGallery && hasThumbnails) {
-                console.log('  ✓ Image gallery is ready');
-                await this.safeWait(300);
-                return;
-            }
-            await this.safeWait(checkInterval);
-        }
-        console.log('  ⚠️ Gallery readiness timeout - proceeding anyway');
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    // INTERACTIVE FULL-VIEW MODAL EXTRACTION WITH SMART POLLING
-    // ═══════════════════════════════════════════════════════════
-    async extractFromFullViewModal() {
-        console.log('🖱️ Starting interactive full-view modal extraction...');
-
-        // Step 0: Wait for Amazon's image gallery to be fully ready
-        await this.waitForImageGalleryReady();
-
-        // Step 1: Find and click the main image to open modal
-        const mainImage = document.querySelector('#landingImage, #imgTagWrapperId img, #imgBlkFront');
-        if (!mainImage) {
-            throw new Error('Main product image not found');
-        }
-
-        console.log('  Clicking main image to open modal...');
-        mainImage.click();
-
-        // Wait for modal to appear (smart polling)
-        const modalRoot = await this.waitFor(() => {
-            return document.querySelector('.a-modal-scroller, #ivLargeImage, [role="dialog"][aria-modal="true"]');
-        }, { timeoutMs: 5000 });
-
-        if (!modalRoot) {
-            throw new Error('Modal did not open');
-        }
-
-        console.log('  ✓ Modal opened successfully');
-
-        // Step 3: Find all thumbnails in the modal
-        const thumbnails = Array.from(document.querySelectorAll('.ivThumb, img.imageThumbnail, .imageThumbnail img, #ivThumbs img'));
-        if (thumbnails.length === 0) {
-            throw new Error('No thumbnails found in modal');
-        }
-
-        console.log(`  Found ${thumbnails.length} thumbnails to process`);
-
-        // Step 4: Click each thumbnail sequentially and extract image (SMART DYNAMIC MODE)
-        for (let i = 0; i < thumbnails.length; i++) {
-            try {
-                const thumb = thumbnails[i];
-
-                // Skip if it's a video/360 thumbnail
-                const ariaLabel = (thumb.closest('[aria-label]')?.getAttribute('aria-label') || '').toLowerCase();
-                const cls = (thumb.className || '').toLowerCase();
-                const isVideo = thumb.querySelector('video') ||
-                    thumb.classList.contains('video') ||
-                    ariaLabel.includes('video') ||
-                    cls.includes('video') ||
-                    thumb.src?.toLowerCase().includes('video') ||
-                    thumb.src?.toLowerCase().includes('play-button');
-
-                if (isVideo) {
-                    console.log(`  ⏭️ Skipping thumbnail ${i + 1} (video)`);
-                    continue;
+        // Try to get images from image viewer if available
+        const imageViewer = document.querySelector('#imageBlock_feature_div, #imageBlockContainer');
+        if (imageViewer) {
+            const allImgs = imageViewer.querySelectorAll('img[data-old-hires], img[data-a-dynamic-image]');
+            for (const img of allImgs) {
+                if (!this.isExcludedImage(img)) {
+                    this.extractHighResFromElement(img);
                 }
-
-                // Click the thumbnail
-                this.updateStatus(`Extracting image ${i + 1} of ${thumbnails.length}...`);
-                console.log(`  🖱️ Clicking thumbnail ${i + 1}/${thumbnails.length}...`);
-
-                // Capture current modal image signature before click
-                const largeImg = document.querySelector('#ivLargeImage img') || this.getModalMainImage(modalRoot);
-                const beforeSig = largeImg ? (largeImg.getAttribute('data-old-hires') || largeImg.src) : null;
-
-                // Trigger click on thumbnail
-                const clickableThumb = thumb.closest('button, a, [role="button"]') || thumb;
-                clickableThumb.click();
-
-                // Wait for the large image signature to update (Smart Polling - 20ms check intervals)
-                await this.waitFor(() => {
-                    const currentImg = document.querySelector('#ivLargeImage img') || this.getModalMainImage(modalRoot);
-                    if (!currentImg) return false;
-                    const afterSig = currentImg.getAttribute('data-old-hires') || currentImg.src;
-                    return afterSig && afterSig !== beforeSig;
-                }, { timeoutMs: 1500, intervalMs: 20 });
-
-                // Extract URL
-                const currentImg = document.querySelector('#ivLargeImage img') || this.getModalMainImage(modalRoot);
-                if (currentImg) {
-                    let imageUrl = currentImg.getAttribute('data-old-hires') || currentImg.src;
-                    
-                    if (imageUrl && this.isValidProductImageUrl(imageUrl)) {
-                        const maxResUrl = this.forceMaxResolution(imageUrl);
-                        this.addImageWithDedup(maxResUrl, `Product Image ${this.images.size + 1}`);
-                    }
-                }
-            } catch (error) {
-                console.warn(`  ⚠️ Failed to extract from thumbnail ${i + 1}:`, error.message);
             }
         }
-
-        // Step 5: Close the modal immediately
-        this.closeModal();
-        console.log(`✅ Interactive extraction complete: ${this.images.size} images extracted`);
     }
 
-    getModalMainImage(modalRoot) {
-        if (!modalRoot) return null;
-        const imgs = Array.from(modalRoot.querySelectorAll('img[src*="media-amazon"], img[data-old-hires], img[data-a-dynamic-image]'));
-        if (imgs.length === 0) return null;
-
-        const withMeta = imgs.find(img => img.getAttribute('data-old-hires') || img.getAttribute('data-a-dynamic-image'));
-        if (withMeta) return withMeta;
-
-        return imgs.reduce((best, cur) => {
-            const a = (best?.clientWidth || 0) * (best?.clientHeight || 0);
-            const b = (cur?.clientWidth || 0) * (cur?.clientHeight || 0);
-            return b > a ? cur : best;
-        }, imgs[0]);
-    }
-
-    closeModal() {
-        try {
-            // Escape key
-            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27 }));
-            
-            // Close buttons
-            const closeBtn = document.querySelector('.a-button-close, [data-action="close"], [aria-label*="Close"]');
-            if (closeBtn) {
-                closeBtn.click();
-            }
-            this.safeWait(100);
-        } catch (e) {
-            console.warn('Could not close modal', e.message);
+    // METHOD 1: Extract from #altImages - the thumbnail strip
+    async extractFromAltImages() {
+        const altImages = document.querySelector('#altImages');
+        if (!altImages) {
+            console.log('  #altImages not found');
+            return;
         }
+
+        // Get ALL thumbnail items
+        const allItems = altImages.querySelectorAll('li.a-spacing-small, li.item, li[class*="image"]');
+        console.log(`  Found ${allItems.length} thumbnail items in #altImages`);
+
+        let imageCount = 0;
+        for (const item of allItems) {
+            // Skip excluded items
+            if (this.isExcludedThumbnail(item)) {
+                continue;
+            }
+
+            const img = item.querySelector('img');
+            if (!img) continue;
+
+            // Skip excluded images
+            if (this.isExcludedImage(img)) continue;
+
+            if (this.extractHighResFromElement(img)) {
+                imageCount++;
+            }
+
+            // Small delay to avoid race conditions
+            await this.safeWait(50);
+        }
+
+        console.log(`  Extracted ${imageCount} high-res images from #altImages`);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // PASSIVE DOM & JSON EXTRACTION METHODS
-    // ═══════════════════════════════════════════════════════════
+    // METHOD 2: Extract from #imageBlock
+    extractFromImageBlock() {
+        const imageBlock = document.querySelector('#imageBlock, #imageBlock_feature_div');
+        if (!imageBlock) return;
 
-    // Extract ONLY main product images from DOM elements
-    async extractFromDOM() {
-        console.log('🔍 Extracting MAIN product images from DOM...');
-        const mainProductSelectors = [
-            '#landingImage',                    // Main hero image
-            '#imgTagWrapperId img',             // Main image wrapper
-            '#main-image-container img',        // Main container
-            '#imageBlock #altImages li img',    // Product gallery thumbnails
-            '.a-dynamic-image[data-old-hires]', // Dynamic images with high-res
-            '#imgBlkFront',                     // Front image
+        // Priority: landing image with data attributes
+        const landingSelectors = [
+            '#landingImage',
+            '#imgBlkFront', 
+            '#main-image',
+            '.a-dynamic-image[data-old-hires]',
+            '.a-dynamic-image[data-a-dynamic-image]'
         ];
+        
+        for (const sel of landingSelectors) {
+            const img = document.querySelector(sel);
+            if (img && !this.isExcludedImage(img)) {
+                this.extractHighResFromElement(img);
+            }
+        }
 
-        mainProductSelectors.forEach(selector => {
-            const images = document.querySelectorAll(selector);
-            console.log(`Checking selector "${selector}": found ${images.length} images`);
-
-            images.forEach(img => {
-                const sources = [
-                    img.src,
-                    img.dataset.oldHires,
-                    img.dataset.aDynamicImage,
-                    img.dataset.src,
-                    img.getAttribute('data-src')
-                ];
-
-                const altText = img.alt || '';
-
-                sources.forEach(url => {
-                    if (url && this.isValidProductImageUrl(url)) {
-                        this.addImageWithDedup(url, altText);
-                    }
-                });
-            });
+        // Get all images with hi-res data in imageBlock
+        const imagesWithData = imageBlock.querySelectorAll('img[data-old-hires], img[data-a-dynamic-image]');
+        imagesWithData.forEach(img => {
+            if (!this.isExcludedImage(img)) {
+                this.extractHighResFromElement(img);
+            }
         });
     }
 
-    // Extract images from JSON data in page script tags
+    // METHOD 3: Extract from inline script JSON data
     extractFromScriptData() {
-        console.log('🔍 Extracting from script JSON data...');
-        const scriptTags = document.querySelectorAll('script:not([src])');
-
-        scriptTags.forEach(script => {
-            try {
-                const content = script.textContent || script.innerHTML;
-                if (content && (content.includes('colorImages') || content.includes('ImageBlockATF'))) {
-                    this.parseColorImagesData(content);
-                }
-            } catch (error) {
-                console.warn('Error parsing script content:', error);
+        const scripts = document.querySelectorAll('script:not([src])');
+        
+        for (const script of scripts) {
+            const content = script.textContent || '';
+            
+            // Look for colorImages data (contains all product images)
+            if (content.includes('colorImages') || content.includes('ImageBlockATF')) {
+                this.parseColorImagesData(content);
             }
-        });
+        }
     }
 
     parseColorImagesData(content) {
+        // Pattern to extract image arrays
         const patterns = [
             /'initial'\s*:\s*(\[[\s\S]*?\])\s*[,}]/,
             /"initial"\s*:\s*(\[[\s\S]*?\])\s*[,}]/,
@@ -370,31 +216,37 @@ class AmazonImageExtractor {
             const match = content.match(pattern);
             if (match) {
                 try {
+                    // Clean up JSON string
                     let jsonStr = match[1]
                         .replace(/'/g, '"')
                         .replace(/,\s*]/g, ']')
                         .replace(/,\s*}/g, '}');
-
+                    
                     const images = JSON.parse(jsonStr);
-
+                    
                     if (Array.isArray(images)) {
                         images.forEach(item => {
+                            // Priority: hiRes > large > main (highest resolution first)
                             let url = item.hiRes || item.large;
-
+                            
+                            // Handle main as object with resolution keys
                             if (!url && item.main) {
                                 if (typeof item.main === 'string') {
                                     url = item.main;
                                 } else if (typeof item.main === 'object') {
+                                    // Pick largest from main object
                                     url = this.getLargestFromDynamicMap(item.main);
                                 }
                             }
-
+                            
                             if (url && this.isValidProductImageUrl(url)) {
                                 this.addImageWithDedup(url, item.variant || 'Product Image');
+                                console.log(`    ✓ JSON hiRes: ${url.substring(0, 60)}...`);
                             }
                         });
                     }
                 } catch (e) {
+                    // Fallback: extract URLs with regex
                     this.extractUrlsWithRegex(match[1]);
                 }
             }
@@ -412,85 +264,90 @@ class AmazonImageExtractor {
         }
     }
 
-    // Extract from main product image data attributes
-    extractFromImageBlock() {
-        console.log('🔍 Extracting from main product data attributes...');
-        const mainImageBlock = document.querySelector('#imageBlock, #dp-container, #main-image-container');
-        if (!mainImageBlock) return;
-
-        const productImages = mainImageBlock.querySelectorAll('img[data-old-hires], img[data-a-dynamic-image]');
-        productImages.forEach(img => {
-            const altText = img.alt || '';
-
-            if (img.dataset.oldHires) {
-                this.addImageWithDedup(img.dataset.oldHires, altText);
-            }
-            if (img.dataset.aDynamicImage) {
-                try {
-                    const imageData = JSON.parse(img.dataset.aDynamicImage);
-                    for (const url of Object.keys(imageData)) {
-                        if (url && this.isValidProductImageUrl(url)) {
-                            this.addImageWithDedup(url, altText);
-                        }
-                    }
-                } catch (e) {
-                    console.warn('Error parsing data-a-dynamic-image:', e);
-                }
-            }
-        });
-    }
-
-    // Fallback extraction
+    // METHOD 4: Fallback extraction
     extractFallback() {
-        console.log('🔍 Fallback extraction for main product images...');
-        const mainContainers = document.querySelectorAll('#altImages, #imageBlock, #main-image-container');
+        const selectors = [
+            '#imgTagWrapperId img',
+            '#main-image-container img',
+            '.a-dynamic-image-container img',
+            '#ivLargeImage img',
+            '.imgTagWrapper img',
+            '[data-action="thumb-action"] img'
+        ];
 
-        mainContainers.forEach(container => {
-            const images = container.querySelectorAll('img');
-            images.forEach(img => {
+        for (const sel of selectors) {
+            const imgs = document.querySelectorAll(sel);
+            imgs.forEach(img => {
                 if (!this.isExcludedImage(img)) {
                     this.extractHighResFromElement(img);
                 }
             });
-        });
+        }
     }
 
+    // CORE: Extract high-res URL from an img element
+    // Priority: data-old-hires FIRST, then data-a-dynamic-image
     extractHighResFromElement(img) {
-        let highResUrl = img.dataset?.oldHires || img.getAttribute('data-old-hires');
-        const altText = img.alt || '';
+        let highResUrl = null;
+        let altText = img.alt || 'Product Image';
 
+        // ═══════════════════════════════════════════════════════════
+        // PRIORITY 1: data-old-hires (Amazon's true high-res URL)
+        // ═══════════════════════════════════════════════════════════
+        const oldHires = img.dataset?.oldHires || img.getAttribute('data-old-hires');
+        if (oldHires && this.isValidProductImageUrl(oldHires)) {
+            highResUrl = oldHires;
+            console.log(`    ✓ Found data-old-hires: ${highResUrl.substring(0, 60)}...`);
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // PRIORITY 2: data-a-dynamic-image (pick largest resolution)
+        // ═══════════════════════════════════════════════════════════
         if (!highResUrl) {
             const dynamicData = img.dataset?.aDynamicImage || img.getAttribute('data-a-dynamic-image');
             if (dynamicData) {
                 try {
                     const parsed = JSON.parse(dynamicData);
                     highResUrl = this.getLargestFromDynamicMap(parsed);
+                    if (highResUrl) {
+                        console.log(`    ✓ Found from dynamic-image: ${highResUrl.substring(0, 60)}...`);
+                    }
                 } catch (e) {
-                    // ignore
+                    console.warn('    Failed to parse data-a-dynamic-image');
                 }
             }
         }
 
+        // ═══════════════════════════════════════════════════════════
+        // PRIORITY 3: src attribute (last resort)
+        // ═══════════════════════════════════════════════════════════
         if (!highResUrl && img.src && this.isValidProductImageUrl(img.src)) {
             highResUrl = img.src;
         }
 
+        // Add to collection with deduplication
         if (highResUrl) {
             return this.addImageWithDedup(highResUrl, altText);
         }
+        
         return false;
     }
 
+    // Get largest resolution URL from data-a-dynamic-image map
     getLargestFromDynamicMap(imageMap) {
         if (!imageMap || typeof imageMap !== 'object') return null;
+        
         const urls = Object.keys(imageMap);
         if (urls.length === 0) return null;
 
+        // Sort by resolution (width * height) descending
         return urls.reduce((best, url) => {
             if (!this.isValidProductImageUrl(url)) return best;
             if (!best) return url;
+            
             const sizeA = this.getResolutionScore(imageMap[best]);
             const sizeB = this.getResolutionScore(imageMap[url]);
+            
             return sizeB > sizeA ? url : best;
         }, null);
     }
@@ -502,70 +359,120 @@ class AmazonImageExtractor {
         return 0;
     }
 
+    // Add image with deduplication by base URL
     addImageWithDedup(url, altText) {
         const baseUrl = this.getBaseImageUrl(url);
+        
+        // Check for duplicates using base URL
         if (this.extractedBaseUrls.has(baseUrl)) {
             return false;
         }
+        
         this.extractedBaseUrls.add(baseUrl);
         this.images.set(url, { alt: altText });
         this.altMap.set(url, altText);
+        
         return true;
     }
 
+    // Get base image URL (without size modifiers) for deduplication
     getBaseImageUrl(url) {
         if (!url) return '';
+        
+        // Extract the image ID (e.g., "71abc123XYZ" from the URL)
         const match = url.match(/\/images\/I\/([A-Za-z0-9._+-]+)/);
         if (match) {
+            // Return just the base identifier without size modifiers
             return match[1].split('._')[0];
         }
         return url;
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // EXCLUSION FILTERS - Comprehensive filtering
+    // ═══════════════════════════════════════════════════════════
+
+    // Check if thumbnail item should be excluded
     isExcludedThumbnail(item) {
         if (!item) return true;
+        
         const classList = item.className || '';
         const innerHTML = item.innerHTML || '';
-        if (classList.includes('video') || item.querySelector('.videoThumbnail, [class*="video"], .a-video')) {
+        
+        // Video thumbnails
+        if (classList.includes('video') || 
+            item.querySelector('.videoThumbnail, [class*="video"], .a-video')) {
             return true;
         }
-        if (classList.includes('360') || classList.includes('spin') || innerHTML.includes('360') || item.querySelector('[class*="360"], [class*="spin"]')) {
+        
+        // 360° view
+        if (classList.includes('360') || 
+            classList.includes('spin') ||
+            innerHTML.includes('360') ||
+            item.querySelector('[class*="360"], [class*="spin"]')) {
             return true;
         }
-        if (classList.includes('aok-hidden') || item.style.display === 'none') {
+        
+        // Non-visible items
+        if (classList.includes('aok-hidden') || 
+            item.style.display === 'none') {
             return true;
         }
+        
         return false;
     }
 
+    // Check if image element should be excluded
     isExcludedImage(img) {
         if (!img) return true;
+        
         const src = (img.src || '').toLowerCase();
         const alt = (img.alt || '').toLowerCase();
         const classList = (img.className || '').toLowerCase();
-
-        if (src.includes('video') || src.includes('play-button') || src.includes('play_icon') || classList.includes('video')) {
+        
+        // Video-related
+        if (src.includes('video') || 
+            src.includes('play-button') || 
+            src.includes('play_icon') ||
+            src.includes('play-icon') ||
+            classList.includes('video')) {
             return true;
         }
-        if (src.includes('360') || src.includes('spin') || alt.includes('360') || classList.includes('360')) {
+        
+        // 360° view
+        if (src.includes('360') || 
+            src.includes('spin') ||
+            alt.includes('360') ||
+            classList.includes('360')) {
             return true;
         }
-        if (src.includes('sprite') || src.includes('icon') || src.includes('transparent-pixel') || src.includes('spacer') || src.includes('loading') || src.includes('placeholder')) {
+        
+        // UI elements
+        if (src.includes('sprite') ||
+            src.includes('icon') ||
+            src.includes('transparent-pixel') ||
+            src.includes('spacer') ||
+            src.includes('loading') ||
+            src.includes('placeholder')) {
             return true;
         }
-
+        
+        // Too small (likely thumbnail or icon)
         const width = img.naturalWidth || img.width || 0;
         const height = img.naturalHeight || img.height || 0;
         if (width > 0 && width < 30 && height > 0 && height < 30) {
             return true;
         }
+        
         return false;
     }
 
+    // Validate if URL is a legitimate product image
     isValidProductImageUrl(url) {
         if (!url || typeof url !== 'string') return false;
         if (url.length < 20) return false;
 
+        // Must be from Amazon image CDN
         const validDomains = [
             'images-na.ssl-images-amazon.com',
             'm.media-amazon.com',
@@ -573,10 +480,14 @@ class AmazonImageExtractor {
             'images-eu.ssl-images-amazon.com',
             'images-fe.ssl-images-amazon.com'
         ];
+
         const hasValidDomain = validDomains.some(domain => url.includes(domain));
         if (!hasValidDomain) return false;
+
+        // Must contain product image path
         if (!url.includes('/images/I/')) return false;
 
+        // Exclude patterns (comprehensive list)
         const excludePatterns = [
             'sprite', 'icon', 'logo', 'banner', 'transparent-pixel',
             'badge', 'button', 'nav', 'header', 'footer',
@@ -585,18 +496,29 @@ class AmazonImageExtractor {
             '360', 'spin', 'rotate', 'gif', 'thumb_', '_thumb',
             'prime', 'shipping', 'delivery', 'cart', 'wishlist'
         ];
+
         const lowerUrl = url.toLowerCase();
         return !excludePatterns.some(pattern => lowerUrl.includes(pattern));
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // RESOLUTION TRANSFORMATION - Force maximum quality
+    // ═══════════════════════════════════════════════════════════
+
+    // Transform URL to MAXIMUM resolution (SL3000)
     forceMaxResolution(originalUrl) {
         if (!originalUrl) return originalUrl;
+
         let url = originalUrl;
 
+        // Remove ALL size qualifiers to get base URL
+        // Pattern: anything between ._ and .jpg/.png/.webp
         const baseMatch = url.match(/^(.*?\/images\/I\/[A-Za-z0-9._+-]+)\._.*?\.(jpg|jpeg|png|webp)$/i);
         if (baseMatch) {
+            // Reconstruct with maximum resolution
             url = `${baseMatch[1]}._AC_SL3000_.${baseMatch[2]}`;
         } else {
+            // Fallback: replace known size patterns with SL3000
             const sizePatterns = [
                 /_AC_S[XLYS]\d+_/gi,
                 /_AC_U[SXYL]\d+_/gi,
@@ -605,12 +527,14 @@ class AmazonImageExtractor {
                 /_CR\d+,\d+,\d+,\d+_/gi,
                 /_SL\d+_/gi
             ];
+
             sizePatterns.forEach(pattern => {
                 if (pattern.test(url)) {
                     url = url.replace(pattern, '_AC_SL3000_');
                 }
             });
 
+            // If no size modifier found, try to add one
             if (!url.includes('_AC_SL3000_') && !url.includes('._')) {
                 const extMatch = url.match(/\.(jpg|jpeg|png|webp)$/i);
                 if (extMatch) {
@@ -618,9 +542,11 @@ class AmazonImageExtractor {
                 }
             }
         }
+
         return url;
     }
 
+    // Transform all images to maximum resolution
     transformToMaxResolution() {
         const originalUrls = Array.from(this.images.keys());
         const transformed = new Map();
@@ -628,45 +554,54 @@ class AmazonImageExtractor {
         originalUrls.forEach(url => {
             const maxRes = this.forceMaxResolution(url);
             const metadata = this.images.get(url);
+            
+            // Only keep if not duplicate after transformation
             const baseUrl = this.getBaseImageUrl(maxRes);
             if (!transformed.has(baseUrl)) {
                 transformed.set(baseUrl, { url: maxRes, ...metadata });
             }
         });
 
+        // Replace images map
         this.images.clear();
-        transformed.forEach((data) => {
+        transformed.forEach((data, baseUrl) => {
             this.images.set(data.url, data);
         });
+
         console.log(`  🔄 Transformed ${originalUrls.length} → ${this.images.size} max-resolution URLs`);
     }
+
+    // ═══════════════════════════════════════════════════════════
+    // OUTPUT FORMATTING - Clean production-ready format
+    // ═══════════════════════════════════════════════════════════
 
     async validateAndFormatOutput() {
         const urls = Array.from(this.images.keys());
         console.log(`  📋 Formatting ${urls.length} images for output...`);
+
         let index = 0;
         for (const url of urls) {
+            // Final validation
             if (!this.isValidProductImageUrl(url)) continue;
+
             const metadata = this.images.get(url) || {};
+            
             this.highQualityImages.push({
                 index: index,
                 url: url,
                 type: 'HIGH_RES_PRODUCT_IMAGE',
                 alt: this.sanitizeAltText(metadata.alt)
             });
+            
             index++;
         }
+
+        // Sort by index for consistent ordering
         this.highQualityImages.sort((a, b) => a.index - b.index);
     }
 }
 
-// Export for different environments
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = AmazonImageExtractor;
-}
-if (typeof self !== 'undefined') {
-    self.AmazonImageExtractor = AmazonImageExtractor;
-}
+// Export for use in Chrome extension
 if (typeof window !== 'undefined') {
-    window.AmazonImageExtractor = AmazonImageExtractor;
+    window.ComprehensiveAmazonImageExtractor = ComprehensiveAmazonImageExtractor;
 }

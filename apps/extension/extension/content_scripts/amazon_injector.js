@@ -987,93 +987,143 @@ class AmazonImageExtractor {
     async extractFromFullViewModal() {
         console.log('🖱️ Starting interactive full-view modal extraction...');
 
-        // Step 0: Wait for Amazon's image gallery to be fully ready
-        await this.waitForImageGalleryReady();
+        try {
+            // Step 0: Wait for Amazon's image gallery to be fully ready
+            await this.waitForImageGalleryReady();
 
-        // Step 1: Find and click the main image to open modal
-        const mainImage = document.querySelector('#landingImage, #imgTagWrapperId img, #imgBlkFront');
-        if (!mainImage) {
-            throw new Error('Main product image not found');
-        }
+            // Step 1: Find and click the main image to open modal
+            const mainImage = document.querySelector('#landingImage, #imgTagWrapperId img, #imgBlkFront');
+            if (!mainImage) {
+                throw new Error('Main product image not found');
+            }
 
-        console.log('  Clicking main image to open modal...');
-        mainImage.click();
+            console.log('  Clicking main image to open modal...');
+            mainImage.click();
 
-        // Wait for modal to appear (reduced for speed)
-        await this.wait(500);
+            // Wait for modal to appear (reduced for speed)
+            await this.wait(500);
 
-        // Step 2: Verify modal opened
-        const modal = document.querySelector('.a-modal-scroller, #ivLargeImage');
-        if (!modal) {
-            throw new Error('Modal did not open');
-        }
+            // Step 2: Verify modal opened
+            const modal = document.querySelector('.a-modal-scroller, #ivLargeImage');
+            if (!modal) {
+                throw new Error('Modal did not open');
+            }
 
-        console.log('  ✓ Modal opened successfully');
+            console.log('  ✓ Modal opened successfully');
 
-        // Step 3: Find all thumbnails in the modal
-        const thumbnails = Array.from(document.querySelectorAll('.ivThumb'));
+            // Step 3: Find all thumbnails in the modal
+            const thumbnails = Array.from(document.querySelectorAll('.ivThumb'));
 
-        if (thumbnails.length === 0) {
-            throw new Error('No thumbnails found in modal');
-        }
+            if (thumbnails.length === 0) {
+                throw new Error('No thumbnails found in modal');
+            }
 
-        console.log(`  Found ${thumbnails.length} thumbnails to process`);
+            console.log(`  Found ${thumbnails.length} thumbnails to process`);
 
-        // Step 4: Click each thumbnail sequentially and extract image (FAST MODE)
-        for (let i = 0; i < thumbnails.length; i++) {
-            try {
-                const thumb = thumbnails[i];
+            // Step 4: Click each thumbnail sequentially and extract image (FAST MODE)
+            for (let i = 0; i < thumbnails.length; i++) {
+                try {
+                    const thumb = thumbnails[i];
 
-                // Skip if it's a video thumbnail
-                const isVideo = thumb.querySelector('video') ||
-                    thumb.classList.contains('video') ||
-                    thumb.getAttribute('aria-label')?.toLowerCase().includes('video');
+                    // Skip if it's a video thumbnail
+                    const isVideo = thumb.querySelector('video') ||
+                        thumb.classList.contains('video') ||
+                        thumb.getAttribute('aria-label')?.toLowerCase().includes('video');
 
-                if (isVideo) {
-                    console.log(`  ⏭️ Skipping thumbnail ${i + 1} (video)`);
-                    continue;
-                }
-
-                // Click the thumbnail
-                console.log(`  🖱️ Clicking thumbnail ${i + 1}/${thumbnails.length}...`);
-                thumb.click();
-
-                // Wait for the large image to update (reduced for speed)
-                await this.wait(300);
-
-                // Extract the high-res URL from the large image
-                const largeImage = document.querySelector('#ivLargeImage img');
-                if (largeImage) {
-                    let imageUrl = largeImage.src;
-
-                    // Try to get even higher resolution
-                    const dataOldHires = largeImage.getAttribute('data-old-hires');
-                    if (dataOldHires) {
-                        imageUrl = dataOldHires;
+                    if (isVideo) {
+                        console.log(`  ⏭️ Skipping thumbnail ${i + 1} (video)`);
+                        continue;
                     }
 
-                    if (imageUrl && this.isValidImageUrl(imageUrl)) {
-                        // Force maximum resolution
-                        const maxResUrl = this.getHighResUrl(imageUrl);
+                    // Click the thumbnail
+                    console.log(`  🖱️ Clicking thumbnail ${i + 1}/${thumbnails.length}...`);
+                    thumb.click();
 
-                        if (!this.images.has(maxResUrl)) {
-                            this.images.add(maxResUrl);
-                            this.altMap.set(maxResUrl, `Product Image ${this.images.size}`);
-                            console.log(`  ✅ Extracted: ${maxResUrl.substring(0, 70)}...`);
+                    // Wait for the large image to update (reduced for speed)
+                    await this.wait(300);
+
+                    // Extract the high-res URL from the large image
+                    const largeImage = document.querySelector('#ivLargeImage img');
+                    if (largeImage) {
+                        let imageUrl = largeImage.src;
+
+                        // Try to get even higher resolution
+                        const dataOldHires = largeImage.getAttribute('data-old-hires');
+                        if (dataOldHires) {
+                            imageUrl = dataOldHires;
+                        }
+
+                        if (imageUrl && this.isValidImageUrl(imageUrl)) {
+                            // Force maximum resolution
+                            const maxResUrl = this.getHighResUrl(imageUrl);
+
+                            if (!this.images.has(maxResUrl)) {
+                                this.images.add(maxResUrl);
+                                this.altMap.set(maxResUrl, `Product Image ${this.images.size}`);
+                                console.log(`  ✅ Extracted: ${maxResUrl.substring(0, 70)}...`);
+                            }
                         }
                     }
+                } catch (error) {
+                    console.warn(`  ⚠️ Failed to extract from thumbnail ${i + 1}:`, error.message);
                 }
-            } catch (error) {
-                console.warn(`  ⚠️ Failed to extract from thumbnail ${i + 1}:`, error.message);
             }
-        }
-
-        // Step 5: Close the modal immediately
-        const closeButton = document.querySelector('.a-button-close, [data-action="close"]');
-        if (closeButton) {
+        } finally {
+            // Step 5: Close the modal immediately
             console.log('  Closing modal...');
-            closeButton.click();
-            await this.wait(100);
+            try {
+                // First attempt: simulate ESC key
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27 }));
+                
+                // Second attempt: Try clicking the close button specifically within the modal container
+                const modalRoot = document.querySelector('[role="dialog"][aria-modal="true"], #a-popover-lgtbox, .a-popover-modal');
+                const closeButton = modalRoot ? modalRoot.querySelector('.a-button-close, [data-action="a-popover-close"]') : document.querySelector('.a-button-close[data-action="a-popover-close"]');
+                
+                if (closeButton) {
+                    closeButton.click();
+                }
+                await this.wait(300);
+
+                // Third attempt: Aggressively NUKE all possible modal and popover overlays from the DOM
+                const selectors = [
+                    '.a-popover-modal',
+                    '#a-popover-lgtbox',
+                    '#a-popover-root',
+                    '.a-popover-wrapper',
+                    '#ivLargeImage',
+                    '.a-modal-scroller',
+                    '.a-backdrop',
+                    '.a-popover-backdrop',
+                    '.a-popover-lightbox-backdrop',
+                    '.a-popover-container',
+                    '[id^="a-popover-"]',
+                    '[role="dialog"][aria-modal="true"]'
+                ];
+                const amazonOverlays = document.querySelectorAll(selectors.join(', '));
+                amazonOverlays.forEach(el => {
+                    if (el) {
+                        try {
+                            el.remove();
+                        } catch (e) {
+                            console.warn('  ⚠️ Failed to remove element:', e.message);
+                        }
+                    }
+                });
+                
+                // Restore body and documentElement scroll and classes unconditionally
+                const resetScroll = (el) => {
+                    if (el) {
+                        el.style.setProperty('overflow', '', 'important');
+                        el.style.overflow = '';
+                        el.classList.remove('a-m-us', 'a-modal-open', 'a-m-overlay-active');
+                    }
+                };
+                resetScroll(document.body);
+                resetScroll(document.documentElement);
+                console.log('  💥 Force-removed Amazon modal overlays and restored scrolling.');
+            } catch (e) {
+                console.warn('  ⚠️ Error while trying to close modal:', e.message);
+            }
         }
 
         console.log(`✅ Interactive extraction complete: ${this.images.size} images extracted`);
@@ -1531,10 +1581,21 @@ const applyWatermark = (imageUrl) => {
         const watermark = new Image();
         const sourceImage = new Image();
         sourceImage.crossOrigin = "Anonymous";
+
+        const watermarkPromise = new Promise((res, rej) => {
+            watermark.onload = res;
+            watermark.onerror = () => rej(new Error('Failed to load watermark'));
+        });
+
+        const sourcePromise = new Promise((res, rej) => {
+            sourceImage.onload = res;
+            sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+        });
+
         watermark.src = chrome.runtime.getURL('assets/watermark.png');
         sourceImage.src = imageUrl;
 
-        Promise.all([new Promise(r => watermark.onload = r), new Promise(r => sourceImage.onload = r)]).then(() => {
+        Promise.all([watermarkPromise, sourcePromise]).then(() => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             canvas.width = sourceImage.naturalWidth;
@@ -1549,7 +1610,6 @@ const applyWatermark = (imageUrl) => {
             ctx.drawImage(watermark, x, y, watermarkWidth, watermarkHeight);
             ctx.globalAlpha = 1.0;
             resolve(canvas.toDataURL('image/jpeg', 1.0)); // Ultra/High Quality
-
         }).catch(reject);
     });
 };
@@ -1925,9 +1985,15 @@ const processImageTo1600x1600NoWatermark = (imageUrl) => {
     return new Promise((resolve, reject) => {
         const sourceImage = new Image();
         sourceImage.crossOrigin = "Anonymous";
+
+        const loadPromise = new Promise((res, rej) => {
+            sourceImage.onload = res;
+            sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+        });
+
         sourceImage.src = imageUrl;
 
-        new Promise(r => sourceImage.onload = r).then(() => {
+        loadPromise.then(() => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
 
@@ -1975,15 +2041,22 @@ const processImageTo1600x1600 = (imageUrl) => {
 
         const watermark = new Image();
         const sourceImage = new Image();
-
         sourceImage.crossOrigin = "Anonymous";
+
+        const watermarkPromise = new Promise((res, rej) => {
+            watermark.onload = res;
+            watermark.onerror = () => rej(new Error('Failed to load watermark'));
+        });
+
+        const sourcePromise = new Promise((res, rej) => {
+            sourceImage.onload = res;
+            sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+        });
+
         watermark.src = chrome.runtime.getURL('assets/watermark.png');
         sourceImage.src = imageUrl;
 
-        Promise.all([
-            new Promise(r => watermark.onload = r),
-            new Promise(r => sourceImage.onload = r)
-        ]).then(() => {
+        Promise.all([watermarkPromise, sourcePromise]).then(() => {
             console.log(`✅ processImageTo1600x1600: Both images loaded successfully`);
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');

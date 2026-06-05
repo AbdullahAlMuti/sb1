@@ -9,19 +9,6 @@
   let activeEditorFrame = null;
   let activeImageIndex = -1;
   let activeImageSrc = null;
-  let currentTabId = null;
-
-  const getWatermarkedImagesKey = () => currentTabId ? `watermarkedImages_${currentTabId}` : 'watermarkedImages';
-
-  // Request active Tab ID on startup
-  chrome.runtime.sendMessage({ action: 'GET_TAB_ID' }, (response) => {
-    if (response && response.tabId) {
-      currentTabId = response.tabId;
-      console.log(`ℹ️ [SellerSuit] Active Tab ID initialized (Editor Bridge): ${currentTabId}`);
-    } else {
-      console.warn('⚠️ [SellerSuit] Could not retrieve Tab ID from background script.');
-    }
-  });
 
   // ─────────────────────────────────────────────
   // 🚀 Open Editor Panel
@@ -122,7 +109,7 @@
     // 2. Persist to Storage (so it remembers across reloads)
     // Logic from original: chrome.storage.local(watermarkedImages)
     try {
-      const STORAGE_KEY = getWatermarkedImagesKey();
+      const STORAGE_KEY = 'watermarkedImages';
       const result = await chrome.storage.local.get(STORAGE_KEY);
       const arr = Array.isArray(result[STORAGE_KEY]) ? result[STORAGE_KEY] : [];
 
@@ -134,7 +121,7 @@
       arr[activeImageIndex] = dataUrl;
 
       await chrome.storage.local.set({ [STORAGE_KEY]: arr });
-      console.log(`✅ Saved to Local Storage under ${STORAGE_KEY}`);
+      console.log('✅ Saved to Local Storage');
     } catch (e) {
       console.error('Failed to save to storage', e);
     }

@@ -170,6 +170,7 @@
         "ui/editor_frame.html",
         "ui/editor-popup.css",
         "common/editor_core.js",
+        "assets/logo.png",
         "assets/watermark.png",
         "assets/stickers/*",
         "src/image-uploader.js",

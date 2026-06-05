@@ -1147,11 +1147,6 @@ const LOGOUT_STORAGE_KEYS = [
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
-  if (request.action === 'GET_TAB_ID') {
-    sendResponse({ tabId: sender.tab?.id });
-    return true;
-  }
-
   if (request.action === 'GET_EXTENSION_AUTH_STATE') {
     AuthHelper.getRemoteConfig().then(config => {
       AuthHelper.getAuthToken().then(({ token, type, isValid, user }) => {

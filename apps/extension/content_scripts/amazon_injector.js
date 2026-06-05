@@ -7,20 +7,6 @@
 // State management
 let uiInjected = false;
 let isProcessing = false;
-let currentTabId = null;
-
-const getProductImagesKey = () => currentTabId ? `productImages_${currentTabId}` : 'productImages';
-const getWatermarkedImagesKey = () => currentTabId ? `watermarkedImages_${currentTabId}` : 'watermarkedImages';
-
-// Request active Tab ID on startup
-chrome.runtime.sendMessage({ action: 'GET_TAB_ID' }, (response) => {
-    if (response && response.tabId) {
-        currentTabId = response.tabId;
-        console.log(`ℹ️ [SellerSuit] Active Tab ID initialized: ${currentTabId}`);
-    } else {
-        console.warn('⚠️ [SellerSuit] Could not retrieve Tab ID from background script.');
-    }
-});
 
 // ═══════════════════════════════════════════════════════════
 // 🛠️ UTILITY FUNCTIONS (with performance optimizations)
@@ -390,33 +376,17 @@ const injectUI = async () => {
             }
         }, 1000);
 
-        // URL and ASIN change watcher for auto-reset and re-scraping
+        // URL change watcher for auto-reset
         let lastUrl = window.location.href;
-        let lastAsin = document.querySelector('input#asin')?.value || '';
         setInterval(() => {
-            const currentAsin = document.querySelector('input#asin')?.value || '';
-            const urlChanged = window.location.href !== lastUrl;
-            const asinChanged = currentAsin && currentAsin !== lastAsin;
-            
-            if (urlChanged || asinChanged) {
+            if (window.location.href !== lastUrl) {
                 lastUrl = window.location.href;
-                lastAsin = currentAsin;
-                console.log(`🔄 Product/Variation changed (urlChanged: ${urlChanged}, asinChanged: ${asinChanged}), auto-resetting and re-scraping...`);
-                
-                // Clear inputs
+                console.log('🔄 URL changed, auto-resetting price calculation...');
                 const sellItForInput = document.getElementById('sell-it-for-input');
                 if (sellItForInput) sellItForInput.value = '';
-                
-                // Trigger re-scrapes and calculations
-                scrapeAndDisplayInitialTitle();
-                scrapeAndDisplayImages();
-                scrapeAndStoreProductData();
-                
-                setTimeout(() => {
-                    if (typeof quickCalculate === 'function') {
-                        quickCalculate();
-                    }
-                }, 1000);
+                if (typeof quickCalculate === 'function') {
+                    quickCalculate();
+                }
             }
         }, 1000);
 
@@ -932,7 +902,636 @@ const copyAllDetails = () => {
     });
 };
 
-// AmazonImageExtractor class is loaded globally from common/amazon_image_extractor.js
+// Comprehensive Amazon image extractor with advanced anti-bot measures
+class AmazonImageExtractor {
+    constructor() {
+        this.images = new Set();
+        this.altMap = new Map(); // Store alt text separately to preserve it without changing Set algorithm
+        this.highQualityImages = [];
+        this.attempts = 0;
+        this.maxAttempts = 3;
+    }
+
+    // Sanitize alt text to remove Amazon fingerprints
+    sanitizeAltText(text) {
+        if (!text) return 'Product Image';
+
+        // Remove Amazon-specific terms and other fingerprints
+        let sanitized = text
+            .replace(/\b(amazon|prime|alexa|kindle|fire tv|echo|basics)\b/gi, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        return sanitized || 'Product Image';
+    }
+
+    // Main extraction algorithm with multiple approaches
+    async extractAllImages() {
+
+        // Reset collections
+        this.images.clear();
+        this.altMap.clear();
+        this.highQualityImages = [];
+
+        // Wait for page to fully load
+        await this.waitForPageLoad();
+
+        // ═══════════════════════════════════════════════════════════
+        // PRIORITY 1: Interactive Full-View Modal Extraction
+        // This is the MOST RELIABLE method - gets same quality as main image
+        // ═══════════════════════════════════════════════════════════
+        try {
+            console.log('🎯 Attempting interactive full-view modal extraction...');
+            updateScrapeStatus('Opening product image gallery...');
+            await this.extractFromFullViewModal();
+
+            // If we got multiple images, we're done!
+            if (this.images.size >= 2) {
+                console.log(`✅ Interactive extraction successful! Got ${this.images.size} images`);
+                this.transformToHighRes();
+                await this.validateImageQuality();
+                return this.highQualityImages;
+            }
+        } catch (error) {
+            console.warn('⚠️ Interactive extraction failed, falling back to passive methods:', error);
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // FALLBACK: Passive extraction methods
+        // ═══════════════════════════════════════════════════════════
+        console.log('📋 Using passive extraction methods...');
+        const approaches = [
+            { name: 'Standard DOM', method: () => this.extractFromDOM() },
+            { name: 'JSON Data', method: () => this.extractFromJSONData() },
+            { name: 'Comprehensive', method: () => this.extractComprehensive() },
+            { name: 'Fallback', method: () => this.extractFallback() }
+        ];
+
+        for (let i = 0; i < approaches.length; i++) {
+            const approach = approaches[i];
+
+            try {
+                updateScrapeStatus(`Scraping product images (${approach.name})...`);
+                await approach.method();
+                // If we found images, break early
+                if (this.images.size > 0) {
+                    break;
+                }
+            } catch (error) {
+                console.warn(`❌ ${approach.name} failed: `, error);
+            }
+        }
+
+        // Transform to high resolution
+        this.transformToHighRes();
+
+        // Validate and filter
+        await this.validateImageQuality();
+
+        return this.highQualityImages;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // INTERACTIVE FULL-VIEW MODAL EXTRACTION
+    // Clicks through Amazon's image gallery modal to get max quality
+    // ═══════════════════════════════════════════════════════════
+    async extractFromFullViewModal() {
+        console.log('🖱️ Starting interactive full-view modal extraction...');
+
+        try {
+            // Step 0: Wait for Amazon's image gallery to be fully ready
+            await this.waitForImageGalleryReady();
+
+            // Step 1: Find and click the main image to open modal
+            const mainImage = document.querySelector('#landingImage, #imgTagWrapperId img, #imgBlkFront');
+            if (!mainImage) {
+                throw new Error('Main product image not found');
+            }
+
+            console.log('  Clicking main image to open modal...');
+            mainImage.click();
+
+            // Wait for modal to appear (reduced for speed)
+            await this.wait(500);
+
+            // Step 2: Verify modal opened
+            const modal = document.querySelector('.a-modal-scroller, #ivLargeImage');
+            if (!modal) {
+                throw new Error('Modal did not open');
+            }
+
+            console.log('  ✓ Modal opened successfully');
+
+            // Step 3: Find all thumbnails in the modal
+            const thumbnails = Array.from(document.querySelectorAll('.ivThumb'));
+
+            if (thumbnails.length === 0) {
+                throw new Error('No thumbnails found in modal');
+            }
+
+            console.log(`  Found ${thumbnails.length} thumbnails to process`);
+
+            // Step 4: Click each thumbnail sequentially and extract image (FAST MODE)
+            for (let i = 0; i < thumbnails.length; i++) {
+                try {
+                    const thumb = thumbnails[i];
+
+                    // Skip if it's a video thumbnail
+                    const isVideo = thumb.querySelector('video') ||
+                        thumb.classList.contains('video') ||
+                        thumb.getAttribute('aria-label')?.toLowerCase().includes('video');
+
+                    if (isVideo) {
+                        console.log(`  ⏭️ Skipping thumbnail ${i + 1} (video)`);
+                        continue;
+                    }
+
+                    // Click the thumbnail
+                    updateScrapeStatus(`Extracting image ${i + 1} of ${thumbnails.length}...`);
+                    console.log(`  🖱️ Clicking thumbnail ${i + 1}/${thumbnails.length}...`);
+                    thumb.click();
+
+                    // Wait for the large image to update (reduced for speed)
+                    await this.wait(300);
+
+                    // Extract the high-res URL from the large image
+                    const largeImage = document.querySelector('#ivLargeImage img');
+                    if (largeImage) {
+                        let imageUrl = largeImage.src;
+
+                        // Try to get even higher resolution
+                        const dataOldHires = largeImage.getAttribute('data-old-hires');
+                        if (dataOldHires) {
+                            imageUrl = dataOldHires;
+                        }
+
+                        if (imageUrl && this.isValidImageUrl(imageUrl)) {
+                            // Force maximum resolution
+                            const maxResUrl = this.getHighResUrl(imageUrl);
+
+                            if (!this.images.has(maxResUrl)) {
+                                this.images.add(maxResUrl);
+                                this.altMap.set(maxResUrl, `Product Image ${this.images.size}`);
+                                console.log(`  ✅ Extracted: ${maxResUrl.substring(0, 70)}...`);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.warn(`  ⚠️ Failed to extract from thumbnail ${i + 1}:`, error.message);
+                }
+            }
+        } finally {
+            // Step 5: Close the modal immediately
+            console.log('  Closing modal...');
+            try {
+                // First attempt: simulate ESC key
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27 }));
+                
+                // Second attempt: Try clicking the close button specifically within the modal container
+                const modalRoot = document.querySelector('[role="dialog"][aria-modal="true"], #a-popover-lgtbox, .a-popover-modal');
+                const closeButton = modalRoot ? modalRoot.querySelector('.a-button-close, [data-action="a-popover-close"]') : document.querySelector('.a-button-close[data-action="a-popover-close"]');
+                
+                if (closeButton) {
+                    closeButton.click();
+                }
+                await this.wait(300);
+
+                // Third attempt: Aggressively NUKE all possible modal and popover overlays from the DOM
+                const selectors = [
+                    '.a-popover-modal',
+                    '#a-popover-lgtbox',
+                    '#a-popover-root',
+                    '.a-popover-wrapper',
+                    '#ivLargeImage',
+                    '.a-modal-scroller',
+                    '.a-backdrop',
+                    '.a-popover-backdrop',
+                    '.a-popover-lightbox-backdrop',
+                    '.a-popover-container',
+                    '[id^="a-popover-"]',
+                    '[role="dialog"][aria-modal="true"]'
+                ];
+                const amazonOverlays = document.querySelectorAll(selectors.join(', '));
+                amazonOverlays.forEach(el => {
+                    if (el) {
+                        try {
+                            el.remove();
+                        } catch (e) {
+                            console.warn('  ⚠️ Failed to remove element:', e.message);
+                        }
+                    }
+                });
+                
+                // Restore body and documentElement scroll and classes unconditionally
+                const resetScroll = (el) => {
+                    if (el) {
+                        el.style.setProperty('overflow', '', 'important');
+                        el.style.overflow = '';
+                        el.classList.remove('a-m-us', 'a-modal-open', 'a-m-overlay-active');
+                    }
+                };
+                resetScroll(document.body);
+                resetScroll(document.documentElement);
+                console.log('  💥 Force-removed Amazon modal overlays and restored scrolling.');
+            } catch (e) {
+                console.warn('  ⚠️ Error while trying to close modal:', e.message);
+            }
+        }
+
+        console.log(`✅ Interactive extraction complete: ${this.images.size} images extracted`);
+    }
+
+    // Helper method for delays
+    wait(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // Wait for Amazon's image gallery to be fully loaded and ready
+    async waitForImageGalleryReady() {
+        console.log('  ⏳ Waiting for image gallery to be ready...');
+
+        const maxWaitTime = 5000; // 5 seconds max
+        const checkInterval = 200; // Check every 200ms
+        const startTime = Date.now();
+
+        while (Date.now() - startTime < maxWaitTime) {
+            // Check if main image and thumbnail gallery are present
+            const mainImage = document.querySelector('#landingImage, #imgTagWrapperId img, #imgBlkFront');
+            const thumbnailGallery = document.querySelector('#altImages, #imageBlock');
+            const hasThumbnails = document.querySelectorAll('#altImages li img, .imageThumbnail').length > 0;
+
+            if (mainImage && thumbnailGallery && hasThumbnails) {
+                console.log('  ✓ Image gallery is ready');
+                // Extra small delay to ensure everything is settled
+                await this.wait(300);
+                return;
+            }
+
+            await this.wait(checkInterval);
+        }
+
+        console.log('  ⚠️ Gallery readiness timeout - proceeding anyway');
+    }
+
+    // Wait for page to fully load
+    async waitForPageLoad() {
+        return new Promise((resolve) => {
+            if (document.readyState === 'complete') {
+                resolve();
+            } else {
+                window.addEventListener('load', resolve);
+            }
+        });
+    }
+
+    // Extract ONLY main product images from DOM elements
+    async extractFromDOM() {
+        console.log('🔍 Extracting MAIN product images from DOM...');
+
+        // Primary product image selectors - focus on main product gallery only
+        const mainProductSelectors = [
+            '#landingImage',                    // Main hero image
+            '#imgTagWrapperId img',             // Main image wrapper
+            '#main-image-container img',        // Main container
+            '#imageBlock #altImages li img',    // Product gallery thumbnails
+            '.a-dynamic-image[data-old-hires]', // Dynamic images with high-res
+            '#imgBlkFront',                     // Front image
+        ];
+
+        mainProductSelectors.forEach(selector => {
+            const images = document.querySelectorAll(selector);
+            console.log(`Checking selector "${selector}": found ${images.length} images`);
+
+            images.forEach(img => {
+                const sources = [
+                    img.src,
+                    img.dataset.oldHires,
+                    img.dataset.aDynamicImage,
+                    img.dataset.src,
+                    img.getAttribute('data-src')
+                ];
+
+                const altText = img.alt || '';
+
+                sources.forEach(url => {
+                    if (url && this.isValidImageUrl(url)) {
+                        this.images.add(url);
+                        if (altText) this.altMap.set(url, altText);
+                        console.log(`Found DOM image: ${url}`);
+                    }
+                });
+            });
+        });
+    }
+
+    // Extract images from JSON data in page
+    async extractFromJSONData() {
+        console.log('🔍 Extracting from JSON data...');
+
+        // Look for JSON data in script tags
+        const scriptTags = document.querySelectorAll('script[type="application/json"], script:not([src])');
+
+        scriptTags.forEach(script => {
+            try {
+                const content = script.textContent || script.innerHTML;
+                if (content && content.includes('amazon') && content.includes('images')) {
+                    // Extract image URLs using regex patterns
+                    const patterns = [
+                        /"hiRes":"([^"]+)"/g,
+                        /"large":"([^"]+)"/g,
+                        /"mainImage":"([^"]+)"/g,
+                        /"displayImage":"([^"]+)"/g,
+                        /"mainUrl":"([^"]+)"/g,
+                        /"thumb":"([^"]+)"/g,
+                        /"thumbnail":"([^"]+)"/g,
+                        /"gallery":"([^"]+)"/g,
+                        /"data-a-dynamic-image":"([^"]+)"/g
+                    ];
+
+                    patterns.forEach(pattern => {
+                        let match;
+                        while ((match = pattern.exec(content)) !== null) {
+                            let imageUrl = match[1];
+
+                            // Handle escaped URLs
+                            imageUrl = imageUrl.replace(/\\u002F/g, '/').replace(/\\/g, '').replace(/&amp;/g, '&');
+
+                            if (this.isValidImageUrl(imageUrl)) {
+                                this.images.add(imageUrl);
+                                // JSON usually doesn't have alt text easily associated, skip mapping
+                                console.log(`Found JSON image: ${imageUrl}`);
+                            }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.warn('Error parsing script content:', error);
+            }
+        });
+    }
+
+    // Extract from main product image data attributes only
+    async extractComprehensive() {
+        console.log('🔍 Extracting from main product data attributes...');
+
+        // Only target images within the main product image block
+        const mainImageBlock = document.querySelector('#imageBlock, #dp-container, #main-image-container');
+        if (!mainImageBlock) {
+            console.log('No main image block found');
+            return;
+        }
+
+        const productImages = mainImageBlock.querySelectorAll('img[data-old-hires], img[data-a-dynamic-image]');
+        productImages.forEach(img => {
+            const altText = img.alt || '';
+
+            if (img.dataset.oldHires) {
+                this.images.add(img.dataset.oldHires);
+                if (altText) this.altMap.set(img.dataset.oldHires, altText);
+                console.log(`Found main product image: ${img.dataset.oldHires}`);
+            }
+            if (img.dataset.aDynamicImage) {
+                try {
+                    const imageData = JSON.parse(img.dataset.aDynamicImage);
+                    for (const [url, dimensions] of Object.entries(imageData)) {
+                        if (url && this.isValidImageUrl(url)) {
+                            this.images.add(url);
+                            if (altText) this.altMap.set(url, altText);
+                            console.log(`Found main dynamic image: ${url}`);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Error parsing data-a-dynamic-image JSON:', e);
+                }
+            }
+        });
+        // Skip review images - they are not main product images
+    }
+
+    // Fallback extraction - ONLY main product images
+    async extractFallback() {
+        console.log('🔍 Fallback extraction for main product images only...');
+
+        // Only look within the main product image containers
+        const mainContainers = document.querySelectorAll('#altImages, #imageBlock, #main-image-container');
+
+        mainContainers.forEach(container => {
+            const images = container.querySelectorAll('img');
+            console.log(`Found ${images.length} images in main container`);
+
+            images.forEach((img, index) => {
+                try {
+                    const sources = [
+                        img.src,
+                        img.dataset.oldHires,
+                        img.dataset.aDynamicImage,
+                        img.dataset.src,
+                        img.getAttribute('data-src')
+                    ];
+
+                    const altText = img.alt || '';
+
+                    sources.forEach(url => {
+                        if (url && this.isValidImageUrl(url)) {
+                            this.images.add(url);
+                            if (altText) this.altMap.set(url, altText);
+                            console.log(`Fallback found main image: ${url}`);
+                        }
+                    });
+                } catch (e) {
+                    console.warn(`Error processing fallback image ${index}: `, e);
+                }
+            });
+        });
+    }
+
+
+    // Transform URLs to high resolution using comprehensive algorithm
+    transformToHighRes() {
+        const originalUrls = Array.from(this.images);
+        this.images.clear(); // Clear and rebuild with high-res URLs
+
+        originalUrls.forEach(url => {
+            const highResUrl = this.getHighResUrl(url);
+            this.images.add(highResUrl);
+
+            // Map the new high-res URL to the original alt text if available
+            if (this.altMap.has(url)) {
+                this.altMap.set(highResUrl, this.altMap.get(url));
+            }
+
+            console.log(`Transformed: ${url} -> ${highResUrl}`);
+        });
+    }
+
+    // Get high-resolution URL using comprehensive algorithm
+    getHighResUrl(originalUrl) {
+        if (!originalUrl) return originalUrl;
+
+        let highResUrl = originalUrl;
+
+        // Try to get highest resolution version using comprehensive patterns
+        if (highResUrl.includes('._')) {
+            // Extract base URL and extension
+            const baseUrl = highResUrl.split('._')[0];
+            const extension = highResUrl.match(/\.(jpg|jpeg|png|webp)/i)?.[0] || '.jpg';
+            highResUrl = `${baseUrl}${extension}`;
+        }
+
+        // Amazon image URL transformations for high resolution
+        const transformations = [
+            // Replace size indicators with high resolution
+            { pattern: /\._[A-Z0-9]+_\./g, replacement: '_AC_SL1500_.' },
+            { pattern: /_AC_SX90_/g, replacement: '_AC_SL1500_' },
+            { pattern: /_AC_SX300_/g, replacement: '_AC_SL1500_' },
+            { pattern: /_AC_SX500_/g, replacement: '_AC_SL1500_' },
+            { pattern: /_AC_SX1000_/g, replacement: '_AC_SL1500_' },
+            { pattern: /_AC_SY90_/g, replacement: '_AC_SL1500_' },
+            { pattern: /_AC_SY300_/g, replacement: '_AC_SL1500_' },
+            { pattern: /_AC_SY500_/g, replacement: '_AC_SL1500_' },
+            { pattern: /_AC_SY1000_/g, replacement: '_AC_SL1500_' },
+            { pattern: /_AC_US\d+_/g, replacement: '_AC_SL1500_' },
+            { pattern: /_AC_U\d+_/g, replacement: '_AC_SL1500_' },
+            { pattern: /_AC_UL\d+_/g, replacement: '_AC_SL1500_' },
+            { pattern: /_AC_UX\d+_/g, replacement: '_AC_SL1500_' },
+            { pattern: /_AC_UY\d+_/g, replacement: '_AC_SL1500_' }
+        ];
+
+        transformations.forEach(transform => {
+            highResUrl = highResUrl.replace(transform.pattern, transform.replacement);
+        });
+
+        return highResUrl;
+    }
+
+    // Validate image quality using comprehensive algorithm
+    async validateImageQuality() {
+        const imageUrls = Array.from(this.images);
+        console.log(`Validating ${imageUrls.length} images for quality...`);
+
+        // Remove duplicates and limit results (like the server algorithm)
+        const uniqueUrls = [...new Set(imageUrls)].slice(0, 20);
+        console.log(`Processing ${uniqueUrls.length} unique images(limited to 20)`);
+
+        let index = 0;
+        for (const url of uniqueUrls) {
+            index++;
+            updateScrapeStatus(`Validating quality of image ${index} of ${uniqueUrls.length}...`);
+            try {
+                let isHighQuality = false;
+                let contentType = 'image/jpeg'; // Default for Amazon images
+                let contentLength = 'Unknown';
+
+                // First, check URL patterns for high-res indicators
+                if (this.isHighResUrl(url)) {
+                    isHighQuality = true;
+                    console.log(`✅ URL pattern indicates high - res: ${url}`);
+                } else {
+                    // Try HEAD request as fallback
+                    try {
+                        const response = await fetch(url, { method: 'HEAD' });
+                        contentLength = response.headers.get('content-length');
+                        contentType = response.headers.get('content-type');
+
+                        // Check if image is high quality (larger than 50KB)
+                        isHighQuality = contentLength && parseInt(contentLength) > 50000;
+
+                        if (isHighQuality) {
+                            console.log(`✅ HEAD request confirms high - res: ${url}(${contentLength} bytes)`);
+                        }
+                    } catch (headError) {
+                        console.log(`HEAD request failed for ${url}, using URL pattern validation`);
+                        // Use URL pattern as fallback
+                        isHighQuality = this.isHighResUrl(url);
+                    }
+                }
+
+                const isImage = contentType && contentType.startsWith('image/');
+
+                if (isHighQuality && isImage) {
+                    this.highQualityImages.push({
+                        url: url,
+                        size: contentLength,
+                        type: contentType,
+                        alt: this.getImageAlt(url)
+                    });
+                    console.log(`✅ Added high - quality image: ${url} `);
+                } else {
+                    console.log(`❌ Rejected image: ${url} (quality: ${isHighQuality}, isImage: ${isImage})`);
+                }
+            } catch (error) {
+                console.log(`Failed to validate image: ${url} `, error);
+            }
+        }
+
+        console.log(`Validation complete.Found ${this.highQualityImages.length} high - quality images`);
+    }
+
+    // Get image alt text
+    getImageAlt(url) {
+        // Try to get from map first (fastest and most accurate for high-res transformed URLs)
+        if (this.altMap.has(url)) {
+            return this.sanitizeAltText(this.altMap.get(url));
+        }
+
+        const img = document.querySelector(`img[src = "${url}"]`);
+        const rawAlt = img ? img.alt || 'Product Image' : 'Product Image';
+        return this.sanitizeAltText(rawAlt);
+    }
+
+    // Check if URL is valid MAIN product image
+    isValidImageUrl(url) {
+        if (!url) return false;
+
+        // Must be Amazon image URL
+        if (!url.includes('amazon') || !url.includes('images')) {
+            return false;
+        }
+
+        // Must be valid image format
+        const validFormats = ['.jpg', '.jpeg', '.png', '.webp'];
+        const hasValidFormat = validFormats.some(format => url.toLowerCase().includes(format));
+
+        // Exclude non-product content (expanded list)
+        const excludedContent = [
+            'sprite', 'icon', 'logo', 'banner', 'data:image',
+            'badge', 'button', 'nav', 'header', 'footer',
+            'review', 'customer', 'avatar', 'profile',
+            'transparent-pixel', 'spacer', 'loading',
+            'prime', 'shipping', 'returns', 'warranty',
+            'video-thumb', 'play-button', 'overlay'
+        ];
+        const hasExcludedContent = excludedContent.some(excluded => url.toLowerCase().includes(excluded));
+
+        // Check minimum URL length (tiny images are usually icons)
+        const isLongEnoughUrl = url.length > 50;
+
+        return hasValidFormat && !hasExcludedContent && url.startsWith('http') && isLongEnoughUrl;
+    }
+
+    // Check if URL appears to be high resolution based on comprehensive patterns
+    isHighResUrl(url) {
+        if (!url) return false;
+
+        // Check for high-resolution indicators in Amazon URLs
+        const highResPatterns = [
+            /_AC_SL\d+_/,  // Amazon's high-res pattern
+            /_AC_SX\d+_/,  // Amazon's high-res pattern
+            /_AC_SY\d+_/,  // Amazon's high-res pattern
+            /_AC_U\d+_/,   // Amazon's high-res pattern
+            /_AC_UL\d+_/,  // Amazon's high-res pattern
+            /_AC_UX\d+_/,  // Amazon's high-res pattern
+            /_AC_UY\d+_/,  // Amazon's high-res pattern
+            /\._[A-Z0-9]+_\./,  // Generic high-res pattern
+            /_AC_SL1500_/, // Specific high-res pattern
+            /_AC_SL2000_/, // Specific high-res pattern
+            /_AC_SL3000_/, // Specific high-res pattern
+        ];
+
+        return highResPatterns.some(pattern => pattern.test(url));
+    }
+
+}
 
 const showScrapeOverlay = (text) => {
     const overlay = document.getElementById('ss-scrape-overlay');
@@ -1030,10 +1629,21 @@ const applyWatermark = (imageUrl) => {
         const watermark = new Image();
         const sourceImage = new Image();
         sourceImage.crossOrigin = "Anonymous";
+
+        const watermarkPromise = new Promise((res, rej) => {
+            watermark.onload = res;
+            watermark.onerror = () => rej(new Error('Failed to load watermark'));
+        });
+
+        const sourcePromise = new Promise((res, rej) => {
+            sourceImage.onload = res;
+            sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+        });
+
         watermark.src = chrome.runtime.getURL('assets/watermark.png');
         sourceImage.src = imageUrl;
 
-        Promise.all([new Promise(r => watermark.onload = r), new Promise(r => sourceImage.onload = r)]).then(() => {
+        Promise.all([watermarkPromise, sourcePromise]).then(() => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             canvas.width = sourceImage.naturalWidth;
@@ -1048,7 +1658,6 @@ const applyWatermark = (imageUrl) => {
             ctx.drawImage(watermark, x, y, watermarkWidth, watermarkHeight);
             ctx.globalAlpha = 1.0;
             resolve(canvas.toDataURL('image/jpeg', 1.0)); // Ultra/High Quality
-
         }).catch(reject);
     });
 };
@@ -1427,9 +2036,15 @@ const processImageTo1600x1600NoWatermark = (imageUrl) => {
     return new Promise((resolve, reject) => {
         const sourceImage = new Image();
         sourceImage.crossOrigin = "Anonymous";
+
+        const loadPromise = new Promise((res, rej) => {
+            sourceImage.onload = res;
+            sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+        });
+
         sourceImage.src = imageUrl;
 
-        new Promise(r => sourceImage.onload = r).then(() => {
+        loadPromise.then(() => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
 
@@ -1477,15 +2092,22 @@ const processImageTo1600x1600 = (imageUrl) => {
 
         const watermark = new Image();
         const sourceImage = new Image();
-
         sourceImage.crossOrigin = "Anonymous";
+
+        const watermarkPromise = new Promise((res, rej) => {
+            watermark.onload = res;
+            watermark.onerror = () => rej(new Error('Failed to load watermark'));
+        });
+
+        const sourcePromise = new Promise((res, rej) => {
+            sourceImage.onload = res;
+            sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+        });
+
         watermark.src = chrome.runtime.getURL('assets/watermark.png');
         sourceImage.src = imageUrl;
 
-        Promise.all([
-            new Promise(r => watermark.onload = r),
-            new Promise(r => sourceImage.onload = r)
-        ]).then(() => {
+        Promise.all([watermarkPromise, sourcePromise]).then(() => {
             console.log(`✅ processImageTo1600x1600: Both images loaded successfully`);
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
@@ -1579,19 +2201,17 @@ const storeWatermarkedImages = async () => {
 
     if (watermarkedDataUrls.length > 0) {
         try {
-            const wmKey = getWatermarkedImagesKey();
-            await chrome.storage.local.set({ [wmKey]: watermarkedDataUrls });
-            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome storage under ${wmKey}`);
+            await chrome.storage.local.set({ watermarkedImages: watermarkedDataUrls });
+            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome storage`);
 
             // Verify storage
-            const verification = await chrome.storage.local.get([wmKey]);
-            const savedImages = verification[wmKey] || [];
-            console.log(`🔍 storeWatermarkedImages: Storage verification - ${savedImages.length} images in storage`);
+            const verification = await chrome.storage.local.get(['watermarkedImages']);
+            console.log(`🔍 storeWatermarkedImages: Storage verification - ${verification.watermarkedImages?.length || 0} images in storage`);
 
             // Additional verification - check if images are valid Data URLs
-            if (savedImages.length > 0) {
+            if (verification.watermarkedImages && verification.watermarkedImages.length > 0) {
                 console.log("🔍 storeWatermarkedImages: Verifying stored images...");
-                savedImages.forEach((imageData, index) => {
+                verification.watermarkedImages.forEach((imageData, index) => {
                     if (imageData && imageData.startsWith('data:image')) {
                         console.log(`✅ storeWatermarkedImages: Image ${index + 1} is valid Data URL (${imageData.substring(0, 50)}...)`);
                     } else {
@@ -1613,17 +2233,16 @@ const deleteImageFromStorage = async (imageIndex, imgContainer, imageUrl) => {
         console.log(`Deleting image ${imageIndex + 1} from storage...`);
 
         // Get current stored images
-        const wmKey = getWatermarkedImagesKey();
-        const result = await chrome.storage.local.get([wmKey]);
-        const storedImages = result[wmKey] || [];
+        const result = await chrome.storage.local.get(['watermarkedImages']);
+        const storedImages = result.watermarkedImages || [];
 
         // Remove the specific image from storage
         if (storedImages.length > imageIndex) {
             storedImages.splice(imageIndex, 1);
 
             // Update storage with remaining images
-            await chrome.storage.local.set({ [wmKey]: storedImages });
-            console.log(`Image ${imageIndex + 1} deleted from storage under ${wmKey}. ${storedImages.length} images remaining.`);
+            await chrome.storage.local.set({ watermarkedImages: storedImages });
+            console.log(`Image ${imageIndex + 1} deleted from storage. ${storedImages.length} images remaining.`);
         }
 
         // Remove from UI with animation
@@ -2330,15 +2949,6 @@ const addEventListenersToPanel = () => {
 
                         const productDetails = scrapeProductDetails();
                         await storeWatermarkedImages();
-
-                        // Copy namespaced keys to global keys for lister consumption
-                        const wmKey = getWatermarkedImagesKey();
-                        const piKey = getProductImagesKey();
-                        const currentData = await chrome.storage.local.get([wmKey, piKey]);
-                        await chrome.storage.local.set({
-                            watermarkedImages: currentData[wmKey] || [],
-                            productImages: currentData[piKey] || []
-                        });
 
                         // Verify images were stored successfully before proceeding
                         console.log('═══════════════════════════════════════════════════════');

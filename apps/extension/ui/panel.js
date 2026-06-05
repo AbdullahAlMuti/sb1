@@ -5,21 +5,6 @@
 
 console.log('[Panel] Initializing...');
 
-let currentTabId = null;
-const getProductImagesKey = () => currentTabId ? 'productImages_' + currentTabId : 'productImages';
-const getWatermarkedImagesKey = () => currentTabId ? 'watermarkedImages_' + currentTabId : 'watermarkedImages';
-
-if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.query) {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs && tabs[0]) {
-      currentTabId = tabs[0].id;
-      console.log(`[Panel] Tab ID initialized: ${currentTabId}`);
-      // Re-load images using the tab-specific key if we already initialized
-      loadImages();
-    }
-  });
-}
-
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -227,9 +212,8 @@ function updateModeLabel(useFullView) {
 }
 
 function loadImages() {
-  const imagesKey = getProductImagesKey();
-  chrome.storage.local.get([imagesKey, 'snipedData'], (result) => {
-    const images = result[imagesKey] || result.snipedData?.images || [];
+  chrome.storage.local.get(['productImages', 'snipedData'], (result) => {
+    const images = result.productImages || result.snipedData?.images || [];
     displayImages(images);
   });
 }
@@ -338,7 +322,7 @@ function refreshImages() {
       if (!response?.success) throw new Error(response?.error || 'Failed to extract images');
 
       const images = Array.isArray(response.images) ? response.images : [];
-      await chrome.storage.local.set({ [getProductImagesKey()]: images });
+      await chrome.storage.local.set({ productImages: images });
       displayImages(images);
 
       if (typeof UIHelper !== 'undefined') UIHelper.showToast('Images refreshed!', 'success');
@@ -352,9 +336,8 @@ function refreshImages() {
 }
 
 function downloadAllImages() {
-  const imagesKey = getProductImagesKey();
-  chrome.storage.local.get([imagesKey], (result) => {
-    const images = result[imagesKey] || [];
+  chrome.storage.local.get(['productImages'], (result) => {
+    const images = result.productImages || [];
     if (images.length === 0) {
       if (typeof UIHelper !== 'undefined') {
         UIHelper.showToast('No images to download', 'warning');

@@ -1,20 +1,6 @@
 // ebay-snipping-extension/content_scripts/walmart_injector.js
 
 let uiInjected = false;
-let currentTabId = null;
-
-const getProductImagesKey = () => currentTabId ? `productImages_${currentTabId}` : 'productImages';
-const getWatermarkedImagesKey = () => currentTabId ? `watermarkedImages_${currentTabId}` : 'watermarkedImages';
-
-// Request active Tab ID on startup
-chrome.runtime.sendMessage({ action: 'GET_TAB_ID' }, (response) => {
-    if (response && response.tabId) {
-        currentTabId = response.tabId;
-        console.log(`ℹ️ [SellerSuit] Active Tab ID initialized (Walmart): ${currentTabId}`);
-    } else {
-        console.warn('⚠️ [SellerSuit] Could not retrieve Tab ID from background script.');
-    }
-});
 
 // **IMPROVED** Function to inject the main UI panel
 const injectUI = async () => {
@@ -74,48 +60,17 @@ const injectUI = async () => {
         quickCalculate();
     }, 1500);
 
-    // URL and Item ID change watcher for auto-reset and re-scraping
+    // URL change watcher for auto-reset
     let lastUrl = window.location.href;
-    const getItemId = () => {
-        const el = document.querySelector('[data-item-id], [data-product-id]');
-        return el ? (el.getAttribute('data-item-id') || el.getAttribute('data-product-id') || '') : '';
-    };
-    let lastItemId = getItemId();
-    
     setInterval(() => {
-        const currentItemId = getItemId();
-        const urlChanged = window.location.href !== lastUrl;
-        const itemIdChanged = currentItemId && currentItemId !== lastItemId;
-        
-        if (urlChanged || itemIdChanged) {
+        if (window.location.href !== lastUrl) {
             lastUrl = window.location.href;
-            lastItemId = currentItemId;
-            console.log(`🔄 Product/Variation changed (urlChanged: ${urlChanged}, itemIdChanged: ${itemIdChanged}), auto-resetting and re-scraping...`);
-            
-            // Clear inputs
+            console.log('🔄 URL changed, auto-resetting price calculation...');
             const sellItForInput = document.getElementById('sell-it-for-input');
             if (sellItForInput) sellItForInput.value = '';
-            
-            // Trigger re-scrapes and calculations
-            scrapeAndDisplayInitialTitle();
-            scrapeAndDisplayImages();
-            
-            try {
-                const productData = scrapeCompleteProductData();
-                chrome.storage.local.set({
-                    completeProductData: productData,
-                    currentProduct: productData,
-                    lastScraped: Date.now()
-                });
-            } catch (error) {
-                console.error('[Walmart Watcher] Error updating product data:', error);
+            if (typeof quickCalculate === 'function') {
+                quickCalculate();
             }
-            
-            setTimeout(() => {
-                if (typeof quickCalculate === 'function') {
-                    quickCalculate();
-                }
-            }, 1000);
         }
     }, 1000);
 };
@@ -1081,10 +1036,21 @@ const applyWatermark = (imageUrl) => {
     const watermark = new Image();
     const sourceImage = new Image();
     sourceImage.crossOrigin = "Anonymous";
+
+    const watermarkPromise = new Promise((res, rej) => {
+        watermark.onload = res;
+        watermark.onerror = () => rej(new Error('Failed to load watermark'));
+    });
+
+    const sourcePromise = new Promise((res, rej) => {
+        sourceImage.onload = res;
+        sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+    });
+
     watermark.src = chrome.runtime.getURL('assets/watermark.png');
     sourceImage.src = imageUrl;
 
-    Promise.all([new Promise(r => watermark.onload=r), new Promise(r => sourceImage.onload=r)]).then(() => {
+    Promise.all([watermarkPromise, sourcePromise]).then(() => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = sourceImage.naturalWidth;
@@ -1424,9 +1390,15 @@ const processImageTo1600x1600NoWatermark = (imageUrl) => {
     return new Promise((resolve, reject) => {
         const sourceImage = new Image();
         sourceImage.crossOrigin = "Anonymous";
+
+        const loadPromise = new Promise((res, rej) => {
+            sourceImage.onload = res;
+            sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+        });
+
         sourceImage.src = imageUrl;
 
-        new Promise(r => sourceImage.onload = r).then(() => {
+        loadPromise.then(() => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
@@ -1467,15 +1439,22 @@ const processImageTo1600x1600 = (imageUrl) => {
         
         const watermark = new Image();
         const sourceImage = new Image();
-        
         sourceImage.crossOrigin = "Anonymous";
+
+        const watermarkPromise = new Promise((res, rej) => {
+            watermark.onload = res;
+            watermark.onerror = () => rej(new Error('Failed to load watermark'));
+        });
+
+        const sourcePromise = new Promise((res, rej) => {
+            sourceImage.onload = res;
+            sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+        });
+
         watermark.src = chrome.runtime.getURL('assets/watermark.png');
         sourceImage.src = imageUrl;
 
-        Promise.all([
-            new Promise(r => watermark.onload = r), 
-            new Promise(r => sourceImage.onload = r)
-        ]).then(() => {
+        Promise.all([watermarkPromise, sourcePromise]).then(() => {
             console.log(`✅ processImageTo1600x1600: Both images loaded successfully`);
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
@@ -1560,17 +1539,15 @@ const storeWatermarkedImages = async () => {
     
     if (watermarkedDataUrls.length > 0) {
         try {
-            const wmKey = getWatermarkedImagesKey();
-            await chrome.storage.local.set({ [wmKey]: watermarkedDataUrls });
-            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome storage under ${wmKey}`);
+            await chrome.storage.local.set({ watermarkedImages: watermarkedDataUrls });
+            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome storage`);
             
-            const verification = await chrome.storage.local.get([wmKey]);
-            const savedImages = verification[wmKey] || [];
-            console.log(`🔍 storeWatermarkedImages: Storage verification - ${savedImages.length} images in storage`);
+            const verification = await chrome.storage.local.get(['watermarkedImages']);
+            console.log(`🔍 storeWatermarkedImages: Storage verification - ${verification.watermarkedImages?.length || 0} images in storage`);
             
-            if (savedImages.length > 0) {
+            if (verification.watermarkedImages && verification.watermarkedImages.length > 0) {
                 console.log("🔍 storeWatermarkedImages: Verifying stored images...");
-                savedImages.forEach((imageData, index) => {
+                verification.watermarkedImages.forEach((imageData, index) => {
                     if (imageData && imageData.startsWith('data:image')) {
                         console.log(`✅ storeWatermarkedImages: Image ${index + 1} is valid Data URL (${imageData.substring(0, 50)}...)`);
                     } else {
@@ -1591,15 +1568,14 @@ const deleteImageFromStorage = async (imageIndex, imgContainer, imageUrl) => {
     try {
         console.log(`Deleting image ${imageIndex + 1} from storage...`);
         
-        const wmKey = getWatermarkedImagesKey();
-        const result = await chrome.storage.local.get([wmKey]);
-        const storedImages = result[wmKey] || [];
+        const result = await chrome.storage.local.get(['watermarkedImages']);
+        const storedImages = result.watermarkedImages || [];
         
         if (storedImages.length > imageIndex) {
             storedImages.splice(imageIndex, 1);
             
-            await chrome.storage.local.set({ [wmKey]: storedImages });
-            console.log(`Image ${imageIndex + 1} deleted from storage under ${wmKey}. ${storedImages.length} images remaining.`);
+            await chrome.storage.local.set({ watermarkedImages: storedImages });
+            console.log(`Image ${imageIndex + 1} deleted from storage. ${storedImages.length} images remaining.`);
         }
         
         imgContainer.style.transition = 'all 0.3s ease';
@@ -1989,15 +1965,6 @@ const addEventListenersToPanel = () => {
                     
                     const productDetails = scrapeProductDetails();
                     await storeWatermarkedImages();
-
-                    // Copy namespaced keys to global keys for lister consumption
-                    const wmKey = getWatermarkedImagesKey();
-                    const piKey = getProductImagesKey();
-                    const currentData = await chrome.storage.local.get([wmKey, piKey]);
-                    await chrome.storage.local.set({
-                        watermarkedImages: currentData[wmKey] || [],
-                        productImages: currentData[piKey] || []
-                    });
 
                     console.log('═══════════════════════════════════════════════════════');
                     console.log('🔍 Verifying image storage before navigation...');

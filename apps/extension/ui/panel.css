@@ -1179,7 +1179,7 @@ body.ss-dark-mode .ss-panel-wrapper .ss-input {
 
 /* Scrape Overlay */
 .ss-panel-wrapper .ss-scrape-overlay {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;
@@ -1192,9 +1192,10 @@ body.ss-dark-mode .ss-panel-wrapper .ss-input {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   opacity: 0;
-  pointer-events: none;
+  pointer-events: none !important;
   visibility: hidden;
   transition: opacity 0.3s ease, visibility 0.3s ease;
+  border-radius: var(--ss-radius);
 }
 
 body.ss-dark-mode .ss-panel-wrapper .ss-scrape-overlay {
@@ -1203,7 +1204,7 @@ body.ss-dark-mode .ss-panel-wrapper .ss-scrape-overlay {
 
 .ss-panel-wrapper .ss-scrape-overlay.active {
   opacity: 1;
-  pointer-events: auto;
+  pointer-events: none !important;
   visibility: visible;
 }
 
