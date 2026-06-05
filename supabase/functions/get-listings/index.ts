@@ -1,5 +1,46 @@
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient, corsHeaders } from '../_shared/extension-session.ts';
 
+function getSourceMarketplace(listing: any): string | null {
+  if (!listing) return null;
+
+  // 1. Check direct URL field
+  const url = listing.amazon_url || "";
+  if (url) {
+    if (url.toLowerCase().includes('walmart.')) return 'walmart';
+    if (url.toLowerCase().includes('amazon.')) return 'amazon';
+  }
+
+  // 2. Check direct marketplace/source/supplier fields
+  const rawSource = listing.supplier_marketplace || listing.source || listing.supplier || listing.source_marketplace || listing.sourceMarketplace || "";
+  if (rawSource) {
+    const valLower = String(rawSource).toLowerCase();
+    if (valLower.includes('walmart') || valLower === 'wal' || valLower === 'wmt') return 'walmart';
+    if (valLower.includes('amazon') || valLower === 'amz') return 'amazon';
+  }
+
+  // 3. Check inside amazon_data JSON/object
+  try {
+    const data = typeof listing.amazon_data === 'string'
+      ? JSON.parse(listing.amazon_data)
+      : listing.amazon_data;
+    if (data) {
+      const dataUrl = data.url || data.amazonUrl || data.productUrl || data.productURL || data.supplierUrl || data.supplierURL || "";
+      if (dataUrl) {
+        if (dataUrl.toLowerCase().includes('walmart.')) return 'walmart';
+        if (dataUrl.toLowerCase().includes('amazon.')) return 'amazon';
+      }
+      const dataMarketplace = data.sourceMarketplace || data.supplierMarketplace || data.marketplace || data.source || data.supplier || "";
+      if (dataMarketplace) {
+        const valLower = String(dataMarketplace).toLowerCase();
+        if (valLower.includes('walmart') || valLower === 'wal' || valLower === 'wmt') return 'walmart';
+        if (valLower.includes('amazon') || valLower === 'amz') return 'amazon';
+      }
+    }
+  } catch (_) {}
+
+  return null;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -73,6 +114,7 @@ Deno.serve(async (req) => {
       lastChecked: listing.last_checked,
       priceLastUpdated: listing.price_last_updated,
       inventoryLastUpdated: listing.inventory_last_updated,
+      sourceMarketplace: getSourceMarketplace(listing),
       // Calculate profit
       profit: listing.ebay_price && listing.amazon_price 
         ? listing.ebay_price - listing.amazon_price 

@@ -116,6 +116,8 @@ interface Listing {
   image_url: string | null;
   status: string | null;
   auto_order_enabled: boolean | null;
+  sourceMarketplace?: string | null;
+  source_marketplace?: string | null;
   // Legacy/backfill fields (older rows may populate these instead)
   asin?: string | null;
   price?: number | null;
@@ -248,6 +250,28 @@ function normalizeListingRow(row: any): Listing {
     ebayData?.galleryURL ??
     null;
 
+  // Determine source marketplace
+  let sourceMarketplace: string | null = null;
+  const rawSource = row?.sourceMarketplace ?? row?.source_marketplace ?? row?.supplierMarketplace ?? row?.supplier_marketplace ?? null;
+  if (rawSource) {
+    const s = String(rawSource).toLowerCase();
+    if (s.includes('walmart') || s === 'wal' || s === 'wmt') {
+      sourceMarketplace = 'walmart';
+    } else if (s.includes('amazon') || s === 'amz') {
+      sourceMarketplace = 'amazon';
+    }
+  }
+
+  // Fallback parsing of URL domain
+  if (!sourceMarketplace && amazonUrl) {
+    const urlLower = amazonUrl.toLowerCase();
+    if (urlLower.includes('walmart.')) {
+      sourceMarketplace = 'walmart';
+    } else if (urlLower.includes('amazon.')) {
+      sourceMarketplace = 'amazon';
+    }
+  }
+
   // Note: fallback rendering is handled by <ListingImage /> (multi-URL fallback).
 
   return {
@@ -259,6 +283,8 @@ function normalizeListingRow(row: any): Listing {
     image_url: imageUrl,
     ebay_price: typeof ebayPrice === 'number' ? ebayPrice : (ebayPrice ? Number(ebayPrice) : null),
     amazon_price: typeof amazonPrice === 'number' ? amazonPrice : (amazonPrice ? Number(amazonPrice) : null),
+    source_marketplace: sourceMarketplace,
+    sourceMarketplace: sourceMarketplace,
   } as Listing;
 }
 
@@ -1565,9 +1591,14 @@ export default function Listings() {
                                 href={listing.amazon_url} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
-                                className="text-orange-500 hover:underline inline-flex items-center"
+                                className={cn(
+                                  "hover:underline inline-flex items-center font-medium",
+                                  (listing.source_marketplace === 'walmart' || listing.sourceMarketplace === 'walmart')
+                                    ? "text-blue-500"
+                                    : "text-orange-500"
+                                )}
                               >
-                                AMZ
+                                {(listing.source_marketplace === 'walmart' || listing.sourceMarketplace === 'walmart') ? "WAL" : "AMZ"}
                               </a>
                             )}
                             {listing.sku && (
