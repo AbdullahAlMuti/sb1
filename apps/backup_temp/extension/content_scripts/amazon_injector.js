@@ -1088,7 +1088,6 @@ class AmazonImageExtractor {
                 const selectors = [
                     '.a-popover-modal',
                     '#a-popover-lgtbox',
-                    '#a-popover-root',
                     '.a-popover-wrapper',
                     '#ivLargeImage',
                     '.a-modal-scroller',
