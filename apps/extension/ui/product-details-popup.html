@@ -1,0 +1,64 @@
+<div class="popup-shell" role="dialog" aria-modal="false" aria-labelledby="product-details-title">
+  <div class="popup-header">
+    <div class="popup-header-copy">
+      <h2 id="product-details-title">Product Details</h2>
+      <p>Review extracted marketplace details before copying.</p>
+    </div>
+    <button id="close-popup-btn" class="popup-icon-btn" type="button" aria-label="Close product details popup">X</button>
+  </div>
+
+  <div class="popup-toolbar">
+    <button id="refresh-details-btn" class="popup-btn popup-btn-secondary" type="button">Refresh</button>
+    <button id="copy-all-btn" class="popup-btn popup-btn-primary" type="button">Copy All</button>
+  </div>
+
+  <div class="popup-body">
+    <div class="detail-row">
+      <div class="detail-copy">
+        <span class="detail-label">Brand</span>
+        <span id="brand-value" class="detail-value">Not found</span>
+      </div>
+      <button class="copy-btn" data-field="brand" type="button" aria-label="Copy brand">Copy</button>
+    </div>
+
+    <div class="detail-row">
+      <div class="detail-copy">
+        <span class="detail-label">Model</span>
+        <span id="model-value" class="detail-value">Not found</span>
+      </div>
+      <button class="copy-btn" data-field="model" type="button" aria-label="Copy model">Copy</button>
+    </div>
+
+    <div class="detail-row">
+      <div class="detail-copy">
+        <span class="detail-label">Color</span>
+        <span id="color-value" class="detail-value">Not found</span>
+      </div>
+      <button class="copy-btn" data-field="color" type="button" aria-label="Copy color">Copy</button>
+    </div>
+
+    <div class="detail-row">
+      <div class="detail-copy">
+        <span class="detail-label">Dimensions</span>
+        <span id="dimensions-value" class="detail-value">Not found</span>
+      </div>
+      <button class="copy-btn" data-field="dimensions" type="button" aria-label="Copy dimensions">Copy</button>
+    </div>
+
+    <div class="detail-row">
+      <div class="detail-copy">
+        <span class="detail-label">Height</span>
+        <span id="height-value" class="detail-value">Not found</span>
+      </div>
+      <button class="copy-btn" data-field="height" type="button" aria-label="Copy height">Copy</button>
+    </div>
+
+    <div class="detail-row">
+      <div class="detail-copy">
+        <span class="detail-label">Weight</span>
+        <span id="weight-value" class="detail-value">Not found</span>
+      </div>
+      <button class="copy-btn" data-field="weight" type="button" aria-label="Copy weight">Copy</button>
+    </div>
+  </div>
+</div>

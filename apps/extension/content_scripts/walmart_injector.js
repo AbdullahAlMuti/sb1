@@ -1,6 +1,20 @@
 // ebay-snipping-extension/content_scripts/walmart_injector.js
 
 let uiInjected = false;
+let currentTabId = null;
+
+const getProductImagesKey = () => currentTabId ? `productImages_${currentTabId}` : 'productImages';
+const getWatermarkedImagesKey = () => currentTabId ? `watermarkedImages_${currentTabId}` : 'watermarkedImages';
+
+// Request active Tab ID on startup
+chrome.runtime.sendMessage({ action: 'GET_TAB_ID' }, (response) => {
+    if (response && response.tabId) {
+        currentTabId = response.tabId;
+        console.log(`ℹ️ [SellerSuit] Active Tab ID initialized (Walmart): ${currentTabId}`);
+    } else {
+        console.warn('⚠️ [SellerSuit] Could not retrieve Tab ID from background script.');
+    }
+});
 
 // **IMPROVED** Function to inject the main UI panel
 const injectUI = async () => {
@@ -9,15 +23,39 @@ const injectUI = async () => {
     // Prevent duplicate injection
     if (document.getElementById('snipe-root-wrapper')) return;
 
-    const response = await fetch(chrome.runtime.getURL('ui/panel.html'));
+    const panelUrl = chrome.runtime.getURL('ui/panel.html') + '?t=' + Date.now();
+    const response = await fetch(panelUrl);
     const uiHtml = await response.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(uiHtml, 'text/html');
+    const panelContent = doc.getElementById('snipe-root-wrapper');
 
-    const wrapper = document.createElement('div');
-    wrapper.id = 'snipe-root-wrapper';
-    wrapper.innerHTML = uiHtml;
+    if (!panelContent) {
+        console.error('❌ Could not find snipe-root-wrapper in panel.html');
+        return;
+    }
+
+    const clonedPanel = panelContent.cloneNode(true);
+
+    // Rewrite all relative image sources to use chrome.runtime.getURL (e.g. assets/logo.png)
+    clonedPanel.querySelectorAll('img').forEach(img => {
+        const srcAttr = img.getAttribute('src');
+        if (srcAttr && srcAttr.startsWith('../')) {
+            const cleanPath = srcAttr.replace(/^\.\.\//, '');
+            img.src = chrome.runtime.getURL(cleanPath);
+        }
+    });
+
+    if (!document.getElementById('sellersuit-panel-css')) {
+        const cssLink = document.createElement('link');
+        cssLink.id = 'sellersuit-panel-css';
+        cssLink.rel = 'stylesheet';
+        cssLink.href = chrome.runtime.getURL('ui/panel.css');
+        document.head.appendChild(cssLink);
+    }
 
     // Inject the panel as the very first element inside the body tag
-    document.body.prepend(wrapper);
+    document.body.prepend(clonedPanel);
     uiInjected = true;
     
     // --- Post-injection logic ---
@@ -36,17 +74,48 @@ const injectUI = async () => {
         quickCalculate();
     }, 1500);
 
-    // URL change watcher for auto-reset
+    // URL and Item ID change watcher for auto-reset and re-scraping
     let lastUrl = window.location.href;
+    const getItemId = () => {
+        const el = document.querySelector('[data-item-id], [data-product-id]');
+        return el ? (el.getAttribute('data-item-id') || el.getAttribute('data-product-id') || '') : '';
+    };
+    let lastItemId = getItemId();
+    
     setInterval(() => {
-        if (window.location.href !== lastUrl) {
+        const currentItemId = getItemId();
+        const urlChanged = window.location.href !== lastUrl;
+        const itemIdChanged = currentItemId && currentItemId !== lastItemId;
+        
+        if (urlChanged || itemIdChanged) {
             lastUrl = window.location.href;
-            console.log('🔄 URL changed, auto-resetting price calculation...');
+            lastItemId = currentItemId;
+            console.log(`🔄 Product/Variation changed (urlChanged: ${urlChanged}, itemIdChanged: ${itemIdChanged}), auto-resetting and re-scraping...`);
+            
+            // Clear inputs
             const sellItForInput = document.getElementById('sell-it-for-input');
             if (sellItForInput) sellItForInput.value = '';
-            if (typeof quickCalculate === 'function') {
-                quickCalculate();
+            
+            // Trigger re-scrapes and calculations
+            scrapeAndDisplayInitialTitle();
+            scrapeAndDisplayImages();
+            
+            try {
+                const productData = scrapeCompleteProductData();
+                chrome.storage.local.set({
+                    completeProductData: productData,
+                    currentProduct: productData,
+                    lastScraped: Date.now()
+                });
+            } catch (error) {
+                console.error('[Walmart Watcher] Error updating product data:', error);
             }
+            
+            setTimeout(() => {
+                if (typeof quickCalculate === 'function') {
+                    quickCalculate();
+                }
+            }, 1000);
         }
     }, 1000);
 };
@@ -445,6 +514,7 @@ class WalmartImageExtractor {
             const approach = approaches[i];
             
             try {
+                updateScrapeStatus(`Scraping product images (${approach.name})...`);
                 await approach.method();
                 if (this.images.size > 0) {
                     break;
@@ -657,7 +727,10 @@ class WalmartImageExtractor {
         const uniqueUrls = [...new Set(imageUrls)].slice(0, 20);
         console.log(`Processing ${uniqueUrls.length} unique images (limited to 20)`);
         
+        let index = 0;
         for (const url of uniqueUrls) {
+            index++;
+            updateScrapeStatus(`Validating quality of image ${index} of ${uniqueUrls.length}...`);
             try {
                 let isHighQuality = false;
                 let contentType = 'image/jpeg';
@@ -829,12 +902,45 @@ const scrapeCompleteProductData = () => {
     };
 };
 
+const showScrapeOverlay = (text) => {
+    const overlay = document.getElementById('ss-scrape-overlay');
+    const statusText = document.getElementById('ss-scrape-status-text');
+    if (overlay) {
+        overlay.classList.add('active');
+    }
+    if (statusText && text) {
+        statusText.textContent = text;
+    }
+};
+
+const updateScrapeStatus = (text) => {
+    const statusText = document.getElementById('ss-scrape-status-text');
+    if (statusText && text) {
+        statusText.textContent = text;
+    }
+    try {
+        chrome.runtime.sendMessage({ action: 'SCRAPE_PROGRESS', message: text });
+    } catch (e) {
+        // Ignore errors when background/popup is closed
+    }
+};
+
+const hideScrapeOverlay = () => {
+    const overlay = document.getElementById('ss-scrape-overlay');
+    if (overlay) {
+        overlay.classList.remove('active');
+    }
+};
+
 // Listen for messages from popup or panel
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'extractImages') {
+        showScrapeOverlay('Initializing image extraction...');
         extractor.extractAllImages().then(images => {
+            hideScrapeOverlay();
             sendResponse({ success: true, images: images });
         }).catch(error => {
+            hideScrapeOverlay();
             sendResponse({ success: false, error: error.message });
         });
         return true;
@@ -1003,6 +1109,7 @@ const scrapeAndDisplayImages = async () => {
     if (!galleryContainer) return;
     
     console.log('Starting comprehensive Walmart image extraction...');
+    showScrapeOverlay('Initializing image extraction...');
     
     const optiListBtn = document.getElementById('opti-list-btn');
     const downloadBtn = document.getElementById('download-images-btn');
@@ -1129,6 +1236,7 @@ const scrapeAndDisplayImages = async () => {
             placeholder.style.textAlign = 'center';
             placeholder.style.color = '#666';
             galleryContainer.appendChild(placeholder);
+            hideScrapeOverlay();
             return;
         }
     
@@ -1278,7 +1386,7 @@ const scrapeAndDisplayImages = async () => {
             refreshBtn.disabled = false;
             refreshBtn.textContent = 'Refresh Images';
         }
-        
+        hideScrapeOverlay();
     } catch (error) {
         console.error('Error in comprehensive image extraction:', error);
         
@@ -1306,6 +1414,7 @@ const scrapeAndDisplayImages = async () => {
         errorMessage.style.textAlign = 'center';
         errorMessage.style.color = '#ff0000';
         galleryContainer.appendChild(errorMessage);
+        hideScrapeOverlay();
     }
 };
 
@@ -1451,15 +1560,17 @@ const storeWatermarkedImages = async () => {
     
     if (watermarkedDataUrls.length > 0) {
         try {
-            await chrome.storage.local.set({ watermarkedImages: watermarkedDataUrls });
-            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome storage`);
+            const wmKey = getWatermarkedImagesKey();
+            await chrome.storage.local.set({ [wmKey]: watermarkedDataUrls });
+            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome storage under ${wmKey}`);
             
-            const verification = await chrome.storage.local.get(['watermarkedImages']);
-            console.log(`🔍 storeWatermarkedImages: Storage verification - ${verification.watermarkedImages?.length || 0} images in storage`);
+            const verification = await chrome.storage.local.get([wmKey]);
+            const savedImages = verification[wmKey] || [];
+            console.log(`🔍 storeWatermarkedImages: Storage verification - ${savedImages.length} images in storage`);
             
-            if (verification.watermarkedImages && verification.watermarkedImages.length > 0) {
+            if (savedImages.length > 0) {
                 console.log("🔍 storeWatermarkedImages: Verifying stored images...");
-                verification.watermarkedImages.forEach((imageData, index) => {
+                savedImages.forEach((imageData, index) => {
                     if (imageData && imageData.startsWith('data:image')) {
                         console.log(`✅ storeWatermarkedImages: Image ${index + 1} is valid Data URL (${imageData.substring(0, 50)}...)`);
                     } else {
@@ -1480,14 +1591,15 @@ const deleteImageFromStorage = async (imageIndex, imgContainer, imageUrl) => {
     try {
         console.log(`Deleting image ${imageIndex + 1} from storage...`);
         
-        const result = await chrome.storage.local.get(['watermarkedImages']);
-        const storedImages = result.watermarkedImages || [];
+        const wmKey = getWatermarkedImagesKey();
+        const result = await chrome.storage.local.get([wmKey]);
+        const storedImages = result[wmKey] || [];
         
         if (storedImages.length > imageIndex) {
             storedImages.splice(imageIndex, 1);
             
-            await chrome.storage.local.set({ watermarkedImages: storedImages });
-            console.log(`Image ${imageIndex + 1} deleted from storage. ${storedImages.length} images remaining.`);
+            await chrome.storage.local.set({ [wmKey]: storedImages });
+            console.log(`Image ${imageIndex + 1} deleted from storage under ${wmKey}. ${storedImages.length} images remaining.`);
         }
         
         imgContainer.style.transition = 'all 0.3s ease';
@@ -1575,6 +1687,32 @@ const addEventListenersToPanel = () => {
     // Panel Controls (Header)
     // ═══════════════════════════════════════════════════════════
     const nightModeBtn = document.getElementById('panel-night-mode-btn');
+    const restoreBtn = document.getElementById('panel-restore-btn');
+    const setPanelMinimizedState = (isMinimized) => {
+        const rootWrapper = document.getElementById('snipe-root-wrapper');
+        if (!rootWrapper) return;
+        rootWrapper.classList.toggle('panel-minimized', isMinimized);
+    };
+    if (!window.__sellerSuitPanelScrollBound) {
+        window.__sellerSuitPanelScrollBound = true;
+        let rafId = 0;
+        const updatePanelOffset = () => {
+            rafId = 0;
+            const rootWrapper = document.getElementById('snipe-root-wrapper');
+            if (!rootWrapper) return;
+            const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+            const lift = Math.min(scrollY, 88);
+            rootWrapper.style.setProperty('--ss-panel-scroll-offset', String(lift));
+            rootWrapper.classList.toggle('ss-panel-scrolled', lift > 4);
+        };
+        const requestOffsetUpdate = () => {
+            if (rafId) return;
+            rafId = window.requestAnimationFrame(updatePanelOffset);
+        };
+        window.addEventListener('scroll', requestOffsetUpdate, { passive: true });
+        window.addEventListener('resize', requestOffsetUpdate);
+        updatePanelOffset();
+    }
     if (nightModeBtn) {
         nightModeBtn.addEventListener('click', () => {
             const rootWrapper = document.getElementById('snipe-root-wrapper');
@@ -1589,16 +1727,13 @@ const addEventListenersToPanel = () => {
     const minimizeBtn = document.getElementById('panel-minimize-btn');
     if (minimizeBtn) {
         minimizeBtn.addEventListener('click', () => {
-            const rootWrapper = document.getElementById('snipe-root-wrapper');
-            if (rootWrapper) {
-                rootWrapper.classList.toggle('panel-minimized');
-                const isMin = rootWrapper.classList.contains('panel-minimized');
-                Array.from(rootWrapper.children).forEach(child => {
-                    if (!child.classList.contains('ss-header')) {
-                        child.style.display = isMin ? 'none' : '';
-                    }
-                });
-            }
+            setPanelMinimizedState(true);
+        });
+    }
+
+    if (restoreBtn) {
+        restoreBtn.addEventListener('click', () => {
+            setPanelMinimizedState(false);
         });
     }
 
@@ -1854,6 +1989,15 @@ const addEventListenersToPanel = () => {
                     
                     const productDetails = scrapeProductDetails();
                     await storeWatermarkedImages();
+
+                    // Copy namespaced keys to global keys for lister consumption
+                    const wmKey = getWatermarkedImagesKey();
+                    const piKey = getProductImagesKey();
+                    const currentData = await chrome.storage.local.get([wmKey, piKey]);
+                    await chrome.storage.local.set({
+                        watermarkedImages: currentData[wmKey] || [],
+                        productImages: currentData[piKey] || []
+                    });
 
                     console.log('═══════════════════════════════════════════════════════');
                     console.log('🔍 Verifying image storage before navigation...');
@@ -2528,16 +2672,23 @@ function openCalculator() {
         popup.style.display = 'flex';
         console.log('✅ Calculator popup displayed');
         
+        // Load saved values FIRST
+        loadCalculatorValues();
+
+        // THEN overwrite Walmart price with fresh scrape
         const walmartPriceInput = document.getElementById('amazon-price');
         if (walmartPriceInput) {
             const scrapedPrice = scrapeWalmartPrice();
             if (scrapedPrice !== 'No price found') {
                 walmartPriceInput.value = scrapedPrice;
                 console.log('💰 Auto-filled Walmart price:', scrapedPrice);
+            } else {
+                console.log('⚠️ No fresh Walmart price scraped on open');
             }
         }
         
-        loadCalculatorValues();
+        // Trigger calculate to update display
+        calculatePrice();
         console.log('✅ Calculator opened successfully');
     } else {
         console.error('❌ Calculator popup not found');
@@ -2556,44 +2707,51 @@ function closeCalculator() {
 }
 
 function loadCalculatorValues() {
-    const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
-    
-    const fields = [
-        'amazon-price',
-        'tax-percent',
-        'tracking-fee',
-        'ebay-fee-percent',
-        'promo-fee-percent',
-        'desired-profit'
-    ];
-    
-    fields.forEach(fieldId => {
-        const input = document.getElementById(fieldId);
-        if (input && savedValues[fieldId]) {
-            input.value = savedValues[fieldId];
-        }
-    });
+    try {
+        const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
+        const fields = [
+            'tax-percent',
+            'tracking-fee',
+            'ebay-fee-percent',
+            'promo-fee-percent',
+            'desired-profit',
+            'payment-fixed-fee'
+        ];
+        
+        fields.forEach(fieldId => {
+            const input = document.getElementById(fieldId);
+            if (input && savedValues[fieldId] !== undefined) {
+                input.value = savedValues[fieldId];
+            }
+        });
+    } catch (e) {
+        console.error('Error loading calculator values:', e);
+    }
 }
 
 function saveCalculatorValues() {
-    const values = {};
-    const fields = [
-        'amazon-price',
-        'tax-percent',
-        'tracking-fee',
-        'ebay-fee-percent',
-        'promo-fee-percent',
-        'desired-profit'
-    ];
-    
-    fields.forEach(fieldId => {
-        const input = document.getElementById(fieldId);
-        if (input && input.value) {
-            values[fieldId] = input.value;
-        }
-    });
-    
-    localStorage.setItem('calculatorValues', JSON.stringify(values));
+    try {
+        const values = {};
+        const fields = [
+            'tax-percent',
+            'tracking-fee',
+            'ebay-fee-percent',
+            'promo-fee-percent',
+            'desired-profit',
+            'payment-fixed-fee'
+        ];
+        
+        fields.forEach(fieldId => {
+            const input = document.getElementById(fieldId);
+            if (input && input.value !== '') {
+                values[fieldId] = input.value;
+            }
+        });
+        
+        localStorage.setItem('calculatorValues', JSON.stringify(values));
+    } catch (e) {
+        console.error('Error saving calculator values:', e);
+    }
 }
 
 // Quick Calculate function - instant calculation without popup
@@ -2609,46 +2767,57 @@ function quickCalculate() {
         walmartPrice = parseFloat(scrapedPrice);
         console.log('💰 Using scraped Walmart price for quick calc:', walmartPrice);
     } else {
-        walmartPrice = parseFloat(savedValues['amazon-price']) || 0;
-        console.log('⚠️ Scrape failed, falling back to saved Walmart price:', walmartPrice);
-    }
-    const taxPercent = parseFloat(savedValues['tax-percent']) || 9;
-    const trackingFee = parseFloat(savedValues['tracking-fee']) || 0.20;
-    const ebayFeePercent = parseFloat(savedValues['ebay-fee-percent']) || 20;
-    const promoFeePercent = parseFloat(savedValues['promo-fee-percent']) || 10;
-    const desiredProfit = parseFloat(savedValues['desired-profit']) || 0;
-    
-    console.log('📊 Quick calc values:', {
-        walmartPrice, taxPercent, trackingFee, 
-        ebayFeePercent, promoFeePercent, desiredProfit
-    });
-    
-    if (walmartPrice <= 0) {
-        console.log('⚠️ No Walmart price available for quick calculation');
-        alert('Please set up calculator values first or enter a Walmart price');
+        console.log('⚠️ Scrape failed, quick calc skipped (waiting for price)');
+        const sellItForInput = document.getElementById('sell-it-for-input');
+        if (sellItForInput && !sellItForInput.value) {
+            sellItForInput.placeholder = 'No price found';
+        }
         return;
     }
+    const parseVal = (val, def) => {
+        const parsed = parseFloat(val);
+        return isNaN(parsed) ? def : parsed;
+    };
+
+    const taxPercent = parseVal(savedValues['tax-percent'], 9);
+    const trackingFee = parseVal(savedValues['tracking-fee'], 0.20);
+    const ebayFeePercent = parseVal(savedValues['ebay-fee-percent'], 20);
+    const promoFeePercent = parseVal(savedValues['promo-fee-percent'], 10);
+    const desiredProfit = parseVal(savedValues['desired-profit'], 0);
+    const paymentFixedFee = parseVal(savedValues['payment-fixed-fee'], 0.30);
     
-    const taxAmount = walmartPrice * (taxPercent / 100);
-    const baseCost = walmartPrice + taxAmount + trackingFee;
-    const totalPercentage = (ebayFeePercent + promoFeePercent + desiredProfit) / 100;
-    const finalPrice = baseCost / (1 - totalPercentage);
+    if (typeof calculateSellingPrice !== 'function') {
+        console.error('calculateSellingPrice is not defined');
+        return;
+    }
+
+    const result = calculateSellingPrice({
+        sourcePrice: walmartPrice,
+        taxPercent,
+        trackingFee,
+        ebayFeePercent,
+        promoFeePercent,
+        desiredProfit,
+        paymentFixedFee
+    });
+
+    if (!result) return;
     
     const sellItForInput = document.getElementById('sell-it-for-input') || 
                            document.querySelector('input[aria-label*="Sell it for" i]') ||
                            document.querySelector('.price-field input[type="text"]') ||
                            document.querySelector('input[placeholder*="Sell it for" i]');
     if (sellItForInput) {
-        sellItForInput.value = finalPrice.toFixed(2);
+        sellItForInput.value = result.finalPrice.toFixed(2);
         sellItForInput.style.backgroundColor = '#e8f5e8';
         sellItForInput.style.borderColor = '#4caf50';
         
         setTimeout(() => {
             sellItForInput.style.backgroundColor = '';
             sellItForInput.style.borderColor = '';
-        }, 3000);
+        }, 1500);
         
-        console.log('💰 Quick calculated price:', finalPrice.toFixed(2));
+        console.log('💰 Quick calculated price:', result.finalPrice.toFixed(2));
     } else {
         console.error('❌ Sell it for input not found');
     }
@@ -2663,10 +2832,11 @@ function calculatePrice() {
     const ebayFeePercent = parseFloat(document.getElementById('ebay-fee-percent').value) || 0;
     const promoFeePercent = parseFloat(document.getElementById('promo-fee-percent').value) || 0;
     const desiredProfit = parseFloat(document.getElementById('desired-profit').value) || 0;
+    const paymentFixedFee = parseFloat(document.getElementById('payment-fixed-fee').value) || 0;
     
     console.log('📊 Input values:', {
         walmartPrice, taxPercent, trackingFee, 
-        ebayFeePercent, promoFeePercent, desiredProfit
+        ebayFeePercent, promoFeePercent, desiredProfit, paymentFixedFee
     });
     
     if (walmartPrice <= 0) {
@@ -2674,20 +2844,27 @@ function calculatePrice() {
         if (resultDiv) {
             resultDiv.style.display = 'none';
         }
+        updateBreakdownDisplay(null);
         console.log('⚠️ No valid Walmart price entered yet');
         return;
     }
     
-    const taxAmount = walmartPrice * (taxPercent / 100);
-    const baseCost = walmartPrice + taxAmount + trackingFee;
-    
-    const totalPercentage = (ebayFeePercent + promoFeePercent + desiredProfit) / 100;
-    
-    const finalPrice = baseCost / (1 - totalPercentage);
-    
-    const ebayFee = finalPrice * (ebayFeePercent / 100);
-    const promoFee = finalPrice * (promoFeePercent / 100);
-    const netProfit = finalPrice - walmartPrice - taxAmount - trackingFee - ebayFee - promoFee;
+    if (typeof calculateSellingPrice !== 'function') {
+        console.error('calculateSellingPrice is not defined');
+        return;
+    }
+
+    const result = calculateSellingPrice({
+        sourcePrice: walmartPrice,
+        taxPercent,
+        trackingFee,
+        ebayFeePercent,
+        promoFeePercent,
+        desiredProfit,
+        paymentFixedFee
+    });
+
+    if (!result) return;
     
     const sku = document.getElementById('sku-input')?.value || '';
     let selectedTitle = '';
@@ -2708,7 +2885,7 @@ function calculatePrice() {
           payload: {
             title: selectedTitle,
             sku: sku,
-            ebay_price: finalPrice.toFixed(2),
+            ebay_price: result.finalPrice.toFixed(2),
             source_price: walmartPrice.toFixed(2),
             product_url: walmartLink
           }
@@ -2722,7 +2899,7 @@ function calculatePrice() {
     const priceDiv = document.getElementById('final-price');
     
     if (resultDiv && priceDiv) {
-        priceDiv.textContent = `$${finalPrice.toFixed(2)}`;
+        priceDiv.textContent = `$${result.finalPrice.toFixed(2)}`;
         resultDiv.style.display = 'block';
     }
     
@@ -2731,32 +2908,68 @@ function calculatePrice() {
                            document.querySelector('.price-field input[type="text"]') ||
                            document.querySelector('input[placeholder*="Sell it for" i]');
     if (sellItForInput) {
-        sellItForInput.value = finalPrice.toFixed(2);
+        sellItForInput.value = result.finalPrice.toFixed(2);
         sellItForInput.style.backgroundColor = '#e8f5e8';
         sellItForInput.style.borderColor = '#4caf50';
         
         setTimeout(() => {
             sellItForInput.style.backgroundColor = '';
             sellItForInput.style.borderColor = '';
-        }, 3000);
+        }, 1500);
     }
     
+    // Update breakdown UI display
+    updateBreakdownDisplay(result);
+
     saveCalculatorValues();
     
-    console.log('💰 Price calculated:', finalPrice.toFixed(2));
-    console.log('📊 Base cost:', baseCost.toFixed(2));
-    console.log('📈 Total fees percentage:', (totalPercentage * 100).toFixed(1) + '%');
+    console.log('💰 Price calculated:', result.finalPrice.toFixed(2));
+}
+
+function updateBreakdownDisplay(result) {
+    const breakdownDiv = document.getElementById('calculator-breakdown');
+    if (!breakdownDiv) return;
+
+    if (!result) {
+        breakdownDiv.style.display = 'none';
+        return;
+    }
+
+    breakdownDiv.style.display = 'flex';
+
+    const setVal = (id, text, color) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.textContent = text;
+            el.style.color = color || '';
+        }
+    };
+
+    setVal('bd-source', `$${result.breakdown.sourcePrice.toFixed(2)}`);
+    setVal('bd-tax', `$${result.breakdown.taxAmount.toFixed(2)}`);
+    setVal('bd-tracking', `$${result.breakdown.trackingFee.toFixed(2)}`);
+    setVal('bd-payment', `$${result.breakdown.paymentFixedFee.toFixed(2)}`);
+    setVal('bd-ebay', `$${result.breakdown.ebayFee.toFixed(2)}`);
+    setVal('bd-promo', `$${result.breakdown.promoFee.toFixed(2)}`);
+    
+    const profitColor = result.netProfit >= 0 ? '#22c55e' : '#ef4444';
+    setVal('bd-profit', `$${result.netProfit.toFixed(2)}`, profitColor);
+    setVal('bd-roi', `${result.roi}%`, profitColor);
+    setVal('bd-margin', `${result.margin}%`, profitColor);
 }
 
 // Add calculator event listeners
 function addCalculatorEventListeners() {
+    const popup = document.getElementById('calculator-popup');
+    if (!popup) return;
+
     const closeBtn = document.getElementById('calculator-close-btn');
     if (closeBtn) {
         closeBtn.addEventListener('click', closeCalculator);
         console.log('✅ Calculator close button listener added');
     }
     
-    const overlay = document.querySelector('.calculator-overlay');
+    const overlay = popup.querySelector('.calculator-overlay');
     if (overlay) {
         overlay.addEventListener('click', closeCalculator);
         console.log('✅ Calculator overlay listener added');
@@ -2769,16 +2982,15 @@ function addCalculatorEventListeners() {
     }
     
     let calculateTimeout;
-    const calculatorInputs = document.querySelectorAll('#calculator-popup input');
+    const calculatorInputs = popup.querySelectorAll('input[type="number"]');
     calculatorInputs.forEach(input => {
         input.addEventListener('input', () => {
-            saveCalculatorValues();
-            
             clearTimeout(calculateTimeout);
             calculateTimeout = setTimeout(() => {
                 calculatePrice();
             }, 300);
         });
+        input.addEventListener('input', validatePriceInput);
     });
     console.log('✅ Calculator input listeners added');
 }
@@ -2872,30 +3084,68 @@ async function getProductDataForExport() {
 function scrapeWalmartPrice() {
     console.log('🔍 Starting Walmart price scraping...');
     
+    const containerSelectors = [
+        '[data-testid="buy-box-container"]', // Main buy box container
+        '[data-automation="buybox"]',        // Alternative buybox container
+        '#buy-box-container',                // ID-based buybox container
+        'main',                              // Scopes to main body content, avoiding carousels in header/footer
+        'article'                            // Alternative main wrapper
+    ];
+
     const priceSelectors = [
         '[itemprop="price"]',
         '.price-characteristic',
         '[data-testid="price"]',
         '.price-group',
         '.prod-PriceHero',
-        '.prod-ProductPrice',
-        '.product-price-large',
-        '.price',
         '[data-automation-id="product-price"]',
         '.inline-flex .f2',
-        '.f1.lh-title',
-        '.price-main .visuallyhidden',
-        '[class*="price"][class*="display"]',
-        '.price-wrapper',
-        '.product-offer-price',
-        'span[itemprop="price"]',
-        '[class*="ProductPrice"]'
+        '.f1.lh-title'
     ];
     
-    console.log('🎯 Trying', priceSelectors.length, 'price selectors...');
+    // Step 1: Try to query within the main product price container
+    for (const containerSel of containerSelectors) {
+        const container = document.querySelector(containerSel);
+        if (container) {
+            console.log(`🔍 Scoping price search inside container: "${containerSel}"`);
+            
+            // Check for split price format first within this container
+            const characteristicElement = container.querySelector('.price-characteristic');
+            const mantissaElement = container.querySelector('.price-mantissa');
+            if (characteristicElement) {
+                let wholePart = characteristicElement.textContent?.replace(/[^\d]/g, '') || '';
+                let decimalPart = mantissaElement?.textContent?.replace(/[^\d]/g, '') || '00';
+                if (wholePart) {
+                    const fullPrice = parseFloat(`${wholePart}.${decimalPart}`);
+                    if (!isNaN(fullPrice) && fullPrice > 0) {
+                        console.log('✅ Scoped split price found:', fullPrice);
+                        return fullPrice.toFixed(2);
+                    }
+                }
+            }
+
+            // Try standard price selectors inside this container
+            for (const selector of priceSelectors) {
+                const priceElement = container.querySelector(selector);
+                if (priceElement) {
+                    let priceText = priceElement.textContent || priceElement.innerText;
+                    priceText = priceText.replace(/[^\d.,]/g, '').replace(/,/g, '');
+                    const priceMatch = priceText.match(/(\d+\.?\d*)/);
+                    if (priceMatch) {
+                        const price = parseFloat(priceMatch[1]);
+                        if (!isNaN(price) && price > 0) {
+                            console.log(`✅ Scoped price found via "${selector}":`, price);
+                            return price.toFixed(2);
+                        }
+                    }
+                }
+            }
+        }
+    }
     
-    // First, try to find Walmart's split price format (characteristic + mantissa)
-    console.log('🔍 Checking for Walmart split price format...');
+    console.log('🔄 Container search failed. Trying document-wide selectors...');
+    
+    // Step 2: Try split price format on document level (fallback)
     const characteristicElement = document.querySelector('.price-characteristic');
     const mantissaElement = document.querySelector('.price-mantissa');
     
@@ -2906,33 +3156,26 @@ function scrapeWalmartPrice() {
         if (wholePart) {
             const fullPrice = parseFloat(`${wholePart}.${decimalPart}`);
             if (!isNaN(fullPrice) && fullPrice > 0) {
-                console.log('✅ Split price format found:', fullPrice);
+                console.log('✅ Document split price format found:', fullPrice);
                 return fullPrice.toFixed(2);
             }
         }
     }
     
+    // Step 3: Try standard selectors on document level
     for (let i = 0; i < priceSelectors.length; i++) {
         const selector = priceSelectors[i];
         const priceElement = document.querySelector(selector);
         
-        console.log(`🔍 Selector ${i + 1}/${priceSelectors.length}: "${selector}"`);
-        console.log('   Element found:', !!priceElement);
-        
         if (priceElement) {
             let priceText = priceElement.textContent || priceElement.innerText;
-            console.log('   Raw text:', priceText);
-            
-            priceText = priceText.replace(/[^\d.,]/g, '');
-            priceText = priceText.replace(/,/g, '');
-            console.log('   Cleaned text:', priceText);
+            priceText = priceText.replace(/[^\d.,]/g, '').replace(/,/g, '');
             
             const priceMatch = priceText.match(/(\d+\.?\d*)/);
             if (priceMatch) {
                 const price = parseFloat(priceMatch[1]);
-                console.log('   Extracted price:', price);
                 if (!isNaN(price) && price > 0) {
-                    console.log('✅ Walmart price scraped successfully:', price);
+                    console.log('✅ Document price scraped successfully:', price);
                     return price.toFixed(2);
                 }
             }
@@ -2940,10 +3183,7 @@ function scrapeWalmartPrice() {
         
         const parentContainer = priceElement?.closest('.price-group, .price-wrapper, [class*="price"]');
         if (parentContainer) {
-            console.log('   Trying parent container...');
             const fullPriceText = parentContainer.textContent || parentContainer.innerText;
-            console.log('   Parent text:', fullPriceText);
-            
             const pricePatterns = [
                 /\$(\d+\.\d{2})/,
                 /(\d+\.\d{2})/,
@@ -2958,7 +3198,7 @@ function scrapeWalmartPrice() {
                 if (match) {
                     const price = parseFloat(match[1]);
                     if (!isNaN(price) && price > 0) {
-                        console.log('✅ Parent container price found:', price);
+                        console.log('✅ Document parent price found:', price);
                         return price.toFixed(2);
                     }
                 }
@@ -2975,6 +3215,7 @@ function scrapeWalmartPrice() {
         }
     });
     
+    // Step 4: Fallback: Try to find any text in body
     console.log('🔄 Trying fallback price detection...');
     const allText = document.body.innerText;
     
@@ -2989,8 +3230,6 @@ function scrapeWalmartPrice() {
     
     for (const pattern of pricePatterns) {
         const matches = [...allText.matchAll(pattern)];
-        console.log(`   Pattern ${pattern} found ${matches.length} matches`);
-        
         if (matches.length > 0) {
             for (const match of matches) {
                 const price = parseFloat(match[1]);

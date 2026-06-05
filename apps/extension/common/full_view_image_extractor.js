@@ -78,7 +78,7 @@ class FullViewImageExtractor {
                             const afterSig = this.getCurrentModalImageSignature(modalRoot);
                             return afterSig && afterSig !== beforeSig;
                         },
-                        { timeoutMs: 5000 }
+                        { timeoutMs: 1500, intervalMs: 20 }
                     );
 
                     const mainImageElement = this.getModalMainImage(modalRoot);

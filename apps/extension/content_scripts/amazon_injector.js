@@ -7,6 +7,20 @@
 // State management
 let uiInjected = false;
 let isProcessing = false;
+let currentTabId = null;
+
+const getProductImagesKey = () => currentTabId ? `productImages_${currentTabId}` : 'productImages';
+const getWatermarkedImagesKey = () => currentTabId ? `watermarkedImages_${currentTabId}` : 'watermarkedImages';
+
+// Request active Tab ID on startup
+chrome.runtime.sendMessage({ action: 'GET_TAB_ID' }, (response) => {
+    if (response && response.tabId) {
+        currentTabId = response.tabId;
+        console.log(`ℹ️ [SellerSuit] Active Tab ID initialized: ${currentTabId}`);
+    } else {
+        console.warn('⚠️ [SellerSuit] Could not retrieve Tab ID from background script.');
+    }
+});
 
 // ═══════════════════════════════════════════════════════════
 // 🛠️ UTILITY FUNCTIONS (with performance optimizations)
@@ -326,6 +340,15 @@ const injectUI = async () => {
         // Clone the panel content and inject it directly (preserving the ID)
         const clonedPanel = panelContent.cloneNode(true);
 
+        // Rewrite all relative image sources to use chrome.runtime.getURL (e.g. assets/logo.png)
+        clonedPanel.querySelectorAll('img').forEach(img => {
+            const srcAttr = img.getAttribute('src');
+            if (srcAttr && srcAttr.startsWith('../')) {
+                const cleanPath = srcAttr.replace(/^\.\.\//, '');
+                img.src = chrome.runtime.getURL(cleanPath);
+            }
+        });
+
         // Also inject the CSS if not already present
         if (!document.getElementById('sellersuit-panel-css')) {
             const cssLink = document.createElement('link');
@@ -367,17 +390,33 @@ const injectUI = async () => {
             }
         }, 1000);
 
-        // URL change watcher for auto-reset
+        // URL and ASIN change watcher for auto-reset and re-scraping
         let lastUrl = window.location.href;
+        let lastAsin = document.querySelector('input#asin')?.value || '';
         setInterval(() => {
-            if (window.location.href !== lastUrl) {
+            const currentAsin = document.querySelector('input#asin')?.value || '';
+            const urlChanged = window.location.href !== lastUrl;
+            const asinChanged = currentAsin && currentAsin !== lastAsin;
+            
+            if (urlChanged || asinChanged) {
                 lastUrl = window.location.href;
-                console.log('🔄 URL changed, auto-resetting price calculation...');
+                lastAsin = currentAsin;
+                console.log(`🔄 Product/Variation changed (urlChanged: ${urlChanged}, asinChanged: ${asinChanged}), auto-resetting and re-scraping...`);
+                
+                // Clear inputs
                 const sellItForInput = document.getElementById('sell-it-for-input');
                 if (sellItForInput) sellItForInput.value = '';
-                if (typeof quickCalculate === 'function') {
-                    quickCalculate();
-                }
+                
+                // Trigger re-scrapes and calculations
+                scrapeAndDisplayInitialTitle();
+                scrapeAndDisplayImages();
+                scrapeAndStoreProductData();
+                
+                setTimeout(() => {
+                    if (typeof quickCalculate === 'function') {
+                        quickCalculate();
+                    }
+                }, 1000);
             }
         }, 1000);
 
@@ -810,7 +849,7 @@ const updateProductDetails = () => {
 
     // Update each field
     Object.keys(details).forEach(field => {
-        const valueElement = productDetailsPopup.querySelector(`#${field} - value`);
+        const valueElement = productDetailsPopup.querySelector(`#${field}-value`);
         if (valueElement) {
             const oldValue = valueElement.textContent;
             const newValue = details[field] || 'Not found';
@@ -831,7 +870,7 @@ const updateProductDetails = () => {
 const copyDetail = (field) => {
     if (!productDetailsPopup) return;
 
-    const valueElement = productDetailsPopup.querySelector(`#${field} - value`);
+    const valueElement = productDetailsPopup.querySelector(`#${field}-value`);
     if (!valueElement) return;
 
     const value = valueElement.textContent;
@@ -840,7 +879,7 @@ const copyDetail = (field) => {
     // Copy to clipboard
     navigator.clipboard.writeText(value).then(() => {
         // Show feedback
-        const copyBtn = productDetailsPopup.querySelector(`[data - field="${field}"]`);
+        const copyBtn = productDetailsPopup.querySelector(`[data-field="${field}"]`);
         if (copyBtn) {
             const originalText = copyBtn.textContent;
             copyBtn.textContent = '✓';
@@ -863,7 +902,7 @@ const copyAllDetails = () => {
     const fields = ['brand', 'model', 'color', 'dimensions', 'height', 'weight'];
 
     fields.forEach(field => {
-        const valueElement = productDetailsPopup.querySelector(`#${field} - value`);
+        const valueElement = productDetailsPopup.querySelector(`#${field}-value`);
         if (valueElement) {
             const value = valueElement.textContent;
             if (value !== 'Not found') {
@@ -893,580 +932,37 @@ const copyAllDetails = () => {
     });
 };
 
-// Comprehensive Amazon image extractor with advanced anti-bot measures
-class AmazonImageExtractor {
-    constructor() {
-        this.images = new Set();
-        this.altMap = new Map(); // Store alt text separately to preserve it without changing Set algorithm
-        this.highQualityImages = [];
-        this.attempts = 0;
-        this.maxAttempts = 3;
+// AmazonImageExtractor class is loaded globally from common/amazon_image_extractor.js
+
+const showScrapeOverlay = (text) => {
+    const overlay = document.getElementById('ss-scrape-overlay');
+    const statusText = document.getElementById('ss-scrape-status-text');
+    if (overlay) {
+        overlay.classList.add('active');
     }
-
-    // Sanitize alt text to remove Amazon fingerprints
-    sanitizeAltText(text) {
-        if (!text) return 'Product Image';
-
-        // Remove Amazon-specific terms and other fingerprints
-        let sanitized = text
-            .replace(/\b(amazon|prime|alexa|kindle|fire tv|echo|basics)\b/gi, '')
-            .replace(/\s+/g, ' ')
-            .trim();
-
-        return sanitized || 'Product Image';
+    if (statusText && text) {
+        statusText.textContent = text;
     }
+};
 
-    // Main extraction algorithm with multiple approaches
-    async extractAllImages() {
-
-        // Reset collections
-        this.images.clear();
-        this.altMap.clear();
-        this.highQualityImages = [];
-
-        // Wait for page to fully load
-        await this.waitForPageLoad();
-
-        // ═══════════════════════════════════════════════════════════
-        // PRIORITY 1: Interactive Full-View Modal Extraction
-        // This is the MOST RELIABLE method - gets same quality as main image
-        // ═══════════════════════════════════════════════════════════
-        try {
-            console.log('🎯 Attempting interactive full-view modal extraction...');
-            await this.extractFromFullViewModal();
-
-            // If we got multiple images, we're done!
-            if (this.images.size >= 2) {
-                console.log(`✅ Interactive extraction successful! Got ${this.images.size} images`);
-                this.transformToHighRes();
-                await this.validateImageQuality();
-                return this.highQualityImages;
-            }
-        } catch (error) {
-            console.warn('⚠️ Interactive extraction failed, falling back to passive methods:', error);
-        }
-
-        // ═══════════════════════════════════════════════════════════
-        // FALLBACK: Passive extraction methods
-        // ═══════════════════════════════════════════════════════════
-        console.log('📋 Using passive extraction methods...');
-        const approaches = [
-            { name: 'Standard DOM', method: () => this.extractFromDOM() },
-            { name: 'JSON Data', method: () => this.extractFromJSONData() },
-            { name: 'Comprehensive', method: () => this.extractComprehensive() },
-            { name: 'Fallback', method: () => this.extractFallback() }
-        ];
-
-        for (let i = 0; i < approaches.length; i++) {
-            const approach = approaches[i];
-
-            try {
-                await approach.method();
-                // If we found images, break early
-                if (this.images.size > 0) {
-                    break;
-                }
-            } catch (error) {
-                console.warn(`❌ ${approach.name} failed: `, error);
-            }
-        }
-
-        // Transform to high resolution
-        this.transformToHighRes();
-
-        // Validate and filter
-        await this.validateImageQuality();
-
-        return this.highQualityImages;
+const updateScrapeStatus = (text) => {
+    const statusText = document.getElementById('ss-scrape-status-text');
+    if (statusText && text) {
+        statusText.textContent = text;
     }
-
-    // ═══════════════════════════════════════════════════════════
-    // INTERACTIVE FULL-VIEW MODAL EXTRACTION
-    // Clicks through Amazon's image gallery modal to get max quality
-    // ═══════════════════════════════════════════════════════════
-    async extractFromFullViewModal() {
-        console.log('🖱️ Starting interactive full-view modal extraction...');
-
-        // Step 0: Wait for Amazon's image gallery to be fully ready
-        await this.waitForImageGalleryReady();
-
-        // Step 1: Find and click the main image to open modal
-        const mainImage = document.querySelector('#landingImage, #imgTagWrapperId img, #imgBlkFront');
-        if (!mainImage) {
-            throw new Error('Main product image not found');
-        }
-
-        console.log('  Clicking main image to open modal...');
-        mainImage.click();
-
-        // Wait for modal to appear (reduced for speed)
-        await this.wait(500);
-
-        // Step 2: Verify modal opened
-        const modal = document.querySelector('.a-modal-scroller, #ivLargeImage');
-        if (!modal) {
-            throw new Error('Modal did not open');
-        }
-
-        console.log('  ✓ Modal opened successfully');
-
-        // Step 3: Find all thumbnails in the modal
-        const thumbnails = Array.from(document.querySelectorAll('.ivThumb'));
-
-        if (thumbnails.length === 0) {
-            throw new Error('No thumbnails found in modal');
-        }
-
-        console.log(`  Found ${thumbnails.length} thumbnails to process`);
-
-        // Step 4: Click each thumbnail sequentially and extract image (FAST MODE)
-        for (let i = 0; i < thumbnails.length; i++) {
-            try {
-                const thumb = thumbnails[i];
-
-                // Skip if it's a video thumbnail
-                const isVideo = thumb.querySelector('video') ||
-                    thumb.classList.contains('video') ||
-                    thumb.getAttribute('aria-label')?.toLowerCase().includes('video');
-
-                if (isVideo) {
-                    console.log(`  ⏭️ Skipping thumbnail ${i + 1} (video)`);
-                    continue;
-                }
-
-                // Click the thumbnail
-                console.log(`  🖱️ Clicking thumbnail ${i + 1}/${thumbnails.length}...`);
-                thumb.click();
-
-                // Wait for the large image to update (reduced for speed)
-                await this.wait(300);
-
-                // Extract the high-res URL from the large image
-                const largeImage = document.querySelector('#ivLargeImage img');
-                if (largeImage) {
-                    let imageUrl = largeImage.src;
-
-                    // Try to get even higher resolution
-                    const dataOldHires = largeImage.getAttribute('data-old-hires');
-                    if (dataOldHires) {
-                        imageUrl = dataOldHires;
-                    }
-
-                    if (imageUrl && this.isValidImageUrl(imageUrl)) {
-                        // Force maximum resolution
-                        const maxResUrl = this.getHighResUrl(imageUrl);
-
-                        if (!this.images.has(maxResUrl)) {
-                            this.images.add(maxResUrl);
-                            this.altMap.set(maxResUrl, `Product Image ${this.images.size}`);
-                            console.log(`  ✅ Extracted: ${maxResUrl.substring(0, 70)}...`);
-                        }
-                    }
-                }
-            } catch (error) {
-                console.warn(`  ⚠️ Failed to extract from thumbnail ${i + 1}:`, error.message);
-            }
-        }
-
-        // Step 5: Close the modal immediately
-        const closeButton = document.querySelector('.a-button-close, [data-action="close"]');
-        if (closeButton) {
-            console.log('  Closing modal...');
-            closeButton.click();
-            await this.wait(100);
-        }
-
-        console.log(`✅ Interactive extraction complete: ${this.images.size} images extracted`);
+    try {
+        chrome.runtime.sendMessage({ action: 'SCRAPE_PROGRESS', message: text });
+    } catch (e) {
+        // Ignore errors when background/popup is closed
     }
+};
 
-    // Helper method for delays
-    wait(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+const hideScrapeOverlay = () => {
+    const overlay = document.getElementById('ss-scrape-overlay');
+    if (overlay) {
+        overlay.classList.remove('active');
     }
-
-    // Wait for Amazon's image gallery to be fully loaded and ready
-    async waitForImageGalleryReady() {
-        console.log('  ⏳ Waiting for image gallery to be ready...');
-
-        const maxWaitTime = 5000; // 5 seconds max
-        const checkInterval = 200; // Check every 200ms
-        const startTime = Date.now();
-
-        while (Date.now() - startTime < maxWaitTime) {
-            // Check if main image and thumbnail gallery are present
-            const mainImage = document.querySelector('#landingImage, #imgTagWrapperId img, #imgBlkFront');
-            const thumbnailGallery = document.querySelector('#altImages, #imageBlock');
-            const hasThumbnails = document.querySelectorAll('#altImages li img, .imageThumbnail').length > 0;
-
-            if (mainImage && thumbnailGallery && hasThumbnails) {
-                console.log('  ✓ Image gallery is ready');
-                // Extra small delay to ensure everything is settled
-                await this.wait(300);
-                return;
-            }
-
-            await this.wait(checkInterval);
-        }
-
-        console.log('  ⚠️ Gallery readiness timeout - proceeding anyway');
-    }
-
-    // Wait for page to fully load
-    async waitForPageLoad() {
-        return new Promise((resolve) => {
-            if (document.readyState === 'complete') {
-                resolve();
-            } else {
-                window.addEventListener('load', resolve);
-            }
-        });
-    }
-
-    // Extract ONLY main product images from DOM elements
-    async extractFromDOM() {
-        console.log('🔍 Extracting MAIN product images from DOM...');
-
-        // Primary product image selectors - focus on main product gallery only
-        const mainProductSelectors = [
-            '#landingImage',                    // Main hero image
-            '#imgTagWrapperId img',             // Main image wrapper
-            '#main-image-container img',        // Main container
-            '#imageBlock #altImages li img',    // Product gallery thumbnails
-            '.a-dynamic-image[data-old-hires]', // Dynamic images with high-res
-            '#imgBlkFront',                     // Front image
-        ];
-
-        mainProductSelectors.forEach(selector => {
-            const images = document.querySelectorAll(selector);
-            console.log(`Checking selector "${selector}": found ${images.length} images`);
-
-            images.forEach(img => {
-                const sources = [
-                    img.src,
-                    img.dataset.oldHires,
-                    img.dataset.aDynamicImage,
-                    img.dataset.src,
-                    img.getAttribute('data-src')
-                ];
-
-                const altText = img.alt || '';
-
-                sources.forEach(url => {
-                    if (url && this.isValidImageUrl(url)) {
-                        this.images.add(url);
-                        if (altText) this.altMap.set(url, altText);
-                        console.log(`Found DOM image: ${url}`);
-                    }
-                });
-            });
-        });
-    }
-
-    // Extract images from JSON data in page
-    async extractFromJSONData() {
-        console.log('🔍 Extracting from JSON data...');
-
-        // Look for JSON data in script tags
-        const scriptTags = document.querySelectorAll('script[type="application/json"], script:not([src])');
-
-        scriptTags.forEach(script => {
-            try {
-                const content = script.textContent || script.innerHTML;
-                if (content && content.includes('amazon') && content.includes('images')) {
-                    // Extract image URLs using regex patterns
-                    const patterns = [
-                        /"hiRes":"([^"]+)"/g,
-                        /"large":"([^"]+)"/g,
-                        /"mainImage":"([^"]+)"/g,
-                        /"displayImage":"([^"]+)"/g,
-                        /"mainUrl":"([^"]+)"/g,
-                        /"thumb":"([^"]+)"/g,
-                        /"thumbnail":"([^"]+)"/g,
-                        /"gallery":"([^"]+)"/g,
-                        /"data-a-dynamic-image":"([^"]+)"/g
-                    ];
-
-                    patterns.forEach(pattern => {
-                        let match;
-                        while ((match = pattern.exec(content)) !== null) {
-                            let imageUrl = match[1];
-
-                            // Handle escaped URLs
-                            imageUrl = imageUrl.replace(/\\u002F/g, '/').replace(/\\/g, '').replace(/&amp;/g, '&');
-
-                            if (this.isValidImageUrl(imageUrl)) {
-                                this.images.add(imageUrl);
-                                // JSON usually doesn't have alt text easily associated, skip mapping
-                                console.log(`Found JSON image: ${imageUrl}`);
-                            }
-                        }
-                    });
-                }
-            } catch (error) {
-                console.warn('Error parsing script content:', error);
-            }
-        });
-    }
-
-    // Extract from main product image data attributes only
-    async extractComprehensive() {
-        console.log('🔍 Extracting from main product data attributes...');
-
-        // Only target images within the main product image block
-        const mainImageBlock = document.querySelector('#imageBlock, #dp-container, #main-image-container');
-        if (!mainImageBlock) {
-            console.log('No main image block found');
-            return;
-        }
-
-        const productImages = mainImageBlock.querySelectorAll('img[data-old-hires], img[data-a-dynamic-image]');
-        productImages.forEach(img => {
-            const altText = img.alt || '';
-
-            if (img.dataset.oldHires) {
-                this.images.add(img.dataset.oldHires);
-                if (altText) this.altMap.set(img.dataset.oldHires, altText);
-                console.log(`Found main product image: ${img.dataset.oldHires}`);
-            }
-            if (img.dataset.aDynamicImage) {
-                try {
-                    const imageData = JSON.parse(img.dataset.aDynamicImage);
-                    for (const [url, dimensions] of Object.entries(imageData)) {
-                        if (url && this.isValidImageUrl(url)) {
-                            this.images.add(url);
-                            if (altText) this.altMap.set(url, altText);
-                            console.log(`Found main dynamic image: ${url}`);
-                        }
-                    }
-                } catch (e) {
-                    console.warn('Error parsing data-a-dynamic-image JSON:', e);
-                }
-            }
-        });
-        // Skip review images - they are not main product images
-    }
-
-    // Fallback extraction - ONLY main product images
-    async extractFallback() {
-        console.log('🔍 Fallback extraction for main product images only...');
-
-        // Only look within the main product image containers
-        const mainContainers = document.querySelectorAll('#altImages, #imageBlock, #main-image-container');
-
-        mainContainers.forEach(container => {
-            const images = container.querySelectorAll('img');
-            console.log(`Found ${images.length} images in main container`);
-
-            images.forEach((img, index) => {
-                try {
-                    const sources = [
-                        img.src,
-                        img.dataset.oldHires,
-                        img.dataset.aDynamicImage,
-                        img.dataset.src,
-                        img.getAttribute('data-src')
-                    ];
-
-                    const altText = img.alt || '';
-
-                    sources.forEach(url => {
-                        if (url && this.isValidImageUrl(url)) {
-                            this.images.add(url);
-                            if (altText) this.altMap.set(url, altText);
-                            console.log(`Fallback found main image: ${url}`);
-                        }
-                    });
-                } catch (e) {
-                    console.warn(`Error processing fallback image ${index}: `, e);
-                }
-            });
-        });
-    }
-
-
-    // Transform URLs to high resolution using comprehensive algorithm
-    transformToHighRes() {
-        const originalUrls = Array.from(this.images);
-        this.images.clear(); // Clear and rebuild with high-res URLs
-
-        originalUrls.forEach(url => {
-            const highResUrl = this.getHighResUrl(url);
-            this.images.add(highResUrl);
-
-            // Map the new high-res URL to the original alt text if available
-            if (this.altMap.has(url)) {
-                this.altMap.set(highResUrl, this.altMap.get(url));
-            }
-
-            console.log(`Transformed: ${url} -> ${highResUrl}`);
-        });
-    }
-
-    // Get high-resolution URL using comprehensive algorithm
-    getHighResUrl(originalUrl) {
-        if (!originalUrl) return originalUrl;
-
-        let highResUrl = originalUrl;
-
-        // Try to get highest resolution version using comprehensive patterns
-        if (highResUrl.includes('._')) {
-            // Extract base URL and extension
-            const baseUrl = highResUrl.split('._')[0];
-            const extension = highResUrl.match(/\.(jpg|jpeg|png|webp)/i)?.[0] || '.jpg';
-            highResUrl = `${baseUrl}${extension}`;
-        }
-
-        // Amazon image URL transformations for high resolution
-        const transformations = [
-            // Replace size indicators with high resolution
-            { pattern: /\._[A-Z0-9]+_\./g, replacement: '_AC_SL1500_.' },
-            { pattern: /_AC_SX90_/g, replacement: '_AC_SL1500_' },
-            { pattern: /_AC_SX300_/g, replacement: '_AC_SL1500_' },
-            { pattern: /_AC_SX500_/g, replacement: '_AC_SL1500_' },
-            { pattern: /_AC_SX1000_/g, replacement: '_AC_SL1500_' },
-            { pattern: /_AC_SY90_/g, replacement: '_AC_SL1500_' },
-            { pattern: /_AC_SY300_/g, replacement: '_AC_SL1500_' },
-            { pattern: /_AC_SY500_/g, replacement: '_AC_SL1500_' },
-            { pattern: /_AC_SY1000_/g, replacement: '_AC_SL1500_' },
-            { pattern: /_AC_US\d+_/g, replacement: '_AC_SL1500_' },
-            { pattern: /_AC_U\d+_/g, replacement: '_AC_SL1500_' },
-            { pattern: /_AC_UL\d+_/g, replacement: '_AC_SL1500_' },
-            { pattern: /_AC_UX\d+_/g, replacement: '_AC_SL1500_' },
-            { pattern: /_AC_UY\d+_/g, replacement: '_AC_SL1500_' }
-        ];
-
-        transformations.forEach(transform => {
-            highResUrl = highResUrl.replace(transform.pattern, transform.replacement);
-        });
-
-        return highResUrl;
-    }
-
-    // Validate image quality using comprehensive algorithm
-    async validateImageQuality() {
-        const imageUrls = Array.from(this.images);
-        console.log(`Validating ${imageUrls.length} images for quality...`);
-
-        // Remove duplicates and limit results (like the server algorithm)
-        const uniqueUrls = [...new Set(imageUrls)].slice(0, 20);
-        console.log(`Processing ${uniqueUrls.length} unique images(limited to 20)`);
-
-        for (const url of uniqueUrls) {
-            try {
-                let isHighQuality = false;
-                let contentType = 'image/jpeg'; // Default for Amazon images
-                let contentLength = 'Unknown';
-
-                // First, check URL patterns for high-res indicators
-                if (this.isHighResUrl(url)) {
-                    isHighQuality = true;
-                    console.log(`✅ URL pattern indicates high - res: ${url}`);
-                } else {
-                    // Try HEAD request as fallback
-                    try {
-                        const response = await fetch(url, { method: 'HEAD' });
-                        contentLength = response.headers.get('content-length');
-                        contentType = response.headers.get('content-type');
-
-                        // Check if image is high quality (larger than 50KB)
-                        isHighQuality = contentLength && parseInt(contentLength) > 50000;
-
-                        if (isHighQuality) {
-                            console.log(`✅ HEAD request confirms high - res: ${url}(${contentLength} bytes)`);
-                        }
-                    } catch (headError) {
-                        console.log(`HEAD request failed for ${url}, using URL pattern validation`);
-                        // Use URL pattern as fallback
-                        isHighQuality = this.isHighResUrl(url);
-                    }
-                }
-
-                const isImage = contentType && contentType.startsWith('image/');
-
-                if (isHighQuality && isImage) {
-                    this.highQualityImages.push({
-                        url: url,
-                        size: contentLength,
-                        type: contentType,
-                        alt: this.getImageAlt(url)
-                    });
-                    console.log(`✅ Added high - quality image: ${url} `);
-                } else {
-                    console.log(`❌ Rejected image: ${url} (quality: ${isHighQuality}, isImage: ${isImage})`);
-                }
-            } catch (error) {
-                console.log(`Failed to validate image: ${url} `, error);
-            }
-        }
-
-        console.log(`Validation complete.Found ${this.highQualityImages.length} high - quality images`);
-    }
-
-    // Get image alt text
-    getImageAlt(url) {
-        // Try to get from map first (fastest and most accurate for high-res transformed URLs)
-        if (this.altMap.has(url)) {
-            return this.sanitizeAltText(this.altMap.get(url));
-        }
-
-        const img = document.querySelector(`img[src = "${url}"]`);
-        const rawAlt = img ? img.alt || 'Product Image' : 'Product Image';
-        return this.sanitizeAltText(rawAlt);
-    }
-
-    // Check if URL is valid MAIN product image
-    isValidImageUrl(url) {
-        if (!url) return false;
-
-        // Must be Amazon image URL
-        if (!url.includes('amazon') || !url.includes('images')) {
-            return false;
-        }
-
-        // Must be valid image format
-        const validFormats = ['.jpg', '.jpeg', '.png', '.webp'];
-        const hasValidFormat = validFormats.some(format => url.toLowerCase().includes(format));
-
-        // Exclude non-product content (expanded list)
-        const excludedContent = [
-            'sprite', 'icon', 'logo', 'banner', 'data:image',
-            'badge', 'button', 'nav', 'header', 'footer',
-            'review', 'customer', 'avatar', 'profile',
-            'transparent-pixel', 'spacer', 'loading',
-            'prime', 'shipping', 'returns', 'warranty',
-            'video-thumb', 'play-button', 'overlay'
-        ];
-        const hasExcludedContent = excludedContent.some(excluded => url.toLowerCase().includes(excluded));
-
-        // Check minimum URL length (tiny images are usually icons)
-        const isLongEnoughUrl = url.length > 50;
-
-        return hasValidFormat && !hasExcludedContent && url.startsWith('http') && isLongEnoughUrl;
-    }
-
-    // Check if URL appears to be high resolution based on comprehensive patterns
-    isHighResUrl(url) {
-        if (!url) return false;
-
-        // Check for high-resolution indicators in Amazon URLs
-        const highResPatterns = [
-            /_AC_SL\d+_/,  // Amazon's high-res pattern
-            /_AC_SX\d+_/,  // Amazon's high-res pattern
-            /_AC_SY\d+_/,  // Amazon's high-res pattern
-            /_AC_U\d+_/,   // Amazon's high-res pattern
-            /_AC_UL\d+_/,  // Amazon's high-res pattern
-            /_AC_UX\d+_/,  // Amazon's high-res pattern
-            /_AC_UY\d+_/,  // Amazon's high-res pattern
-            /\._[A-Z0-9]+_\./,  // Generic high-res pattern
-            /_AC_SL1500_/, // Specific high-res pattern
-            /_AC_SL2000_/, // Specific high-res pattern
-            /_AC_SL3000_/, // Specific high-res pattern
-        ];
-
-        return highResPatterns.some(pattern => pattern.test(url));
-    }
-
-}
+};
 
 // Initialize extractor when page loads
 const extractor = new AmazonImageExtractor();
@@ -1474,9 +970,12 @@ const extractor = new AmazonImageExtractor();
 // Listen for messages from popup and other extension components
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'extractImages') {
+        showScrapeOverlay('Initializing image extraction...');
         extractor.extractAllImages().then(images => {
+            hideScrapeOverlay();
             sendResponse({ success: true, images: images });
         }).catch(error => {
+            hideScrapeOverlay();
             sendResponse({ success: false, error: error.message });
         });
         return true; // Keep message channel open for async response
@@ -1560,6 +1059,7 @@ const scrapeAndDisplayImages = async () => {
     if (!galleryContainer) return;
 
     console.log('Starting comprehensive image extraction...');
+    showScrapeOverlay('Initializing image extraction...');
 
     // Disable buttons during image processing
     const optiListBtn = document.getElementById('opti-list-btn');
@@ -1695,6 +1195,7 @@ const scrapeAndDisplayImages = async () => {
             placeholder.style.textAlign = 'center';
             placeholder.style.color = '#666';
             galleryContainer.appendChild(placeholder);
+            hideScrapeOverlay();
             return;
         }
 
@@ -1861,7 +1362,7 @@ const scrapeAndDisplayImages = async () => {
             refreshBtn.disabled = false;
             refreshBtn.textContent = 'Refresh Images';
         }
-
+        hideScrapeOverlay();
     } catch (error) {
         console.error('Error in comprehensive image extraction:', error);
 
@@ -1891,6 +1392,7 @@ const scrapeAndDisplayImages = async () => {
         errorMessage.style.textAlign = 'center';
         errorMessage.style.color = '#ff0000';
         galleryContainer.appendChild(errorMessage);
+        hideScrapeOverlay();
     }
 };
 
@@ -2077,17 +1579,19 @@ const storeWatermarkedImages = async () => {
 
     if (watermarkedDataUrls.length > 0) {
         try {
-            await chrome.storage.local.set({ watermarkedImages: watermarkedDataUrls });
-            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome storage`);
+            const wmKey = getWatermarkedImagesKey();
+            await chrome.storage.local.set({ [wmKey]: watermarkedDataUrls });
+            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome storage under ${wmKey}`);
 
             // Verify storage
-            const verification = await chrome.storage.local.get(['watermarkedImages']);
-            console.log(`🔍 storeWatermarkedImages: Storage verification - ${verification.watermarkedImages?.length || 0} images in storage`);
+            const verification = await chrome.storage.local.get([wmKey]);
+            const savedImages = verification[wmKey] || [];
+            console.log(`🔍 storeWatermarkedImages: Storage verification - ${savedImages.length} images in storage`);
 
             // Additional verification - check if images are valid Data URLs
-            if (verification.watermarkedImages && verification.watermarkedImages.length > 0) {
+            if (savedImages.length > 0) {
                 console.log("🔍 storeWatermarkedImages: Verifying stored images...");
-                verification.watermarkedImages.forEach((imageData, index) => {
+                savedImages.forEach((imageData, index) => {
                     if (imageData && imageData.startsWith('data:image')) {
                         console.log(`✅ storeWatermarkedImages: Image ${index + 1} is valid Data URL (${imageData.substring(0, 50)}...)`);
                     } else {
@@ -2109,16 +1613,17 @@ const deleteImageFromStorage = async (imageIndex, imgContainer, imageUrl) => {
         console.log(`Deleting image ${imageIndex + 1} from storage...`);
 
         // Get current stored images
-        const result = await chrome.storage.local.get(['watermarkedImages']);
-        const storedImages = result.watermarkedImages || [];
+        const wmKey = getWatermarkedImagesKey();
+        const result = await chrome.storage.local.get([wmKey]);
+        const storedImages = result[wmKey] || [];
 
         // Remove the specific image from storage
         if (storedImages.length > imageIndex) {
             storedImages.splice(imageIndex, 1);
 
             // Update storage with remaining images
-            await chrome.storage.local.set({ watermarkedImages: storedImages });
-            console.log(`Image ${imageIndex + 1} deleted from storage. ${storedImages.length} images remaining.`);
+            await chrome.storage.local.set({ [wmKey]: storedImages });
+            console.log(`Image ${imageIndex + 1} deleted from storage under ${wmKey}. ${storedImages.length} images remaining.`);
         }
 
         // Remove from UI with animation
@@ -2189,6 +1694,32 @@ const addEventListenersToPanel = () => {
     // Panel Controls (Header)
     // ═══════════════════════════════════════════════════════════
     const nightModeBtn = document.getElementById('panel-night-mode-btn');
+    const restoreBtn = document.getElementById('panel-restore-btn');
+    const setPanelMinimizedState = (isMinimized) => {
+        const rootWrapper = document.getElementById('snipe-root-wrapper');
+        if (!rootWrapper) return;
+        rootWrapper.classList.toggle('panel-minimized', isMinimized);
+    };
+    if (!window.__sellerSuitPanelScrollBound) {
+        window.__sellerSuitPanelScrollBound = true;
+        let rafId = 0;
+        const updatePanelOffset = () => {
+            rafId = 0;
+            const rootWrapper = document.getElementById('snipe-root-wrapper');
+            if (!rootWrapper) return;
+            const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+            const lift = Math.min(scrollY, 88);
+            rootWrapper.style.setProperty('--ss-panel-scroll-offset', String(lift));
+            rootWrapper.classList.toggle('ss-panel-scrolled', lift > 4);
+        };
+        const requestOffsetUpdate = () => {
+            if (rafId) return;
+            rafId = window.requestAnimationFrame(updatePanelOffset);
+        };
+        window.addEventListener('scroll', requestOffsetUpdate, { passive: true });
+        window.addEventListener('resize', requestOffsetUpdate);
+        updatePanelOffset();
+    }
     if (nightModeBtn) {
         nightModeBtn.addEventListener('click', () => {
             const rootWrapper = document.getElementById('snipe-root-wrapper');
@@ -2203,16 +1734,13 @@ const addEventListenersToPanel = () => {
     const minimizeBtn = document.getElementById('panel-minimize-btn');
     if (minimizeBtn) {
         minimizeBtn.addEventListener('click', () => {
-            const rootWrapper = document.getElementById('snipe-root-wrapper');
-            if (rootWrapper) {
-                rootWrapper.classList.toggle('panel-minimized');
-                const isMin = rootWrapper.classList.contains('panel-minimized');
-                Array.from(rootWrapper.children).forEach(child => {
-                    if (!child.classList.contains('ss-header')) {
-                        child.style.display = isMin ? 'none' : '';
-                    }
-                });
-            }
+            setPanelMinimizedState(true);
+        });
+    }
+
+    if (restoreBtn) {
+        restoreBtn.addEventListener('click', () => {
+            setPanelMinimizedState(false);
         });
     }
 
@@ -2802,6 +2330,15 @@ const addEventListenersToPanel = () => {
 
                         const productDetails = scrapeProductDetails();
                         await storeWatermarkedImages();
+
+                        // Copy namespaced keys to global keys for lister consumption
+                        const wmKey = getWatermarkedImagesKey();
+                        const piKey = getProductImagesKey();
+                        const currentData = await chrome.storage.local.get([wmKey, piKey]);
+                        await chrome.storage.local.set({
+                            watermarkedImages: currentData[wmKey] || [],
+                            productImages: currentData[piKey] || []
+                        });
 
                         // Verify images were stored successfully before proceeding
                         console.log('═══════════════════════════════════════════════════════');
@@ -3629,18 +3166,23 @@ function openCalculator() {
         popup.style.display = 'flex';
         console.log('✅ Calculator popup displayed');
 
-        // Try to auto-fill Amazon price if available
+        // Load saved values FIRST
+        loadCalculatorValues();
+
+        // THEN overwrite Amazon price with fresh scrape
         const amazonPriceInput = document.getElementById('amazon-price');
         if (amazonPriceInput) {
             const scrapedPrice = scrapeAmazonPrice();
             if (scrapedPrice !== 'No price found') {
                 amazonPriceInput.value = scrapedPrice;
                 console.log('💰 Auto-filled Amazon price:', scrapedPrice);
+            } else {
+                console.log('⚠️ No fresh Amazon price scraped on open');
             }
         }
-
-        // Load saved values from localStorage
-        loadCalculatorValues();
+        
+        // Trigger calculate to update display
+        calculatePrice();
         console.log('✅ Calculator opened successfully');
     } else {
         console.error('❌ Calculator popup not found');
@@ -3659,44 +3201,51 @@ function closeCalculator() {
 }
 
 function loadCalculatorValues() {
-    const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
+    try {
+        const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
+        const fields = [
+            'tax-percent',
+            'tracking-fee',
+            'ebay-fee-percent',
+            'promo-fee-percent',
+            'desired-profit',
+            'payment-fixed-fee'
+        ];
 
-    const fields = [
-        'amazon-price',
-        'tax-percent',
-        'tracking-fee',
-        'ebay-fee-percent',
-        'promo-fee-percent',
-        'desired-profit'
-    ];
-
-    fields.forEach(fieldId => {
-        const input = document.getElementById(fieldId);
-        if (input && savedValues[fieldId]) {
-            input.value = savedValues[fieldId];
-        }
-    });
+        fields.forEach(fieldId => {
+            const input = document.getElementById(fieldId);
+            if (input && savedValues[fieldId] !== undefined) {
+                input.value = savedValues[fieldId];
+            }
+        });
+    } catch (e) {
+        console.error('Error loading calculator values:', e);
+    }
 }
 
 function saveCalculatorValues() {
-    const values = {};
-    const fields = [
-        'amazon-price',
-        'tax-percent',
-        'tracking-fee',
-        'ebay-fee-percent',
-        'promo-fee-percent',
-        'desired-profit'
-    ];
+    try {
+        const values = {};
+        const fields = [
+            'tax-percent',
+            'tracking-fee',
+            'ebay-fee-percent',
+            'promo-fee-percent',
+            'desired-profit',
+            'payment-fixed-fee'
+        ];
 
-    fields.forEach(fieldId => {
-        const input = document.getElementById(fieldId);
-        if (input && input.value) {
-            values[fieldId] = input.value;
-        }
-    });
+        fields.forEach(fieldId => {
+            const input = document.getElementById(fieldId);
+            if (input && input.value !== '') {
+                values[fieldId] = input.value;
+            }
+        });
 
-    localStorage.setItem('calculatorValues', JSON.stringify(values));
+        localStorage.setItem('calculatorValues', JSON.stringify(values));
+    } catch (e) {
+        console.error('Error saving calculator values:', e);
+    }
 }
 
 // Quick Calculate function - instant calculation without popup
@@ -3714,32 +3263,42 @@ function quickCalculate() {
         amazonPrice = parseFloat(scrapedPrice);
         console.log('💰 Using scraped Amazon price for quick calc:', amazonPrice);
     } else {
-        // Fallback to saved price
-        amazonPrice = parseFloat(savedValues['amazon-price']) || 0;
-        console.log('⚠️ Scrape failed, falling back to saved Amazon price:', amazonPrice);
-    }
-    const taxPercent = parseFloat(savedValues['tax-percent']) || 9;
-    const trackingFee = parseFloat(savedValues['tracking-fee']) || 0.20;
-    const ebayFeePercent = parseFloat(savedValues['ebay-fee-percent']) || 20;
-    const promoFeePercent = parseFloat(savedValues['promo-fee-percent']) || 10;
-    const desiredProfit = parseFloat(savedValues['desired-profit']) || 0;
-
-    console.log('📊 Quick calc values:', {
-        amazonPrice, taxPercent, trackingFee,
-        ebayFeePercent, promoFeePercent, desiredProfit
-    });
-
-    if (amazonPrice <= 0) {
-        console.log('⚠️ No Amazon price available for quick calculation');
-        alert('Please set up calculator values first or enter an Amazon price');
+        console.log('⚠️ Scrape failed, quick calc skipped (waiting for price)');
+        const sellItForInput = document.getElementById('sell-it-for-input');
+        if (sellItForInput && !sellItForInput.value) {
+            sellItForInput.placeholder = 'No price found';
+        }
         return;
     }
 
-    // Calculate using same logic as main calculator
-    const taxAmount = amazonPrice * (taxPercent / 100);
-    const baseCost = amazonPrice + taxAmount + trackingFee;
-    const totalPercentage = (ebayFeePercent + promoFeePercent + desiredProfit) / 100;
-    const finalPrice = baseCost / (1 - totalPercentage);
+    const parseVal = (val, def) => {
+        const parsed = parseFloat(val);
+        return isNaN(parsed) ? def : parsed;
+    };
+
+    const taxPercent = parseVal(savedValues['tax-percent'], 9);
+    const trackingFee = parseVal(savedValues['tracking-fee'], 0.20);
+    const ebayFeePercent = parseVal(savedValues['ebay-fee-percent'], 20);
+    const promoFeePercent = parseVal(savedValues['promo-fee-percent'], 10);
+    const desiredProfit = parseVal(savedValues['desired-profit'], 0);
+    const paymentFixedFee = parseVal(savedValues['payment-fixed-fee'], 0.30);
+
+    if (typeof calculateSellingPrice !== 'function') {
+        console.error('calculateSellingPrice is not defined');
+        return;
+    }
+
+    const result = calculateSellingPrice({
+        sourcePrice: amazonPrice,
+        taxPercent,
+        trackingFee,
+        ebayFeePercent,
+        promoFeePercent,
+        desiredProfit,
+        paymentFixedFee
+    });
+
+    if (!result) return;
 
     // Auto-fill "Sell it for" field
     const sellItForInput = document.getElementById('sell-it-for-input') ||
@@ -3747,17 +3306,17 @@ function quickCalculate() {
         document.querySelector('.price-field input[type="text"]') ||
         document.querySelector('input[placeholder*="Sell it for" i]');
     if (sellItForInput) {
-        sellItForInput.value = finalPrice.toFixed(2);
+        sellItForInput.value = result.finalPrice.toFixed(2);
         sellItForInput.style.backgroundColor = '#e8f5e8';
         sellItForInput.style.borderColor = '#4caf50';
 
-        // Reset styling after 3 seconds
+        // Reset styling after 1.5 seconds
         setTimeout(() => {
             sellItForInput.style.backgroundColor = '';
             sellItForInput.style.borderColor = '';
-        }, 3000);
+        }, 1500);
 
-        console.log('💰 Quick calculated price:', finalPrice.toFixed(2));
+        console.log('💰 Quick calculated price:', result.finalPrice.toFixed(2));
     } else {
         console.error('❌ Sell it for input not found');
     }
@@ -3772,10 +3331,11 @@ function calculatePrice() {
     const ebayFeePercent = parseFloat(document.getElementById('ebay-fee-percent').value) || 0;
     const promoFeePercent = parseFloat(document.getElementById('promo-fee-percent').value) || 0;
     const desiredProfit = parseFloat(document.getElementById('desired-profit').value) || 0;
+    const paymentFixedFee = parseFloat(document.getElementById('payment-fixed-fee').value) || 0;
 
     console.log('📊 Input values:', {
         amazonPrice, taxPercent, trackingFee,
-        ebayFeePercent, promoFeePercent, desiredProfit
+        ebayFeePercent, promoFeePercent, desiredProfit, paymentFixedFee
     });
 
     if (amazonPrice <= 0) {
@@ -3784,24 +3344,27 @@ function calculatePrice() {
         if (resultDiv) {
             resultDiv.style.display = 'none';
         }
+        updateBreakdownDisplay(null);
         console.log('⚠️ No valid Amazon price entered yet');
         return;
     }
 
-    // Calculate base cost: amazonPrice + tax + trackingFee
-    const taxAmount = amazonPrice * (taxPercent / 100);
-    const baseCost = amazonPrice + taxAmount + trackingFee;
+    if (typeof calculateSellingPrice !== 'function') {
+        console.error('calculateSellingPrice is not defined');
+        return;
+    }
 
-    // Calculate total percentage of fees: ebayFee + promoFee + profit
-    const totalPercentage = (ebayFeePercent + promoFeePercent + desiredProfit) / 100;
+    const result = calculateSellingPrice({
+        sourcePrice: amazonPrice,
+        taxPercent,
+        trackingFee,
+        ebayFeePercent,
+        promoFeePercent,
+        desiredProfit,
+        paymentFixedFee
+    });
 
-    // Calculate final eBay selling price using reverse formula
-    const finalPrice = baseCost / (1 - totalPercentage);
-
-    // Calculate fees and net profit for logging
-    const ebayFee = finalPrice * (ebayFeePercent / 100);
-    const promoFee = finalPrice * (promoFeePercent / 100);
-    const netProfit = finalPrice - amazonPrice - taxAmount - trackingFee - ebayFee - promoFee;
+    if (!result) return;
 
     // Get SKU and selected title for logging
     const sku = document.getElementById('sku-input')?.value || '';
@@ -3824,7 +3387,7 @@ function calculatePrice() {
                 payload: {
                     title: selectedTitle,
                     sku: sku,
-                    ebay_price: finalPrice.toFixed(2),
+                    ebay_price: result.finalPrice.toFixed(2),
                     amazon_price: amazonPrice.toFixed(2),
                     amazon_url: amazonLink
                 }
@@ -3839,7 +3402,7 @@ function calculatePrice() {
     const priceDiv = document.getElementById('final-price');
 
     if (resultDiv && priceDiv) {
-        priceDiv.textContent = `$${finalPrice.toFixed(2)}`;
+        priceDiv.textContent = `$${result.finalPrice.toFixed(2)}`;
         resultDiv.style.display = 'block';
     }
 
@@ -3849,27 +3412,63 @@ function calculatePrice() {
         document.querySelector('.price-field input[type="text"]') ||
         document.querySelector('input[placeholder*="Sell it for" i]');
     if (sellItForInput) {
-        sellItForInput.value = finalPrice.toFixed(2);
+        sellItForInput.value = result.finalPrice.toFixed(2);
         sellItForInput.style.backgroundColor = '#e8f5e8';
         sellItForInput.style.borderColor = '#4caf50';
 
-        // Reset styling after 3 seconds
+        // Reset styling after 1.5 seconds
         setTimeout(() => {
             sellItForInput.style.backgroundColor = '';
             sellItForInput.style.borderColor = '';
-        }, 3000);
+        }, 1500);
     }
+
+    // Update breakdown UI display
+    updateBreakdownDisplay(result);
 
     // Save values
     saveCalculatorValues();
 
-    console.log('💰 Price calculated:', finalPrice.toFixed(2));
-    console.log('📊 Base cost:', baseCost.toFixed(2));
-    console.log('📈 Total fees percentage:', (totalPercentage * 100).toFixed(1) + '%');
+    console.log('💰 Price calculated:', result.finalPrice.toFixed(2));
+}
+
+function updateBreakdownDisplay(result) {
+    const breakdownDiv = document.getElementById('calculator-breakdown');
+    if (!breakdownDiv) return;
+
+    if (!result) {
+        breakdownDiv.style.display = 'none';
+        return;
+    }
+
+    breakdownDiv.style.display = 'flex';
+
+    const setVal = (id, text, color) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.textContent = text;
+            el.style.color = color || '';
+        }
+    };
+
+    setVal('bd-source', `$${result.breakdown.sourcePrice.toFixed(2)}`);
+    setVal('bd-tax', `$${result.breakdown.taxAmount.toFixed(2)}`);
+    setVal('bd-tracking', `$${result.breakdown.trackingFee.toFixed(2)}`);
+    setVal('bd-payment', `$${result.breakdown.paymentFixedFee.toFixed(2)}`);
+    setVal('bd-ebay', `$${result.breakdown.ebayFee.toFixed(2)}`);
+    setVal('bd-promo', `$${result.breakdown.promoFee.toFixed(2)}`);
+    
+    const profitColor = result.netProfit >= 0 ? '#22c55e' : '#ef4444';
+    setVal('bd-profit', `$${result.netProfit.toFixed(2)}`, profitColor);
+    setVal('bd-roi', `${result.roi}%`, profitColor);
+    setVal('bd-margin', `${result.margin}%`, profitColor);
 }
 
 // Add calculator event listeners
 function addCalculatorEventListeners() {
+    const popup = document.getElementById('calculator-popup');
+    if (!popup) return;
+
     // Calculator close button
     const closeBtn = document.getElementById('calculator-close-btn');
     if (closeBtn) {
@@ -3878,7 +3477,7 @@ function addCalculatorEventListeners() {
     }
 
     // Calculator overlay click to close
-    const overlay = document.querySelector('.calculator-overlay');
+    const overlay = popup.querySelector('.calculator-overlay');
     if (overlay) {
         overlay.addEventListener('click', closeCalculator);
         console.log('✅ Calculator overlay listener added');
@@ -3893,17 +3492,16 @@ function addCalculatorEventListeners() {
 
     // Auto-save and auto-calculate on input change with debouncing
     let calculateTimeout;
-    const calculatorInputs = document.querySelectorAll('#calculator-popup input');
+    const calculatorInputs = popup.querySelectorAll('input[type="number"]');
     calculatorInputs.forEach(input => {
         input.addEventListener('input', () => {
-            saveCalculatorValues();
-
             // Debounce calculation to avoid too many calculations while typing
             clearTimeout(calculateTimeout);
             calculateTimeout = setTimeout(() => {
                 calculatePrice();
             }, 300); // 300ms delay
         });
+        input.addEventListener('input', validatePriceInput);
     });
     console.log('✅ Calculator input listeners added');
 }
@@ -4005,40 +3603,71 @@ async function getProductDataForExport() {
 function scrapeAmazonPrice() {
     console.log('🔍 Starting Amazon price scraping...');
 
-    // Try multiple selectors for Amazon price
+    // List of container selectors for the main product details section (ordered by priority)
+    const containerSelectors = [
+        '#corePriceDisplay_desktop_feature_div', // Standard desktop main price block
+        '#corePrice_desktop',                     // Desktop price block
+        '#booksHeaderSection',                    // Books details header
+        '#apex_desktop',                          // Alternate desktop main container
+        '#centerCol',                             // Main center column (very reliable fallback)
+        '#buybox',                                // Main buy box container
+        '#mediaTab_content_landing'               // Kindle/rental specific
+    ];
+
+    // CSS selectors for the price element (ordered by priority)
     const priceSelectors = [
         '.a-price-whole',
         '.a-price .a-offscreen',
         '.a-price-range .a-offscreen',
         '#priceblock_dealprice',
         '#priceblock_ourprice',
-        '.a-price-range .a-price-whole',
-        '.a-price .a-price-whole',
-        '[data-asin-price]',
         '.apexPriceToPay .a-offscreen',
-        '.a-price .a-price-whole',
-        '.a-price-range .a-price-whole',
-        // Additional selectors for newer Amazon layouts
-        '.a-price .a-price-whole',
-        '.a-price-range .a-price-whole',
-        '.a-price .a-offscreen',
-        '.a-price-range .a-offscreen',
-        '.apexPriceToPay .a-offscreen',
-        '.apexPriceToPay .a-price-whole',
-        '.apexPriceToPay .a-price-range',
-        '.a-price .a-price-range',
-        '.a-price-range .a-price-range',
-        // Try to find any element with price in class or id
-        '[class*="price"][class*="whole"]',
-        '[class*="price"][class*="range"]',
-        '[id*="price"][class*="whole"]',
-        '[id*="price"][class*="range"]'
+        '[data-asin-price]'
     ];
 
-    console.log('🎯 Trying', priceSelectors.length, 'price selectors...');
+    // Step 1: Try to query within the main product price container
+    for (const containerSel of containerSelectors) {
+        const container = document.querySelector(containerSel);
+        if (container) {
+            console.log(`🔍 Scoping price search inside container: "${containerSel}"`);
+            
+            // Check for split price format first within this container
+            const wholePriceElement = container.querySelector('.a-price-whole');
+            const decimalPriceElement = container.querySelector('.a-price-fraction');
+            if (wholePriceElement && decimalPriceElement) {
+                const wholePart = wholePriceElement.textContent?.replace(/[^\d]/g, '') || '';
+                const decimalPart = decimalPriceElement.textContent?.replace(/[^\d]/g, '') || '';
+                if (wholePart && decimalPart) {
+                    const fullPrice = parseFloat(`${wholePart}.${decimalPart}`);
+                    if (!isNaN(fullPrice) && fullPrice > 0) {
+                        console.log('✅ Scoped split price found:', fullPrice);
+                        return fullPrice.toFixed(2);
+                    }
+                }
+            }
 
-    // First, try to find Amazon's split price format (whole number + decimal in separate elements)
-    console.log('🔍 Checking for Amazon split price format...');
+            // Try standard price selectors inside this container
+            for (const selector of priceSelectors) {
+                const priceElement = container.querySelector(selector);
+                if (priceElement) {
+                    let priceText = priceElement.textContent || priceElement.innerText;
+                    priceText = priceText.replace(/[^\d.,]/g, '').replace(/,/g, '');
+                    const priceMatch = priceText.match(/(\d+\.?\d*)/);
+                    if (priceMatch) {
+                        const price = parseFloat(priceMatch[1]);
+                        if (!isNaN(price) && price > 0) {
+                            console.log(`✅ Scoped price found via "${selector}":`, price);
+                            return price.toFixed(2);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    console.log('🔄 Container search failed. Trying document-wide selectors...');
+
+    // Step 2: Try split price format on document level (fallback)
     const wholePriceElement = document.querySelector('.a-price-whole');
     const decimalPriceElement = document.querySelector('.a-price-fraction');
 
@@ -4049,55 +3678,41 @@ function scrapeAmazonPrice() {
         if (wholePart && decimalPart) {
             const fullPrice = parseFloat(`${wholePart}.${decimalPart}`);
             if (!isNaN(fullPrice) && fullPrice > 0) {
-                console.log('✅ Split price format found:', fullPrice);
+                console.log('✅ Document split price format found:', fullPrice);
                 return fullPrice.toFixed(2);
             }
         }
     }
 
+    // Step 3: Try standard selectors on document level
     for (let i = 0; i < priceSelectors.length; i++) {
         const selector = priceSelectors[i];
         const priceElement = document.querySelector(selector);
 
-        console.log(`🔍 Selector ${i + 1}/${priceSelectors.length}: "${selector}"`);
-        console.log('   Element found:', !!priceElement);
-
         if (priceElement) {
             let priceText = priceElement.textContent || priceElement.innerText;
-            console.log('   Raw text:', priceText);
+            priceText = priceText.replace(/[^\d.,]/g, '').replace(/,/g, '');
 
-            // Clean up the price text
-            priceText = priceText.replace(/[^\d.,]/g, ''); // Remove everything except digits, dots, and commas
-            priceText = priceText.replace(/,/g, ''); // Remove commas
-            console.log('   Cleaned text:', priceText);
-
-            // Try to extract the price with better decimal handling
             const priceMatch = priceText.match(/(\d+\.?\d*)/);
             if (priceMatch) {
                 const price = parseFloat(priceMatch[1]);
-                console.log('   Extracted price:', price);
                 if (!isNaN(price) && price > 0) {
-                    console.log('✅ Amazon price scraped successfully:', price);
+                    console.log('✅ Document price scraped successfully:', price);
                     return price.toFixed(2);
                 }
             }
         }
 
-        // Try to find the parent container and get the full price
         const parentContainer = priceElement?.closest('.a-price, .a-price-range, .apexPriceToPay, [class*="price"]');
         if (parentContainer) {
-            console.log('   Trying parent container...');
             const fullPriceText = parentContainer.textContent || parentContainer.innerText;
-            console.log('   Parent text:', fullPriceText);
-
-            // Look for price patterns like $35.99, 35.99, etc.
             const pricePatterns = [
-                /\$(\d+\.\d{2})/,  // $35.99
-                /(\d+\.\d{2})/,    // 35.99
-                /\$(\d+\.\d{1})/,  // $35.9
-                /(\d+\.\d{1})/,    // 35.9
-                /\$(\d+)/,         // $35
-                /(\d+)/            // 35
+                /\$(\d+\.\d{2})/,
+                /(\d+\.\d{2})/,
+                /\$(\d+\.\d{1})/,
+                /(\d+\.\d{1})/,
+                /\$(\d+)/,
+                /(\d+)/
             ];
 
             for (const pattern of pricePatterns) {
@@ -4105,7 +3720,7 @@ function scrapeAmazonPrice() {
                 if (match) {
                     const price = parseFloat(match[1]);
                     if (!isNaN(price) && price > 0) {
-                        console.log('✅ Parent container price found:', price);
+                        console.log('✅ Document parent price found:', price);
                         return price.toFixed(2);
                     }
                 }
@@ -4117,34 +3732,30 @@ function scrapeAmazonPrice() {
     console.log('🔍 Available price elements on page:');
     const allPriceElements = document.querySelectorAll('[class*="price"], [id*="price"], [class*="cost"], [id*="cost"]');
     allPriceElements.forEach((el, index) => {
-        if (index < 5) { // Limit to first 5 for debugging
+        if (index < 5) {
             console.log(`   Element ${index + 1}:`, el.className, el.id, el.textContent?.substring(0, 50));
         }
     });
 
-    // Fallback: Try to find any text that looks like a price
+    // Step 4: Fallback: Try to find any text in body
     console.log('🔄 Trying fallback price detection...');
     const allText = document.body.innerText;
 
-    // Try multiple price patterns with better decimal handling
     const pricePatterns = [
-        /\$(\d+\.\d{2})/g,  // $35.99
-        /(\d+\.\d{2})/g,    // 35.99
-        /\$(\d+\.\d{1})/g,  // $35.9
-        /(\d+\.\d{1})/g,    // 35.9
-        /\$(\d+)/g,         // $35
-        /(\d+)/g            // 35
+        /\$(\d+\.\d{2})/g,
+        /(\d+\.\d{2})/g,
+        /\$(\d+\.\d{1})/g,
+        /(\d+\.\d{1})/g,
+        /\$(\d+)/g,
+        /(\d+)/g
     ];
 
     for (const pattern of pricePatterns) {
         const matches = [...allText.matchAll(pattern)];
-        console.log(`   Pattern ${pattern} found ${matches.length} matches`);
-
         if (matches.length > 0) {
-            // Get the first reasonable price (not too high, not too low)
             for (const match of matches) {
                 const price = parseFloat(match[1]);
-                if (price > 0.01 && price < 10000) { // Reasonable price range
+                if (price > 0.01 && price < 10000) {
                     console.log('✅ Fallback price found:', price);
                     return price.toFixed(2);
                 }
