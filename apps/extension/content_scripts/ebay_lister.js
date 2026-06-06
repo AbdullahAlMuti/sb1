@@ -103,25 +103,11 @@ async function runEbayAutomation(data) {
     if (!auctionData.images || !Array.isArray(auctionData.images) || auctionData.images.length === 0) {
       log('STEP 1', 'SKIP: No images provided.');
     } else {
-      let fileInput = null;
-      try {
-        fileInput = await findElementWithSelectors([
-          'input[type="file"][accept*="image"]', 'input[type="file"]',
-          '[data-testid*="photo"] input[type="file"]', '[aria-label*="photo" i] input[type="file"]'
-        ], 5000);
-      } catch(e) {}
-      if (fileInput) {
-        const dt = new DataTransfer();
-        for (const imgPath of auctionData.images) {
-          try {
-            const res = await fetch(imgPath);
-            const blob = await res.blob();
-            dt.items.add(new File([blob], imgPath.split('/').pop() || 'image.jpg', { type: blob.type }));
-          } catch (e) {}
-        }
-        fileInput.files = dt.files;
-        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-        await wait(1000);
+      if (typeof ImageUploadSystem !== 'undefined') {
+        const uploadSystem = new ImageUploadSystem();
+        await uploadSystem.uploadImages(auctionData.images);
+      } else {
+        log('STEP 1', 'ERROR: ImageUploadSystem not found. Cannot upload images.');
       }
     }
 

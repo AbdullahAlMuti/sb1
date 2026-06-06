@@ -126,6 +126,7 @@
         "common/sync_utils.js",
         "common/ui.js",
         "common/analytics.js",
+        "src/image-uploader.js",
         "content_scripts/ebay_lister.js"
       ],
       "run_at": "document_idle"
