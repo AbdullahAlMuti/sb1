@@ -58,7 +58,7 @@ class ImageUploadSystem {
         this.logger.info('✅ ImageUploadSystem initialized.');
     }
 
-    async uploadImages() {
+    async uploadImages(providedImages = null) {
         if (this.isUploading) {
             this.logger.warn('⚠️ Upload already in progress, skipping.');
             return false;
@@ -70,7 +70,7 @@ class ImageUploadSystem {
 
         try {
             // 1. Get images from storage (with retry logic for delayed storage)
-            let images = await this.getStoredImages();
+            let images = providedImages || await this.getStoredImages();
             let retryAttempts = 0;
             const maxRetries = 3;
             const retryDelay = 2000; // 2 seconds
@@ -299,17 +299,17 @@ class ImageUploadSystem {
     }
     
     async urlToFile(url, filename) {
-        try {
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            const blob = await response.blob();
-            return new File([blob], filename, { type: blob.type });
-        } catch (error) {
-            this.logger.error(`❌ Failed to fetch URL ${url}:`, error);
-            return null;
-        }
+        return new Promise((resolve) => {
+            chrome.runtime.sendMessage({ action: "FETCH_IMAGE_AS_BASE64", url: url }, (response) => {
+                if (response && response.success) {
+                    const file = this.dataUrlToFile(response.base64, filename);
+                    resolve(file);
+                } else {
+                    this.logger.error(`❌ Failed to fetch URL via background (${url}):`, response?.error);
+                    resolve(null);
+                }
+            });
+        });
     }
 
     async executeUploadStrategies(files) {
@@ -533,80 +533,4 @@ class ImageUploadSystem {
     }
 }
 
-// ==============================================================================
-//  INITIALIZATION LOGIC
-//  This runs automatically when the script is loaded on the correct page.
-// ==============================================================================
-
-// This self-executing function ensures that the script only runs once
-// and does not conflict with other scripts.
-(async function() {
-    // Check if the system has already been initialized
-    if (window.imageUploadSystemInitialized) {
-        console.log('⚠️ Image uploader already initialized, skipping...');
-        return;
-    }
-    window.imageUploadSystemInitialized = true;
-
-    // Use a shared global logger if it exists from `automation-clean.js`
-    const logger = window.logger || new SimpleLogger();
-    
-    logger.info('🚀 Standalone Image Uploader script loaded.');
-    logger.info('🔗 Current URL:', window.location.href);
-    logger.info('📄 Page title:', document.title);
-
-    // Add manual testing functions to window
-    window.testImageUpload = async function() {
-        logger.info('🧪 Manual image upload test triggered');
-        const uploadSystem = new ImageUploadSystem();
-        return await uploadSystem.uploadImages();
-    };
-    
-    window.debugImageStorage = function() {
-        chrome.storage.local.get(null, (allData) => {
-            logger.info('🔍 All Chrome storage data:', allData);
-            logger.info('📸 Watermarked images:', allData.watermarkedImages?.length || 0);
-            logger.info('🌐 Image URLs:', allData.imageUrls?.length || 0);
-        });
-    };
-    
-    window.debugUploadElements = function() {
-        logger.info('🔍 Debugging upload elements on page...');
-        
-        const fileInputs = document.querySelectorAll('input[type="file"]');
-        logger.info(`📁 Found ${fileInputs.length} file inputs:`, Array.from(fileInputs).map(input => ({
-            id: input.id,
-            name: input.name,
-            accept: input.accept,
-            multiple: input.multiple,
-            className: input.className
-        })));
-        
-        const uploadAreas = document.querySelectorAll('[class*="upload"], [class*="dropzone"], [class*="photo"]');
-        logger.info(`📤 Found ${uploadAreas.length} upload areas:`, Array.from(uploadAreas).map(area => ({
-            tagName: area.tagName,
-            className: area.className,
-            id: area.id,
-            textContent: area.textContent?.substring(0, 50)
-        })));
-        
-        const thumbnails = document.querySelectorAll('img[class*="thumbnail"], img[class*="preview"]');
-        logger.info(`🖼️ Found ${thumbnails.length} thumbnails:`, Array.from(thumbnails).map(img => ({
-            src: img.src?.substring(0, 50),
-            className: img.className
-        })));
-    };
-
-    // Check if we're on an eBay listing page
-    if (!window.location.href.includes('ebay.com')) {
-        logger.warn('⚠️ Not on eBay page, skipping image upload');
-        return;
-    }
-
-    try {
-        const uploadSystem = new ImageUploadSystem();
-        await uploadSystem.uploadImages();
-    } catch (error) {
-        logger.error('💥 A fatal error occurred during image uploader initialization:', error);
-    }
-})();
+// Initialization logic removed. Class is now a passive service.

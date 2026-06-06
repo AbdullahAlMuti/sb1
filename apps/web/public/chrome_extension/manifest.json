@@ -3,7 +3,7 @@
   "name": "SellerSuit",
   "version": "1.3.1",
   "description": "SellerSuit helps streamline eBay listing workflows by extracting product data from supported sites and preparing listing assets.",
-  "homepage_url": "http://localhost:3001",
+  "homepage_url": "https://sellersuit.com",
   "permissions": [
     "storage",
     "scripting",
@@ -30,8 +30,6 @@
     "https://script.google.com/*",
     "https://sellersuit.com/*",
     "https://*.sellersuit.com/*",
-    "http://localhost/*",
-    "http://localhost:5173/*",
     "https://ojxzssooylmydystjvdo.supabase.co/*"
   ],
   "background": {
@@ -101,8 +99,7 @@
     {
       "matches": [
         "*://www.ebay.com/*/sell*",
-        "*://www.ebay.com/sl/*",
-        "*://www.ebay.com/lstng*"
+        "*://www.ebay.com/sl/*"
       ],
       "js": [
         "common/config.js",
@@ -114,6 +111,22 @@
         "src/automation-clean.js",
         "src/image-uploader.js",
         "src/item-filler.js",
+        "content_scripts/ebay_prelist.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://www.ebay.com/lstng*"
+      ],
+      "js": [
+        "common/config.js",
+        "common/performance.js",
+        "common/storage.js",
+        "common/sync_utils.js",
+        "common/ui.js",
+        "common/analytics.js",
+        "src/image-uploader.js",
         "content_scripts/ebay_lister.js"
       ],
       "run_at": "document_idle"
@@ -144,10 +157,7 @@
     {
       "matches": [
         "https://sellersuit.com/*",
-        "https://*.sellersuit.com/*",
-        "http://localhost/*",
-        "http://localhost:5173/*",
-        "http://localhost:3001/*"
+        "https://*.sellersuit.com/*"
       ],
       "js": [
         "content_scripts/auth_sync.js",
@@ -175,6 +185,7 @@
         "ui/editor_frame.html",
         "ui/editor-popup.css",
         "common/editor_core.js",
+        "assets/logo.png",
         "assets/watermark.png",
         "assets/stickers/*",
         "src/image-uploader.js",
@@ -196,10 +207,7 @@
         "*://*.walmart.com/*",
         "*://*.walmart.ca/*",
         "https://sellersuit.com/*",
-        "https://*.sellersuit.com/*",
-        "http://localhost/*",
-        "http://localhost:5173/*",
-        "http://localhost:3001/*"
+        "https://*.sellersuit.com/*"
       ]
     }
   ],

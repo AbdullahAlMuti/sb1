@@ -154,16 +154,33 @@ async function verifyAuthStatus(forceRefresh = false) {
     }
 
     // Auth failed
-    authLog('warn', 'LOCKDOWN: Invalid session', { status: response.status, error: result.error });
+    authLog('warn', 'LOCKDOWN: Invalid session', { status: response.status, error: result.error || response.error });
+    
+    // If it's a network error or edge function timeout, and we JUST got this token from the web app
+    const storage = await chrome.storage.local.get('authTimestamp');
+    const justSynced = storage.authTimestamp && (Date.now() - storage.authTimestamp < 60 * 1000);
+    
+    if (response.error && justSynced) {
+       authLog('info', 'Edge function failed but token was just synced from web app. Trusting it temporarily.');
+       isExtensionUnlocked = true;
+       lastAuthCheck = Date.now();
+       return true;
+    }
+    
     isExtensionUnlocked = false;
     return false;
 
   } catch (e) {
     authLog('error', 'Auth Check Error', { message: e.message });
 
+    const storage = await chrome.storage.local.get('authTimestamp');
+    const justSynced = storage.authTimestamp && (Date.now() - storage.authTimestamp < 60 * 1000);
+
     // If network error but we have recent valid auth, stay unlocked temporarily
-    if (isExtensionUnlocked && Date.now() - lastAuthCheck < 30 * 60 * 1000) {
-      authLog('info', 'Network error but using cached auth status');
+    if ((isExtensionUnlocked && Date.now() - lastAuthCheck < 30 * 60 * 1000) || justSynced) {
+      authLog('info', 'Network error but using cached/synced auth status');
+      isExtensionUnlocked = true;
+      lastAuthCheck = Date.now();
       return true;
     }
 
@@ -1652,6 +1669,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true });
     return true;
   }
+
+  if (request.action === 'FETCH_IMAGE_AS_BASE64') {
+    (async () => {
+      try {
+        const response = await fetch(request.url);
+        if (!response.ok) throw new Error('HTTP error ' + response.status);
+        const blob = await response.blob();
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => {
+          sendResponse({ success: true, base64: reader.result });
+        };
+        reader.onerror = () => {
+          sendResponse({ success: false, error: 'Failed to read blob' });
+        };
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
+
 });
 
 async function generateTitleWithGemini(apiKey, promptTemplate, productData, modelName = "gemini-1.5-flash") {

@@ -326,6 +326,15 @@ const injectUI = async () => {
         // Clone the panel content and inject it directly (preserving the ID)
         const clonedPanel = panelContent.cloneNode(true);
 
+        // Rewrite all relative image sources to use chrome.runtime.getURL (e.g. assets/logo.png)
+        clonedPanel.querySelectorAll('img').forEach(img => {
+            const srcAttr = img.getAttribute('src');
+            if (srcAttr && srcAttr.startsWith('../')) {
+                const cleanPath = srcAttr.replace(/^\.\.\//, '');
+                img.src = chrome.runtime.getURL(cleanPath);
+            }
+        });
+
         // Also inject the CSS if not already present
         if (!document.getElementById('sellersuit-panel-css')) {
             const cssLink = document.createElement('link');
@@ -810,7 +819,7 @@ const updateProductDetails = () => {
 
     // Update each field
     Object.keys(details).forEach(field => {
-        const valueElement = productDetailsPopup.querySelector(`#${field} - value`);
+        const valueElement = productDetailsPopup.querySelector(`#${field}-value`);
         if (valueElement) {
             const oldValue = valueElement.textContent;
             const newValue = details[field] || 'Not found';
@@ -831,7 +840,7 @@ const updateProductDetails = () => {
 const copyDetail = (field) => {
     if (!productDetailsPopup) return;
 
-    const valueElement = productDetailsPopup.querySelector(`#${field} - value`);
+    const valueElement = productDetailsPopup.querySelector(`#${field}-value`);
     if (!valueElement) return;
 
     const value = valueElement.textContent;
@@ -840,7 +849,7 @@ const copyDetail = (field) => {
     // Copy to clipboard
     navigator.clipboard.writeText(value).then(() => {
         // Show feedback
-        const copyBtn = productDetailsPopup.querySelector(`[data - field="${field}"]`);
+        const copyBtn = productDetailsPopup.querySelector(`[data-field="${field}"]`);
         if (copyBtn) {
             const originalText = copyBtn.textContent;
             copyBtn.textContent = '✓';
@@ -863,7 +872,7 @@ const copyAllDetails = () => {
     const fields = ['brand', 'model', 'color', 'dimensions', 'height', 'weight'];
 
     fields.forEach(field => {
-        const valueElement = productDetailsPopup.querySelector(`#${field} - value`);
+        const valueElement = productDetailsPopup.querySelector(`#${field}-value`);
         if (valueElement) {
             const value = valueElement.textContent;
             if (value !== 'Not found') {
@@ -942,6 +951,7 @@ class AmazonImageExtractor {
             const approach = approaches[i];
 
             try {
+                updateScrapeStatus(`Scraping product images (${approach.name})...`);
                 await approach.method();
                 // If we found images, break early
                 if (this.images.size > 0) {
@@ -1017,6 +1027,7 @@ class AmazonImageExtractor {
                     }
 
                     // Click the thumbnail
+                    updateScrapeStatus(`Extracting image ${i + 1} of ${thumbnails.length}...`);
                     console.log(`  🖱️ Clicking thumbnail ${i + 1}/${thumbnails.length}...`);
                     thumb.click();
 
@@ -1381,7 +1392,10 @@ class AmazonImageExtractor {
         const uniqueUrls = [...new Set(imageUrls)].slice(0, 20);
         console.log(`Processing ${uniqueUrls.length} unique images(limited to 20)`);
 
+        let index = 0;
         for (const url of uniqueUrls) {
+            index++;
+            updateScrapeStatus(`Validating quality of image ${index} of ${uniqueUrls.length}...`);
             try {
                 let isHighQuality = false;
                 let contentType = 'image/jpeg'; // Default for Amazon images
@@ -1498,15 +1512,48 @@ class AmazonImageExtractor {
 
 }
 
+const showScrapeOverlay = (text) => {
+    const overlay = document.getElementById('ss-scrape-overlay');
+    const statusText = document.getElementById('ss-scrape-status-text');
+    if (overlay) {
+        overlay.classList.add('active');
+    }
+    if (statusText && text) {
+        statusText.textContent = text;
+    }
+};
+
+const updateScrapeStatus = (text) => {
+    const statusText = document.getElementById('ss-scrape-status-text');
+    if (statusText && text) {
+        statusText.textContent = text;
+    }
+    try {
+        chrome.runtime.sendMessage({ action: 'SCRAPE_PROGRESS', message: text });
+    } catch (e) {
+        // Ignore errors when background/popup is closed
+    }
+};
+
+const hideScrapeOverlay = () => {
+    const overlay = document.getElementById('ss-scrape-overlay');
+    if (overlay) {
+        overlay.classList.remove('active');
+    }
+};
+
 // Initialize extractor when page loads
 const extractor = new AmazonImageExtractor();
 
 // Listen for messages from popup and other extension components
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'extractImages') {
+        showScrapeOverlay('Initializing image extraction...');
         extractor.extractAllImages().then(images => {
+            hideScrapeOverlay();
             sendResponse({ success: true, images: images });
         }).catch(error => {
+            hideScrapeOverlay();
             sendResponse({ success: false, error: error.message });
         });
         return true; // Keep message channel open for async response
@@ -1561,10 +1608,21 @@ const applyWatermark = (imageUrl) => {
         const watermark = new Image();
         const sourceImage = new Image();
         sourceImage.crossOrigin = "Anonymous";
+
+        const watermarkPromise = new Promise((res, rej) => {
+            watermark.onload = res;
+            watermark.onerror = () => rej(new Error('Failed to load watermark'));
+        });
+
+        const sourcePromise = new Promise((res, rej) => {
+            sourceImage.onload = res;
+            sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+        });
+
         watermark.src = chrome.runtime.getURL('assets/watermark.png');
         sourceImage.src = imageUrl;
 
-        Promise.all([new Promise(r => watermark.onload = r), new Promise(r => sourceImage.onload = r)]).then(() => {
+        Promise.all([watermarkPromise, sourcePromise]).then(() => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             canvas.width = sourceImage.naturalWidth;
@@ -1579,7 +1637,6 @@ const applyWatermark = (imageUrl) => {
             ctx.drawImage(watermark, x, y, watermarkWidth, watermarkHeight);
             ctx.globalAlpha = 1.0;
             resolve(canvas.toDataURL('image/jpeg', 1.0)); // Ultra/High Quality
-
         }).catch(reject);
     });
 };
@@ -1590,6 +1647,7 @@ const scrapeAndDisplayImages = async () => {
     if (!galleryContainer) return;
 
     console.log('Starting comprehensive image extraction...');
+    showScrapeOverlay('Initializing image extraction...');
 
     // Disable buttons during image processing
     const optiListBtn = document.getElementById('opti-list-btn');
@@ -1725,6 +1783,7 @@ const scrapeAndDisplayImages = async () => {
             placeholder.style.textAlign = 'center';
             placeholder.style.color = '#666';
             galleryContainer.appendChild(placeholder);
+            hideScrapeOverlay();
             return;
         }
 
@@ -1891,7 +1950,7 @@ const scrapeAndDisplayImages = async () => {
             refreshBtn.disabled = false;
             refreshBtn.textContent = 'Refresh Images';
         }
-
+        hideScrapeOverlay();
     } catch (error) {
         console.error('Error in comprehensive image extraction:', error);
 
@@ -1921,6 +1980,7 @@ const scrapeAndDisplayImages = async () => {
         errorMessage.style.textAlign = 'center';
         errorMessage.style.color = '#ff0000';
         galleryContainer.appendChild(errorMessage);
+        hideScrapeOverlay();
     }
 };
 
@@ -1955,9 +2015,15 @@ const processImageTo1600x1600NoWatermark = (imageUrl) => {
     return new Promise((resolve, reject) => {
         const sourceImage = new Image();
         sourceImage.crossOrigin = "Anonymous";
+
+        const loadPromise = new Promise((res, rej) => {
+            sourceImage.onload = res;
+            sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+        });
+
         sourceImage.src = imageUrl;
 
-        new Promise(r => sourceImage.onload = r).then(() => {
+        loadPromise.then(() => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
 
@@ -2005,15 +2071,22 @@ const processImageTo1600x1600 = (imageUrl) => {
 
         const watermark = new Image();
         const sourceImage = new Image();
-
         sourceImage.crossOrigin = "Anonymous";
+
+        const watermarkPromise = new Promise((res, rej) => {
+            watermark.onload = res;
+            watermark.onerror = () => rej(new Error('Failed to load watermark'));
+        });
+
+        const sourcePromise = new Promise((res, rej) => {
+            sourceImage.onload = res;
+            sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+        });
+
         watermark.src = chrome.runtime.getURL('assets/watermark.png');
         sourceImage.src = imageUrl;
 
-        Promise.all([
-            new Promise(r => watermark.onload = r),
-            new Promise(r => sourceImage.onload = r)
-        ]).then(() => {
+        Promise.all([watermarkPromise, sourcePromise]).then(() => {
             console.log(`✅ processImageTo1600x1600: Both images loaded successfully`);
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
@@ -2219,6 +2292,32 @@ const addEventListenersToPanel = () => {
     // Panel Controls (Header)
     // ═══════════════════════════════════════════════════════════
     const nightModeBtn = document.getElementById('panel-night-mode-btn');
+    const restoreBtn = document.getElementById('panel-restore-btn');
+    const setPanelMinimizedState = (isMinimized) => {
+        const rootWrapper = document.getElementById('snipe-root-wrapper');
+        if (!rootWrapper) return;
+        rootWrapper.classList.toggle('panel-minimized', isMinimized);
+    };
+    if (!window.__sellerSuitPanelScrollBound) {
+        window.__sellerSuitPanelScrollBound = true;
+        let rafId = 0;
+        const updatePanelOffset = () => {
+            rafId = 0;
+            const rootWrapper = document.getElementById('snipe-root-wrapper');
+            if (!rootWrapper) return;
+            const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+            const lift = Math.min(scrollY, 88);
+            rootWrapper.style.setProperty('--ss-panel-scroll-offset', String(lift));
+            rootWrapper.classList.toggle('ss-panel-scrolled', lift > 4);
+        };
+        const requestOffsetUpdate = () => {
+            if (rafId) return;
+            rafId = window.requestAnimationFrame(updatePanelOffset);
+        };
+        window.addEventListener('scroll', requestOffsetUpdate, { passive: true });
+        window.addEventListener('resize', requestOffsetUpdate);
+        updatePanelOffset();
+    }
     if (nightModeBtn) {
         nightModeBtn.addEventListener('click', () => {
             const rootWrapper = document.getElementById('snipe-root-wrapper');
@@ -2233,16 +2332,13 @@ const addEventListenersToPanel = () => {
     const minimizeBtn = document.getElementById('panel-minimize-btn');
     if (minimizeBtn) {
         minimizeBtn.addEventListener('click', () => {
-            const rootWrapper = document.getElementById('snipe-root-wrapper');
-            if (rootWrapper) {
-                rootWrapper.classList.toggle('panel-minimized');
-                const isMin = rootWrapper.classList.contains('panel-minimized');
-                Array.from(rootWrapper.children).forEach(child => {
-                    if (!child.classList.contains('ss-header')) {
-                        child.style.display = isMin ? 'none' : '';
-                    }
-                });
-            }
+            setPanelMinimizedState(true);
+        });
+    }
+
+    if (restoreBtn) {
+        restoreBtn.addEventListener('click', () => {
+            setPanelMinimizedState(false);
         });
     }
 
@@ -3659,18 +3755,23 @@ function openCalculator() {
         popup.style.display = 'flex';
         console.log('✅ Calculator popup displayed');
 
-        // Try to auto-fill Amazon price if available
+        // Load saved values FIRST
+        loadCalculatorValues();
+
+        // THEN overwrite Amazon price with fresh scrape
         const amazonPriceInput = document.getElementById('amazon-price');
         if (amazonPriceInput) {
             const scrapedPrice = scrapeAmazonPrice();
             if (scrapedPrice !== 'No price found') {
                 amazonPriceInput.value = scrapedPrice;
                 console.log('💰 Auto-filled Amazon price:', scrapedPrice);
+            } else {
+                console.log('⚠️ No fresh Amazon price scraped on open');
             }
         }
-
-        // Load saved values from localStorage
-        loadCalculatorValues();
+        
+        // Trigger calculate to update display
+        calculatePrice();
         console.log('✅ Calculator opened successfully');
     } else {
         console.error('❌ Calculator popup not found');
@@ -3689,44 +3790,51 @@ function closeCalculator() {
 }
 
 function loadCalculatorValues() {
-    const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
+    try {
+        const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
+        const fields = [
+            'tax-percent',
+            'tracking-fee',
+            'ebay-fee-percent',
+            'promo-fee-percent',
+            'desired-profit',
+            'payment-fixed-fee'
+        ];
 
-    const fields = [
-        'amazon-price',
-        'tax-percent',
-        'tracking-fee',
-        'ebay-fee-percent',
-        'promo-fee-percent',
-        'desired-profit'
-    ];
-
-    fields.forEach(fieldId => {
-        const input = document.getElementById(fieldId);
-        if (input && savedValues[fieldId]) {
-            input.value = savedValues[fieldId];
-        }
-    });
+        fields.forEach(fieldId => {
+            const input = document.getElementById(fieldId);
+            if (input && savedValues[fieldId] !== undefined) {
+                input.value = savedValues[fieldId];
+            }
+        });
+    } catch (e) {
+        console.error('Error loading calculator values:', e);
+    }
 }
 
 function saveCalculatorValues() {
-    const values = {};
-    const fields = [
-        'amazon-price',
-        'tax-percent',
-        'tracking-fee',
-        'ebay-fee-percent',
-        'promo-fee-percent',
-        'desired-profit'
-    ];
+    try {
+        const values = {};
+        const fields = [
+            'tax-percent',
+            'tracking-fee',
+            'ebay-fee-percent',
+            'promo-fee-percent',
+            'desired-profit',
+            'payment-fixed-fee'
+        ];
 
-    fields.forEach(fieldId => {
-        const input = document.getElementById(fieldId);
-        if (input && input.value) {
-            values[fieldId] = input.value;
-        }
-    });
+        fields.forEach(fieldId => {
+            const input = document.getElementById(fieldId);
+            if (input && input.value !== '') {
+                values[fieldId] = input.value;
+            }
+        });
 
-    localStorage.setItem('calculatorValues', JSON.stringify(values));
+        localStorage.setItem('calculatorValues', JSON.stringify(values));
+    } catch (e) {
+        console.error('Error saving calculator values:', e);
+    }
 }
 
 // Quick Calculate function - instant calculation without popup
@@ -3744,32 +3852,42 @@ function quickCalculate() {
         amazonPrice = parseFloat(scrapedPrice);
         console.log('💰 Using scraped Amazon price for quick calc:', amazonPrice);
     } else {
-        // Fallback to saved price
-        amazonPrice = parseFloat(savedValues['amazon-price']) || 0;
-        console.log('⚠️ Scrape failed, falling back to saved Amazon price:', amazonPrice);
-    }
-    const taxPercent = parseFloat(savedValues['tax-percent']) || 9;
-    const trackingFee = parseFloat(savedValues['tracking-fee']) || 0.20;
-    const ebayFeePercent = parseFloat(savedValues['ebay-fee-percent']) || 20;
-    const promoFeePercent = parseFloat(savedValues['promo-fee-percent']) || 10;
-    const desiredProfit = parseFloat(savedValues['desired-profit']) || 0;
-
-    console.log('📊 Quick calc values:', {
-        amazonPrice, taxPercent, trackingFee,
-        ebayFeePercent, promoFeePercent, desiredProfit
-    });
-
-    if (amazonPrice <= 0) {
-        console.log('⚠️ No Amazon price available for quick calculation');
-        alert('Please set up calculator values first or enter an Amazon price');
+        console.log('⚠️ Scrape failed, quick calc skipped (waiting for price)');
+        const sellItForInput = document.getElementById('sell-it-for-input');
+        if (sellItForInput && !sellItForInput.value) {
+            sellItForInput.placeholder = 'No price found';
+        }
         return;
     }
 
-    // Calculate using same logic as main calculator
-    const taxAmount = amazonPrice * (taxPercent / 100);
-    const baseCost = amazonPrice + taxAmount + trackingFee;
-    const totalPercentage = (ebayFeePercent + promoFeePercent + desiredProfit) / 100;
-    const finalPrice = baseCost / (1 - totalPercentage);
+    const parseVal = (val, def) => {
+        const parsed = parseFloat(val);
+        return isNaN(parsed) ? def : parsed;
+    };
+
+    const taxPercent = parseVal(savedValues['tax-percent'], 9);
+    const trackingFee = parseVal(savedValues['tracking-fee'], 0.20);
+    const ebayFeePercent = parseVal(savedValues['ebay-fee-percent'], 20);
+    const promoFeePercent = parseVal(savedValues['promo-fee-percent'], 10);
+    const desiredProfit = parseVal(savedValues['desired-profit'], 0);
+    const paymentFixedFee = parseVal(savedValues['payment-fixed-fee'], 0.30);
+
+    if (typeof calculateSellingPrice !== 'function') {
+        console.error('calculateSellingPrice is not defined');
+        return;
+    }
+
+    const result = calculateSellingPrice({
+        sourcePrice: amazonPrice,
+        taxPercent,
+        trackingFee,
+        ebayFeePercent,
+        promoFeePercent,
+        desiredProfit,
+        paymentFixedFee
+    });
+
+    if (!result) return;
 
     // Auto-fill "Sell it for" field
     const sellItForInput = document.getElementById('sell-it-for-input') ||
@@ -3777,17 +3895,17 @@ function quickCalculate() {
         document.querySelector('.price-field input[type="text"]') ||
         document.querySelector('input[placeholder*="Sell it for" i]');
     if (sellItForInput) {
-        sellItForInput.value = finalPrice.toFixed(2);
+        sellItForInput.value = result.finalPrice.toFixed(2);
         sellItForInput.style.backgroundColor = '#e8f5e8';
         sellItForInput.style.borderColor = '#4caf50';
 
-        // Reset styling after 3 seconds
+        // Reset styling after 1.5 seconds
         setTimeout(() => {
             sellItForInput.style.backgroundColor = '';
             sellItForInput.style.borderColor = '';
-        }, 3000);
+        }, 1500);
 
-        console.log('💰 Quick calculated price:', finalPrice.toFixed(2));
+        console.log('💰 Quick calculated price:', result.finalPrice.toFixed(2));
     } else {
         console.error('❌ Sell it for input not found');
     }
@@ -3802,10 +3920,11 @@ function calculatePrice() {
     const ebayFeePercent = parseFloat(document.getElementById('ebay-fee-percent').value) || 0;
     const promoFeePercent = parseFloat(document.getElementById('promo-fee-percent').value) || 0;
     const desiredProfit = parseFloat(document.getElementById('desired-profit').value) || 0;
+    const paymentFixedFee = parseFloat(document.getElementById('payment-fixed-fee').value) || 0;
 
     console.log('📊 Input values:', {
         amazonPrice, taxPercent, trackingFee,
-        ebayFeePercent, promoFeePercent, desiredProfit
+        ebayFeePercent, promoFeePercent, desiredProfit, paymentFixedFee
     });
 
     if (amazonPrice <= 0) {
@@ -3814,24 +3933,27 @@ function calculatePrice() {
         if (resultDiv) {
             resultDiv.style.display = 'none';
         }
+        updateBreakdownDisplay(null);
         console.log('⚠️ No valid Amazon price entered yet');
         return;
     }
 
-    // Calculate base cost: amazonPrice + tax + trackingFee
-    const taxAmount = amazonPrice * (taxPercent / 100);
-    const baseCost = amazonPrice + taxAmount + trackingFee;
+    if (typeof calculateSellingPrice !== 'function') {
+        console.error('calculateSellingPrice is not defined');
+        return;
+    }
 
-    // Calculate total percentage of fees: ebayFee + promoFee + profit
-    const totalPercentage = (ebayFeePercent + promoFeePercent + desiredProfit) / 100;
+    const result = calculateSellingPrice({
+        sourcePrice: amazonPrice,
+        taxPercent,
+        trackingFee,
+        ebayFeePercent,
+        promoFeePercent,
+        desiredProfit,
+        paymentFixedFee
+    });
 
-    // Calculate final eBay selling price using reverse formula
-    const finalPrice = baseCost / (1 - totalPercentage);
-
-    // Calculate fees and net profit for logging
-    const ebayFee = finalPrice * (ebayFeePercent / 100);
-    const promoFee = finalPrice * (promoFeePercent / 100);
-    const netProfit = finalPrice - amazonPrice - taxAmount - trackingFee - ebayFee - promoFee;
+    if (!result) return;
 
     // Get SKU and selected title for logging
     const sku = document.getElementById('sku-input')?.value || '';
@@ -3854,7 +3976,7 @@ function calculatePrice() {
                 payload: {
                     title: selectedTitle,
                     sku: sku,
-                    ebay_price: finalPrice.toFixed(2),
+                    ebay_price: result.finalPrice.toFixed(2),
                     amazon_price: amazonPrice.toFixed(2),
                     amazon_url: amazonLink
                 }
@@ -3869,7 +3991,7 @@ function calculatePrice() {
     const priceDiv = document.getElementById('final-price');
 
     if (resultDiv && priceDiv) {
-        priceDiv.textContent = `$${finalPrice.toFixed(2)}`;
+        priceDiv.textContent = `$${result.finalPrice.toFixed(2)}`;
         resultDiv.style.display = 'block';
     }
 
@@ -3879,27 +4001,63 @@ function calculatePrice() {
         document.querySelector('.price-field input[type="text"]') ||
         document.querySelector('input[placeholder*="Sell it for" i]');
     if (sellItForInput) {
-        sellItForInput.value = finalPrice.toFixed(2);
+        sellItForInput.value = result.finalPrice.toFixed(2);
         sellItForInput.style.backgroundColor = '#e8f5e8';
         sellItForInput.style.borderColor = '#4caf50';
 
-        // Reset styling after 3 seconds
+        // Reset styling after 1.5 seconds
         setTimeout(() => {
             sellItForInput.style.backgroundColor = '';
             sellItForInput.style.borderColor = '';
-        }, 3000);
+        }, 1500);
     }
+
+    // Update breakdown UI display
+    updateBreakdownDisplay(result);
 
     // Save values
     saveCalculatorValues();
 
-    console.log('💰 Price calculated:', finalPrice.toFixed(2));
-    console.log('📊 Base cost:', baseCost.toFixed(2));
-    console.log('📈 Total fees percentage:', (totalPercentage * 100).toFixed(1) + '%');
+    console.log('💰 Price calculated:', result.finalPrice.toFixed(2));
+}
+
+function updateBreakdownDisplay(result) {
+    const breakdownDiv = document.getElementById('calculator-breakdown');
+    if (!breakdownDiv) return;
+
+    if (!result) {
+        breakdownDiv.style.display = 'none';
+        return;
+    }
+
+    breakdownDiv.style.display = 'flex';
+
+    const setVal = (id, text, color) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.textContent = text;
+            el.style.color = color || '';
+        }
+    };
+
+    setVal('bd-source', `$${result.breakdown.sourcePrice.toFixed(2)}`);
+    setVal('bd-tax', `$${result.breakdown.taxAmount.toFixed(2)}`);
+    setVal('bd-tracking', `$${result.breakdown.trackingFee.toFixed(2)}`);
+    setVal('bd-payment', `$${result.breakdown.paymentFixedFee.toFixed(2)}`);
+    setVal('bd-ebay', `$${result.breakdown.ebayFee.toFixed(2)}`);
+    setVal('bd-promo', `$${result.breakdown.promoFee.toFixed(2)}`);
+    
+    const profitColor = result.netProfit >= 0 ? '#22c55e' : '#ef4444';
+    setVal('bd-profit', `$${result.netProfit.toFixed(2)}`, profitColor);
+    setVal('bd-roi', `${result.roi}%`, profitColor);
+    setVal('bd-margin', `${result.margin}%`, profitColor);
 }
 
 // Add calculator event listeners
 function addCalculatorEventListeners() {
+    const popup = document.getElementById('calculator-popup');
+    if (!popup) return;
+
     // Calculator close button
     const closeBtn = document.getElementById('calculator-close-btn');
     if (closeBtn) {
@@ -3908,7 +4066,7 @@ function addCalculatorEventListeners() {
     }
 
     // Calculator overlay click to close
-    const overlay = document.querySelector('.calculator-overlay');
+    const overlay = popup.querySelector('.calculator-overlay');
     if (overlay) {
         overlay.addEventListener('click', closeCalculator);
         console.log('✅ Calculator overlay listener added');
@@ -3923,17 +4081,16 @@ function addCalculatorEventListeners() {
 
     // Auto-save and auto-calculate on input change with debouncing
     let calculateTimeout;
-    const calculatorInputs = document.querySelectorAll('#calculator-popup input');
+    const calculatorInputs = popup.querySelectorAll('input[type="number"]');
     calculatorInputs.forEach(input => {
         input.addEventListener('input', () => {
-            saveCalculatorValues();
-
             // Debounce calculation to avoid too many calculations while typing
             clearTimeout(calculateTimeout);
             calculateTimeout = setTimeout(() => {
                 calculatePrice();
             }, 300); // 300ms delay
         });
+        input.addEventListener('input', validatePriceInput);
     });
     console.log('✅ Calculator input listeners added');
 }
@@ -4035,40 +4192,71 @@ async function getProductDataForExport() {
 function scrapeAmazonPrice() {
     console.log('🔍 Starting Amazon price scraping...');
 
-    // Try multiple selectors for Amazon price
+    // List of container selectors for the main product details section (ordered by priority)
+    const containerSelectors = [
+        '#corePriceDisplay_desktop_feature_div', // Standard desktop main price block
+        '#corePrice_desktop',                     // Desktop price block
+        '#booksHeaderSection',                    // Books details header
+        '#apex_desktop',                          // Alternate desktop main container
+        '#centerCol',                             // Main center column (very reliable fallback)
+        '#buybox',                                // Main buy box container
+        '#mediaTab_content_landing'               // Kindle/rental specific
+    ];
+
+    // CSS selectors for the price element (ordered by priority)
     const priceSelectors = [
         '.a-price-whole',
         '.a-price .a-offscreen',
         '.a-price-range .a-offscreen',
         '#priceblock_dealprice',
         '#priceblock_ourprice',
-        '.a-price-range .a-price-whole',
-        '.a-price .a-price-whole',
-        '[data-asin-price]',
         '.apexPriceToPay .a-offscreen',
-        '.a-price .a-price-whole',
-        '.a-price-range .a-price-whole',
-        // Additional selectors for newer Amazon layouts
-        '.a-price .a-price-whole',
-        '.a-price-range .a-price-whole',
-        '.a-price .a-offscreen',
-        '.a-price-range .a-offscreen',
-        '.apexPriceToPay .a-offscreen',
-        '.apexPriceToPay .a-price-whole',
-        '.apexPriceToPay .a-price-range',
-        '.a-price .a-price-range',
-        '.a-price-range .a-price-range',
-        // Try to find any element with price in class or id
-        '[class*="price"][class*="whole"]',
-        '[class*="price"][class*="range"]',
-        '[id*="price"][class*="whole"]',
-        '[id*="price"][class*="range"]'
+        '[data-asin-price]'
     ];
 
-    console.log('🎯 Trying', priceSelectors.length, 'price selectors...');
+    // Step 1: Try to query within the main product price container
+    for (const containerSel of containerSelectors) {
+        const container = document.querySelector(containerSel);
+        if (container) {
+            console.log(`🔍 Scoping price search inside container: "${containerSel}"`);
+            
+            // Check for split price format first within this container
+            const wholePriceElement = container.querySelector('.a-price-whole');
+            const decimalPriceElement = container.querySelector('.a-price-fraction');
+            if (wholePriceElement && decimalPriceElement) {
+                const wholePart = wholePriceElement.textContent?.replace(/[^\d]/g, '') || '';
+                const decimalPart = decimalPriceElement.textContent?.replace(/[^\d]/g, '') || '';
+                if (wholePart && decimalPart) {
+                    const fullPrice = parseFloat(`${wholePart}.${decimalPart}`);
+                    if (!isNaN(fullPrice) && fullPrice > 0) {
+                        console.log('✅ Scoped split price found:', fullPrice);
+                        return fullPrice.toFixed(2);
+                    }
+                }
+            }
 
-    // First, try to find Amazon's split price format (whole number + decimal in separate elements)
-    console.log('🔍 Checking for Amazon split price format...');
+            // Try standard price selectors inside this container
+            for (const selector of priceSelectors) {
+                const priceElement = container.querySelector(selector);
+                if (priceElement) {
+                    let priceText = priceElement.textContent || priceElement.innerText;
+                    priceText = priceText.replace(/[^\d.,]/g, '').replace(/,/g, '');
+                    const priceMatch = priceText.match(/(\d+\.?\d*)/);
+                    if (priceMatch) {
+                        const price = parseFloat(priceMatch[1]);
+                        if (!isNaN(price) && price > 0) {
+                            console.log(`✅ Scoped price found via "${selector}":`, price);
+                            return price.toFixed(2);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    console.log('🔄 Container search failed. Trying document-wide selectors...');
+
+    // Step 2: Try split price format on document level (fallback)
     const wholePriceElement = document.querySelector('.a-price-whole');
     const decimalPriceElement = document.querySelector('.a-price-fraction');
 
@@ -4079,55 +4267,41 @@ function scrapeAmazonPrice() {
         if (wholePart && decimalPart) {
             const fullPrice = parseFloat(`${wholePart}.${decimalPart}`);
             if (!isNaN(fullPrice) && fullPrice > 0) {
-                console.log('✅ Split price format found:', fullPrice);
+                console.log('✅ Document split price format found:', fullPrice);
                 return fullPrice.toFixed(2);
             }
         }
     }
 
+    // Step 3: Try standard selectors on document level
     for (let i = 0; i < priceSelectors.length; i++) {
         const selector = priceSelectors[i];
         const priceElement = document.querySelector(selector);
 
-        console.log(`🔍 Selector ${i + 1}/${priceSelectors.length}: "${selector}"`);
-        console.log('   Element found:', !!priceElement);
-
         if (priceElement) {
             let priceText = priceElement.textContent || priceElement.innerText;
-            console.log('   Raw text:', priceText);
+            priceText = priceText.replace(/[^\d.,]/g, '').replace(/,/g, '');
 
-            // Clean up the price text
-            priceText = priceText.replace(/[^\d.,]/g, ''); // Remove everything except digits, dots, and commas
-            priceText = priceText.replace(/,/g, ''); // Remove commas
-            console.log('   Cleaned text:', priceText);
-
-            // Try to extract the price with better decimal handling
             const priceMatch = priceText.match(/(\d+\.?\d*)/);
             if (priceMatch) {
                 const price = parseFloat(priceMatch[1]);
-                console.log('   Extracted price:', price);
                 if (!isNaN(price) && price > 0) {
-                    console.log('✅ Amazon price scraped successfully:', price);
+                    console.log('✅ Document price scraped successfully:', price);
                     return price.toFixed(2);
                 }
             }
         }
 
-        // Try to find the parent container and get the full price
         const parentContainer = priceElement?.closest('.a-price, .a-price-range, .apexPriceToPay, [class*="price"]');
         if (parentContainer) {
-            console.log('   Trying parent container...');
             const fullPriceText = parentContainer.textContent || parentContainer.innerText;
-            console.log('   Parent text:', fullPriceText);
-
-            // Look for price patterns like $35.99, 35.99, etc.
             const pricePatterns = [
-                /\$(\d+\.\d{2})/,  // $35.99
-                /(\d+\.\d{2})/,    // 35.99
-                /\$(\d+\.\d{1})/,  // $35.9
-                /(\d+\.\d{1})/,    // 35.9
-                /\$(\d+)/,         // $35
-                /(\d+)/            // 35
+                /\$(\d+\.\d{2})/,
+                /(\d+\.\d{2})/,
+                /\$(\d+\.\d{1})/,
+                /(\d+\.\d{1})/,
+                /\$(\d+)/,
+                /(\d+)/
             ];
 
             for (const pattern of pricePatterns) {
@@ -4135,7 +4309,7 @@ function scrapeAmazonPrice() {
                 if (match) {
                     const price = parseFloat(match[1]);
                     if (!isNaN(price) && price > 0) {
-                        console.log('✅ Parent container price found:', price);
+                        console.log('✅ Document parent price found:', price);
                         return price.toFixed(2);
                     }
                 }
@@ -4147,34 +4321,30 @@ function scrapeAmazonPrice() {
     console.log('🔍 Available price elements on page:');
     const allPriceElements = document.querySelectorAll('[class*="price"], [id*="price"], [class*="cost"], [id*="cost"]');
     allPriceElements.forEach((el, index) => {
-        if (index < 5) { // Limit to first 5 for debugging
+        if (index < 5) {
             console.log(`   Element ${index + 1}:`, el.className, el.id, el.textContent?.substring(0, 50));
         }
     });
 
-    // Fallback: Try to find any text that looks like a price
+    // Step 4: Fallback: Try to find any text in body
     console.log('🔄 Trying fallback price detection...');
     const allText = document.body.innerText;
 
-    // Try multiple price patterns with better decimal handling
     const pricePatterns = [
-        /\$(\d+\.\d{2})/g,  // $35.99
-        /(\d+\.\d{2})/g,    // 35.99
-        /\$(\d+\.\d{1})/g,  // $35.9
-        /(\d+\.\d{1})/g,    // 35.9
-        /\$(\d+)/g,         // $35
-        /(\d+)/g            // 35
+        /\$(\d+\.\d{2})/g,
+        /(\d+\.\d{2})/g,
+        /\$(\d+\.\d{1})/g,
+        /(\d+\.\d{1})/g,
+        /\$(\d+)/g,
+        /(\d+)/g
     ];
 
     for (const pattern of pricePatterns) {
         const matches = [...allText.matchAll(pattern)];
-        console.log(`   Pattern ${pattern} found ${matches.length} matches`);
-
         if (matches.length > 0) {
-            // Get the first reasonable price (not too high, not too low)
             for (const match of matches) {
                 const price = parseFloat(match[1]);
-                if (price > 0.01 && price < 10000) { // Reasonable price range
+                if (price > 0.01 && price < 10000) {
                     console.log('✅ Fallback price found:', price);
                     return price.toFixed(2);
                 }

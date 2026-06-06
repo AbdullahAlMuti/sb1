@@ -1,6 +1,6 @@
 /**
  * SellerSuit Dashboard Bridge
- * Injected into the sellersuit.com (and localhost) dashboard web application.
+ * Injected into the sellersuit.com (and local dev) dashboard web application.
  * Connects the React App's window.postMessage with the Extension's chrome.runtime.sendMessage.
  */
 

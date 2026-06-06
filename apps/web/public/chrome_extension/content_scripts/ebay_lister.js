@@ -1,410 +1,6 @@
 console.log("eBay Lister script loaded: Awaiting data...");
 
-// ─────────────────────────────────────────────
-// 🎯 Scenario Manager - Handles eBay Listing Workflows
-// ─────────────────────────────────────────────
-class ScenarioManager {
-  constructor() {
-    this.currentScenario = null;
-    this.currentStep = 0;
-    this.isRunning = false;
-  }
-
-  // Detect which scenario based on page state or explicit request
-  detectScenario(scenarioType = null) {
-    if (scenarioType) {
-      this.currentScenario = scenarioType;
-      console.log(`🎯 Scenario ${scenarioType} selected`);
-      return scenarioType;
-    }
-    
-    // Auto-detect based on URL or page elements
-    const url = window.location.href;
-    if (url.includes('prelist/home')) {
-      this.currentScenario = 1;
-    } else if (url.includes('/sl/')) {
-      this.currentScenario = 2;
-    } else {
-      this.currentScenario = 3;
-    }
-    
-    console.log(`🎯 Auto-detected Scenario ${this.currentScenario}`);
-    return this.currentScenario;
-  }
-
-  // Execute scenario step by step
-  async executeScenario(title, scenarioType = null) {
-    if (this.isRunning) {
-      console.log("⚠️ Scenario already running, please wait...");
-      return;
-    }
-
-    this.isRunning = true;
-    this.currentStep = 0;
-    this.detectScenario(scenarioType);
-
-    console.log(`🚀 Starting Scenario ${this.currentScenario} with title: "${title}"`);
-
-    try {
-      switch (this.currentScenario) {
-        case 1:
-          await this.runScenario1(title);
-          break;
-        case 2:
-          await this.runScenario2(title);
-          break;
-        case 3:
-          await this.runScenario3(title);
-          break;
-        default:
-          console.error("❌ Unknown scenario");
-      }
-    } catch (err) {
-      console.error(`❌ Scenario ${this.currentScenario} failed at step ${this.currentStep}:`, err);
-    } finally {
-      this.isRunning = false;
-    }
-  }
-
-  // Scenario 1: Full flow with special "New" radio selector
-  async runScenario1(title) {
-    console.log("📋 Scenario 1: Full prelist flow with special New selector");
-
-    // Step 1: Paste title into search bar
-    this.currentStep = 1;
-    console.log(`[Step ${this.currentStep}] Pasting title into search bar...`);
-    await this.pasteTitle(title);
-
-    // Step 2: Click through suggestions until list runs out
-    this.currentStep = 2;
-    console.log(`[Step ${this.currentStep}] Clicking through suggestions...`);
-    await this.clickThroughSuggestions();
-
-    // Step 3: Click "Continue without match"
-    this.currentStep = 3;
-    console.log(`[Step ${this.currentStep}] Clicking 'Continue without match'...`);
-    await this.clickContinueWithoutMatch();
-
-    // Step 4: Click the special "New" radio input
-    this.currentStep = 4;
-    console.log(`[Step ${this.currentStep}] Clicking special 'New' condition selector...`);
-    await this.clickNewConditionSpecial();
-
-    // Step 5: Continue to listing page
-    this.currentStep = 5;
-    console.log(`[Step ${this.currentStep}] Continuing to listing page...`);
-    await this.clickContinueToListing();
-
-    console.log("✅ Scenario 1 completed!");
-  }
-
-  // Scenario 2: Standard flow with "New" option click
-  async runScenario2(title) {
-    console.log("📋 Scenario 2: Standard prelist flow with New option");
-
-    // Step 1: Paste title into search bar
-    this.currentStep = 1;
-    console.log(`[Step ${this.currentStep}] Pasting title into search bar...`);
-    await this.pasteTitle(title);
-
-    // Step 2: Click through suggestions until list runs out
-    this.currentStep = 2;
-    console.log(`[Step ${this.currentStep}] Clicking through suggestions...`);
-    await this.clickThroughSuggestions();
-
-    // Step 3: Click "Continue without match"
-    this.currentStep = 3;
-    console.log(`[Step ${this.currentStep}] Clicking 'Continue without match'...`);
-    await this.clickContinueWithoutMatch();
-
-    // Step 4: Click "New" option
-    this.currentStep = 4;
-    console.log(`[Step ${this.currentStep}] Clicking 'New' option...`);
-    await this.clickNewOption();
-
-    // Step 5: Continue to listing
-    this.currentStep = 5;
-    console.log(`[Step ${this.currentStep}] Continuing to listing...`);
-    await this.clickContinueToListing();
-
-    console.log("✅ Scenario 2 completed!");
-  }
-
-  // Scenario 3: Conditional "New" option (if it appears)
-  async runScenario3(title) {
-    console.log("📋 Scenario 3: Conditional New option flow");
-
-    // Step 1: Paste title into search bar
-    this.currentStep = 1;
-    console.log(`[Step ${this.currentStep}] Pasting title into search bar...`);
-    await this.pasteTitle(title);
-
-    // Step 2: Click through suggestions until list runs out
-    this.currentStep = 2;
-    console.log(`[Step ${this.currentStep}] Clicking through suggestions...`);
-    await this.clickThroughSuggestions();
-
-    // Step 3: Click "Continue without match"
-    this.currentStep = 3;
-    console.log(`[Step ${this.currentStep}] Clicking 'Continue without match'...`);
-    await this.clickContinueWithoutMatch();
-
-    // Step 4: If "New" option appears, click it
-    this.currentStep = 4;
-    console.log(`[Step ${this.currentStep}] Checking for 'New' option...`);
-    const newOptionClicked = await this.tryClickNewOption();
-    
-    if (newOptionClicked) {
-      console.log(`[Step ${this.currentStep}] 'New' option clicked successfully`);
-    } else {
-      console.log(`[Step ${this.currentStep}] 'New' option not found, continuing...`);
-    }
-
-    // Step 5: Continue to listing
-    this.currentStep = 5;
-    console.log(`[Step ${this.currentStep}] Continuing to listing...`);
-    await this.clickContinueToListing();
-
-    console.log("✅ Scenario 3 completed!");
-  }
-
-  // ─────────────────────────────────────────────
-  // 🔧 Scenario Step Helpers
-  // ─────────────────────────────────────────────
-
-  async pasteTitle(title) {
-    console.log(`[pasteTitle] 🔍 Starting title paste with: "${title?.substring(0, 50)}..."`);
-    
-    const searchSelectors = [
-      'input[type="search"]',
-      'input[placeholder*="search" i]',
-      'input[placeholder*="title" i]',
-      'input[placeholder*="item" i]',
-      'input[name="query"]',
-      'input[id*="search" i]',
-      'input.search-input',
-      'input[data-testid*="search" i]',
-      '#s0-1-1-24-7-@keyword-@search-input-textbox',
-      'input[role="combobox"]'
-    ];
-
-    const searchInput = await findElementWithSelectors(searchSelectors, 10000);
-    console.log(`[pasteTitle] Found search input:`, !!searchInput, searchInput?.tagName, searchInput?.id);
-    
-    if (searchInput) {
-      searchInput.focus();
-      searchInput.value = '';
-      
-      // React-safe input
-      const lastValue = searchInput.value;
-      searchInput.value = title;
-      const event = new Event('input', { bubbles: true });
-      const tracker = searchInput._valueTracker;
-      if (tracker) tracker.setValue(lastValue);
-      searchInput.dispatchEvent(event);
-      searchInput.dispatchEvent(new Event('change', { bubbles: true }));
-      
-      await wait(500);
-      console.log(`[pasteTitle] ✅ Title pasted successfully: "${title.substring(0, 50)}..."`);
-    } else {
-      console.error('[pasteTitle] ❌ Search input not found with any selector');
-      throw new Error("Search input not found");
-    }
-  }
-
-  async clickThroughSuggestions() {
-    const maxSuggestions = 10;
-    let clickCount = 0;
-
-    for (let i = 0; i < maxSuggestions; i++) {
-      await wait(800);
-      
-      const suggestionSelectors = [
-        'li[role="option"]',
-        'div[role="option"]',
-        '.suggestion-item',
-        '.search-suggestion',
-        '[data-testid*="suggestion"]',
-        '.listbox__item',
-        'button[data-marko-key*="suggestion"]'
-      ];
-
-      let suggestionFound = false;
-      for (const selector of suggestionSelectors) {
-        const suggestions = document.querySelectorAll(selector);
-        if (suggestions.length > 0) {
-          const visibleSuggestion = Array.from(suggestions).find(s => s.offsetParent !== null);
-          if (visibleSuggestion) {
-            visibleSuggestion.click();
-            clickCount++;
-            console.log(`📌 Clicked suggestion ${clickCount}`);
-            suggestionFound = true;
-            break;
-          }
-        }
-      }
-
-      if (!suggestionFound) {
-        console.log(`📋 No more suggestions found after ${clickCount} clicks`);
-        break;
-      }
-    }
-  }
-
-  async clickContinueWithoutMatch() {
-    const continueSelectors = [
-      'button[data-marko-key*="continue-without-match"]',
-      'button:contains("Continue without match")',
-      '[data-testid*="continue-without-match"]',
-      'button[id*="continue-without"]',
-      'a:contains("Continue without match")',
-      'span:contains("Continue without match")'
-    ];
-
-    // Try standard selectors first
-    try {
-      const btn = await findElementWithSelectors(continueSelectors, 5000);
-      if (btn) {
-        btn.click();
-        console.log("✅ Clicked 'Continue without match'");
-        await wait(1000);
-        return;
-      }
-    } catch (e) {
-      // Fallback: search by text content
-    }
-
-    // Fallback: find by text
-    const allButtons = document.querySelectorAll('button, a, span');
-    for (const el of allButtons) {
-      const text = (el.textContent || '').toLowerCase();
-      if (text.includes('continue without match') || text.includes('without match')) {
-        el.click();
-        console.log("✅ Clicked 'Continue without match' (fallback)");
-        await wait(1000);
-        return;
-      }
-    }
-
-    console.log("⚠️ 'Continue without match' button not found, may already be past this step");
-  }
-
-  async clickNewConditionSpecial() {
-    // Special selector for the "New" condition radio button
-    const specialSelector = 'input.radio_control#s0-1-1-24-10-7-0\\@condition-side-pane-1\\@dialog-16-1-5-1-9-condition-1000';
-    
-    const radioSelectors = [
-      specialSelector,
-      'input[type="radio"][value="1000"]',
-      'input[type="radio"][id*="condition-1000"]',
-      'input[type="radio"][id*="NEW" i]',
-      'input.radio_control[id*="condition"]',
-      'label:contains("New") input[type="radio"]'
-    ];
-
-    try {
-      const radio = await findElementWithSelectors(radioSelectors, 8000);
-      if (radio) {
-        radio.click();
-        console.log("✅ Clicked 'New' condition (special selector)");
-        await wait(500);
-        return;
-      }
-    } catch (e) {
-      // Try label click fallback
-    }
-
-    // Fallback: find label with "New" and click its associated radio
-    const labels = document.querySelectorAll('label, span, div');
-    for (const label of labels) {
-      const text = (label.textContent || '').trim().toLowerCase();
-      if (text === 'new' || text.startsWith('new ')) {
-        const radio = label.querySelector('input[type="radio"]') || 
-                     document.getElementById(label.getAttribute('for'));
-        if (radio) {
-          radio.click();
-          console.log("✅ Clicked 'New' condition via label");
-          await wait(500);
-          return;
-        }
-        // Click the label itself
-        label.click();
-        console.log("✅ Clicked 'New' label directly");
-        await wait(500);
-        return;
-      }
-    }
-
-    console.log("⚠️ 'New' condition selector not found");
-  }
-
-  async clickNewOption() {
-    return this.clickNewConditionSpecial();
-  }
-
-  async tryClickNewOption() {
-    try {
-      await this.clickNewConditionSpecial();
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  async clickContinueToListing() {
-    const continueSelectors = [
-      'button[data-marko-key*="continue"]',
-      'button:contains("Continue to listing")',
-      'button:contains("Continue")',
-      '[data-testid*="continue-to-listing"]',
-      'button[id*="continue"]',
-      'a:contains("Continue")'
-    ];
-
-    try {
-      const btn = await findElementWithSelectors(continueSelectors, 5000);
-      if (btn) {
-        btn.click();
-        console.log("✅ Clicked 'Continue to listing'");
-        await wait(1000);
-        return;
-      }
-    } catch (e) {
-      // Fallback
-    }
-
-    // Fallback: find by text
-    const allButtons = document.querySelectorAll('button, a');
-    for (const el of allButtons) {
-      const text = (el.textContent || '').toLowerCase();
-      if (text.includes('continue to listing') || text === 'continue') {
-        if (el.offsetParent !== null && !el.disabled) {
-          el.click();
-          console.log("✅ Clicked 'Continue' button (fallback)");
-          await wait(1000);
-          return;
-        }
-      }
-    }
-
-    console.log("⚠️ 'Continue' button not found");
-  }
-
-  // Update workflow dynamically
-  updateWorkflow(scenarioType, updates) {
-    console.log(`🔄 Updating Scenario ${scenarioType} with:`, updates);
-    // Store updates for future runs
-    this.workflowUpdates = this.workflowUpdates || {};
-    this.workflowUpdates[scenarioType] = { ...this.workflowUpdates[scenarioType], ...updates };
-  }
-}
-
-// Global scenario manager instance
-const scenarioManager = new ScenarioManager();
-
-// Expose for external use
-window.scenarioManager = scenarioManager;
-window.runScenario = (title, scenarioType) => scenarioManager.executeScenario(title, scenarioType);
+// ScenarioManager moved to ebay_prelist.js
 
 // ─────────────────────────────────────────────
 // 🔧 Helper Functions
@@ -448,397 +44,303 @@ async function findElementWithSelectors(selectors, timeout = 15000) {
 // 🚀 Main Automation
 // ─────────────────────────────────────────────
 async function runEbayAutomation(data) {
-  if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log("🚀 Starting eBay automation with data (hidden in prod)", data);
+  if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('🚀 Starting eBay automation with data (hidden in prod)', data);
 
-  // Utility: React-safe setter
-  const reactInput = (el, value) => {
-    const lastValue = el.value;
-    el.value = value;
-    const event = new Event('input', { bubbles: true });
-    const tracker = el._valueTracker;
-    if (tracker) tracker.setValue(lastValue);
-    el.dispatchEvent(event);
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    el.dispatchEvent(new Event('blur', { bubbles: true }));
+  const storageData = await chrome.storage.local.get(['watermarkedImages', 'imageUrls', 'itemSpecifics', 'brand', 'model', 'color', 'dimensions', 'height', 'weight']);
+  
+  const auctionData = {
+    title: data.ebayTitle || '',
+    sku: data.ebaySku || '',
+    price: data.ebayPrice,
+    images: data.ebayImages || storageData.watermarkedImages || storageData.imageUrls || [],
+    description: data.ebayDescription || '',
+    specs: (() => {
+      let arr = data.itemSpecifics || storageData.itemSpecifics || [];
+      if (!Array.isArray(arr) || arr.length === 0) {
+          arr = [];
+          if (data.brand || storageData.brand) arr.push({ name: 'Brand', value: data.brand || storageData.brand });
+          if (data.model || storageData.model) arr.push({ name: 'Model', value: data.model || storageData.model });
+          if (data.color || storageData.color) arr.push({ name: 'Color', value: data.color || storageData.color });
+          if (data.dimensions || storageData.dimensions) arr.push({ name: 'Dimensions', value: data.dimensions || storageData.dimensions });
+          if (data.height || storageData.height) arr.push({ name: 'Height', value: data.height || storageData.height });
+          if (data.weight || storageData.weight) arr.push({ name: 'Weight', value: data.weight || storageData.weight });
+      }
+      
+      // ALWAYS enforce Country of Origin to be United States
+      arr.push({ name: 'Country/Region of Manufacture', value: 'United States' });
+      arr.push({ name: 'Country of Origin', value: 'United States' });
+      
+      return arr;
+    })()
   };
 
-  // 1️⃣ Fill SKU (FIRST - ensures proper field initialization)
-  if (data.ebaySku) {
+  const reactInput = (el, value) => {
     try {
-      console.log(`🏷️ [STEP 1] Attempting to fill SKU: ${data.ebaySku}`);
-      const skuSelectors = [
-        // Exact match patterns from eBay listing page
-        'input[name="customLabel"].textbox__control',
-        'input.textbox__control[name="customLabel"]',
-        'input[name="customLabel"][aria-describedby*="@TITLE"]',
-        'input[name="customLabel"][aria-describedby*="counter"]',
-        'input[aria-describedby*="@TITLE"][aria-describedby*="counter"]',
-        'input[id*="@TITLE"].textbox__control[aria-describedby*="counter"]',
-        // Fallback patterns
-        'input[name="customLabel"]',
-        'input[type="text"][name="customLabel"]',
-        'input[name="customLabel"][maxlength="50"]',
-        'input[id*="CUSTOMLABEL" i]',
-        'input[id*="customLabel" i]',
-        'input[id*="custom-label" i]',
-        'input[id*="@TITLE"]',
-        'input[aria-describedby*="counter"]',
-        'input[aria-label*="custom" i]',
-        'input[aria-label*="sku" i]',
-        'input[aria-label*="label" i]',
-        'input[placeholder*="custom" i]',
-        'input[placeholder*="sku" i]',
-        'input[placeholder*="label" i]',
-        'input[type="text"][name*="label" i]',
-        'input[type="text"][id*="label" i]',
-        'input[type="text"][class*="label" i]',
-        'input[data-testid*="sku" i]',
-        'input[data-testid*="label" i]',
-        'input[class*="custom" i]',
-        '[name="customLabel"]',
-        // Try to find by maxlength and textbox class
-        'input.textbox__control[maxlength="50"]',
-        'input[maxlength="50"][aria-describedby*="@TITLE"]'
-      ];
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+      if (el.tagName.toLowerCase() === 'textarea') nativeTextAreaValueSetter.call(el, value);
+      else if (el.tagName.toLowerCase() === 'input') nativeInputValueSetter.call(el, value);
+      else el.value = value;
+      
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.dispatchEvent(new Event('blur', { bubbles: true }));
+      
+      if (el._valueTracker) el._valueTracker.setValue(el.value);
+    } catch(e) {
+      el.value = value;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  };
 
-      let skuInput = null;
-      let attempts = 0;
-      const maxAttempts = 3;
+  function log(step, message) { console.log('[eBay Agent] [' + step + ']: ' + message); }
 
-      while (!skuInput && attempts < maxAttempts) {
-        attempts++;
-        console.log(`🔍 SKU field search attempt ${attempts}/${maxAttempts}...`);
+  try {
+    // ---------------------------------------------------------
+    // STEP 1: IMAGES
+    // ---------------------------------------------------------
+    log('STEP 1', 'Starting Image Upload');
+    if (!auctionData.images || !Array.isArray(auctionData.images) || auctionData.images.length === 0) {
+      log('STEP 1', 'SKIP: No images provided.');
+    } else {
+      if (typeof ImageUploadSystem !== 'undefined') {
+        const uploadSystem = new ImageUploadSystem();
+        await uploadSystem.uploadImages(auctionData.images);
+      } else {
+        log('STEP 1', 'ERROR: ImageUploadSystem not found. Cannot upload images.');
+      }
+    }
 
+    // ---------------------------------------------------------
+    // STEP 2: TITLE
+    // ---------------------------------------------------------
+    log('STEP 2', 'Starting Title Paste');
+    if (auctionData.title) {
+        let titleInput = null;
         try {
-          skuInput = await findElementWithSelectors(skuSelectors, 5000);
-        } catch (err) {
-          console.log(`⏳ SKU field not found yet, attempt ${attempts}/${maxAttempts}...`);
-          if (attempts < maxAttempts) {
-            await wait(1000 * attempts); // Exponential backoff
-          }
-        }
-      }
+            titleInput = await findElementWithSelectors([
+              'input.textbox__control[maxlength="80"]', 'input[name="title"]',
+              '#editpane-title input', '[data-testid="title-input"] input'
+            ], 8000);
+        } catch(e) {}
+        if (titleInput) { titleInput.focus(); reactInput(titleInput, auctionData.title); await wait(300); }
+    }
 
-      // Fallback: Search by label text or nearby text content
-      if (!skuInput) {
-        console.log("🔍 Trying fallback method: searching by label/text for SKU...");
+    // ---------------------------------------------------------
+    // STEP 3: SKU
+    // ---------------------------------------------------------
+    log('STEP 3', 'Starting SKU Paste');
+    if (auctionData.sku) {
+        let skuInput = null;
+        try {
+            skuInput = await findElementWithSelectors([
+              'input[name="customLabel"].textbox__control', 'input.textbox__control[name="customLabel"]',
+              'input[name="customLabel"]', 'input[name="customLabel"][maxlength="50"]'
+            ], 8000);
+        } catch(e) {}
+        if (skuInput) { skuInput.focus(); reactInput(skuInput, auctionData.sku); await wait(300); }
+    }
 
-        // Method 1: Search by labels
-        const labels = document.querySelectorAll('label, span, div, p, h3, h4');
-        for (const element of labels) {
-          const text = (element.textContent || '').toLowerCase();
-          if (text.includes('custom label') || text.includes('custom label (sku)') ||
-            text.includes('sku') || text.includes('identifier') ||
-            text.includes('item number') || text.includes('custom identifier')) {
-            console.log(`🔍 Found SKU-related text: "${text.substring(0, 50)}"`);
-
-            // Check for attribute
-            const forAttr = element.getAttribute('for');
-            if (forAttr) {
-              const found = document.getElementById(forAttr);
-              if (found && found.tagName === 'INPUT' && found.offsetParent !== null) {
-                skuInput = found;
-                console.log(`✅ Found SKU input via 'for' attribute`);
-                break;
-              }
-            }
-
-            // Check next sibling
-            let sibling = element.nextElementSibling;
-            for (let i = 0; i < 3 && sibling; i++) {
-              if (sibling.tagName === 'INPUT' && sibling.type === 'text' && sibling.offsetParent !== null) {
-                skuInput = sibling;
-                console.log(`✅ Found SKU input as sibling (${i + 1} levels down)`);
-                break;
-              }
-              sibling = sibling.nextElementSibling;
-            }
-            if (skuInput) break;
-
-            // Check parent container and its siblings
-            const parent = element.closest('div, fieldset, form, section, li');
-            if (parent) {
-              const inputs = parent.querySelectorAll('input[type="text"]');
-              for (const input of inputs) {
-                // Check if input has maxlength="50" (common for SKU)
-                const maxLength = input.getAttribute('maxlength');
-                if (input.offsetParent !== null && (maxLength === '50' || maxLength === '40')) {
-                  skuInput = input;
-                  console.log(`✅ Found SKU input in parent (maxlength=${maxLength})`);
-                  break;
-                }
-              }
-              if (!skuInput && inputs.length > 0) {
-                // Try any visible text input in parent
-                for (const input of inputs) {
-                  if (input.offsetParent !== null) {
-                    skuInput = input;
-                    console.log(`✅ Found SKU input in parent (first visible)`);
-                    break;
-                  }
-                }
-              }
-            }
-            if (skuInput) break;
-          }
-        }
-
-        // Method 2: Look for inputs with maxlength="50" near "Custom label" text
-        if (!skuInput) {
-          console.log("🔍 Trying method 2: searching for inputs with maxlength 50...");
-          const allTextInputs = document.querySelectorAll('input[type="text"]');
-          for (const input of allTextInputs) {
-            if (input.offsetParent !== null) {
-              const maxLength = input.getAttribute('maxlength');
-              const name = (input.name || '').toLowerCase();
-              const id = (input.id || '').toLowerCase();
-              const placeholder = (input.placeholder || '').toLowerCase();
-
-              // Check if it's likely a SKU field
-              if (maxLength === '50' ||
-                name.includes('label') || name.includes('sku') ||
-                id.includes('label') || id.includes('sku') ||
-                placeholder.includes('label') || placeholder.includes('sku')) {
-                // Verify it's near "Custom label" text
-                const parent = input.closest('div, fieldset, form, section');
-                if (parent) {
-                  const parentText = (parent.textContent || '').toLowerCase();
-                  if (parentText.includes('custom label') || parentText.includes('sku')) {
-                    skuInput = input;
-                    console.log(`✅ Found SKU input by maxlength and nearby text`);
-                    break;
-                  }
-                }
+    // ---------------------------------------------------------
+    // STEP 4: EXISTING ITEM SPECIFICS
+    // ---------------------------------------------------------
+    log('STEP 4', 'Starting Existing Item Specifics (Required/Additional)');
+    const unhandledSpecs = [];
+    
+    if (auctionData.specs && Array.isArray(auctionData.specs) && auctionData.specs.length > 0) {
+      for (const spec of auctionData.specs) {
+        if (!spec.name || !spec.value) continue;
+        
+        let foundField = null;
+        try {
+          const safeName = spec.name.replace(/"/g, '\\\"');
+          foundField = document.querySelector(`input[aria-label="${safeName}" i], select[aria-label="${safeName}" i], input[name="${safeName}" i], select[name="${safeName}" i]`);
+          
+          if (!foundField) {
+            const allLabels = Array.from(document.querySelectorAll('label, span, div'));
+            const matchingLabel = allLabels.find(l => l.textContent && l.textContent.trim().toLowerCase() === spec.name.trim().toLowerCase());
+            if (matchingLabel) {
+              if (matchingLabel.hasAttribute('for')) foundField = document.getElementById(matchingLabel.getAttribute('for'));
+              if (!foundField) {
+                const container = matchingLabel.closest('div.item-specific, .form-group, div.fieldset') || matchingLabel.parentElement;
+                if (container) foundField = container.querySelector('input:not([type="hidden"]), select, textarea');
               }
             }
           }
-        }
-      }
+        } catch(e) {}
 
-      // Last resort: Find any input with maxlength 50 that's empty
-      if (!skuInput) {
-        console.log("🔍 Last resort: searching for empty input with maxlength 50...");
-        const allInputs = document.querySelectorAll('input[type="text"]');
-        for (const input of allInputs) {
-          if (input.offsetParent !== null && !input.disabled) {
-            const maxLength = input.getAttribute('maxlength');
-            const value = (input.value || '').trim();
-            const name = (input.name || '').toLowerCase();
-
-            // If it has maxlength 50 and is empty, check if it's in a section with "Custom label"
-            if (maxLength === '50' && value === '' && name.includes('label')) {
-              const container = input.closest('div, section, fieldset, form');
-              if (container) {
-                const containerText = (container.textContent || '').toLowerCase();
-                if (containerText.includes('custom') || containerText.includes('sku')) {
-                  skuInput = input;
-                  console.log(`✅ Found SKU input via maxlength 50 and container text`);
-                  break;
-                }
-              }
-            }
-          }
-        }
-      }
-
-      if (skuInput) {
-        // Scroll into view if needed
-        if (skuInput.getBoundingClientRect().top < 0 || skuInput.getBoundingClientRect().bottom > window.innerHeight) {
-          skuInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          await wait(500);
-        }
-
-        reactInput(skuInput, data.ebaySku);
-        await wait(300); // Small delay after fill
-
-        // Verify the value was set
-        if (skuInput.value === data.ebaySku) {
-          console.log(`✅ [STEP 1] SKU filled successfully: ${data.ebaySku}`);
+        if (foundField && foundField.offsetParent !== null && !foundField.disabled) {
+          log('STEP 4', `Found existing eBay field for "${spec.name}". Filling it...`);
+          foundField.focus();
+          reactInput(foundField, spec.value);
+          await wait(300);
         } else {
-          console.warn(`⚠️ SKU input value mismatch. Expected: ${data.ebaySku}, Got: ${skuInput.value}`);
-          // Try one more time with direct value assignment
-          skuInput.value = data.ebaySku;
-          skuInput.dispatchEvent(new Event('input', { bubbles: true }));
-          skuInput.dispatchEvent(new Event('change', { bubbles: true }));
-          await wait(200);
-          console.log(`🔄 Retried filling SKU. Current value: ${skuInput.value}`);
+          // No existing field found on eBay page, save it for Step 5
+          unhandledSpecs.push(spec);
         }
-      } else {
-        console.warn("⚠️ SKU input not found after all attempts");
-        console.log("🔍 Debugging: All text inputs on page:", Array.from(document.querySelectorAll('input[type="text"]')).map(inp => ({
-          name: inp.name,
-          id: inp.id,
-          placeholder: inp.placeholder,
-          ariaLabel: inp.getAttribute('aria-label'),
-          maxlength: inp.getAttribute('maxlength'),
-          value: inp.value,
-          visible: inp.offsetParent !== null,
-          parentText: (inp.closest('div, section')?.textContent || '').substring(0, 100)
-        })));
       }
-    } catch (err) {
-      console.error("❌ SKU fill failed:", err);
-      if (typeof UIHelper !== 'undefined') {
-        UIHelper.showToast(`Failed to fill SKU: ${err.message}`, 'error');
-      }
+    } else {
+      log('STEP 4', 'SKIP: No specs provided.');
     }
-  } else {
-    console.warn("⚠️ No SKU data available to fill");
-  }
 
-  // Delay between SKU and Price fills
-  await wait(500);
-
-  // 2️⃣ Fill Price (LAST - ensures all other fields are set first)
-  if (data.ebayPrice) {
-    try {
-      console.log(`💰 [STEP 2] Attempting to fill price: ${data.ebayPrice}`);
-      // ... (selector definitions omitted for brevity, they are unchanged) ...
-      const priceSelectors = [
-        'input[name="price"].textbox__control',
-        'input.textbox__control[name="price"]',
-        'input[name="price"][aria-label*="price" i]',
-        'input[name="price"][aria-describedby*="@PRICE"]',
-        'input[aria-describedby*="@PRICE"][aria-describedby*="prefix"]',
-        'input[id*="@PRICE"].textbox__control',
-        'input[name="price"]',
-        'input[type="text"][name="price"]',
-        'input[type="number"][name="price"]',
-        'input[aria-describedby*="price"]',
-        'input[aria-describedby*="prefix"]',
-        'input[id*="@PRICE"]',
-        'input[id*="price"]',
-        'input[aria-label*="price" i]',
-        'input[placeholder*="price" i]',
-        'input[data-testid*="price" i]',
-        '[name="price"]'
-      ];
-
-      // ... (rest of logic unchanged until catch) ...
-      let priceInput = null;
-      let attempts = 0;
-      const maxAttempts = 3;
-
-      while (!priceInput && attempts < maxAttempts) {
-        attempts++;
-        try {
-          priceInput = await findElementWithSelectors(priceSelectors, 5000);
-        } catch (err) {
-          if (attempts < maxAttempts) await wait(1000 * attempts);
-        }
-      }
-
-      // Fallback: Try to find by label text
-      if (!priceInput) {
-        console.log("🔍 Trying fallback: searching by label text for price...");
-        const labels = document.querySelectorAll('label');
-        for (const label of labels) {
-          const labelText = (label.textContent || '').toLowerCase();
-          if (labelText.includes('price') || labelText.includes('starting price') || labelText.includes('buy it now')) {
-            const forAttr = label.getAttribute('for');
-            if (forAttr) {
-              const found = document.getElementById(forAttr);
-              if (found && (found.type === 'text' || found.type === 'number') && found.offsetParent !== null) {
-                priceInput = found;
-                break;
-              }
-            }
-            // Also check next sibling
-            const nextInput = label.nextElementSibling;
-            if (nextInput && (nextInput.tagName === 'INPUT') && nextInput.offsetParent !== null) {
-              priceInput = nextInput;
-              break;
-            }
-          }
-        }
-      }
-
-      if (priceInput) {
-        reactInput(priceInput, data.ebayPrice);
-        await wait(300); // Small delay after fill
-        console.log(`✅ [STEP 2] Price filled successfully: ${data.ebayPrice}`);
-        if (typeof UIHelper !== 'undefined') {
-          UIHelper.showToast(`Price filled: ${data.ebayPrice}`, 'success');
-        }
-      } else {
-        console.warn("⚠️ Price input not found after all attempts");
-        if (typeof UIHelper !== 'undefined') {
-          UIHelper.showToast('Could not find Price field', 'warning');
-        }
-      }
-    } catch (err) {
-      console.error("❌ Price fill failed:", err);
-      if (typeof UIHelper !== 'undefined') {
-        UIHelper.showToast(`Failed to fill Price: ${err.message}`, 'error');
-      }
-    }
-  } else {
-    console.warn("⚠️ No price data available to fill");
-  }
-
-  console.log("✅ SKU and Price automation completed");
-
-  // Delay before description fill
-  await wait(500);
-
-  // 3️⃣ Fill Description (after SKU and Price)
-  if (data.ebayDescription) {
-    try {
-      console.log(`📝 [STEP 3] Attempting to fill description...`);
-      
-      const success = await pasteDescriptionToEbay(data.ebayDescription);
-      
-      if (success) {
-        console.log(`✅ [STEP 3] Description filled successfully`);
-        if (typeof UIHelper !== 'undefined') {
-          UIHelper.showToast('Description filled', 'success');
+    // ---------------------------------------------------------
+    // STEP 5: CUSTOM ITEM SPECIFICS
+    // ---------------------------------------------------------
+    log('STEP 5', `Starting Custom Item Specifics (${unhandledSpecs.length} to add)`);
+    if (unhandledSpecs.length > 0) {
+        let addCustomBtn = null;
+        try { 
+            addCustomBtn = await findElementWithSelectors([
+                'button:contains("Add custom item specific")',
+                '[data-testid*="add-custom"]',
+                'button[aria-label*="custom item specific" i]'
+            ], 3000); 
+        } catch(e) {
+            const allBtns = Array.from(document.querySelectorAll('button, a'));
+            addCustomBtn = allBtns.find(el => el.textContent && el.textContent.trim().toLowerCase().includes('add custom item specific'));
         }
         
-        // Clear the description from storage after successful paste
-        chrome.storage.local.remove(['selectedEbayDescription', 'selectedDescriptionTimestamp'], () => {
-          console.log('[eBay Lister] Cleared description from storage after paste');
-        });
-      } else {
-        console.warn("⚠️ Description paste failed");
-        if (typeof UIHelper !== 'undefined') {
-          UIHelper.showToast('Could not fill description field', 'warning');
+        if (addCustomBtn) {
+            for (const spec of unhandledSpecs) {
+                addCustomBtn.click();
+                await wait(800);
+                
+                try {
+                    const nameInput = await findElementWithSelectors([
+                        '[role="dialog"] input[aria-label*="name" i]',
+                        '.modal input[name*="name" i]',
+                        '[data-testid*="modal"] input'
+                    ], 3000);
+                    if (nameInput) reactInput(nameInput, spec.name);
+                    
+                    const valueInput = await findElementWithSelectors([
+                        '[role="dialog"] input[aria-label*="value" i]',
+                        '.modal input[name*="value" i]'
+                    ], 2000);
+                    if (valueInput) reactInput(valueInput, spec.value);
+                    
+                    const modal = nameInput ? (nameInput.closest('[role="dialog"]') || document.querySelector('.modal')) : null;
+                    if (modal) {
+                        const saveBtn = Array.from(modal.querySelectorAll('button')).find(b => b.textContent && /save|done|add/i.test(b.textContent));
+                        if (saveBtn) saveBtn.click();
+                    }
+                    await wait(600);
+                } catch(e) { log('STEP 5', 'Failed to add custom spec: ' + spec.name); }
+            }
+        } else {
+          log('STEP 5', 'ERROR: "Add custom item specific" button not found.');
         }
-      }
-    } catch (err) {
-      console.error("❌ Description fill failed:", err);
-      if (typeof UIHelper !== 'undefined') {
-        UIHelper.showToast(`Failed to fill description: ${err.message}`, 'error');
+    }
+
+    // ---------------------------------------------------------
+    // STEP 6: CONDITION
+    // ---------------------------------------------------------
+    log('STEP 6', 'Starting Condition');
+    let conditionField = null;
+    try { 
+        conditionField = await findElementWithSelectors([
+            'select[name*="condition" i]', '[role="combobox"][aria-label*="condition" i]',
+            'button[aria-label*="condition" i]', 'input[name*="condition" i]'
+        ], 5000); 
+    } catch(e) {}
+    
+    if (conditionField) {
+        if (conditionField.tagName.toLowerCase() === 'select') {
+          const options = Array.from(conditionField.options);
+          const newOption = options.find(o => /new/i.test(o.text));
+          if (newOption) { conditionField.value = newOption.value; conditionField.dispatchEvent(new Event('change', { bubbles: true })); }
+        } else {
+          conditionField.click();
+          await wait(500);
+          const optionList = Array.from(document.querySelectorAll('[role="option"], li, [class*="option"]'));
+          const newOption = optionList.find(o => o.textContent && (/^new$/i.test(o.textContent.trim()) || /^brand new$/i.test(o.textContent.trim())));
+          if (newOption) newOption.click();
+        }
+    }
+
+    // ---------------------------------------------------------
+    // STEP 7: DESCRIPTION
+    // ---------------------------------------------------------
+    log('STEP 7', 'Starting Description');
+    if (auctionData.description) {
+        let cleanedDesc = auctionData.description.replace(/amazon\.com|walmart\.com|ebay\.com/gi, '').replace(/ASIN|UPC|ISBN|Seller Rank|Sales Rank|Sold by|Fulfilled by|Available at/gi, '').replace(/https?:\/\/[^\s]+/gi, '').replace(/<img[^>]+src=["']?[^"'>]+["']?[^>]*>/gi, '');
+        
+        let descElement = null;
+        try {
+            descElement = await findElementWithSelectors([
+                'iframe[id*="desc" i]', 'iframe[title*="description" i]',
+                '[contenteditable="true"][aria-label*="desc" i]', 'textarea[name*="desc" i]'
+            ], 8000);
+        } catch(e) {}
+
+        if (descElement) {
+            if (descElement.tagName.toLowerCase() === 'iframe') {
+                if (descElement.contentDocument) {
+                    descElement.contentDocument.body.innerHTML = cleanedDesc;
+                    descElement.contentDocument.body.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            } else if (descElement.hasAttribute('contenteditable')) {
+                descElement.focus();
+                descElement.innerHTML = cleanedDesc;
+                descElement.dispatchEvent(new Event('input', { bubbles: true }));
+            } else if (descElement.tagName.toLowerCase() === 'textarea') {
+                reactInput(descElement, cleanedDesc);
+            }
+        }
+        await wait(400);
+    }
+
+    // ---------------------------------------------------------
+    // STEP 8: PRICE
+    // ---------------------------------------------------------
+    log('STEP 8', 'Starting Item Price');
+    if (auctionData.price) {
+        let priceField = null;
+        try { 
+            priceField = await findElementWithSelectors([
+                'input[name*="price" i]', 'input[id*="price" i]',
+                '[aria-label*="price" i]', '[data-testid*="price" i]'
+            ], 5000); 
+        } catch(e) {}
+        if (priceField) {
+            const priceNum = parseFloat(auctionData.price);
+            if (!isNaN(priceNum) && priceNum > 0) { priceField.focus(); reactInput(priceField, priceNum.toFixed(2)); await wait(300); }
+        }
+    }
+
+    // ---------------------------------------------------------
+    // STEP 9: COUNTRY
+    // ---------------------------------------------------------
+    log('STEP 9', 'Starting Country of Origin');
+    let countryField = null;
+    try { 
+        countryField = await findElementWithSelectors([
+            'select[name*="country" i]', '[role="combobox"][aria-label*="country" i]',
+            '[data-testid*="country" i]', 'button[aria-label*="country" i]'
+        ], 3000); 
+    } catch(e) {}
+    if (countryField) {
+      if (countryField.tagName.toLowerCase() === 'select') {
+        const usOption = Array.from(countryField.options).find(o => /united states/i.test(o.text));
+        if (usOption) { countryField.value = usOption.value; countryField.dispatchEvent(new Event('change', { bubbles: true })); }
+      } else {
+        countryField.click();
+        await wait(500);
+        const usOption = Array.from(document.querySelectorAll('[role="option"], li, [class*="option"]')).find(o => o.textContent && /united states/i.test(o.textContent.trim()));
+        if (usOption) usOption.click();
       }
     }
-  } else {
-    console.warn("⚠️ No description data available to fill");
-  }
 
-  console.log("✅ eBay automation completed");
-  if (typeof UIHelper !== 'undefined') {
-    UIHelper.showToast('eBay Automation Completed', 'success');
-  }
+    await wait(500);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    log('COMPLETION', 'COMPLETE: All 9 steps finished.');
+    if (typeof UIHelper !== 'undefined') UIHelper.showToast('eBay Automation Completed', 'success');
 
-  // If this is a bulk job, auto-click "Save for later"
-  if (data.isBulkJob) {
-    console.log("🚀 Bulk job detected, attempting to click 'Save for later'...");
-    await wait(2000); // Let React state settle
-    
-    // Find Save for later button
-    const buttons = Array.from(document.querySelectorAll('button'));
-    const saveBtn = buttons.find(b => b.textContent && b.textContent.toLowerCase().includes('save for later'));
-    
-    if (saveBtn) {
-      console.log("✅ Found 'Save for later' button, but skipping click for testing as requested.");
-      // saveBtn.click();
-      chrome.storage.local.remove(['isBulkJob']);
-    } else {
-      console.warn("⚠️ Could not find 'Save for later' button");
-    }
+  } catch (error) {
+    console.error('[eBay Agent] ERROR: ' + error.message);
   }
 }
 
-// ─────────────────────────────────────────────
 // 🔍 Page Readiness Check
 // ─────────────────────────────────────────────
 async function waitForPageReady() {
@@ -871,21 +373,7 @@ async function waitForPageReady() {
 // ─────────────────────────────────────────────
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   // Handle scenario-based execution
-  if (request.action === "RUN_SCENARIO") {
-    console.log("🎯 RUN_SCENARIO received:", request);
-    const { scenarioType, title } = request;
-    
-    // Get title from request or storage
-    let scenarioTitle = title;
-    if (!scenarioTitle) {
-      const data = await chrome.storage.local.get(["ebayTitle", "productTitle"]);
-      scenarioTitle = data.ebayTitle || data.productTitle;
-    }
-    
-    if (!scenarioTitle) {
-      console.error("❌ No title provided for scenario execution");
-      return;
-    }
+  
     
     await scenarioManager.executeScenario(scenarioTitle, scenarioType);
     return;
@@ -1087,22 +575,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   }
 });
 
-// ─────────────────────────────────────────────
-// 🧪 Manual Testing Functions
-// ─────────────────────────────────────────────
-window.testSkuFill = function (sku = "TEST-SKU-123") {
-  console.log("🧪 Manual SKU fill test...");
-
-  const reactInput = (el, value) => {
-    const lastValue = el.value;
-    el.value = value;
-    const event = new Event('input', { bubbles: true });
-    const tracker = el._valueTracker;
-    if (tracker) tracker.setValue(lastValue);
-    el.dispatchEvent(event);
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    el.dispatchEvent(new Event('blur', { bubbles: true }));
-  };
+// Debug tools removed for production
 
   const skuSelectors = [
     'input[name="customLabel"]',
@@ -1163,172 +636,9 @@ window.debugSkuFields = function () {
   );
 };
 
-// ─────────────────────────────────────────────
-// 🔧 Fallback Condition Handler for Listing Pages
-// ─────────────────────────────────────────────
-async function handleListingPageCondition() {
-  console.log("🔍 Checking for condition button on listing page...");
-  
-  // Look for the specific condition recommendation button
-  const conditionBtn = document.querySelector('button.condition-recommendation-value.btn');
-  
-  if (conditionBtn) {
-    console.log("✅ Found condition recommendation button, clicking...");
-    conditionBtn.click();
-    await wait(1000);
-    
-    // After clicking, look for the "New" option (condition-1000)
-    await selectNewConditionFallback();
-    return true;
-  }
-  
-  // Also check for any condition-related elements that need attention
-  const conditionWarning = document.querySelector(
-    '[class*="condition-warning"], ' +
-    '[class*="condition-required"], ' +
-    '[data-test*="condition"]'
-  );
-  
-  if (conditionWarning) {
-    console.log("⚠️ Condition warning found, attempting to set condition...");
-    conditionWarning.click();
-    await wait(800);
-    await selectNewConditionFallback();
-    return true;
-  }
-  
-  return false;
-}
+// Fallback Condition Handler removed to prevent race conditions
 
-async function selectNewConditionFallback() {
-  console.log("🎯 Selecting 'New' condition (condition-1000) as fallback...");
-  
-  // Try multiple selectors for condition-1000 (New)
-  const selectors = [
-    'input[value="1000"]',
-    'input[id*="condition-1000"]',
-    'input.radio_control[id*="condition-1000"]',
-    '[data-value="1000"]',
-    'input[name*="condition"][value="1000"]',
-    'label[for*="condition-1000"]',
-    '[id*="condition-side-pane"] input[value="1000"]',
-    '[id*="condition-dialog"] input[value="1000"]',
-    'input[type="radio"][value="1000"]'
-  ];
-  
-  for (const selector of selectors) {
-    const element = document.querySelector(selector);
-    if (element) {
-      element.click();
-      console.log(`✅ Selected 'New' condition using: ${selector}`);
-      await wait(500);
-      
-      // Look for confirm/apply button
-      await clickConditionConfirmButton();
-      return true;
-    }
-  }
-  
-  // Fallback: text-based search for "New" option
-  const allLabels = document.querySelectorAll('label, span, div[role="radio"], div[role="option"]');
-  for (const label of allLabels) {
-    const text = label.textContent?.trim().toLowerCase();
-    if (text === 'new' || text === 'new with tags' || text === 'brand new') {
-      const input = label.querySelector('input') || 
-                    document.querySelector(`input[id="${label.getAttribute('for')}"]`) ||
-                    label.closest('[role="radio"]');
-      if (input) {
-        input.click();
-        console.log("✅ Selected 'New' condition via label text match");
-        await wait(500);
-        await clickConditionConfirmButton();
-        return true;
-      }
-      label.click();
-      console.log("✅ Clicked 'New' label directly");
-      await wait(500);
-      await clickConditionConfirmButton();
-      return true;
-    }
-  }
-  
-  console.log("⚠️ Could not find 'New' condition option in fallback");
-  return false;
-}
-
-async function clickConditionConfirmButton() {
-  await wait(300);
-  
-  const confirmSelectors = [
-    'button[class*="confirm"]',
-    'button[class*="apply"]',
-    'button[class*="save"]',
-    'button[class*="done"]',
-    '[data-test*="confirm"]',
-    '[data-test*="apply"]'
-  ];
-  
-  for (const selector of confirmSelectors) {
-    const btn = document.querySelector(selector);
-    if (btn) {
-      btn.click();
-      console.log(`✅ Clicked confirm button: ${selector}`);
-      return;
-    }
-  }
-  
-  // Text-based fallback
-  const buttons = document.querySelectorAll('button');
-  for (const btn of buttons) {
-    const text = btn.textContent?.toLowerCase();
-    if (text?.includes('confirm') || text?.includes('apply') || text?.includes('done') || text?.includes('save')) {
-      btn.click();
-      console.log("✅ Clicked confirm button (text match)");
-      return;
-    }
-  }
-}
-
-// ─────────────────────────────────────────────
-// 🔄 Continuous Condition Monitor for Listing Pages
-// ─────────────────────────────────────────────
-let conditionCheckInterval = null;
-
-function startConditionMonitor() {
-  if (conditionCheckInterval) return;
-  
-  const url = window.location.href;
-  if (url.includes('/lstng') || url.includes('draftId=') || url.includes('mode=AddItem')) {
-    console.log("👁️ Starting condition monitor for listing page...");
-    
-    conditionCheckInterval = setInterval(async () => {
-      const conditionBtn = document.querySelector('button.condition-recommendation-value.btn');
-      if (conditionBtn) {
-        console.log("🎯 Condition button detected by monitor, clicking...");
-        clearInterval(conditionCheckInterval);
-        conditionCheckInterval = null;
-        conditionBtn.click();
-        await wait(800);
-        await selectNewConditionFallback();
-      }
-    }, 2000);
-    
-    // Stop monitoring after 30 seconds
-    setTimeout(() => {
-      if (conditionCheckInterval) {
-        clearInterval(conditionCheckInterval);
-        conditionCheckInterval = null;
-        console.log("⏱️ Condition monitor timeout - stopped watching");
-      }
-    }, 30000);
-  }
-}
-
-function stopConditionMonitor() {
-  if (conditionCheckInterval) {
-    clearInterval(conditionCheckInterval);
-    conditionCheckInterval = null;
-  }
+// Continuous Condition Monitor removed to prevent race conditions
 }
 
 // ─────────────────────────────────────────────
@@ -1393,50 +703,15 @@ async function attemptAutoFill() {
   // General sell pages
   const isSellPage = url.includes('/sl/') || url.includes('/sell');
 
-  if (isPrelistPage) {
-    // Prelist page - run scenario workflow
-    console.log("🎯 Detected eBay Prelist page - auto-starting scenario...");
-    
-    if (title) {
-      // Auto-detect which scenario based on page elements
-      await wait(1000);
-      
-      // Check for specific page indicators to determine scenario
-      const hasConditionDialog = document.querySelector('[id*="condition-side-pane"]') ||
-                                  document.querySelector('[id*="condition-dialog"]');
-      const hasSpecialRadio = document.querySelector('input.radio_control[id*="condition-1000"]');
-      
-      let scenarioType = 3; // Default to Scenario 3 (conditional)
-      
-      if (hasSpecialRadio) {
-        scenarioType = 1; // Special radio selector present
-        console.log("🎯 Auto-detected Scenario 1 (special radio selector)");
-      } else if (hasConditionDialog) {
-        scenarioType = 2; // Standard condition dialog
-        console.log("🎯 Auto-detected Scenario 2 (standard condition)");
-      } else {
-        console.log("🎯 Auto-detected Scenario 3 (conditional flow)");
-      }
-      
-      await scenarioManager.executeScenario(title, scenarioType);
-      
-      // Clear selected title from storage after successful prelist scenario
-      if (data.selectedEbayTitle) {
-        chrome.storage.local.remove(['selectedEbayTitle', 'selectedTitleTimestamp']);
-        console.log('[eBay Lister] ✅ Cleared selected title after prelist scenario');
-      }
-    } else {
-      console.log("ℹ️ No title found in storage, waiting for manual trigger...");
-    }
-  } else if (isListingPage) {
+  if (isListingPage) {
     // Listing/Draft page - check condition first, then fill fields
     console.log("🎯 Detected eBay Listing/Draft page - checking condition and auto-filling...");
     
     // Start condition monitor for this page
-    startConditionMonitor();
+    // Removed condition monitor
     
     // First, check and handle condition selection
-    await handleListingPageCondition();
+    // Removed handleListingPageCondition
     
     // Then fill SKU/Price if available
     if (data.ebaySku || data.ebayPrice || ebayDescription) {
@@ -1455,21 +730,6 @@ async function attemptAutoFill() {
       });
     } else {
       console.log("ℹ️ No SKU/Price/Description data found, skipping field auto-fill");
-    }
-  } else if (isSellPage) {
-    // General sell page
-    console.log("🎯 Detected eBay Sell page - checking condition and auto-filling...");
-    
-    // Check for condition button
-    await handleListingPageCondition();
-    
-    if (data.ebaySku || data.ebayPrice || ebayDescription) {
-      await runEbayAutomation({
-        ebayTitle: title,
-        ebayPrice: data.ebayPrice,
-        ebaySku: data.ebaySku,
-        ebayDescription: ebayDescription
-      });
     }
   } else {
     console.log("ℹ️ Not on a recognized eBay page, waiting for manual trigger...");

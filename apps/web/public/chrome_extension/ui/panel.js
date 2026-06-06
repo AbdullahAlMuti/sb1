@@ -21,18 +21,62 @@ if (document.readyState === 'loading') {
   initPanel();
 }
 
+function runPanelInitStep(label, initFn) {
+  try {
+    const result = initFn();
+    if (result && typeof result.catch === 'function') {
+      result.catch((error) => {
+        console.error(`[Panel] ${label} failed:`, error);
+      });
+    }
+  } catch (error) {
+    console.error(`[Panel] ${label} failed:`, error);
+  }
+}
+
 function initPanel() {
   console.log('[Panel] DOM Ready, initializing components...');
 
-  // Initialize all components
-  initAuthStatus();
-  initImageGallery();
-  initTitleGeneration();
-  initActionButtons();
-  initCalculator();
-  initPanelControls(); // Added controls initialization
+  // Controls first so shell actions still work if feature init fails later.
+  runPanelInitStep('panel controls', initPanelControls);
+  runPanelInitStep('panel scroll behavior', initPanelScrollBehavior);
+  runPanelInitStep('auth status', initAuthStatus);
+  runPanelInitStep('image gallery', initImageGallery);
+  runPanelInitStep('title generation', initTitleGeneration);
+  runPanelInitStep('action buttons', initActionButtons);
+  runPanelInitStep('calculator', initCalculator);
 
   console.log('[Panel] All components initialized');
+}
+
+// ═══════════════════════════════════════════════════════════
+// Panel Viewport Behavior
+// ═══════════════════════════════════════════════════════════
+function initPanelScrollBehavior() {
+  const rootWrapper = document.getElementById('snipe-root-wrapper');
+  if (!rootWrapper || rootWrapper.dataset.scrollBehaviorBound === 'true') return;
+
+  rootWrapper.dataset.scrollBehaviorBound = 'true';
+
+  const maxLift = 88;
+  let rafId = 0;
+
+  const updatePanelOffset = () => {
+    rafId = 0;
+    const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    const lift = Math.min(scrollY, maxLift);
+    rootWrapper.style.setProperty('--ss-panel-scroll-offset', String(lift));
+    rootWrapper.classList.toggle('ss-panel-scrolled', lift > 4);
+  };
+
+  const requestOffsetUpdate = () => {
+    if (rafId) return;
+    rafId = window.requestAnimationFrame(updatePanelOffset);
+  };
+
+  window.addEventListener('scroll', requestOffsetUpdate, { passive: true });
+  window.addEventListener('resize', requestOffsetUpdate);
+  updatePanelOffset();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -240,8 +284,34 @@ function displayImages(images) {
   });
 }
 
+function showScrapeOverlay(text) {
+  const overlay = document.getElementById('ss-scrape-overlay');
+  const statusText = document.getElementById('ss-scrape-status-text');
+  if (overlay) {
+    overlay.classList.add('active');
+  }
+  if (statusText && text) {
+    statusText.textContent = text;
+  }
+}
+
+function updateScrapeStatus(text) {
+  const statusText = document.getElementById('ss-scrape-status-text');
+  if (statusText && text) {
+    statusText.textContent = text;
+  }
+}
+
+function hideScrapeOverlay() {
+  const overlay = document.getElementById('ss-scrape-overlay');
+  if (overlay) {
+    overlay.classList.remove('active');
+  }
+}
+
 function refreshImages() {
   console.log('[Panel] Refreshing images...');
+  showScrapeOverlay('Initializing image extraction...');
   (async () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -259,6 +329,8 @@ function refreshImages() {
     } catch (err) {
       console.error('[Panel] Refresh images error:', err);
       if (typeof UIHelper !== 'undefined') UIHelper.showToast(err.message || 'Failed to refresh images', 'error');
+    } finally {
+      hideScrapeOverlay();
     }
   })();
 }
@@ -675,21 +747,13 @@ async function generateAITitles() {
 // ═══════════════════════════════════════════════════════════
 // Inline Title Rendering
 // ═══════════════════════════════════════════════════════════
-// NOTE: Now handled centrally by UIHelper.renderInlineTitles in common/ui.js
-// This local fallback is kept for safety if UIHelper fails to load.
-
 function renderInlineTitles(titles) {
   const titleList = document.getElementById('snipe-title-list');
   if (!titleList) return;
-  // Fallback to minimal implementation or let UIHelper handle it
+
   if (typeof UIHelper !== 'undefined' && typeof UIHelper.renderInlineTitles === 'function') {
     return UIHelper.renderInlineTitles(titles);
   }
-}
-
-function renderInlineTitles(titles) {
-  const titleList = document.getElementById('snipe-title-list');
-  if (!titleList) return;
 
   if (!titles || titles.length === 0) {
     titleList.innerHTML = `
@@ -733,22 +797,22 @@ function renderInlineTitles(titles) {
     }
 
     const card = document.createElement('div');
-    card.className = \`inline-title-card \${index === 0 ? 'selected' : ''}\`;
+    card.className = `inline-title-card ${index === 0 ? 'selected' : ''}`;
     card.dataset.title = titleStr;
 
-    card.innerHTML = \`
+    card.innerHTML = `
       <div class="inline-title-header">
-        <div class="inline-title-badge \${badgeClass}">
-          \${index === 0 ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>' : ''}
-          \${badgeText}
+        <div class="inline-title-badge ${badgeClass}">
+          ${index === 0 ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>' : ''}
+          ${badgeText}
         </div>
         <div class="inline-title-meta">
-          <span class="\${titleStr.length > 80 ? 'warning' : ''}">\${titleStr.length} chars</span>
+          <span class="${titleStr.length > 80 ? 'warning' : ''}">${titleStr.length} chars</span>
         </div>
       </div>
-      <div class="inline-title-text">\${escapedTitleStr}</div>
+      <div class="inline-title-text">${escapedTitleStr}</div>
       <div class="inline-title-actions">
-        <button class="btn btn-sm inline-title-use">\${index === 0 ? 'Selected' : 'Use Title'}</button>
+        <button class="btn btn-sm inline-title-use">${index === 0 ? 'Selected' : 'Use Title'}</button>
         <button class="btn btn-sm inline-title-copy">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -757,7 +821,7 @@ function renderInlineTitles(titles) {
           Copy
         </button>
       </div>
-    \`;
+    `;
 
     // Click handler for card selection
     card.addEventListener('click', (e) => {
@@ -1188,12 +1252,15 @@ function initCalculator() {
 
   if (calculatorBtn) {
     calculatorBtn.addEventListener('click', () => {
-      if (popup) popup.style.display = 'flex';
+      if (popup) {
+        popup.style.display = 'flex';
+        runCalculation();
+      }
     });
   }
 
   if (quickCalcBtn) {
-    quickCalcBtn.addEventListener('click', quickCalculate);
+    quickCalcBtn.addEventListener('click', runCalculation);
   }
 
   if (closeBtn) {
@@ -1202,45 +1269,137 @@ function initCalculator() {
     });
   }
 
+  const overlay = popup?.querySelector('.calculator-overlay');
+  if (overlay) {
+    overlay.addEventListener('click', () => {
+      if (popup) popup.style.display = 'none';
+    });
+  }
+
   // Auto-calculate on input change
-  const inputs = ['amazon-price', 'tax-percent', 'tracking-fee', 'ebay-fee-percent', 'promo-fee-percent', 'desired-profit'];
+  const inputs = ['amazon-price', 'tax-percent', 'tracking-fee', 'ebay-fee-percent', 'promo-fee-percent', 'desired-profit', 'payment-fixed-fee'];
   inputs.forEach(id => {
     const input = document.getElementById(id);
     if (input) {
-      input.addEventListener('input', calculatePrice);
+      input.addEventListener('input', runCalculation);
     }
   });
+
+  const calculateBtn = document.getElementById('calculate-btn');
+  if (calculateBtn) {
+    calculateBtn.addEventListener('click', runCalculation);
+  }
 }
 
-function calculatePrice() {
-  const amazonPrice = parseFloat(document.getElementById('amazon-price')?.value) || 0;
+function runCalculation() {
+  const sourcePrice = parseFloat(document.getElementById('amazon-price')?.value) || 0;
   const taxPercent = parseFloat(document.getElementById('tax-percent')?.value) || 0;
   const trackingFee = parseFloat(document.getElementById('tracking-fee')?.value) || 0;
   const ebayFeePercent = parseFloat(document.getElementById('ebay-fee-percent')?.value) || 0;
   const promoFeePercent = parseFloat(document.getElementById('promo-fee-percent')?.value) || 0;
-  const desiredProfitPercent = parseFloat(document.getElementById('desired-profit')?.value) || 0;
+  const desiredProfit = parseFloat(document.getElementById('desired-profit')?.value) || 0;
+  const paymentFixedFee = parseFloat(document.getElementById('payment-fixed-fee')?.value) || 0;
 
-  // Calculate total cost
-  const tax = amazonPrice * (taxPercent / 100);
-  const totalCost = amazonPrice + tax + trackingFee;
+  // Save values to localStorage
+  saveCalculatorValues(sourcePrice, taxPercent, trackingFee, ebayFeePercent, promoFeePercent, desiredProfit, paymentFixedFee);
 
-  // Calculate eBay price
-  const totalFeePercent = ebayFeePercent + promoFeePercent;
-  const ebayPrice = totalCost / (1 - (totalFeePercent / 100)) * (1 + (desiredProfitPercent / 100));
-
-  const finalPriceEl = document.getElementById('final-price');
-  if (finalPriceEl) {
-    finalPriceEl.textContent = `$${ebayPrice.toFixed(2)}`;
+  if (typeof calculateSellingPrice !== 'function') {
+    console.error('calculateSellingPrice is not defined');
+    return;
   }
 
-  return ebayPrice;
+  const result = calculateSellingPrice({
+    sourcePrice,
+    taxPercent,
+    trackingFee,
+    ebayFeePercent,
+    promoFeePercent,
+    desiredProfit,
+    paymentFixedFee
+  });
+
+  const finalPriceEl = document.getElementById('final-price');
+  const sellInput = document.getElementById('sell-it-for-input');
+
+  if (!result) {
+    if (finalPriceEl) finalPriceEl.textContent = '$0.00';
+    updateBreakdownDisplay(null);
+    return;
+  }
+
+  if (finalPriceEl) {
+    finalPriceEl.textContent = `$${result.finalPrice.toFixed(2)}`;
+  }
+  if (sellInput) {
+    sellInput.value = result.finalPrice.toFixed(2);
+    // Add visual feedback
+    sellInput.style.backgroundColor = '#e8f5e8';
+    sellInput.style.borderColor = '#4caf50';
+    setTimeout(() => {
+      sellInput.style.backgroundColor = '';
+      sellInput.style.borderColor = '';
+    }, 1500);
+  }
+
+  updateBreakdownDisplay(result);
 }
 
-function quickCalculate() {
-  const price = calculatePrice();
-  const sellInput = document.getElementById('sell-it-for-input');
-  if (sellInput) {
-    sellInput.value = price.toFixed(2);
+function updateBreakdownDisplay(result) {
+  const breakdownDiv = document.getElementById('calculator-breakdown');
+  if (!breakdownDiv) return;
+
+  if (!result) {
+    breakdownDiv.style.display = 'none';
+    return;
+  }
+
+  breakdownDiv.style.display = 'flex';
+
+  const setVal = (id, text, color) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.textContent = text;
+      el.style.color = color || '';
+    }
+  };
+
+  setVal('bd-source', `$${result.breakdown.sourcePrice.toFixed(2)}`);
+  setVal('bd-tax', `$${result.breakdown.taxAmount.toFixed(2)}`);
+  setVal('bd-tracking', `$${result.breakdown.trackingFee.toFixed(2)}`);
+  setVal('bd-payment', `$${result.breakdown.paymentFixedFee.toFixed(2)}`);
+  setVal('bd-ebay', `$${result.breakdown.ebayFee.toFixed(2)}`);
+  setVal('bd-promo', `$${result.breakdown.promoFee.toFixed(2)}`);
+  
+  const profitColor = result.netProfit >= 0 ? '#22c55e' : '#ef4444';
+  setVal('bd-profit', `$${result.netProfit.toFixed(2)}`, profitColor);
+  setVal('bd-roi', `${result.roi}%`, profitColor);
+  setVal('bd-margin', `${result.margin}%`, profitColor);
+}
+
+function saveCalculatorValues(sourcePrice, taxPercent, trackingFee, ebayFeePercent, promoFeePercent, desiredProfit, paymentFixedFee) {
+  const values = {
+    'tax-percent': taxPercent,
+    'tracking-fee': trackingFee,
+    'ebay-fee-percent': ebayFeePercent,
+    'promo-fee-percent': promoFeePercent,
+    'desired-profit': desiredProfit,
+    'payment-fixed-fee': paymentFixedFee
+  };
+  localStorage.setItem('calculatorValues', JSON.stringify(values));
+}
+
+function loadCalculatorValues() {
+  try {
+    const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
+    const fields = ['tax-percent', 'tracking-fee', 'ebay-fee-percent', 'promo-fee-percent', 'desired-profit', 'payment-fixed-fee'];
+    fields.forEach(fieldId => {
+      const input = document.getElementById(fieldId);
+      if (input && savedValues[fieldId] !== undefined) {
+        input.value = savedValues[fieldId];
+      }
+    });
+  } catch (e) {
+    console.error('Error loading calculator values from localStorage:', e);
   }
 }
 
@@ -1250,7 +1409,13 @@ function quickCalculate() {
 function initPanelControls() {
   const nightModeBtn = document.getElementById('panel-night-mode-btn');
   const minimizeBtn = document.getElementById('panel-minimize-btn');
+  const restoreBtn = document.getElementById('panel-restore-btn');
   const closeBtn = document.getElementById('panel-close-btn');
+  const setMinimizedState = (isMinimized) => {
+    const rootWrapper = document.getElementById('snipe-root-wrapper');
+    if (!rootWrapper) return;
+    rootWrapper.classList.toggle('panel-minimized', isMinimized);
+  };
 
   if (nightModeBtn) {
     nightModeBtn.addEventListener('click', () => {
@@ -1265,16 +1430,13 @@ function initPanelControls() {
 
   if (minimizeBtn) {
     minimizeBtn.addEventListener('click', () => {
-      const rootWrapper = document.getElementById('snipe-root-wrapper');
-      if (rootWrapper) {
-        rootWrapper.classList.toggle('panel-minimized');
-        const isMin = rootWrapper.classList.contains('panel-minimized');
-        Array.from(rootWrapper.children).forEach(child => {
-          if (!child.classList.contains('ss-header')) {
-            child.style.display = isMin ? 'none' : '';
-          }
-        });
-      }
+      setMinimizedState(true);
+    });
+  }
+
+  if (restoreBtn) {
+    restoreBtn.addEventListener('click', () => {
+      setMinimizedState(false);
     });
   }
 
@@ -1284,7 +1446,7 @@ function initPanelControls() {
       if (rootWrapper) {
         rootWrapper.remove();
         
-        const startBtn = document.getElementById('initial-list-button');
+        const startBtn = document.getElementById('initial-list-button') || document.querySelector('.floating-snipe-btn');
         if (startBtn) {
           startBtn.style.display = 'flex';
         }
@@ -1292,3 +1454,10 @@ function initPanelControls() {
     });
   }
 }
+
+// Listen for progress messages in case panel is running in a different context (e.g. popup/sidepanel)
+chrome.runtime.onMessage?.addListener((request) => {
+  if (request.action === 'SCRAPE_PROGRESS') {
+    updateScrapeStatus(request.message);
+  }
+});

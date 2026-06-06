@@ -1561,10 +1561,21 @@ const applyWatermark = (imageUrl) => {
         const watermark = new Image();
         const sourceImage = new Image();
         sourceImage.crossOrigin = "Anonymous";
+
+        const watermarkPromise = new Promise((res, rej) => {
+            watermark.onload = res;
+            watermark.onerror = () => rej(new Error('Failed to load watermark'));
+        });
+
+        const sourcePromise = new Promise((res, rej) => {
+            sourceImage.onload = res;
+            sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+        });
+
         watermark.src = chrome.runtime.getURL('assets/watermark.png');
         sourceImage.src = imageUrl;
 
-        Promise.all([new Promise(r => watermark.onload = r), new Promise(r => sourceImage.onload = r)]).then(() => {
+        Promise.all([watermarkPromise, sourcePromise]).then(() => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             canvas.width = sourceImage.naturalWidth;
@@ -1579,7 +1590,6 @@ const applyWatermark = (imageUrl) => {
             ctx.drawImage(watermark, x, y, watermarkWidth, watermarkHeight);
             ctx.globalAlpha = 1.0;
             resolve(canvas.toDataURL('image/jpeg', 1.0)); // Ultra/High Quality
-
         }).catch(reject);
     });
 };
@@ -1955,9 +1965,15 @@ const processImageTo1600x1600NoWatermark = (imageUrl) => {
     return new Promise((resolve, reject) => {
         const sourceImage = new Image();
         sourceImage.crossOrigin = "Anonymous";
+
+        const loadPromise = new Promise((res, rej) => {
+            sourceImage.onload = res;
+            sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+        });
+
         sourceImage.src = imageUrl;
 
-        new Promise(r => sourceImage.onload = r).then(() => {
+        loadPromise.then(() => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
 
@@ -2005,15 +2021,22 @@ const processImageTo1600x1600 = (imageUrl) => {
 
         const watermark = new Image();
         const sourceImage = new Image();
-
         sourceImage.crossOrigin = "Anonymous";
+
+        const watermarkPromise = new Promise((res, rej) => {
+            watermark.onload = res;
+            watermark.onerror = () => rej(new Error('Failed to load watermark'));
+        });
+
+        const sourcePromise = new Promise((res, rej) => {
+            sourceImage.onload = res;
+            sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+        });
+
         watermark.src = chrome.runtime.getURL('assets/watermark.png');
         sourceImage.src = imageUrl;
 
-        Promise.all([
-            new Promise(r => watermark.onload = r),
-            new Promise(r => sourceImage.onload = r)
-        ]).then(() => {
+        Promise.all([watermarkPromise, sourcePromise]).then(() => {
             console.log(`✅ processImageTo1600x1600: Both images loaded successfully`);
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
