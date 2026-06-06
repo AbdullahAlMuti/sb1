@@ -115,7 +115,7 @@ async function sendVerificationEmail(email: string, verificationCode: string) {
       "Authorization": `Bearer ${resendApiKey}`,
     },
     body: JSON.stringify({
-      from: "SellerSuit <onboarding@resend.dev>",
+      from: "SellerSuit <support@sellersuit.com>",
       to: [email],
       subject: "Verify your SellerSuit email address",
       html: `
