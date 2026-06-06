@@ -13,7 +13,8 @@ const IGNORE_LIST = [
   'manifest.prod.json',
   '.env',
   'package.json',
-  'package-lock.json'
+  'package-lock.json',
+  'fix_ui.js'
 ];
 
 function copyDir(src, dest) {
@@ -26,6 +27,7 @@ function copyDir(src, dest) {
   for (const entry of entries) {
     if (IGNORE_LIST.includes(entry.name)) continue;
     if (entry.name.endsWith('.dev.js') || entry.name.endsWith('.prod.js')) continue;
+    if (entry.name.endsWith('.cjs') || entry.name.endsWith('.md') || entry.name === 'debug-logs.txt') continue;
 
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
@@ -53,3 +55,30 @@ fs.copyFileSync(path.join(SRC_DIR, 'manifest.prod.json'), path.join(DIST_DIR, 'm
 fs.copyFileSync(path.join(SRC_DIR, 'common', 'config.prod.js'), path.join(DIST_DIR, 'common', 'config.js'));
 
 console.log(`✅ Production build ready in: ${DIST_DIR}`);
+
+// 4. Sync to web dashboard public assets
+const WEB_PUBLIC_DIR = path.resolve('../../apps/web/public/chrome_extension');
+if (fs.existsSync(WEB_PUBLIC_DIR)) {
+  console.log('Syncing clean production build to web public assets...');
+  fs.rmSync(WEB_PUBLIC_DIR, { recursive: true, force: true });
+  fs.mkdirSync(WEB_PUBLIC_DIR, { recursive: true });
+  
+  function copyFolderRecursive(src, dest) {
+    fs.mkdirSync(dest, { recursive: true });
+    const entries = fs.readdirSync(src, { withFileTypes: true });
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+      if (entry.isDirectory()) {
+        copyFolderRecursive(srcPath, destPath);
+      } else {
+        fs.copyFileSync(srcPath, destPath);
+      }
+    }
+  }
+  
+  copyFolderRecursive(DIST_DIR, WEB_PUBLIC_DIR);
+  console.log(`✅ Synced to: ${WEB_PUBLIC_DIR}`);
+} else {
+  console.log('⚠️ Web public directory not found, skipping sync.');
+}

@@ -14,7 +14,8 @@ const IGNORE_LIST = [
   'manifest.prod.json',
   '.env',
   'package.json',
-  'package-lock.json'
+  'package-lock.json',
+  'fix_ui.js'
 ];
 
 function copyDir(src, dest) {
@@ -27,6 +28,7 @@ function copyDir(src, dest) {
   for (const entry of entries) {
     if (IGNORE_LIST.includes(entry.name)) continue;
     if (entry.name.endsWith('.dev.js') || entry.name.endsWith('.prod.js')) continue;
+    if (entry.name.endsWith('.cjs') || entry.name.endsWith('.md') || entry.name === 'debug-logs.txt') continue;
 
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);

@@ -372,13 +372,6 @@ async function waitForPageReady() {
 // 🏁 Message Listener
 // ─────────────────────────────────────────────
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
-  // Handle scenario-based execution
-  
-    
-    await scenarioManager.executeScenario(scenarioTitle, scenarioType);
-    return;
-  }
-
   // Original RUN_EBAY_LISTER handler (preserved)
   if (request.action === "RUN_EBAY_LISTER") {
     console.log("🎯 RUN_EBAY_LISTER received, starting automation...");
@@ -575,42 +568,6 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   }
 });
 
-// Debug tools removed for production
-
-  const skuSelectors = [
-    'input[name="customLabel"]',
-    'input[id*="CUSTOMLABEL"]',
-    'input[id*="@TITLE"]',
-    'input[aria-describedby*="counter"]',
-    'input[aria-label*="custom"]',
-    'input[aria-label*="sku"]',
-    'input[placeholder*="custom"]',
-    'input[placeholder*="sku"]',
-    'input[type="text"][name*="label"]',
-    'input[type="text"][id*="label"]',
-    'input[type="text"][class*="label"]'
-  ];
-
-  let skuInput = null;
-  for (const selector of skuSelectors) {
-    const found = document.querySelector(selector);
-    if (found && found.type === 'text') {
-      skuInput = found;
-      console.log(`✅ Found SKU input with selector: ${selector}`);
-      break;
-    }
-  }
-
-  if (skuInput) {
-    reactInput(skuInput, sku);
-    console.log("✅ SKU filled manually:", sku);
-    return true;
-  } else {
-    console.warn("⚠️ SKU input not found for manual test");
-    return false;
-  }
-};
-
 window.debugSkuFields = function () {
   console.log("🔍 Debugging SKU fields...");
 
@@ -635,11 +592,6 @@ window.debugSkuFields = function () {
     }))
   );
 };
-
-// Fallback Condition Handler removed to prevent race conditions
-
-// Continuous Condition Monitor removed to prevent race conditions
-}
 
 // ─────────────────────────────────────────────
 // 🔁 Auto Start - Automatic Scenario Detection & Execution

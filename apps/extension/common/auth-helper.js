@@ -389,6 +389,86 @@ const AuthHelper = (() => {
     }
   }
 
+  let isExtensionUnlocked = false;
+  let lastAuthCheck = 0;
+  const AUTH_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes default
+
+  /**
+   * Verify Auth with Backend (Enhanced)
+   * Centralized from background.js
+   */
+  async function verifyAuthStatus(forceRefresh = false) {
+    if (!forceRefresh && Date.now() - lastAuthCheck < AUTH_CHECK_INTERVAL && isExtensionUnlocked) {
+      log('debug', 'Skipping auth check (recently verified)');
+      return true;
+    }
+
+    try {
+      const { token, type, isValid } = await getAuthToken();
+
+      if (!token || !isValid) {
+        log('warn', 'LOCKDOWN: No valid auth token found');
+        isExtensionUnlocked = false;
+        return false;
+      }
+
+      // Call Backend Authority
+      const response = await callEdgeFunction('auth-status');
+      const result = response.data || {};
+
+      if (!response.error && result.success && result.user) {
+        log('success', 'Session verified', { userId: result.user.id, email: result.user.email });
+
+        // SYNC: Update Extension Storage with fresh data
+        await chrome.storage.local.set({
+          userId: result.user.id,
+          userPlan: result.user.plan,
+          userCredits: result.user.credits,
+          userEmail: result.user.email,
+          authTimestamp: Date.now()
+        });
+
+        isExtensionUnlocked = true;
+        lastAuthCheck = Date.now();
+        return true;
+      }
+
+      // Auth failed
+      log('warn', 'LOCKDOWN: Invalid session', { status: response.status, error: result.error || response.error });
+      
+      // If it's a network error or edge function timeout, and we JUST got this token from the web app
+      const storage = await chrome.storage.local.get('authTimestamp');
+      const justSynced = storage.authTimestamp && (Date.now() - storage.authTimestamp < 60 * 1000);
+      
+      if (response.error && justSynced) {
+         log('info', 'Edge function failed but token was just synced from web app. Trusting it temporarily.');
+         isExtensionUnlocked = true;
+         lastAuthCheck = Date.now();
+         return true;
+      }
+      
+      isExtensionUnlocked = false;
+      return false;
+
+    } catch (e) {
+      log('error', 'Auth Check Error', { message: e.message });
+
+      const storage = await chrome.storage.local.get('authTimestamp');
+      const justSynced = storage.authTimestamp && (Date.now() - storage.authTimestamp < 60 * 1000);
+
+      // If network error but we have recent valid auth, stay unlocked temporarily
+      if ((isExtensionUnlocked && Date.now() - lastAuthCheck < 30 * 60 * 1000) || justSynced) {
+        log('info', 'Network error but using cached/synced auth status');
+        isExtensionUnlocked = true;
+        lastAuthCheck = Date.now();
+        return true;
+      }
+
+      isExtensionUnlocked = false;
+      return false;
+    }
+  }
+
   // Public API
   return {
     getRemoteConfig,
@@ -402,7 +482,12 @@ const AuthHelper = (() => {
     callEdgeFunction,
     getCurrentUser,
     promptLogin,
-    SUPABASE_URL
+    SUPABASE_URL,
+    verifyAuthStatus,
+    isUnlocked: () => isExtensionUnlocked,
+    setUnlocked: (val) => { isExtensionUnlocked = val; },
+    getLastCheck: () => lastAuthCheck,
+    setLastCheck: (val) => { lastAuthCheck = val; }
   };
 })();
 
@@ -410,3 +495,4 @@ const AuthHelper = (() => {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = AuthHelper;
 }
+

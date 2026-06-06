@@ -12,7 +12,10 @@ export interface ExtensionFile {
 export const extensionFiles = [
   // Root files
   'manifest.json',
-  'background.js',
+  'background/index.js',
+  'background/message-router.js',
+  'background/alarm-handler.js',
+  'background/listing-runner.js',
   'popup.html',
   'popup.js',
   'popup.css',
@@ -21,26 +24,34 @@ export const extensionFiles = [
   // Common folder
   'common/analytics.js',
   'common/config.js',
+  'common/constants.js',
+  'common/retry-helper.js',
+  'common/api-client.js',
+  'common/sync-utils.js',
   'common/description-generator.js',
   'common/editor-tools.js',
   'common/editor_core.js',
   'common/message-handler.js',
   'common/performance.js',
   'common/storage.js',
-  'common/sync_utils.js',
   'common/ui.js',
   'common/undo-manager.js',
   'common/auth-helper.js',
   'common/amazon_image_extractor.js',
   'common/full_view_image_extractor.js',
+  'common/image-renderer.js',
   
   // Content scripts
   'content_scripts/amazon_injector.js',
-  'content_scripts/auth_sync.js',
+  'content_scripts/bridge.js',
   'content_scripts/description_paster.js',
   'content_scripts/ebay_lister.js',
   'content_scripts/image_editor.js',
   'content_scripts/walmart_injector.js',
+  'content_scripts/ebay_prelist.js',
+  'content_scripts/ebay_orders_sync_trigger.js',
+  'content_scripts/ebay_order_detail_scraper.js',
+  'content_scripts/amazon_fulfiller.js',
   
   // UI folder
   'ui/editor-popup.html',
@@ -49,6 +60,11 @@ export const extensionFiles = [
   'ui/panel.html',
   'ui/panel.css',
   'ui/panel.js',
+  'ui/calculator.js',
+  'ui/new_title_styles.css',
+  'ui/popup_fix.css',
+  'ui/product-details-popup.html',
+  'ui/product-details-popup.css',
   
   // Src folder
   'src/automation-clean.js',
@@ -61,6 +77,7 @@ export const extensionFiles = [
   'icons/icon128.png',
   
   // Assets
+  'assets/logo.png',
   'assets/watermark.png',
   'assets/free shipping.png',
   'assets/stickers/best.png',
