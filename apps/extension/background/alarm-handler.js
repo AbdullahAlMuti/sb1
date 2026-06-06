@@ -5,8 +5,7 @@
 
 const EBAY_ORDER_SYNC_INTERVAL = 15 * 60 * 1000; // 15 minutes
 
-const getUrls = () => typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.URLS : null;
-const getApiKeys = () => typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.API_KEYS : null;
+// getUrls and getApiKeys are declared globally in background/index.js
 
 async function syncSettings() {
   try {

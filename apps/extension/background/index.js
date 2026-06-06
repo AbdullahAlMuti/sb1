@@ -16,6 +16,10 @@
 // 11. message-router.js           - Registers the single main runtime.onMessage router layer
 // ═══════════════════════════════════════════════════════════
 
+// Global helper functions to be shared across imported scripts
+const getUrls = () => typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.URLS : null;
+const getApiKeys = () => typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.API_KEYS : null;
+
 importScripts(
   '../common/config.js',
   '../common/constants.js',

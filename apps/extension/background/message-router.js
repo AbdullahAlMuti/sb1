@@ -48,8 +48,7 @@ function createLogger(prefix) {
 const authLog = createLogger('Auth');
 const syncLog = createLogger('Sync');
 
-const getUrls = () => typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.URLS : null;
-const getApiKeys = () => typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.API_KEYS : null;
+// getUrls and getApiKeys are declared globally in background/index.js
 
 // Register the single message listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

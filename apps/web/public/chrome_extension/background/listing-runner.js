@@ -3,8 +3,7 @@
  * Manages the background state machine for bulk listing items from Amazon to eBay.
  */
 
-const getUrls = () => typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.URLS : null;
-const getApiKeys = () => typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.API_KEYS : null;
+// getUrls and getApiKeys are declared globally in background/index.js
 
 const bulkState = {
     urls: [],

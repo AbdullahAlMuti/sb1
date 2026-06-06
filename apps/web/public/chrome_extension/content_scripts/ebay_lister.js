@@ -594,6 +594,137 @@ window.debugSkuFields = function () {
 };
 
 // ─────────────────────────────────────────────
+// 🔄 Continuous Condition Monitor for Listing Pages
+// ─────────────────────────────────────────────
+let conditionCheckInterval = null;
+
+function startConditionMonitor() {
+  if (conditionCheckInterval) return;
+  
+  const url = window.location.href;
+  if (url.includes('/lstng') || url.includes('draftId=') || url.includes('mode=AddItem')) {
+    console.log("👁️ Starting condition monitor for listing page...");
+    
+    conditionCheckInterval = setInterval(async () => {
+      const conditionBtn = document.querySelector('button.condition-recommendation-value.btn');
+      if (conditionBtn) {
+        console.log("🎯 Condition button detected by monitor, clicking...");
+        clearInterval(conditionCheckInterval);
+        conditionCheckInterval = null;
+        conditionBtn.click();
+        await wait(800);
+        await selectNewConditionFallback();
+      }
+    }, 2000);
+    
+    // Stop monitoring after 30 seconds
+    setTimeout(() => {
+      if (conditionCheckInterval) {
+        clearInterval(conditionCheckInterval);
+        conditionCheckInterval = null;
+        console.log("⏱️ Condition monitor timeout - stopped watching");
+      }
+    }, 30000);
+  }
+}
+
+function stopConditionMonitor() {
+  if (conditionCheckInterval) {
+    clearInterval(conditionCheckInterval);
+    conditionCheckInterval = null;
+  }
+}
+
+async function selectNewConditionFallback() {
+  console.log("🎯 Selecting 'New' condition (condition-1000) as fallback...");
+  
+  // Try multiple selectors for condition-1000 (New)
+  const selectors = [
+    'input[value="1000"]',
+    'input[id*="condition-1000"]',
+    'input.radio_control[id*="condition-1000"]',
+    '[data-value="1000"]',
+    'input[name*="condition"][value="1000"]',
+    'label[for*="condition-1000"]',
+    '[id*="condition-side-pane"] input[value="1000"]',
+    '[id*="condition-dialog"] input[value="1000"]',
+    'input[type="radio"][value="1000"]'
+  ];
+  
+  for (const selector of selectors) {
+    const element = document.querySelector(selector);
+    if (element) {
+      element.click();
+      console.log(`✅ Selected 'New' condition using: ${selector}`);
+      await wait(500);
+      
+      // Look for confirm/apply button
+      await clickConditionConfirmButton();
+      return true;
+    }
+  }
+  
+  // Fallback: text-based search for "New" option
+  const allLabels = document.querySelectorAll('label, span, div[role="radio"], div[role="option"]');
+  for (const label of allLabels) {
+    const text = label.textContent?.trim().toLowerCase();
+    if (text === 'new' || text === 'new with tags' || text === 'brand new') {
+      const input = label.querySelector('input') || 
+                    document.querySelector(`input[id="${label.getAttribute('for')}"]`) ||
+                    label.closest('[role="radio"]');
+      if (input) {
+        input.click();
+        console.log("✅ Selected 'New' condition via label text match");
+        await wait(500);
+        await clickConditionConfirmButton();
+        return true;
+      }
+      label.click();
+      console.log("✅ Clicked 'New' label directly");
+      await wait(500);
+      await clickConditionConfirmButton();
+      return true;
+    }
+  }
+  
+  console.log("⚠️ Could not find 'New' condition option in fallback");
+  return false;
+}
+
+async function clickConditionConfirmButton() {
+  await wait(300);
+  
+  const confirmSelectors = [
+    'button[class*="confirm"]',
+    'button[class*="apply"]',
+    'button[class*="save"]',
+    'button[class*="done"]',
+    '[data-test*="confirm"]',
+    '[data-test*="apply"]'
+  ];
+  
+  for (const selector of confirmSelectors) {
+    const btn = document.querySelector(selector);
+    if (btn) {
+      btn.click();
+      console.log(`✅ Clicked confirm button: ${selector}`);
+      return;
+    }
+  }
+  
+  // Text-based fallback
+  const buttons = document.querySelectorAll('button');
+  for (const btn of buttons) {
+    const text = btn.textContent?.toLowerCase();
+    if (text?.includes('confirm') || text?.includes('apply') || text?.includes('done') || text?.includes('save')) {
+      btn.click();
+      console.log("✅ Clicked confirm button (text match)");
+      return;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
 // 🔁 Auto Start - Automatic Scenario Detection & Execution
 // ─────────────────────────────────────────────
 async function attemptAutoFill() {
