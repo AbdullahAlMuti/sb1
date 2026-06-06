@@ -299,17 +299,17 @@ class ImageUploadSystem {
     }
     
     async urlToFile(url, filename) {
-        try {
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            const blob = await response.blob();
-            return new File([blob], filename, { type: blob.type });
-        } catch (error) {
-            this.logger.error(`❌ Failed to fetch URL ${url}:`, error);
-            return null;
-        }
+        return new Promise((resolve) => {
+            chrome.runtime.sendMessage({ action: "FETCH_IMAGE_AS_BASE64", url: url }, (response) => {
+                if (response && response.success) {
+                    const file = this.dataUrlToFile(response.base64, filename);
+                    resolve(file);
+                } else {
+                    this.logger.error(`❌ Failed to fetch URL via background (${url}):`, response?.error);
+                    resolve(null);
+                }
+            });
+        });
     }
 
     async executeUploadStrategies(files) {

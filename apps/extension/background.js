@@ -1669,6 +1669,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true });
     return true;
   }
+
+  if (request.action === 'FETCH_IMAGE_AS_BASE64') {
+    (async () => {
+      try {
+        const response = await fetch(request.url);
+        if (!response.ok) throw new Error('HTTP error ' + response.status);
+        const blob = await response.blob();
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => {
+          sendResponse({ success: true, base64: reader.result });
+        };
+        reader.onerror = () => {
+          sendResponse({ success: false, error: 'Failed to read blob' });
+        };
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
+    return true;
+  }
+
 });
 
 async function generateTitleWithGemini(apiKey, promptTemplate, productData, modelName = "gemini-1.5-flash") {
