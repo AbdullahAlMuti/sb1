@@ -1676,14 +1676,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const response = await fetch(request.url);
         if (!response.ok) throw new Error('HTTP error ' + response.status);
         const blob = await response.blob();
-        const reader = new FileReader();
-        reader.readAsDataURL(blob);
-        reader.onloadend = () => {
-          sendResponse({ success: true, base64: reader.result });
-        };
-        reader.onerror = () => {
-          sendResponse({ success: false, error: 'Failed to read blob' });
-        };
+        if (typeof FileReader !== 'undefined') {
+          const reader = new FileReader();
+          reader.readAsDataURL(blob);
+          reader.onloadend = () => {
+            sendResponse({ success: true, base64: reader.result });
+          };
+          reader.onerror = () => {
+            sendResponse({ success: false, error: 'Failed to read blob' });
+          };
+        } else {
+          // Fallback using ArrayBuffer (pure JS, safe in any service worker context)
+          const buffer = await blob.arrayBuffer();
+          let binary = '';
+          const bytes = new Uint8Array(buffer);
+          for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          const base64String = btoa(binary);
+          sendResponse({ success: true, base64: `data:${blob.type};base64,${base64String}` });
+        }
       } catch (err) {
         sendResponse({ success: false, error: err.message });
       }

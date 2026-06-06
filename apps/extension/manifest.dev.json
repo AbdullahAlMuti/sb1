@@ -11,6 +11,11 @@
     "alarms"
   ],
   "host_permissions": [
+    "*://*.media-amazon.com/*",
+    "*://*.ssl-images-amazon.com/*",
+    "*://*.images-amazon.com/*",
+    "*://*.walmartimages.com/*",
+    "*://*.walmartimages.ca/*",
     "https://www.ebay.com/*",
     "*://amazon.com/*",
     "*://*.amazon.com/*",
