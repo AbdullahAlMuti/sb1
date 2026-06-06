@@ -99,8 +99,7 @@
     {
       "matches": [
         "*://www.ebay.com/*/sell*",
-        "*://www.ebay.com/sl/*",
-        "*://www.ebay.com/lstng*"
+        "*://www.ebay.com/sl/*"
       ],
       "js": [
         "common/config.js",
@@ -112,6 +111,21 @@
         "src/automation-clean.js",
         "src/image-uploader.js",
         "src/item-filler.js",
+        "content_scripts/ebay_lister.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://www.ebay.com/lstng*"
+      ],
+      "js": [
+        "common/config.js",
+        "common/performance.js",
+        "common/storage.js",
+        "common/sync_utils.js",
+        "common/ui.js",
+        "common/analytics.js",
         "content_scripts/ebay_lister.js"
       ],
       "run_at": "document_idle"
