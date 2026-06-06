@@ -113,7 +113,7 @@
         "src/automation-clean.js",
         "src/image-uploader.js",
         "src/item-filler.js",
-        "content_scripts/ebay_lister.js"
+        "content_scripts/ebay_prelist.js"
       ],
       "run_at": "document_idle"
     },
