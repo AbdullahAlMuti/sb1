@@ -67,6 +67,7 @@
         "common/undo-manager.js",
         "common/editor-tools.js",
         "common/image-renderer.js",
+        "ui/calculator.js",
         "common/amazon_image_extractor.js",
         "common/full_view_image_extractor.js",
         "content_scripts/amazon_injector.js",
@@ -92,6 +93,7 @@
         "common/undo-manager.js",
         "common/editor-tools.js",
         "common/image-renderer.js",
+        "ui/calculator.js",
         "content_scripts/walmart_injector.js",
         "content_scripts/image_editor.js"
       ],
@@ -199,6 +201,7 @@
         "ui/editor-popup.html",
         "ui/editor_frame.html",
         "ui/editor-popup.css",
+        "ui/calculator.js",
         "common/editor_core.js",
         "assets/logo.png",
         "assets/watermark.png",
