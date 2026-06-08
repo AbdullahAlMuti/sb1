@@ -1106,48 +1106,83 @@ function initActionButtons() {
 
   if (optiListBtn) {
     optiListBtn.addEventListener('click', async () => {
+      const originalText = optiListBtn.textContent;
+      optiListBtn.disabled = true;
+      optiListBtn.textContent = 'Processing...';
       try {
-        // Gather required payload for background START_OPTILIST
         const selected = await chrome.storage.local.get(['selectedEbayTitle', 'currentProduct', 'snipedData']);
         const selectedTitle = selected.selectedEbayTitle;
-        const product = selected.currentProduct || selected.snipedData || {};
+        const storedProduct = selected.currentProduct || selected.snipedData || {};
 
         const sku = document.getElementById('sku-input')?.value?.trim();
         const finalPrice = document.getElementById('sell-it-for-input')?.value?.trim();
-        const amazonPrice = (product.price || '').toString().trim();
 
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        const productURL = tab?.url || product.url || product.amazonLink || '';
+        const isAmazon = tab?.url?.includes('amazon.com') || tab?.url?.includes('amazon.ca');
 
         if (!selectedTitle) throw new Error('No title selected. Generate & select a title first.');
         if (!sku) throw new Error('Missing SKU. Click Generate SKU first.');
 
-        const messageData = {
-          action: 'START_OPTILIST',
+        let scrapedData = null;
+        let scrapedDetails = null;
+
+        if (isAmazon && tab?.id) {
+          optiListBtn.textContent = 'Scraping...';
+          const scrapeResp = await new Promise(resolve => {
+            chrome.tabs.sendMessage(tab.id, { action: 'PREPARE_EBAY_LISTING' }, resp => {
+              if (chrome.runtime.lastError) { resolve(null); return; }
+              resolve(resp);
+            });
+          });
+          if (scrapeResp?.success) {
+            scrapedData = scrapeResp.fullData;
+            scrapedDetails = scrapeResp.productDetails;
+          } else {
+            // Handler updated currentProduct before responding — re-read to get fresh variant data
+            const fresh = await chrome.storage.local.get('currentProduct');
+            if (fresh.currentProduct?.hasVariants) scrapedData = fresh.currentProduct;
+          }
+        }
+
+        const productURL = tab?.url || storedProduct.url || storedProduct.amazonLink || '';
+        const amazonPrice = (scrapedData?.price || storedProduct.price || '').toString().trim();
+        const asin = scrapedData?.asin || storedProduct.asin || storedProduct.ASIN || '';
+
+        const ebayProduct = {
+          ...storedProduct,
+          ...(scrapedData || {}),
           title: selectedTitle,
-          sku,
-          finalPrice,
+          ebaySku: sku,
+          price: finalPrice || scrapedData?.price || storedProduct.price,
           amazonPrice,
-          productURL,
-          asin: product.asin || product.ASIN,
-          mainImage: product.image || product.imageUrl || product.mainImage || product.amazonImage || ''
+          url: productURL,
+          asin,
+          quantity: 1,
+          useStoredWatermarkedImages: true,
+          ...(scrapedDetails ? {
+            specs: {
+              ...(scrapedDetails.brand      ? { Brand: scrapedDetails.brand }           : {}),
+              ...(scrapedDetails.model      ? { 'Model Number': scrapedDetails.model }  : {}),
+              ...(scrapedDetails.color      ? { Color: scrapedDetails.color }           : {}),
+              ...(scrapedDetails.dimensions ? { Dimensions: scrapedDetails.dimensions } : {}),
+              ...(scrapedDetails.weight     ? { Weight: scrapedDetails.weight }         : {}),
+            }
+          } : {})
         };
 
-        chrome.runtime.sendMessage(messageData, (response) => {
-          if (chrome.runtime.lastError) {
-            console.error('[Panel] START_OPTILIST send error:', chrome.runtime.lastError);
-            if (typeof UIHelper !== 'undefined') UIHelper.showToast(chrome.runtime.lastError.message, 'error');
-            return;
-          }
-          if (response?.success) {
-            if (typeof UIHelper !== 'undefined') UIHelper.showToast('Opti-List started', 'success');
-          } else {
-            if (typeof UIHelper !== 'undefined') UIHelper.showToast(response?.error || 'Failed to start Opti-List', 'error');
-          }
+        chrome.runtime.sendMessage({
+          action: 'import_ebay',
+          product: ebayProduct,
+          uploadType: 'classic'
         });
+
+        if (typeof UIHelper !== 'undefined') UIHelper.showToast('Listing started', 'success');
       } catch (err) {
         console.error('[Panel] Opti-List error:', err);
         if (typeof UIHelper !== 'undefined') UIHelper.showToast(err.message || 'Opti-List failed', 'error');
+      } finally {
+        optiListBtn.disabled = false;
+        optiListBtn.textContent = originalText;
       }
     });
   }
@@ -1166,6 +1201,22 @@ function initActionButtons() {
 
   if (generateSkuBtn) {
     generateSkuBtn.addEventListener('click', generateSKU);
+  }
+
+  const skuPrefixInput = document.getElementById('sku-prefix');
+  if (skuPrefixInput) {
+    skuPrefixInput.addEventListener('input', () => {
+      generateSKU();
+      chrome.storage.local.get(['currentProduct'], (res) => {
+        const product = res.currentProduct || {};
+        if (product.variants && product.variants.length > 0) {
+          if (typeof _renderPanelCombinations === 'function') {
+            _renderPanelCombinations(product);
+          }
+          chrome.storage.local.set({ currentProduct: product });
+        }
+      });
+    });
   }
 
   // Scrape All Data button
@@ -1342,6 +1393,17 @@ function runCalculation() {
   }
 
   updateBreakdownDisplay(result);
+
+  // Recalculate variations using new settings
+  chrome.storage.local.get(['currentProduct'], (res) => {
+    const product = res.currentProduct || {};
+    if (product.variants && product.variants.length > 0) {
+      if (typeof _renderPanelCombinations === 'function') {
+        _renderPanelCombinations(product);
+      }
+      chrome.storage.local.set({ currentProduct: product });
+    }
+  });
 }
 
 function updateBreakdownDisplay(result) {
@@ -1454,6 +1516,310 @@ function initPanelControls() {
     });
   }
 }
+
+// Sidebar Extended Mode is handled by amazon_injector.js showSidebarExtended()
+// This IIFE is intentionally removed — logic lives in the content script.
+
+(function initSidebarExtendedMode() {
+  return; // no-op: handled by amazon_injector.showSidebarExtended
+  const params = new URLSearchParams(
+    (typeof location !== 'undefined' ? location.search : '') ||
+    (document.currentScript && document.currentScript.ownerDocument &&
+      document.currentScript.ownerDocument.location &&
+      document.currentScript.ownerDocument.location.search) || ''
+  );
+  if (params.get('source') !== 'sidebar') return;
+
+  chrome.storage.local.get(['currentProduct'], (result) => {
+    const product = result.currentProduct || {};
+    _renderExtendedEditor(product);
+  });
+
+  function _renderExtendedEditor(product) {
+    const wrap = document.getElementById('ss-extended-editor');
+    if (!wrap) return;
+    wrap.style.display = 'block';
+
+    // Populate fields
+    const extTitle = document.getElementById('ext-title');
+    const extPrice = document.getElementById('ext-price');
+    const extSku   = document.getElementById('ext-sku');
+    const extQty   = document.getElementById('ext-qty');
+
+    if (extTitle) extTitle.value = product.title || '';
+    if (extPrice) extPrice.value = product.price || '';
+    if (extSku)   extSku.value   = product.ebaySku || '';
+    if (extQty)   extQty.value   = product.quantity || 1;
+
+    // Mirror title into main title display
+    const mainTitle = document.getElementById('ai-generated-title');
+    if (mainTitle && product.title) {
+      mainTitle.textContent = product.title;
+      mainTitle.dispatchEvent(new Event('input'));
+    }
+
+    // Render variations
+    const variations = product.variations || [];
+    if (variations.length > 0) {
+      const varWrap = document.getElementById('ext-variations-wrap');
+      if (varWrap) varWrap.style.display = 'block';
+      _renderPanelVariations(variations, product);
+      _renderPanelCombinations(product);
+    }
+
+    // Render item specifics/specs
+    const specs = product.specs || product.specifications || {};
+    const specKeys = Object.keys(specs);
+    if (specKeys.length > 0) {
+      const specWrap = document.getElementById('ext-specs-wrap');
+      const specContainer = document.getElementById('ext-specs');
+      if (specWrap) specWrap.style.display = 'block';
+      if (specContainer) {
+        specContainer.innerHTML = '';
+        specKeys.forEach(key => {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;gap:8px;margin-bottom:4px;align-items:center;';
+          const lbl = document.createElement('span');
+          lbl.textContent = key;
+          lbl.style.cssText = 'flex:0 0 140px;font-size:11px;color:var(--ss-muted,#94a3b8);';
+          const inp = document.createElement('input');
+          inp.type = 'text';
+          inp.value = specs[key] || '';
+          inp.dataset.specKey = key;
+          inp.style.cssText = 'flex:1;padding:4px 6px;border-radius:4px;border:1px solid var(--ss-border,#334155);background:var(--ss-bg,#0f172a);color:inherit;font-size:12px;';
+          inp.addEventListener('input', () => _saveExtendedEdits());
+          row.appendChild(lbl);
+          row.appendChild(inp);
+          specContainer.appendChild(row);
+        });
+      }
+    }
+
+    // Wire edit write-back
+    [extTitle, extPrice, extSku, extQty].forEach(el => {
+      if (el) el.addEventListener('input', () => _saveExtendedEdits());
+    });
+
+    // Mirror ext-title → main title display on input
+    if (extTitle) {
+      extTitle.addEventListener('input', () => {
+        if (mainTitle) mainTitle.textContent = extTitle.value;
+      });
+    }
+
+    // Wire Upload button to use extended editor state (skip Amazon scrape)
+    const uploadBtn = document.getElementById('opti-list-btn');
+    if (uploadBtn) {
+      uploadBtn.addEventListener('click', _handleExtendedUpload, { once: false });
+    }
+  }
+
+  function _renderPanelVariations(variations, product) {
+    const container = document.getElementById('ext-variations');
+    if (!container) return;
+    container.innerHTML = '';
+
+    variations.forEach((dim, dIdx) => {
+      const dimEl = document.createElement('div');
+      dimEl.style.cssText = 'margin-bottom:8px;padding:8px;border:1px solid var(--ss-border,#334155);border-radius:6px;';
+
+      const header = document.createElement('div');
+      header.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:6px;';
+
+      const dimLabel = document.createElement('input');
+      dimLabel.type = 'text';
+      dimLabel.value = dim.label || '';
+      dimLabel.placeholder = 'Dimension (e.g. Color)';
+      dimLabel.style.cssText = 'flex:1;padding:4px 6px;border-radius:4px;border:1px solid var(--ss-border,#334155);background:var(--ss-bg,#0f172a);color:inherit;font-size:12px;font-weight:600;';
+      dimLabel.addEventListener('input', () => {
+        variations[dIdx].label = dimLabel.value;
+        _saveExtendedEdits();
+      });
+
+      header.appendChild(dimLabel);
+      dimEl.appendChild(header);
+
+      const valGrid = document.createElement('div');
+      valGrid.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;';
+      (dim.values || []).forEach((val, vIdx) => {
+        const chip = document.createElement('span');
+        chip.textContent = val;
+        chip.style.cssText = 'padding:2px 8px;border-radius:12px;background:var(--ss-bg,#0f172a);border:1px solid var(--ss-border,#334155);font-size:11px;color:var(--ss-muted,#94a3b8);';
+        valGrid.appendChild(chip);
+      });
+      dimEl.appendChild(valGrid);
+      container.appendChild(dimEl);
+    });
+  }
+
+  function _renderPanelCombinations(product) {
+    const container = document.getElementById('ext-variations');
+    if (!container) return;
+
+    // Find or create combinations wrapper
+    let comboWrap = document.getElementById('ext-combos-wrap');
+    if (!comboWrap) {
+      comboWrap = document.createElement('div');
+      comboWrap.id = 'ext-combos-wrap';
+      comboWrap.style.cssText = 'margin-top:12px;padding-top:12px;border-top:1px solid var(--ss-border,#334155);';
+      
+      const title = document.createElement('div');
+      title.textContent = 'Variation Combinations (Read-only)';
+      title.style.cssText = 'font-size:11px;font-weight:600;color:var(--ss-muted,#94a3b8);margin-bottom:8px;';
+      comboWrap.appendChild(title);
+      container.appendChild(comboWrap);
+    } else {
+      // Clear all items except title
+      const title = comboWrap.firstChild;
+      comboWrap.innerHTML = '';
+      if (title) comboWrap.appendChild(title);
+    }
+
+    const variants = product.variants || [];
+    if (!variants.length) return;
+
+    const calcSettings = {
+      taxPercent: parseFloat(document.getElementById('tax-percent')?.value) || 9,
+      trackingFee: parseFloat(document.getElementById('tracking-fee')?.value) || 0.20,
+      ebayFeePercent: parseFloat(document.getElementById('ebay-fee-percent')?.value) || 20,
+      promoFeePercent: parseFloat(document.getElementById('promo-fee-percent')?.value) || 10,
+      desiredProfit: parseFloat(document.getElementById('desired-profit')?.value) || 0,
+      paymentFixedFee: parseFloat(document.getElementById('payment-fixed-fee')?.value) || 0.30
+    };
+
+    const skuPrefix = document.getElementById('sku-prefix')?.value || 'AB';
+    const parentAsin = product.asin || product.ASIN || product.parentAsin || '';
+
+    variants.forEach((v) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;flex-direction:column;gap:4px;padding:6px;background:var(--ss-bg-alt,#1e293b);border-radius:6px;margin-bottom:6px;font-size:11px;border:1px solid var(--ss-border,#334155);';
+
+      // 1. Attributes block
+      const attrTexts = Object.entries(v.attrs || {}).map(([k, val]) => {
+        const valueName = (val && typeof val === 'object') ? (val.productName || '') : String(val || '');
+        return `${k}: ${valueName}`;
+      });
+      const attrHeader = document.createElement('div');
+      attrHeader.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;font-weight:600;';
+      attrTexts.forEach(txt => {
+        const badge = document.createElement('span');
+        badge.textContent = txt;
+        badge.style.cssText = 'padding:1px 6px;border-radius:4px;background:var(--ss-border,#334155);color:inherit;';
+        attrHeader.appendChild(badge);
+      });
+      row.appendChild(attrHeader);
+
+      // Calculate marked-up price & build readable SKU
+      const markedupPrice = window.SSPricingEngine.calculatePrice(v.price, calcSettings);
+      const readableSku = window.SSSkuEngine.buildReadable(parentAsin, v.attrs, skuPrefix);
+
+      // Save fields back into the variant object
+      v.ebayPrice = markedupPrice;
+      v.sku = readableSku;
+
+      // 2. Info block: SKU and Price side-by-side
+      const info = document.createElement('div');
+      info.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-top:2px;';
+      
+      const skuLabel = document.createElement('span');
+      skuLabel.textContent = `SKU: ${readableSku}`;
+      skuLabel.style.cssText = 'font-family:monospace;color:var(--ss-muted,#94a3b8);flex:1;';
+      
+      const priceLabel = document.createElement('span');
+      priceLabel.textContent = `eBay Price: $${markedupPrice.toFixed(2)}`;
+      priceLabel.style.cssText = 'font-weight:600;color:#22c55e;';
+
+      info.appendChild(skuLabel);
+      info.appendChild(priceLabel);
+      row.appendChild(info);
+
+      comboWrap.appendChild(row);
+    });
+  }
+
+  function _saveExtendedEdits() {
+    chrome.storage.local.get(['currentProduct'], (result) => {
+      const product = result.currentProduct || {};
+
+      const extTitle = document.getElementById('ext-title');
+      const extPrice = document.getElementById('ext-price');
+      const extSku   = document.getElementById('ext-sku');
+      const extQty   = document.getElementById('ext-qty');
+
+      if (extTitle && extTitle.value) product.title = extTitle.value;
+      if (extPrice && extPrice.value) product.price = extPrice.value;
+      if (extSku   && extSku.value)   product.ebaySku = extSku.value;
+      if (extQty   && extQty.value)   product.quantity = parseInt(extQty.value, 10) || 1;
+
+      // Collect spec edits
+      const specInputs = document.querySelectorAll('#ext-specs input[data-spec-key]');
+      if (specInputs.length > 0) {
+        const specs = product.specs || product.specifications || {};
+        specInputs.forEach(inp => { specs[inp.dataset.specKey] = inp.value; });
+        product.specs = specs;
+      }
+
+      chrome.storage.local.set({ currentProduct: product });
+    });
+  }
+
+  async function _handleExtendedUpload(e) {
+    // This listener is added on top of existing opti-list-btn handler.
+    // Existing handler already sends import_ebay. Here we just ensure
+    // latest edits are flushed to storage before it fires.
+    // Stop propagation so existing handler reads fresh storage data.
+    e.stopImmediatePropagation();
+
+    const btn = document.getElementById('opti-list-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Uploading…'; }
+
+    try {
+      await new Promise(resolve => {
+        _saveExtendedEdits();
+        setTimeout(resolve, 80); // wait for storage write
+      });
+
+      const result = await new Promise(resolve =>
+        chrome.storage.local.get(['currentProduct', 'selectedEbayTitle'], resolve)
+      );
+      const product = result.currentProduct || {};
+      const extTitle = document.getElementById('ext-title');
+      const extSku   = document.getElementById('ext-sku');
+      const extPrice = document.getElementById('ext-price');
+
+      const finalTitle = (extTitle && extTitle.value.trim()) ||
+                         result.selectedEbayTitle ||
+                         product.title || '';
+      const sku = (extSku && extSku.value.trim()) || product.ebaySku || '';
+
+      if (!finalTitle) { alert('No title. Fill title first.'); return; }
+      if (!sku) { alert('No SKU. Fill SKU first.'); return; }
+
+      const ebayProduct = {
+        ...product,
+        title: finalTitle,
+        ebaySku: sku,
+        price: (extPrice && extPrice.value.trim()) || product.price,
+        quantity: parseInt(document.getElementById('ext-qty')?.value || '1', 10) || 1,
+        useStoredWatermarkedImages: false
+      };
+
+      chrome.runtime.sendMessage({
+        action: 'import_ebay',
+        product: ebayProduct,
+        uploadType: 'classic'
+      });
+
+      if (btn) btn.textContent = '✅ Opened eBay…';
+      setTimeout(() => {
+        if (btn) { btn.disabled = false; btn.textContent = 'Upload'; }
+      }, 3000);
+    } catch (err) {
+      console.error('[Panel] Extended upload error:', err);
+      if (btn) { btn.disabled = false; btn.textContent = 'Upload'; }
+    }
+  }
+})();
 
 // Listen for progress messages in case panel is running in a different context (e.g. popup/sidepanel)
 chrome.runtime.onMessage?.addListener((request) => {

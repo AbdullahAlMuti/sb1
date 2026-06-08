@@ -811,49 +811,52 @@ export type Database = {
       }
       listing_variations: {
         Row: {
-          amazon_price: number | null
           attributes: Json
           created_at: string
-          ebay_price: number | null
+          currency: string
+          ebay_sku_encoded: string | null
+          final_price: number
           id: string
-          image_url: string | null
           listing_id: string
-          price: number | null
-          quantity: number | null
-          sku: string | null
-          sort_order: number | null
-          status: string
+          parent_asin: string | null
+          raw_supplier_price: number | null
+          sku: string
+          stock_quantity: number
           updated_at: string
+          user_id: string | null
+          variant_asin: string | null
         }
         Insert: {
-          amazon_price?: number | null
           attributes?: Json
           created_at?: string
-          ebay_price?: number | null
+          currency?: string
+          ebay_sku_encoded?: string | null
+          final_price: number
           id?: string
-          image_url?: string | null
           listing_id: string
-          price?: number | null
-          quantity?: number | null
-          sku?: string | null
-          sort_order?: number | null
-          status?: string
+          parent_asin?: string | null
+          raw_supplier_price?: number | null
+          sku: string
+          stock_quantity?: number
           updated_at?: string
+          user_id?: string | null
+          variant_asin?: string | null
         }
         Update: {
-          amazon_price?: number | null
           attributes?: Json
           created_at?: string
-          ebay_price?: number | null
+          currency?: string
+          ebay_sku_encoded?: string | null
+          final_price?: number
           id?: string
-          image_url?: string | null
           listing_id?: string
-          price?: number | null
-          quantity?: number | null
-          sku?: string | null
-          sort_order?: number | null
-          status?: string
+          parent_asin?: string | null
+          raw_supplier_price?: number | null
+          sku?: string
+          stock_quantity?: number
           updated_at?: string
+          user_id?: string | null
+          variant_asin?: string | null
         }
         Relationships: [
           {

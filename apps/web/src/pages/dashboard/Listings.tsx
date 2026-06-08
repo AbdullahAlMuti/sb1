@@ -32,6 +32,8 @@ import {
   ArrowUpRight,
   BarChart3,
   Layers,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { z } from "zod";
 import { Button } from "@repo/ui/components/ui/button";
@@ -103,6 +105,18 @@ interface DateRange {
   to: Date | undefined;
 }
 
+interface Variation {
+  id: string;
+  sku: string;
+  ebay_sku_encoded?: string | null;
+  final_price: number | null;
+  raw_supplier_price: number | null;
+  stock_quantity: number | null;
+  attributes: Record<string, { productName?: string }> | null;
+  variant_asin: string | null;
+  image_url?: string | null;
+}
+
 interface Listing {
   id: string;
   created_at: string;
@@ -118,6 +132,10 @@ interface Listing {
   auto_order_enabled: boolean | null;
   sourceMarketplace?: string | null;
   source_marketplace?: string | null;
+  has_variations?: boolean | null;
+  variation_count?: number | null;
+  price_low?: number | null;
+  price_high?: number | null;
   // Legacy/backfill fields (older rows may populate these instead)
   asin?: string | null;
   price?: number | null;
@@ -190,6 +208,15 @@ function extractAsinFromAmazonUrl(url: string | null | undefined): string | null
   } catch {
     const m = String(url).match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i);
     return m?.[1]?.toUpperCase() ?? null;
+  }
+}
+
+function decodeSku(encoded: string | null | undefined, fallback: string): string {
+  if (!encoded) return fallback;
+  try {
+    return decodeURIComponent(escape(window.atob(encoded)));
+  } catch {
+    return fallback;
   }
 }
 
@@ -395,6 +422,32 @@ export default function Listings() {
   const [dateRange, setDateRange] = useState<DateRange>({ from: undefined, to: undefined });
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 25;
+
+  // Variation expand state — lazy-loaded per listing
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [variationsByListing, setVariationsByListing] = useState<Record<string, Variation[]>>({});
+  const [loadingVars, setLoadingVars] = useState<Set<string>>(new Set());
+
+  const toggleExpand = async (listing: Listing) => {
+    const next = new Set(expanded);
+    if (next.has(listing.id)) {
+      next.delete(listing.id);
+      setExpanded(next);
+      return;
+    }
+    next.add(listing.id);
+    setExpanded(next);
+    if (!variationsByListing[listing.id] && listing.has_variations) {
+      setLoadingVars(p => { const n = new Set(p); n.add(listing.id); return n; });
+      const { data } = await supabase
+        .from('listing_variations')
+        .select('id, sku, ebay_sku_encoded, final_price, raw_supplier_price, stock_quantity, attributes, variant_asin, image_url')
+        .eq('listing_id', listing.id)
+        .order('created_at', { ascending: true });
+      setVariationsByListing(p => ({ ...p, [listing.id]: (data ?? []) as Variation[] }));
+      setLoadingVars(p => { const n = new Set(p); n.delete(listing.id); return n; });
+    }
+  };
 
   const userCredits = profile?.credits || 0;
   const sheetsConnected = !!getSettings()?.google_sheets_url;
@@ -1499,6 +1552,7 @@ export default function Listings() {
             <Table className="min-w-[900px]">
               <TableHeader>
               <TableRow className="border-border/50 hover:bg-transparent bg-muted/30">
+                <TableHead className="w-6 py-2 px-1" />
                 <TableHead className="w-8 py-2 px-2">
                   <Checkbox
                     checked={filteredListings.length > 0 && selectedListings.size === filteredListings.length}
@@ -1511,7 +1565,7 @@ export default function Listings() {
                 <TableHead className="text-muted-foreground text-[11px] font-medium py-2 px-2">Product</TableHead>
                 <TableHead className="text-muted-foreground text-[11px] font-medium py-2 px-2 w-20">SKU</TableHead>
                 <TableHead className="text-muted-foreground text-[11px] font-medium py-2 px-2 w-16 text-right">eBay</TableHead>
-                <TableHead className="text-muted-foreground text-[11px] font-medium py-2 px-2 w-16 text-right">AMZ</TableHead>
+                <TableHead className="text-muted-foreground text-[11px] font-medium py-2 px-2 w-16 text-right">Supplier</TableHead>
                 <TableHead className="text-muted-foreground text-[11px] font-medium py-2 px-1 w-12 text-center">Inv</TableHead>
                 <TableHead className="text-muted-foreground text-[11px] font-medium py-2 px-2 w-14 text-right">Profit</TableHead>
                 <TableHead className="text-muted-foreground text-[11px] font-medium py-2 px-2 w-20">Status</TableHead>
@@ -1521,14 +1575,14 @@ export default function Listings() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-8">
+                  <TableCell colSpan={11} className="text-center py-8">
                     <RefreshCw className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
                     <p className="text-muted-foreground mt-2 text-xs">Loading listings...</p>
                   </TableCell>
                 </TableRow>
               ) : filteredListings.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-10">
+                  <TableCell colSpan={11} className="text-center py-10">
                     <div className="flex flex-col items-center gap-2">
                       <div className="p-3 rounded-full bg-muted/50">
                         <Package className="h-6 w-6 text-muted-foreground/50" />
@@ -1549,21 +1603,41 @@ export default function Listings() {
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedListings.map((listing) => {
+                paginatedListings.flatMap((listing) => {
                   const profit = calculateProfit(listing.ebay_price, listing.amazon_price);
                   const isSelected = selectedListings.has(listing.id);
                   const isBlank = !listing.title && !listing.sku && !listing.amazon_asin;
                   const edit = getEditForListing(listing);
                   const isDirty = isListingDirty(listing);
                   const isSaving = !!savingById[listing.id];
-                  return (
-                    <TableRow 
-                      key={listing.id} 
+                  const isExpanded = expanded.has(listing.id);
+                  const isLoadingVars = loadingVars.has(listing.id);
+                  const childRows = variationsByListing[listing.id] ?? [];
+                  const hasVars = !!listing.has_variations;
+
+                  const parentRow = (
+                    <TableRow
+                      key={listing.id}
                       className={cn(
                         "border-border/30 transition-colors h-10",
                         isSelected && "bg-primary/5"
                       )}
                     >
+                      <TableCell className="py-1.5 px-1 w-6">
+                        {hasVars ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5"
+                            onClick={() => toggleExpand(listing)}
+                            aria-label={isExpanded ? 'Collapse variations' : 'Expand variations'}
+                          >
+                            {isExpanded
+                              ? <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                              : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+                          </Button>
+                        ) : null}
+                      </TableCell>
                       <TableCell className="py-1.5 px-2">
                         <Checkbox
                           checked={isSelected}
@@ -1695,6 +1769,78 @@ export default function Listings() {
                       </TableCell>
                     </TableRow>
                   );
+
+                  // Variation child rows — only rendered when expanded
+                  const variationChildRows = isExpanded ? [
+                    isLoadingVars ? (
+                      <TableRow key={`${listing.id}-loading`} className="bg-muted/10">
+                        <TableCell colSpan={11} className="py-2 pl-10 text-xs text-muted-foreground">
+                          Loading variations...
+                        </TableCell>
+                      </TableRow>
+                    ) : childRows.map(v => {
+                      const varProfit = v.final_price != null && v.raw_supplier_price != null
+                        ? v.final_price - v.raw_supplier_price
+                        : null;
+                      const attrLabel = v.attributes
+                        ? Object.values(v.attributes).map((a) => a?.productName).filter(Boolean).join(' / ')
+                        : '';
+                      return (
+                        <TableRow key={v.id} className="bg-muted/10 border-border/20 h-9">
+                          <TableCell className="py-1 px-1" />
+                          <TableCell className="py-1 px-2">
+                            {v.image_url ? (
+                              <img
+                                src={v.image_url}
+                                alt=""
+                                className="w-7 h-7 rounded object-cover border border-border/30"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              />
+                            ) : <div className="w-7 h-7 rounded bg-muted/30 border border-border/20" />}
+                          </TableCell>
+                          <TableCell className="py-1 px-1" />
+                          <TableCell className="py-1 px-2 pl-6">
+                            <div className="space-y-0">
+                              <p className="text-[11px] text-muted-foreground line-clamp-1 max-w-[180px]">
+                                {attrLabel || v.variant_asin || '—'}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-1 px-2">
+                            <span className="text-[11px] font-mono text-muted-foreground truncate block max-w-[72px]" title={decodeSku(v.ebay_sku_encoded, v.sku)}>
+                              {decodeSku(v.ebay_sku_encoded, v.sku)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right py-1 px-2">
+                            <span className="text-[11px] font-mono tabular-nums text-foreground">
+                              {v.final_price != null ? `$${v.final_price.toFixed(2)}` : '—'}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right py-1 px-2">
+                            <span className="text-[11px] font-mono tabular-nums text-foreground">
+                              {v.raw_supplier_price != null ? `$${v.raw_supplier_price.toFixed(2)}` : '—'}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center py-1 px-1">
+                            <span className="text-[11px] text-muted-foreground">{v.stock_quantity ?? '—'}</span>
+                          </TableCell>
+                          <TableCell className="text-right py-1 px-2">
+                            {varProfit !== null ? (
+                              <span className={cn(
+                                "text-[11px] font-semibold",
+                                varProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"
+                              )}>
+                                ${varProfit.toFixed(2)}
+                              </span>
+                            ) : <span className="text-muted-foreground text-[11px]">—</span>}
+                          </TableCell>
+                          <TableCell colSpan={2} />
+                        </TableRow>
+                      );
+                    })
+                  ] : [];
+
+                  return [parentRow, ...variationChildRows];
                 })
               )}
             </TableBody>

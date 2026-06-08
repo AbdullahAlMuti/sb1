@@ -1,3 +1,5 @@
+/* DEACTIVATED — replaced by SuperDS-style ebay_lister.js */
+(function() { return; })();
 /**
  * @fileoverview Clean Chrome Extension Automation System
  * @author Advanced Automation System

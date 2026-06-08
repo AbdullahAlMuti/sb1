@@ -77,6 +77,39 @@
       </div>
     </section>
 
+    <!-- Sidebar-extended: structured product editor (hidden unless source=sidebar) -->
+    <div id="ss-extended-editor" style="display:none; padding: 12px 16px; background: var(--ss-bg-card, #1e293b); border-bottom: 1px solid var(--ss-border, #334155);">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-start;">
+        <div style="flex:1; min-width:220px;">
+          <label style="font-size:11px; color:var(--ss-muted,#94a3b8); display:block; margin-bottom:4px;">Title</label>
+          <input id="ext-title" type="text" maxlength="80" placeholder="eBay title…"
+            style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--ss-border,#334155); background:var(--ss-bg,#0f172a); color:inherit; font-size:13px;">
+        </div>
+        <div style="flex:0 0 110px;">
+          <label style="font-size:11px; color:var(--ss-muted,#94a3b8); display:block; margin-bottom:4px;">Price (sell for)</label>
+          <input id="ext-price" type="text" placeholder="0.00"
+            style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--ss-border,#334155); background:var(--ss-bg,#0f172a); color:inherit; font-size:13px;">
+        </div>
+        <div style="flex:0 0 110px;">
+          <label style="font-size:11px; color:var(--ss-muted,#94a3b8); display:block; margin-bottom:4px;">SKU</label>
+          <input id="ext-sku" type="text" placeholder="AB-ASIN"
+            style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--ss-border,#334155); background:var(--ss-bg,#0f172a); color:inherit; font-size:13px;">
+        </div>
+        <div style="flex:0 0 60px;">
+          <label style="font-size:11px; color:var(--ss-muted,#94a3b8); display:block; margin-bottom:4px;">Qty</label>
+          <input id="ext-qty" type="number" min="1" value="1"
+            style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--ss-border,#334155); background:var(--ss-bg,#0f172a); color:inherit; font-size:13px;">
+        </div>
+      </div>
+      <div id="ext-variations-wrap" style="display:none; margin-top:10px;">
+        <label style="font-size:11px; color:var(--ss-muted,#94a3b8); display:block; margin-bottom:6px;">Variations</label>
+        <div id="ext-variations"></div>
+      </div>
+      <div id="ext-specs-wrap" style="display:none; margin-top:10px;">
+        <div id="ext-specs"></div>
+      </div>
+    </div>
+
     <div class="ss-grid-layout" id="snipe-main-container">
       <section class="ss-card ss-titles-section" aria-label="AI generated titles">
         <button id="generate-ai-titles-btn" style="display: none;" type="button"></button>
@@ -199,7 +232,7 @@
         </button>
         <button class="ss-btn ss-btn-blue btn-solid" id="opti-list-btn" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-          List on eBay
+          Upload
         </button>
         <button class="ss-btn ss-btn-dark btn-slate btn-solid" id="copy-btn" type="button" style="display: none;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
@@ -303,6 +336,8 @@
   <script src="../common/image-renderer.js"></script>
   <script src="../common/full_view_image_extractor.js"></script>
   <script src="../common/description-generator.js"></script>
+  <script src="../common/pricing-engine.js"></script>
+  <script src="../common/sku-engine.js"></script>
   <script src="calculator.js"></script>
   <script src="panel.js"></script>
 </body>

@@ -94,6 +94,40 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Fetch associated variations for all listings in the page
+    const listingIds = (listings || []).map((l: any) => l.id);
+    const variationsGrouped: Record<string, any[]> = {};
+    if (listingIds.length > 0) {
+      const { data: variationsData, error: varError } = await supabase
+        .from('listing_variations')
+        .select('*')
+        .in('listing_id', listingIds)
+        .order('created_at', { ascending: true });
+
+      if (varError) {
+        console.error('[get-listings] Variations query error:', varError);
+      } else if (variationsData) {
+        for (const v of variationsData) {
+          if (!variationsGrouped[v.listing_id]) {
+            variationsGrouped[v.listing_id] = [];
+          }
+          variationsGrouped[v.listing_id].push({
+            id: v.id,
+            listingId: v.listing_id,
+            sku: v.sku,
+            ebaySkuEncoded: v.ebay_sku_encoded,
+            rawSupplierPrice: v.raw_supplier_price ? Number(v.raw_supplier_price) : null,
+            finalPrice: Number(v.final_price) || 0,
+            currency: v.currency,
+            stockQuantity: v.stock_quantity,
+            attributes: v.attributes,
+            createdAt: v.created_at,
+            updatedAt: v.updated_at,
+          });
+        }
+      }
+    }
+
     // Transform listings to match extension format (camelCase)
     const transformedListings = (listings || []).map((listing: any) => ({
       id: listing.id,
@@ -115,6 +149,11 @@ Deno.serve(async (req) => {
       priceLastUpdated: listing.price_last_updated,
       inventoryLastUpdated: listing.inventory_last_updated,
       sourceMarketplace: getSourceMarketplace(listing),
+      hasVariations: listing.has_variations || false,
+      variationCount: listing.variation_count || 0,
+      priceLow: listing.price_low ? Number(listing.price_low) : null,
+      priceHigh: listing.price_high ? Number(listing.price_high) : null,
+      variations: variationsGrouped[listing.id] || [],
       // Calculate profit
       profit: listing.ebay_price && listing.amazon_price 
         ? listing.ebay_price - listing.amazon_price 

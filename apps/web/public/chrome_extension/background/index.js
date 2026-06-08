@@ -20,6 +20,9 @@
 const getUrls = () => typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.URLS : null;
 const getApiKeys = () => typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.API_KEYS : null;
 
+// Set on every SW init — lost on SW restart if only set in event listeners
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+
 importScripts(
   '../common/config.js',
   '../common/constants.js',

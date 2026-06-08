@@ -128,6 +128,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 // ═══════════════════════════════════════════════════════════
 
 chrome.runtime.onStartup.addListener(async () => {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
   const isAuth = typeof AuthHelper !== 'undefined' ? await AuthHelper.verifyAuthStatus() : false;
   syncSettings();
   if (isAuth) {
@@ -139,6 +140,7 @@ chrome.runtime.onStartup.addListener(async () => {
 });
 
 chrome.runtime.onInstalled.addListener(async (details) => {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
   const isAuth = typeof AuthHelper !== 'undefined' ? await AuthHelper.verifyAuthStatus() : false;
   syncSettings();
   if (isAuth) {

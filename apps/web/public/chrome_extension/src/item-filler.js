@@ -1,3 +1,5 @@
+/* DEACTIVATED — replaced by SuperDS-style fillItemSpecifics() in ebay_lister.js */
+(function() { return; })();
 /**
  * @fileoverview eBay Item Specifics Filler
  * @version 6.0.0

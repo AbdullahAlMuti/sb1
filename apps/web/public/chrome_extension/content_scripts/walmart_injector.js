@@ -1342,7 +1342,7 @@ const scrapeAndDisplayImages = async () => {
 
         if (optiListBtn) {
             optiListBtn.disabled = false;
-            optiListBtn.textContent = 'List on eBay';
+            optiListBtn.textContent = 'Upload';
         }
         if (downloadBtn) {
             downloadBtn.disabled = false;
@@ -1363,7 +1363,7 @@ const scrapeAndDisplayImages = async () => {
         
         if (optiListBtn) {
             optiListBtn.disabled = false;
-            optiListBtn.textContent = 'List on eBay';
+            optiListBtn.textContent = 'Upload';
         }
         if (downloadBtn) {
             downloadBtn.disabled = false;
@@ -1924,7 +1924,7 @@ const addEventListenersToPanel = () => {
                         console.warn('⚠️ WARNING: No saved Copy button data found!');
                         alert('⚠️ No saved data found!\n\nPlease click the Copy button first to save the product data.');
                         btn.disabled = false;
-                        btn.textContent = 'List on eBay';
+                        btn.textContent = 'Upload';
                         return;
                     }
                     
@@ -1941,21 +1941,21 @@ const addEventListenersToPanel = () => {
                     if (!exportData.title || exportData.title === 'No title selected') {
                         alert('⚠️ No title in saved data!\n\nPlease click Copy button again after selecting a title.');
                         btn.disabled = false;
-                        btn.textContent = 'List on eBay';
+                        btn.textContent = 'Upload';
                         return;
                     }
                     
                     if (!exportData.sku || exportData.sku === 'No SKU') {
                         alert('⚠️ No SKU in saved data!\n\nPlease click Copy button again after generating a SKU.');
                         btn.disabled = false;
-                        btn.textContent = 'List on eBay';
+                        btn.textContent = 'Upload';
                         return;
                     }
                     
                     if (exportData.sellPrice === 'No price' || !exportData.sellPrice) {
                         alert('⚠️ No calculated price in saved data!\n\nPlease click Copy button again after calculating the price.');
                         btn.disabled = false;
-                        btn.textContent = 'List on eBay';
+                        btn.textContent = 'Upload';
                         return;
                     }
                     
@@ -1982,73 +1982,44 @@ const addEventListenersToPanel = () => {
                         console.log('✅ Image storage verification passed - proceeding to eBay');
                     }
 
-                    const listingData = {
-                        productTitle: selectedTitle,
-                        ebayTitle: selectedTitle,
-                        ebaySku: sku,
-                        ebayPrice: price,
-                        ...productDetails
-                    };
-
-                    await chrome.storage.local.set(listingData);
-                    if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('✅ All listing data saved (hidden in prod)', listingData);
-                    
                     const finalPrice = exportData.sellPrice === 'No price' ? '0' : String(exportData.sellPrice);
                     const walmartPrice = (exportData.walmartPrice || exportData.amazonPrice) === 'No price found' ? '0' : String(exportData.walmartPrice || exportData.amazonPrice);
-                    
-                    const messageData = {
-                        action: "START_OPTILIST", 
-                        title: exportData.title,
-                        sku: exportData.sku,
-                        finalPrice: finalPrice,
-                        amazonPrice: walmartPrice,
-                        productURL: exportData.walmartLink || exportData.amazonLink,
+
+                    // Same action as sidebar Upload button — universal programmatic pipeline
+                    const ebayProduct = {
+                        title: selectedTitle,
+                        price: finalPrice,
+                        images: [],
                         asin: exportData.sku || exportData.itemId || '',
-                        mainImage: storedImages[0] || exportData.walmartImage || exportData.image || exportData.mainImage || document.querySelector('img[data-testid="hero-image"]')?.src || document.querySelector('img[loading="eager"]')?.src || ''
+                        url: exportData.walmartLink || exportData.amazonLink || '',
+                        description: productDetails.description || '',
+                        specs: {
+                            ...(productDetails.brand      ? { Brand: productDetails.brand }           : {}),
+                            ...(productDetails.model      ? { 'Model Number': productDetails.model }  : {}),
+                            ...(productDetails.color      ? { Color: productDetails.color }           : {}),
+                            ...(productDetails.dimensions ? { Dimensions: productDetails.dimensions } : {}),
+                            ...(productDetails.weight     ? { Weight: productDetails.weight }         : {}),
+                        },
+                        ebaySku: exportData.sku,
+                        amazonPrice: walmartPrice,
+                        useStoredWatermarkedImages: true,
                     };
 
-                    try {
-                        chrome.runtime.sendMessage(messageData, (response) => {
-                            if (chrome.runtime.lastError) {
-                                console.error('❌ ERROR: Message failed to send to background.js');
-                                btn.disabled = false;
-                                btn.textContent = '❌ Error - Try Again';
-                                alert('Failed to send data to Google Sheets. Error: ' + chrome.runtime.lastError.message);
-                                return;
-                            }
-                            
-                            if (response && response.success) {
-                                console.log('✅ SUCCESS: Data sent to Google Sheets via background.js');
-                                btn.textContent = '✅ Sent to Sheets!';
-                                setTimeout(() => {
-                                    btn.disabled = false;
-                                    btn.textContent = 'List on eBay';
-                                }, 3000);
-                            } else if (response && response.error) {
-                                console.error('❌ ERROR FROM BACKGROUND.JS:', response.error);
-                                btn.textContent = '⚠️ Error: ' + response.error;
-                                btn.disabled = false;
-                                alert('Failed to send data to Google Sheets: ' + response.error);
-                            } else {
-                                btn.textContent = '✅ Sent (no response)';
-                                setTimeout(() => {
-                                    btn.disabled = false;
-                                    btn.textContent = 'List on eBay';
-                                }, 2000);
-                            }
-                        });
-                        
-                        console.log('✅ Message sent to background.js, waiting for response...');
-                    } catch (sendError) {
-                        console.error('❌ EXCEPTION: Failed to send message:', sendError);
+                    chrome.runtime.sendMessage({
+                        action: 'import_ebay',
+                        product: ebayProduct,
+                        uploadType: 'classic'
+                    });
+
+                    btn.textContent = '✅ Opening eBay…';
+                    setTimeout(() => {
                         btn.disabled = false;
-                        btn.textContent = '❌ Error - Try Again';
-                        alert('Failed to send data. Error: ' + sendError.message);
-                    }
+                        btn.textContent = 'Upload';
+                    }, 3000);
                 } catch (error) {
                     console.error('Error in Opti-List process:', error);
                     btn.disabled = false;
-                    btn.textContent = 'List on eBay';
+                    btn.textContent = 'Upload';
                 }
             } else {
                 alert("Please select a title first.");

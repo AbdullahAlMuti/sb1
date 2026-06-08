@@ -396,6 +396,171 @@ const injectUI = async () => {
 };
 
 // ═══════════════════════════════════════════════════════════
+// SIDEBAR EXTENDED MODE
+// Called by EXTEND_PANEL handler. Reads currentProduct (pre-flushed
+// by sidebar), shows #ss-extended-editor, wires Upload.
+// ═══════════════════════════════════════════════════════════
+
+async function showSidebarExtended() {
+    const d = await chrome.storage.local.get(['currentProduct', 'panelSource']);
+    if (d.panelSource !== 'sidebar' || !d.currentProduct) return;
+    const p = d.currentProduct;
+
+    const wrap = document.getElementById('ss-extended-editor');
+    if (!wrap) { console.warn('[showSidebarExtended] #ss-extended-editor not in DOM'); return; }
+    wrap.style.display = 'block';
+
+    // Populate scalar fields
+    const fld = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
+    fld('ext-title', p.title);
+    fld('ext-price', p.price);
+    fld('ext-sku',   p.ebaySku);
+    fld('ext-qty',   p.quantity || 1);
+
+    // Mirror title into main title display
+    const mainTitle = document.getElementById('ai-generated-title');
+    if (mainTitle && p.title) { mainTitle.textContent = p.title; }
+
+    // Render variations
+    const variations = p.variations || [];
+    const varWrap = document.getElementById('ext-variations-wrap');
+    const varContainer = document.getElementById('ext-variations');
+    if (variations.length > 0 && varWrap && varContainer) {
+        varWrap.style.display = 'block';
+        varContainer.innerHTML = '';
+        variations.forEach(dim => {
+            const dimEl = document.createElement('div');
+            dimEl.style.cssText = 'margin-bottom:8px;';
+            const hdr = document.createElement('div');
+            hdr.style.cssText = 'font-size:11px;color:var(--ss-muted,#94a3b8);margin-bottom:4px;font-weight:600;';
+            hdr.textContent = dim.label || '';
+            dimEl.appendChild(hdr);
+            const chips = document.createElement('div');
+            chips.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;';
+            (dim.values || []).forEach(val => {
+                const chip = document.createElement('span');
+                chip.textContent = val;
+                const isSelected = p.selectedVariation &&
+                    Object.values(p.selectedVariation).some(v => String(v).toLowerCase() === String(val).toLowerCase());
+                chip.style.cssText = `padding:2px 10px;border-radius:12px;font-size:11px;border:1px solid ${isSelected ? 'var(--ss-green,#22c55e)' : 'var(--ss-border,#334155)'};background:var(--ss-bg,#0f172a);color:${isSelected ? 'var(--ss-green,#22c55e)' : 'var(--ss-muted,#94a3b8)'};`;
+                chips.appendChild(chip);
+            });
+            dimEl.appendChild(chips);
+            varContainer.appendChild(dimEl);
+        });
+    }
+
+    // Render item specifics
+    const specs = p.specs || p.specifications || {};
+    const specKeys = Object.keys(specs);
+    const specWrap = document.getElementById('ext-specs-wrap');
+    const specContainer = document.getElementById('ext-specs');
+    if (specKeys.length > 0 && specWrap && specContainer) {
+        specWrap.style.display = 'block';
+        specContainer.innerHTML = '';
+
+        // Collapsible wrapper using native <details>/<summary>
+        const details = document.createElement('details');
+        details.style.cssText = 'border:1px solid var(--ss-border,#334155);border-radius:6px;overflow:hidden;';
+
+        const summary = document.createElement('summary');
+        summary.textContent = `Item Specifics (${specKeys.length})`;
+        summary.style.cssText = 'padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;color:var(--ss-muted,#94a3b8);list-style:none;display:flex;align-items:center;gap:6px;user-select:none;';
+        summary.innerHTML = `<span style="font-size:10px;transition:transform 0.2s;" class="ext-specs-arrow">▶</span> Item Specifics <span style="font-size:10px;opacity:0.6;">(${specKeys.length})</span>`;
+        details.addEventListener('toggle', () => {
+            const arrow = details.querySelector('.ext-specs-arrow');
+            if (arrow) arrow.style.transform = details.open ? 'rotate(90deg)' : 'rotate(0deg)';
+        });
+
+        const body = document.createElement('div');
+        body.style.cssText = 'padding:8px 10px;display:flex;flex-direction:column;gap:4px;';
+
+        specKeys.forEach(key => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;gap:8px;align-items:center;';
+            const lbl = document.createElement('span');
+            lbl.textContent = key;
+            lbl.style.cssText = 'flex:0 0 130px;font-size:11px;color:var(--ss-muted,#94a3b8);';
+            const inp = document.createElement('input');
+            inp.type = 'text'; inp.value = specs[key] || '';
+            inp.dataset.specKey = key;
+            inp.style.cssText = 'flex:1;padding:4px 6px;border-radius:4px;border:1px solid var(--ss-border,#334155);background:var(--ss-bg,#0f172a);color:inherit;font-size:12px;';
+            inp.addEventListener('input', _saveExtEdits);
+            row.appendChild(lbl); row.appendChild(inp);
+            body.appendChild(row);
+        });
+
+        details.appendChild(summary);
+        details.appendChild(body);
+        specContainer.appendChild(details);
+    }
+
+    // Bind field write-back
+    ['ext-title','ext-price','ext-sku','ext-qty'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', _saveExtEdits);
+    });
+    const extTitle = document.getElementById('ext-title');
+    if (extTitle && mainTitle) {
+        extTitle.addEventListener('input', () => { mainTitle.textContent = extTitle.value; });
+    }
+
+    // Clone+replace optiListBtn to remove Amazon-context handler (Option A)
+    const origBtn = document.getElementById('opti-list-btn');
+    if (origBtn) {
+        const newBtn = origBtn.cloneNode(true);
+        newBtn.textContent = 'Upload';
+        origBtn.parentNode.replaceChild(newBtn, origBtn);
+        newBtn.addEventListener('click', _handleSidebarUpload);
+    }
+}
+
+function _saveExtEdits() {
+    chrome.storage.local.get(['currentProduct'], result => {
+        const p = result.currentProduct || {};
+        const et = document.getElementById('ext-title');
+        const ep = document.getElementById('ext-price');
+        const es = document.getElementById('ext-sku');
+        const eq = document.getElementById('ext-qty');
+        if (et && et.value) p.title = et.value;
+        if (ep && ep.value) p.price = ep.value;
+        if (es && es.value) p.ebaySku = es.value;
+        if (eq && eq.value) p.quantity = parseInt(eq.value, 10) || 1;
+        document.querySelectorAll('#ext-specs input[data-spec-key]').forEach(inp => {
+            if (!p.specs) p.specs = {};
+            p.specs[inp.dataset.specKey] = inp.value;
+        });
+        chrome.storage.local.set({ currentProduct: p });
+    });
+}
+
+async function _handleSidebarUpload() {
+    const btn = document.getElementById('opti-list-btn') || document.querySelector('[id="opti-list-btn"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Uploading…'; }
+    try {
+        _saveExtEdits();
+        await new Promise(r => setTimeout(r, 80));
+        const result = await chrome.storage.local.get(['currentProduct', 'selectedEbayTitle']);
+        const p = result.currentProduct || {};
+        const finalTitle = (document.getElementById('ext-title')?.value?.trim()) ||
+                           result.selectedEbayTitle || p.title || '';
+        const sku = document.getElementById('ext-sku')?.value?.trim() || p.ebaySku || '';
+        if (!finalTitle) { alert('No title set. Fill title first.'); return; }
+        if (!sku) { alert('No SKU. Fill SKU first.'); return; }
+        chrome.runtime.sendMessage({
+            action: 'import_ebay',
+            product: { ...p, title: finalTitle, ebaySku: sku, useStoredWatermarkedImages: false },
+            uploadType: 'classic'
+        });
+        if (btn) btn.textContent = '✅ Opening eBay…';
+        setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = 'Upload'; } }, 3000);
+    } catch (err) {
+        console.error('[SidebarUpload] error:', err);
+        if (btn) { btn.disabled = false; btn.textContent = 'Upload'; }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
 // 📦 COMPREHENSIVE PRODUCT DATA SCRAPING FOR DESCRIPTION
 // ═══════════════════════════════════════════════════════════
 
@@ -403,6 +568,13 @@ const scrapeAndStoreProductData = async () => {
     console.log('📦 [ProductScraper] Starting comprehensive product data scrape...');
 
     try {
+        // Skip overwrite when sidebar extended mode is active
+        const psCheck = await chrome.storage.local.get('panelSource');
+        if (psCheck.panelSource === 'sidebar') {
+            console.log('[ProductScraper] sidebar mode — skip currentProduct overwrite');
+            return;
+        }
+
         // Scrape all available product data
         const productData = scrapeFullProductData();
 
@@ -1545,12 +1717,142 @@ const hideScrapeOverlay = () => {
 // Initialize extractor when page loads
 const extractor = new AmazonImageExtractor();
 
+// ─── V2 Parallel Comparison ───────────────────────────────────────────────────
+// Feature flag: imageExtractorV2CompareMode (default OFF)
+// Enable:  chrome.storage.local.set({ imageExtractorV2CompareMode: true })
+// Disable: chrome.storage.local.set({ imageExtractorV2CompareMode: false })
+// Results: console group "[SS-IMG-V2]" + chrome.storage.local key "imgV2LastComparison"
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function isV2CompareModeEnabled() {
+    return new Promise(resolve => {
+        chrome.storage.local.get(['imageExtractorV2CompareMode'], result => {
+            resolve(result.imageExtractorV2CompareMode === true);
+        });
+    });
+}
+
+// oldImages: array returned by existing extractor (format: { url, alt } or { url })
+// context: string label for logging ("scrapeAndDisplay" | "extractImages-message")
+async function runV2Comparison(oldImages, context = 'unknown') {
+    if (!(await isV2CompareModeEnabled())) return;
+
+    if (typeof window.AmazonImageAdapter === 'undefined'
+     || typeof window.SSExtractionEngine === 'undefined'
+     || typeof window.SSImageSchema === 'undefined') {
+        console.warn('[SS-IMG-V2] V2 modules not loaded — cannot compare. Check manifest load order.');
+        return;
+    }
+
+    const t0 = performance.now();
+    let v2Images = [];
+    let v2Error  = null;
+    let modalUsed = false;
+
+    try {
+        const adapter = new window.AmazonImageAdapter();
+        const engine  = new window.SSExtractionEngine();
+
+        // Run V2 with modal DISABLED (modal only if tiers 1–4 produce nothing)
+        // We check after tiers 1–4 whether to allow modal; mirror old behavior only if old ran modal.
+        const oldOpenedModal = (oldImages || []).some(img =>
+            (img.source === 'modal') || (img._source === 'modal')
+        );
+
+        v2Images = await engine.extract(adapter, {
+            minConfidentImages: 1,
+            maxModalFallback: oldOpenedModal // only allow modal if old already did
+        });
+
+        // Check if modal was actually used
+        modalUsed = v2Images.some(img => img.source === 'modal');
+    } catch (err) {
+        v2Error = err?.message || String(err);
+        console.error('[SS-IMG-V2] V2 extractor error:', v2Error);
+    }
+
+    const t1 = performance.now();
+
+    // Build comparison
+    const oldCount = (oldImages || []).length;
+    const v2Count  = v2Images.length;
+
+    // Normalize old URLs to base IDs for comparison
+    const normalizer = window.SSImageNormalizer;
+    const oldIds = new Set(
+        (oldImages || [])
+            .map(img => normalizer ? normalizer.getBaseId(img.url || img, 'amazon') : (img.url || img))
+            .filter(Boolean)
+    );
+    const v2Ids = new Set(
+        v2Images.map(img => img.id || (normalizer ? normalizer.getBaseId(img.url, 'amazon') : img.url)).filter(Boolean)
+    );
+
+    const missingInV2  = [...oldIds].filter(id => !v2Ids.has(id));   // old had, V2 missed
+    const extraInV2    = [...v2Ids].filter(id => !oldIds.has(id));    // V2 found, old missed
+    const sharedCount  = [...oldIds].filter(id => v2Ids.has(id)).length;
+
+    // Source breakdown for V2
+    const sourceBreakdown = {};
+    v2Images.forEach(img => {
+        sourceBreakdown[img.source] = (sourceBreakdown[img.source] || 0) + 1;
+    });
+
+    // Variation images in V2
+    const variationCount = v2Images.filter(img => img.role === 'variation').length;
+
+    const report = {
+        context,
+        timestamp:       new Date().toISOString(),
+        asin:            extractor.currentASIN
+                         || window.location.pathname.match(/\/dp\/([A-Z0-9]{10})/)?.[1]
+                         || 'unknown',
+        timingMs:        Math.round(t1 - t0),
+        oldCount,
+        v2Count,
+        sharedCount,
+        missingInV2Count: missingInV2.length,
+        extraInV2Count:   extraInV2.length,
+        missingInV2,
+        extraInV2,
+        sourceBreakdown,
+        variationCount,
+        modalUsed,
+        v2Error,
+        verdict: v2Error
+            ? 'V2_ERROR'
+            : v2Count >= oldCount
+                ? (extraInV2.length > 0 ? 'V2_BETTER' : 'V2_EQUAL')
+                : 'V2_WORSE'
+    };
+
+    // Console output
+    console.group('[SS-IMG-V2] Image Extractor Comparison');
+    console.log('Context:  ', context);
+    console.log('ASIN:     ', report.asin);
+    console.log('Old count:', oldCount, '| V2 count:', v2Count, '| Shared:', sharedCount);
+    console.log('Missing in V2 (' + missingInV2.length + '):', missingInV2);
+    console.log('Extra in V2   (' + extraInV2.length + '):', extraInV2);
+    console.log('V2 source breakdown:', sourceBreakdown);
+    console.log('Variation images (V2):', variationCount);
+    console.log('Modal used (V2):', modalUsed);
+    console.log('V2 timing:', report.timingMs + 'ms');
+    console.log('Verdict:  ', report.verdict);
+    if (v2Error) console.error('V2 error:', v2Error);
+    console.groupEnd();
+
+    // Persist last comparison for offline review
+    chrome.storage.local.set({ imgV2LastComparison: report });
+}
+
 // Listen for messages from popup and other extension components
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'extractImages') {
         showScrapeOverlay('Initializing image extraction...');
         extractor.extractAllImages().then(images => {
             hideScrapeOverlay();
+            // V2 comparison (non-blocking)
+            runV2Comparison(images, 'extractImages-message').catch(() => {});
             sendResponse({ success: true, images: images });
         }).catch(error => {
             hideScrapeOverlay();
@@ -1764,6 +2066,9 @@ const scrapeAndDisplayImages = async () => {
         // Use the comprehensive extractor
         const allImages = await extractor.extractAllImages();
 
+        // V2 parallel comparison (non-blocking, never affects allImages or UI)
+        runV2Comparison(allImages, 'scrapeAndDisplayImages').catch(() => {});
+
         // Remove loading indicator
         const existingLoadingIndicator = document.getElementById('image-loading-indicator');
         if (existingLoadingIndicator) {
@@ -1940,7 +2245,7 @@ const scrapeAndDisplayImages = async () => {
         // Re-enable buttons after successful processing
         if (optiListBtn) {
             optiListBtn.disabled = false;
-            optiListBtn.textContent = 'List on eBay';
+            optiListBtn.textContent = 'Upload';
         }
         if (downloadBtn) {
             downloadBtn.disabled = false;
@@ -1963,7 +2268,7 @@ const scrapeAndDisplayImages = async () => {
         // Re-enable buttons on error
         if (optiListBtn) {
             optiListBtn.disabled = false;
-            optiListBtn.textContent = 'List on eBay';
+            optiListBtn.textContent = 'Upload';
         }
         if (downloadBtn) {
             downloadBtn.disabled = false;
@@ -2349,6 +2654,7 @@ const addEventListenersToPanel = () => {
             if (rootWrapper) {
                 rootWrapper.remove();
                 uiInjected = false;
+                chrome.storage.local.remove('panelSource');
                 const startBtn = document.getElementById('initial-list-button') || document.querySelector('.floating-snipe-btn');
                 if (startBtn) {
                     startBtn.style.display = 'flex';
@@ -2864,7 +3170,7 @@ const addEventListenersToPanel = () => {
                             console.warn('   Please click Copy button first to save the data.');
                             alert('⚠️ No saved data found!\n\nPlease click the Copy button first to save the product data.');
                             btn.disabled = false;
-                            btn.textContent = 'List on eBay';
+                            btn.textContent = 'Upload';
                             return;
                         }
 
@@ -2884,7 +3190,7 @@ const addEventListenersToPanel = () => {
                             console.warn('⚠️ WARNING: No title in saved data!');
                             alert('⚠️ No title in saved data!\n\nPlease click Copy button again after selecting a title.');
                             btn.disabled = false;
-                            btn.textContent = 'List on eBay';
+                            btn.textContent = 'Upload';
                             return;
                         }
 
@@ -2892,7 +3198,7 @@ const addEventListenersToPanel = () => {
                             console.warn('⚠️ WARNING: No SKU in saved data!');
                             alert('⚠️ No SKU in saved data!\n\nPlease click Copy button again after generating a SKU.');
                             btn.disabled = false;
-                            btn.textContent = 'List on eBay';
+                            btn.textContent = 'Upload';
                             return;
                         }
 
@@ -2901,7 +3207,7 @@ const addEventListenersToPanel = () => {
                             console.warn('⚠️ WARNING: No calculated price in saved data!');
                             alert('⚠️ No calculated price in saved data!\n\nPlease click Copy button again after calculating the price.');
                             btn.disabled = false;
-                            btn.textContent = 'List on eBay';
+                            btn.textContent = 'Upload';
                             return;
                         }
 
@@ -2955,127 +3261,46 @@ const addEventListenersToPanel = () => {
                         }
                         console.log('═══════════════════════════════════════════════════════');
 
-                        const listingData = {
-                            productTitle: selectedTitle,
-                            ebayTitle: selectedTitle,
-                            ebaySku: sku,
-                            ebayPrice: price,
-                            ...productDetails
-                        };
-
-                        // Save to Chrome storage with explicit keys
-                        await chrome.storage.local.set(listingData);
-                        if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('✅ All listing data saved (hidden in prod)', listingData);
-
-                        // Convert Copy button data format to format expected by START_OPTILIST
-                        // Parse prices - handle both string and number formats
                         const finalPrice = exportData.sellPrice === 'No price' ? '0' : String(exportData.sellPrice);
                         const amazonPrice = exportData.amazonPrice === 'No price found' ? '0' : String(exportData.amazonPrice);
 
-                        console.log('═══════════════════════════════════════════════════════');
-                        console.log('📤 CONVERTED DATA FOR GOOGLE SHEETS:');
-                        console.log('═══════════════════════════════════════════════════════');
-                        console.log('   Title:', exportData.title);
-                        console.log('   SKU:', exportData.sku);
-                        console.log('   eBay Price (finalPrice):', finalPrice, '(type:', typeof finalPrice, ')');
-                        console.log('   Amazon Price (amazonPrice):', amazonPrice, '(type:', typeof amazonPrice, ')');
-                        console.log('   Amazon Link (productURL):', exportData.amazonLink);
-                        console.log('═══════════════════════════════════════════════════════');
-
-                        // Get the main product image URL
-                        const mainImageEl = document.querySelector('#landingImage') || document.querySelector('#imgBlkFront');
-                        const mainImage = mainImageEl?.getAttribute('data-old-hires') ||
-                            mainImageEl?.getAttribute('src') ||
-                            exportData.amazonImage ||
-                            '';
-
-                        // Prepare message data - use selectedTitle (which prioritizes AI-selected title)
-                        const messageData = {
-                            action: "START_OPTILIST",
-                            title: selectedTitle,  // Use the prioritized title (AI-selected or fallback)
-                            sku: exportData.sku,
-                            finalPrice: finalPrice,
-                            amazonPrice: amazonPrice,
-                            productURL: exportData.amazonLink,
+                        // Build product same as sidebar Upload button — images stored separately
+                        // ebay_prelist.js will inject watermarkedImages from storage before run()
+                        const ebayProduct = {
+                            title: selectedTitle,
+                            price: finalPrice,
+                            images: [],
                             asin: exportData.asin || exportData.sku,
-                            mainImage: mainImage
+                            url: exportData.amazonLink || '',
+                            description: productDetails.description || '',
+                            specs: {
+                                ...(productDetails.brand      ? { Brand: productDetails.brand }           : {}),
+                                ...(productDetails.model      ? { 'Model Number': productDetails.model }  : {}),
+                                ...(productDetails.color      ? { Color: productDetails.color }           : {}),
+                                ...(productDetails.dimensions ? { Dimensions: productDetails.dimensions } : {}),
+                                ...(productDetails.weight     ? { Weight: productDetails.weight }         : {}),
+                            },
+                            ebaySku: exportData.sku,
+                            amazonPrice: amazonPrice,
+                            useStoredWatermarkedImages: true,
                         };
 
-                        console.log('📋 [Opti-List] Final title being sent to background:', selectedTitle);
+                        // Same action as sidebar Upload button — universal programmatic pipeline
+                        chrome.runtime.sendMessage({
+                            action: 'import_ebay',
+                            product: ebayProduct,
+                            uploadType: 'classic'
+                        });
 
-                        console.log('═══════════════════════════════════════════════════════');
-                        console.log('📨 SENDING MESSAGE TO BACKGROUND.JS:');
-                        console.log('═══════════════════════════════════════════════════════');
-                        console.log('Message data:', JSON.stringify(messageData, null, 2));
-                        console.log('═══════════════════════════════════════════════════════');
-
-                        try {
-                            chrome.runtime.sendMessage(messageData, (response) => {
-                                // Check for errors first
-                                if (chrome.runtime.lastError) {
-                                    console.error('═══════════════════════════════════════════════════════');
-                                    console.error('❌ ERROR: Message failed to send to background.js');
-                                    console.error('═══════════════════════════════════════════════════════');
-                                    console.error('Error:', chrome.runtime.lastError.message);
-                                    console.error('Error details:', chrome.runtime.lastError);
-                                    console.error('═══════════════════════════════════════════════════════');
-                                    btn.disabled = false;
-                                    btn.textContent = '❌ Error - Try Again';
-                                    alert('Failed to send data to Google Sheets. Error: ' + chrome.runtime.lastError.message);
-                                    return;
-                                }
-
-                                // Handle response
-                                console.log('═══════════════════════════════════════════════════════');
-                                console.log('📥 RESPONSE RECEIVED FROM BACKGROUND.JS:');
-                                console.log('═══════════════════════════════════════════════════════');
-                                console.log('Response:', response);
-                                console.log('Response type:', typeof response);
-                                console.log('Response success:', response?.success);
-                                console.log('Response error:', response?.error);
-                                console.log('═══════════════════════════════════════════════════════');
-
-                                if (response && response.success) {
-                                    console.log('✅ SUCCESS: Data sent to Google Sheets via background.js');
-                                    btn.textContent = '✅ Sent to Sheets!';
-                                    setTimeout(() => {
-                                        btn.disabled = false;
-                                        btn.textContent = 'List on eBay';
-                                    }, 3000);
-                                } else if (response && response.error) {
-                                    console.error('❌ ERROR FROM BACKGROUND.JS:', response.error);
-                                    btn.textContent = '⚠️ Error: ' + response.error;
-                                    btn.disabled = false;
-                                    alert('Failed to send data to Google Sheets: ' + response.error);
-                                } else {
-                                    console.warn('⚠️ No response or unexpected response format');
-                                    console.warn('Response received:', response);
-                                    // Still show success if message was sent (background.js might not send response)
-                                    btn.textContent = '✅ Sent (no response)';
-                                    setTimeout(() => {
-                                        btn.disabled = false;
-                                        btn.textContent = 'List on eBay';
-                                    }, 2000);
-                                }
-                            });
-
-                            console.log('✅ Message sent to background.js, waiting for response...');
-                        } catch (sendError) {
-                            console.error('═══════════════════════════════════════════════════════');
-                            console.error('❌ EXCEPTION: Failed to send message');
-                            console.error('═══════════════════════════════════════════════════════');
-                            console.error('Error:', sendError);
-                            console.error('Error message:', sendError.message);
-                            console.error('Error stack:', sendError.stack);
-                            console.error('═══════════════════════════════════════════════════════');
+                        btn.textContent = '✅ Opening eBay…';
+                        setTimeout(() => {
                             btn.disabled = false;
-                            btn.textContent = '❌ Error - Try Again';
-                            alert('Failed to send data. Error: ' + sendError.message);
-                        }
+                            btn.textContent = 'Upload';
+                        }, 3000);
                     } catch (error) {
                         console.error('Error in Opti-List process:', error);
                         btn.disabled = false;
-                        btn.textContent = 'List on eBay';
+                        btn.textContent = 'Upload';
                     }
                 } else {
                     alert("Please select a title first.");
@@ -4772,6 +4997,45 @@ const initializeApp = async () => {
     console.log('✅ eBay Lister extension initialized on product page.');
 };
 
+// ─── _applyPricingToProduct ──────────────────────────────────────────────────
+// Reads pricing params from localStorage (same source as panel calculator),
+// runs calculateSellingPrice per variant, stamps v.finalPrice + v.raw_supplier_price.
+// Called at PREPARE_EBAY_LISTING time — calculator.js is loaded here on Amazon pages.
+// adaptProduct in ebay-listing-api.js reads v.finalPrice, never touches raw v.price.
+function _applyPricingToProduct(product) {
+    if (typeof calculateSellingPrice !== 'function') return;
+    let savedValues = {};
+    try { savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}'); } catch (_) {}
+    const parseVal = (v, def) => { const n = parseFloat(v); return isNaN(n) ? def : n; };
+    const cfg = {
+        taxPercent:      parseVal(savedValues['tax-percent'],       9),
+        trackingFee:     parseVal(savedValues['tracking-fee'],      0.20),
+        ebayFeePercent:  parseVal(savedValues['ebay-fee-percent'],  20),
+        promoFeePercent: parseVal(savedValues['promo-fee-percent'], 10),
+        desiredProfit:   parseVal(savedValues['desired-profit'],    0),
+        paymentFixedFee: parseVal(savedValues['payment-fixed-fee'], 0.30)
+    };
+
+    const priceOne = raw => {
+        const r = calculateSellingPrice({ sourcePrice: parseFloat(raw) || 0, ...cfg });
+        return r ? r.finalPrice : 0.99;
+    };
+
+    // Stamp finalPrice on top-level product (single listing path)
+    const baseRaw = parseFloat(product.price) || 0;
+    product.raw_supplier_price = baseRaw;
+    product.finalPrice = priceOne(baseRaw);
+
+    // Stamp finalPrice on each variant (multi-variation path)
+    if (Array.isArray(product.variants)) {
+        product.variants.forEach(v => {
+            const raw = parseFloat(v.price) || baseRaw;
+            v.raw_supplier_price = raw;
+            v.finalPrice = priceOne(raw);
+        });
+    }
+}
+
 // ═══════════════════════════════════════════════════════════
 // MESSAGE LISTENER - Handle requests from panel
 // ═══════════════════════════════════════════════════════════
@@ -4843,6 +5107,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true; // Keep message channel open for async response
     }
 
+    // Handle SCRAPE_VARIANTS — full product + variant data via SsAmazonVariantScraper
+    if (request.action === 'SCRAPE_VARIANTS') {
+        (async () => {
+            try {
+                if (typeof window.SsAmazonVariantScraper === 'undefined') {
+                    sendResponse({ success: false, error: 'Variant scraper not loaded' });
+                    return;
+                }
+                const product = await window.SsAmazonVariantScraper.scrapeProductWithVariants(request.options || {});
+                await chrome.storage.local.set({ currentProduct: product });
+                sendResponse({ success: true, data: product });
+            } catch (err) {
+                sendResponse({ success: false, error: err.message });
+            }
+        })();
+        return true;
+    }
+
     // Handle GENERATE_AI_TITLES request from panel
     if (request.action === 'GENERATE_AI_TITLES') {
         console.log('[Amazon Injector] Received GENERATE_AI_TITLES request');
@@ -4863,6 +5145,56 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             });
         }
 
+        return true;
+    }
+
+    // Handle EXTEND_PANEL — sidebar Extend button: inject panel into Amazon page, show extended editor
+    if (request.action === 'EXTEND_PANEL') {
+        (async () => {
+            try {
+                if (!document.getElementById('snipe-root-wrapper')) {
+                    await injectUI();
+                    await new Promise(r => setTimeout(r, 600)); // wait for injection + scrape guard
+                }
+                await showSidebarExtended();
+                sendResponse({ success: true });
+            } catch (e) {
+                console.error('[EXTEND_PANEL] error:', e);
+                sendResponse({ success: false, error: e.message });
+            }
+        })();
+        return true;
+    }
+
+    // Handle PREPARE_EBAY_LISTING — scrape product data + watermark/store images for panel.js
+
+    if (request.action === 'PREPARE_EBAY_LISTING') {
+        (async () => {
+            try {
+                let fullData;
+                if (typeof window.SsAmazonVariantScraper !== 'undefined') {
+                    try {
+                        fullData = await window.SsAmazonVariantScraper.scrapeProductWithVariants(
+                            request.options || { minQty: 0, allowLowQty: true }
+                        );
+                    } catch (scraperErr) {
+                        console.warn('[PREPARE_EBAY_LISTING] SsAmazonVariantScraper failed, using DOM fallback:', scraperErr.message);
+                        fullData = scrapeFullProductData();
+                    }
+                } else {
+                    fullData = scrapeFullProductData();
+                }
+                // Keep currentProduct fresh so storedProduct fallback in panel has variant data
+                await chrome.storage.local.set({ currentProduct: fullData });
+                const productDetails = scrapeProductDetails();
+                await storeWatermarkedImages();
+                _applyPricingToProduct(fullData);
+                sendResponse({ success: true, fullData, productDetails });
+            } catch (err) {
+                console.error('[PREPARE_EBAY_LISTING] error:', err);
+                sendResponse({ success: false, error: err.message });
+            }
+        })();
         return true;
     }
 });

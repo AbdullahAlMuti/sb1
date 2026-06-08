@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SellerSuit</title>
+  <link rel="stylesheet" href="side-panel.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Loading ─────────────────────────────── -->
+  <div id="view-loading">
+    <div class="spinner"></div>
+    <span class="loading-text">Loading SellerSuit…</span>
+  </div>
+
+  <!-- ── Auth gate ───────────────────────────── -->
+  <div id="view-auth" class="hidden">
+    <div class="auth-body">
+      <svg class="auth-logo" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="80" height="80" rx="20" fill="#0f172a"/>
+        <path d="M22 32C22 26.477 26.477 22 32 22h16c5.523 0 10 4.477 10 10v1c0 3.314-2.686 6-6 6H32c-5.523 0-10 4.477-10 10v1c0 5.523 4.477 10 10 10h16c5.523 0 10-4.477 10-10" stroke="white" stroke-width="4.5" stroke-linecap="round"/>
+      </svg>
+      <h1 class="auth-title">Welcome back</h1>
+      <p class="auth-subtitle">Sign in to your SellerSuit account to start dropshipping</p>
+      <button id="btn-sign-in" class="btn btn-primary auth-sign-in">Sign in</button>
+    </div>
+    <div class="auth-footer">
+      <a href="#" id="link-create-account">Create account</a>
+      <span class="auth-footer-sep">·</span>
+      <a href="#" id="link-forgot-pw">Forgot password?</a>
+    </div>
+  </div>
+
+  <!-- ── Main panel ──────────────────────────── -->
+  <div id="view-main" class="hidden">
+    <div class="panel-content">
+
+      <!-- Header -->
+      <div class="panel-header">
+        <div class="panel-header-left">
+          <svg class="panel-logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="32" height="32" rx="8" fill="#0f172a"/>
+            <path d="M9 13C9 10.791 10.791 9 13 9h6.4c2.209 0 4 1.791 4 4v0c0 1.326-1.074 2.4-2.4 2.4H13c-2.209 0-4 1.791-4 4v0c0 2.209 1.791 4 4 4h6.4c2.209 0 4-1.791 4-4" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <div>
+            <div class="panel-brand">SellerSuit</div>
+            <div class="panel-version" id="panel-version">v1.0</div>
+          </div>
+        </div>
+        <button id="btn-log-out" class="btn btn-outline btn-sm">Log out</button>
+      </div>
+
+      <!-- Current store -->
+      <div class="field">
+        <label class="field-label" for="store-select">Current Store</label>
+        <div class="select-wrap">
+          <select id="store-select">
+            <option value="">— No store selected —</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- eBay setup warning -->
+      <div id="ebay-warning" class="hidden">
+        <div class="warn-header">
+          <div>
+            <div class="warn-title">⚠ eBay account not set up</div>
+            <div class="warn-subtitle">Complete setup to start importing products</div>
+          </div>
+          <button id="btn-warn-dismiss" class="btn-amber-ghost btn-sm">Dismiss</button>
+        </div>
+        <div class="warn-steps">
+          <div class="warn-step">
+            <span class="warn-num">1</span>
+            <span class="warn-step-text">Log in to eBay Seller account</span>
+            <button class="btn-amber btn-sm" id="btn-ebay-login">Log in</button>
+          </div>
+          <div class="warn-step">
+            <span class="warn-num">2</span>
+            <span class="warn-step-text">Enable Seller Hub</span>
+            <button class="btn-amber btn-sm" id="btn-ebay-hub">Open Hub</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- No product state (shown when not on Amazon product page) -->
+      <div id="no-product">
+        <svg class="no-product-icon" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+        </svg>
+        <div class="font-medium">No product loaded</div>
+        <div class="text-xs text-muted">Navigate to an Amazon product page, then click <strong>Scan Product</strong> below</div>
+        <button id="btn-scan-no-product" class="btn btn-secondary btn-sm" style="margin-top:4px">
+          Scan Product
+        </button>
+      </div>
+
+      <!-- Product tabs (shown when product loaded) -->
+      <div id="product-tabs" class="inner-tabs hidden">
+
+        <!-- Tab nav -->
+        <div class="inner-tabs-nav">
+          <button class="inner-tab-btn active" data-tab="import">Import</button>
+          <button class="inner-tab-btn" data-tab="advanced">Advanced Edit</button>
+        </div>
+
+        <!-- ── Import tab ──────────────────────── -->
+        <div id="tab-import" class="tab-content">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Import product</div>
+            </div>
+            <div class="card-content">
+
+              <div class="grid-2">
+                <div class="field">
+                  <label for="inp-min-qty">Min quantity</label>
+                  <input type="number" id="inp-min-qty" min="1" max="5000" value="1" placeholder="1">
+                </div>
+                <div class="field">
+                  <label for="inp-shipping">Shipping cost</label>
+                  <input type="number" id="inp-shipping" min="0" step="0.01" value="0" placeholder="0.00">
+                </div>
+              </div>
+
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <div class="toggle-label">Allow low quantity</div>
+                  <div class="toggle-desc">Import even if quantity is low</div>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="tog-low-qty">
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+
+              <div class="field">
+                <label for="sel-upload-type">Upload type</label>
+                <div class="select-wrap">
+                  <select id="sel-upload-type">
+                    <option value="classic">Classic</option>
+                    <option value="draft">Draft</option>
+                  </select>
+                </div>
+              </div>
+
+              <button id="btn-start-import" class="btn btn-primary btn-w-full">
+                Start Import
+              </button>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Advanced Edit tab ────────────────── -->
+        <div id="tab-advanced" class="tab-content hidden">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Advanced edit</div>
+            </div>
+            <div class="card-content">
+
+              <!-- Title -->
+              <div class="field">
+                <label for="inp-title">Title</label>
+                <input type="text" id="inp-title" placeholder="Product title…" maxlength="80">
+              </div>
+
+              <!-- Images grid -->
+              <div class="field">
+                <label>Main images <span class="text-xs text-muted">(click to remove)</span></label>
+                <div id="adv-image-grid" class="images-grid"></div>
+                <div id="adv-no-images" class="text-xs text-muted" style="margin-top:4px">No images loaded</div>
+              </div>
+
+              <!-- Variations -->
+              <div class="field" id="adv-variations-wrap">
+                <label>Variations</label>
+                <div id="adv-variations" class="variations-section"></div>
+                <button id="btn-add-dimension" class="btn btn-outline btn-sm" style="margin-top:8px;width:100%">
+                  + Add Dimension
+                </button>
+              </div>
+
+              <!-- Quantity -->
+              <div class="field">
+                <label for="inp-adv-qty">Quantity</label>
+                <input type="number" id="inp-adv-qty" min="0" value="1" placeholder="1">
+              </div>
+
+              <!-- Action buttons -->
+              <div class="btn-group">
+                <button id="btn-adv-upload" class="btn btn-primary btn-w-full">Upload</button>
+                <button id="btn-adv-draft" class="btn btn-outline btn-w-full">Create draft</button>
+                <button id="btn-extend" class="btn btn-outline btn-w-full">⤢ Extend</button>
+                <button id="btn-adv-cancel" class="btn btn-ghost btn-w-full">Cancel</button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <!-- /product-tabs -->
+
+    </div>
+  </div>
+  <!-- /view-main -->
+
+</div>
+<!-- /app -->
+
+<!-- Toast -->
+<div id="toast" class="hidden"></div>
+
+<script src="panel-store.js"></script>
+<script src="panel-main.js"></script>
+</body>
+</html>

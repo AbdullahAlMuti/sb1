@@ -200,6 +200,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'OPEN_SIDE_PANEL') {
+    (async () => {
+      try {
+        const tabId = request.tabId || sender?.tab?.id;
+        if (tabId) {
+          await chrome.sidePanel.open({ tabId });
+        } else {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tab) await chrome.sidePanel.open({ tabId: tab.id });
+        }
+        sendResponse({ ok: true });
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
   if (request.action === 'OPEN_BACKGROUND_TAB') {
     chrome.tabs.create({ url: request.url, active: false });
     sendResponse({ ok: true });
@@ -366,60 +384,75 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       } catch (e) { }
     })();
     return true;
+  } else if (request.action === "import_ebay") {
+    // SuperDS-equivalent: open eBay listing tab, store product keyed by tabId
+    (async () => {
+      try {
+        const product  = request.product || {};
+        const isDraft  = request.uploadType === 'draft';
+        const uploadSessionId = crypto.randomUUID();
+        const ebayUrl  = `https://www.ebay.com/sl/prelist/suggest?sr=shListingsTopNav&uploadSessionId=${uploadSessionId}`;
+
+        // Store product under uploadSessionId first to prevent race condition
+        await chrome.storage.local.set({
+          [uploadSessionId]: { product, isImported: false, uploadType: request.uploadType || 'classic' },
+          ebayListingTitle: product.title || '',
+          ebayListingTabId: ''
+        });
+
+        const tab = await chrome.tabs.create({ active: true, url: ebayUrl });
+        const tabId = tab.id;
+
+        // Also set legacy tabId keys for backward compatibility
+        await chrome.storage.local.set({
+          [String(tabId)]: { product, isImported: false, uploadType: request.uploadType || 'classic' },
+          ebayListingTabId: String(tabId)
+        });
+
+        // Fire-and-forget DB sync when product has sku (e.g. from "List on eBay" button)
+        if (product.ebaySku || product.asin) {
+          (async () => {
+            try {
+              if (typeof postCreateListing === 'function') {
+                await postCreateListing({
+                  title: product.title, sku: product.ebaySku || product.asin,
+                  ebay_price: product.price, amazon_price: product.amazonPrice || '',
+                  amazon_url: product.url, amazon_asin: product.asin,
+                  status: 'active',
+                  amazon_data: { image: '' }
+                }, 'import_ebay');
+              }
+            } catch (e) { console.warn('[import_ebay] sync error:', e?.message || e); }
+          })();
+        }
+      } catch (e) {
+        console.warn('[import_ebay] Error:', e?.message || e);
+      }
+    })();
+    return true;
+  } else if (request.action === "GET_TAB_ID") {
+    // Content scripts call this to discover their own tabId
+    sendResponse({ tabId: sender.tab ? sender.tab.id : null });
+    return true;
   } else if (request.action === "START_OPTILIST") {
+    // Sync-only handler — listing is now handled by import_ebay
     (async () => {
       try {
         if (request.title && request.sku) {
           sendResponse({ success: true, message: "Processing started" });
           const result = await chrome.storage.local.get('listedCount');
           await chrome.storage.local.set({ listedCount: (result.listedCount || 0) + 1 });
-
-          (async function syncListing() {
-            const payload = {
+          if (typeof postCreateListing === 'function') {
+            await postCreateListing({
               title: request.title, sku: request.sku,
               ebay_price: request.finalPrice, amazon_price: request.amazonPrice,
               amazon_url: request.productURL, amazon_asin: request.asin,
-              status: "active",
-              amazon_data: { image: request.mainImage }
-            };
-            try {
-              if (typeof postCreateListing === 'function') {
-                const syncResult = await postCreateListing(payload, 'start_optilist');
-                if (!syncResult.success) {
-                  console.warn('[START_OPTILIST] Listing sync failed:', {
-                    status: syncResult.status,
-                    error: syncResult.error,
-                    sku: payload.sku,
-                    asin: payload.amazon_asin
-                  });
-                }
-              }
-            } catch (e) {
-              console.warn('[START_OPTILIST] Listing sync error:', e?.message || e);
-              if (typeof recordListingSyncError === 'function') {
-                await recordListingSyncError({
-                  source: 'start_optilist',
-                  error: e?.message || 'START_OPTILIST listing sync failed',
-                  payload
-                });
-              }
-            }
-          })();
+              status: "active", amazon_data: { image: request.mainImage }
+            }, 'start_optilist').catch(e => console.warn('[START_OPTILIST] sync error:', e?.message || e));
+          }
+        } else {
+          sendResponse({ success: false });
         }
-
-        const storageData = { ebayTitle: request.title, ebayCondition: request.condition || "1000" };
-        chrome.storage.local.set(storageData, () => {
-          chrome.tabs.create({ url: "https://www.ebay.com/sl/prelist/suggest?sr=shListingsTopNav" }, (tab) => {
-            chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-              if (tabId === tab.id && info.status === 'complete') {
-                chrome.tabs.onUpdated.removeListener(listener);
-                setTimeout(() => {
-                  chrome.tabs.sendMessage(tab.id, { action: "RUN_EBAY_LISTER" });
-                }, 2000);
-              }
-            });
-          });
-        });
       } catch (e) {
         console.warn('[START_OPTILIST] Unexpected error:', e?.message || e);
       }
@@ -464,6 +497,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true });
     return true;
   } else if (request.action === "SYNC_LISTING") {
+    // create-listing edge fn now atomically writes parent + listing_variations in one RPC call.
+    // No separate REST POST needed here.
     (async () => {
       try {
         if (typeof postCreateListing === 'function') {
@@ -479,6 +514,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           });
         }
         sendResponse({ success: false, source: 'background', error: e?.message || 'Background listing sync failed' });
+      }
+    })();
+    return true;
+  } else if (request.action === "SS_AI_GENERATE") {
+    // Robust AI title/description via AuthHelper (handles ssat_ + legacy auth).
+    // request.kind = 'title' | 'description', request.productData = {...}
+    (async () => {
+      try {
+        const fn = request.kind === 'description' ? 'generate-description-v2' : 'generate-titles';
+        const resp = await AuthHelper.callEdgeFunction(fn, request.productData || {});
+        if (resp.error) { sendResponse({ success: false, error: resp.error }); return; }
+        sendResponse(resp.data || { success: false, error: 'No data' });
+      } catch (e) {
+        sendResponse({ success: false, error: e?.message || 'AI generation failed' });
+      }
+    })();
+    return true;
+  } else if (request.action === "CHECK_DUPLICATE") {
+    (async () => {
+      try {
+        const asin = request.asin;
+        if (!asin) { sendResponse({ duplicate: false }); return; }
+        const resp = await AuthHelper.callEdgeFunction('check-duplicate', { asin });
+        if (resp.error) {
+          // Fail-open: don't block listing on auth/infra error
+          sendResponse({ duplicate: false, error: resp.error });
+          return;
+        }
+        sendResponse(resp.data || { duplicate: false });
+      } catch (e) {
+        sendResponse({ duplicate: false, error: e?.message || 'check-duplicate failed' });
       }
     })();
     return true;

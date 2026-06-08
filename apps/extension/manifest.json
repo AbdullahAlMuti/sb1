@@ -8,7 +8,9 @@
     "storage",
     "scripting",
     "tabs",
-    "alarms"
+    "alarms",
+    "sidePanel",
+    "unlimitedStorage"
   ],
   "host_permissions": [
     "*://*.media-amazon.com/*",
@@ -17,6 +19,8 @@
     "*://*.walmartimages.com/*",
     "*://*.walmartimages.ca/*",
     "https://www.ebay.com/*",
+    "*://msa-b1.ebay.com/*",
+    "*://bulkedit.ebay.com/*",
     "*://amazon.com/*",
     "*://*.amazon.com/*",
     "*://amazon.co.uk/*",
@@ -39,9 +43,11 @@
   "background": {
     "service_worker": "background/index.js"
   },
+  "side_panel": {
+    "default_path": "sidepanel/side-panel.html"
+  },
   "action": {
-    "default_title": "SellerSuit",
-    "default_popup": "popup.html"
+    "default_title": "SellerSuit"
   },
   "options_page": "options.html",
   "content_scripts": [
@@ -58,8 +64,27 @@
         "*://amazon.com.au/*",
         "*://*.amazon.com.au/*"
       ],
+      "js": ["content_scripts/amazon-xhrpatch.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "*://amazon.com/*",
+        "*://*.amazon.com/*",
+        "*://amazon.co.uk/*",
+        "*://*.amazon.co.uk/*",
+        "*://amazon.de/*",
+        "*://*.amazon.de/*",
+        "*://amazon.ca/*",
+        "*://*.amazon.ca/*",
+        "*://amazon.com.au/*",
+        "*://*.amazon.com.au/*"
+      ],
       "js": [
         "common/config.js",
+        "common/pricing-engine.js",
+        "common/sku-engine.js",
         "common/performance.js",
         "common/storage.js",
         "common/ui.js",
@@ -68,8 +93,17 @@
         "common/editor-tools.js",
         "common/image-renderer.js",
         "ui/calculator.js",
+        "common/images/core/image-schema.js",
+        "common/images/core/image-normalizer.js",
+        "common/images/core/image-deduper.js",
+        "common/images/core/image-validator.js",
+        "common/images/core/image-cache.js",
+        "common/images/core/extraction-engine.js",
+        "common/images/adapters/amazon.image-adapter.js",
+        "common/images/fallback/modal-click-extractor.js",
         "common/amazon_image_extractor.js",
         "common/full_view_image_extractor.js",
+        "content_scripts/amazon-variant-scraper.js",
         "content_scripts/amazon_injector.js",
         "content_scripts/image_editor.js",
         "content_scripts/amazon_fulfiller.js"
@@ -86,6 +120,8 @@
       ],
       "js": [
         "common/config.js",
+        "common/pricing-engine.js",
+        "common/sku-engine.js",
         "common/performance.js",
         "common/storage.js",
         "common/ui.js",
@@ -94,6 +130,13 @@
         "common/editor-tools.js",
         "common/image-renderer.js",
         "ui/calculator.js",
+        "common/images/core/image-schema.js",
+        "common/images/core/image-normalizer.js",
+        "common/images/core/image-deduper.js",
+        "common/images/core/image-validator.js",
+        "common/images/core/image-cache.js",
+        "common/images/core/extraction-engine.js",
+        "common/images/adapters/walmart.image-adapter.js",
         "content_scripts/walmart_injector.js",
         "content_scripts/image_editor.js"
       ],
@@ -109,19 +152,29 @@
       ],
       "js": [
         "common/config.js",
-        "common/constants.js",
-        "common/auth-helper.js",
-        "common/performance.js",
-        "common/retry-helper.js",
-        "common/api-client.js",
-        "common/sync-utils.js",
         "common/storage.js",
-        "common/ui.js",
-        "common/analytics.js",
-        "src/automation-clean.js",
-        "src/image-uploader.js",
-        "src/item-filler.js",
+        "common/pricing-engine.js",
+        "common/sku-engine.js",
+        "common/retry-helper.js",
+        "common/ebay-photo-uploader.js",
+        "common/ebay-listing-api.js",
         "content_scripts/ebay_prelist.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://bulkedit.ebay.com/msku*"
+      ],
+      "js": [
+        "common/config.js",
+        "common/storage.js",
+        "common/pricing-engine.js",
+        "common/sku-engine.js",
+        "common/retry-helper.js",
+        "common/ebay-photo-uploader.js",
+        "common/ebay-listing-api.js",
+        "content_scripts/ebay_bulkedit.js"
       ],
       "run_at": "document_idle"
     },
@@ -131,17 +184,29 @@
       ],
       "js": [
         "common/config.js",
-        "common/constants.js",
-        "common/auth-helper.js",
-        "common/performance.js",
-        "common/retry-helper.js",
-        "common/api-client.js",
-        "common/sync-utils.js",
         "common/storage.js",
-        "common/ui.js",
-        "common/analytics.js",
-        "src/image-uploader.js",
-        "content_scripts/ebay_lister.js"
+        "common/pricing-engine.js",
+        "common/sku-engine.js",
+        "common/images/core/image-schema.js",
+        "common/images/core/image-cache.js",
+        "common/images/upload/ebay-image-uploader.js",
+        "src/image-uploader.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://www.ebay.com/itm/*",
+        "*://*.ebay.com/itm/*",
+        "*://*.ebay.co.uk/itm/*",
+        "*://*.ebay.de/itm/*",
+        "*://*.ebay.fr/itm/*",
+        "*://*.ebay.com.au/itm/*",
+        "*://*.ebay.it/itm/*",
+        "*://*.ebay.es/itm/*"
+      ],
+      "js": [
+        "content_scripts/ebay_item_scraper.js"
       ],
       "run_at": "document_idle"
     },
@@ -196,6 +261,10 @@
         "common/editor-tools.js",
         "common/image-renderer.js",
         "common/auth-helper.js",
+        "common/ebay-photo-uploader.js",
+        "common/pricing-engine.js",
+        "common/sku-engine.js",
+        "common/ebay-listing-api.js",
         "common/retry-helper.js",
         "common/api-client.js",
         "common/sync-utils.js",
@@ -209,9 +278,22 @@
         "assets/watermark.png",
         "assets/stickers/*",
         "src/image-uploader.js",
-        "src/item-filler.js",
+        "common/images/core/image-schema.js",
+        "common/images/core/image-normalizer.js",
+        "common/images/core/image-deduper.js",
+        "common/images/core/image-validator.js",
+        "common/images/core/image-cache.js",
+        "common/images/core/extraction-engine.js",
+        "common/images/adapters/amazon.image-adapter.js",
+        "common/images/adapters/walmart.image-adapter.js",
+        "common/images/fallback/modal-click-extractor.js",
+        "common/images/upload/ebay-image-uploader.js",
         "content_scripts/description_paster.js",
-        "content_scripts/bridge.js"
+        "content_scripts/bridge.js",
+        "sidepanel/side-panel.html",
+        "sidepanel/side-panel.css",
+        "sidepanel/panel-store.js",
+        "sidepanel/panel-main.js"
       ],
       "matches": [
         "*://amazon.com/*",
