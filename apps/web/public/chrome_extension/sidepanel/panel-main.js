@@ -753,10 +753,13 @@
 
   /* ── eBay warning ─────────────────────────── */
   function initEbayWarning() {
-    document.getElementById('btn-warn-dismiss').addEventListener('click', () => {
-      chrome.storage.local.set({ ebaySessionRequired: false });
-      elEbayWarning.classList.add('hidden');
-    });
+    const btnDismiss = document.getElementById('btn-warn-dismiss');
+    if (btnDismiss) {
+      btnDismiss.addEventListener('click', () => {
+        chrome.storage.local.set({ ebaySessionRequired: false });
+        elEbayWarning.classList.add('hidden');
+      });
+    }
     document.getElementById('btn-ebay-login').addEventListener('click', () => {
       chrome.tabs.create({ url: 'https://www.ebay.com/signin/' });
     });
