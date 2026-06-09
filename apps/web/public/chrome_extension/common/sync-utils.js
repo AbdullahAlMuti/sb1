@@ -18,6 +18,15 @@ const SyncUtils = (() => {
   // Debug mode flag - set to true for verbose logging
   const DEBUG_SYNC = true;
 
+  function _sessionStore() {
+    try {
+      if (chrome.storage && chrome.storage.session) {
+        return chrome.storage.session;
+      }
+    } catch (_) {}
+    return chrome.storage.local;
+  }
+
   function syncLog(level, message, data = null) {
     if (!DEBUG_SYNC && level === 'debug') return;
     
@@ -550,7 +559,7 @@ const SyncUtils = (() => {
   }
 
   async function triggerEbayOrderSync(source = 'manual') {
-    const sessionData = await chrome.storage.session.get(['isEbayOrderSyncInProgress', 'lastEbayOrderSync']);
+    const sessionData = await _sessionStore().get(['isEbayOrderSyncInProgress', 'lastEbayOrderSync']);
     if (sessionData.isEbayOrderSyncInProgress) {
       syncLog('warn', 'Sync already in progress, skipping');
       return;
@@ -585,7 +594,7 @@ const SyncUtils = (() => {
       return;
     }
 
-    await chrome.storage.session.set({ isEbayOrderSyncInProgress: true });
+    await _sessionStore().set({ isEbayOrderSyncInProgress: true });
     syncLog('info', `Starting eBay Order Sync (${source})`);
     await logEbaySyncEvent('info', null, 'extension_sync_started', null, { source, bypassDebounce });
 
@@ -654,7 +663,7 @@ const SyncUtils = (() => {
       if (orders.length === 0) {
         syncLog('info', 'No orders found in CSV');
         await logEbaySyncEvent('info', null, 'extension_sync_completed', null, { message: 'No orders found in CSV' });
-        await chrome.storage.session.set({ isEbayOrderSyncInProgress: false });
+        await _sessionStore().set({ isEbayOrderSyncInProgress: false });
         return;
       }
 
@@ -730,7 +739,7 @@ const SyncUtils = (() => {
       }
 
       const now = Date.now();
-      await chrome.storage.session.set({ lastEbayOrderSync: now });
+      await _sessionStore().set({ lastEbayOrderSync: now });
       chrome.storage.local.set({ lastSyncTime: now });
 
       chrome.runtime.sendMessage({
@@ -744,7 +753,7 @@ const SyncUtils = (() => {
       await logEbaySyncEvent('error', 'unknown', 'extension_sync_failed', null, { error: err.message });
       throw err;
     } finally {
-      await chrome.storage.session.set({ isEbayOrderSyncInProgress: false });
+      await _sessionStore().set({ isEbayOrderSyncInProgress: false });
     }
   }
 

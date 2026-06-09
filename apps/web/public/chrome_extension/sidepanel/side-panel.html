@@ -83,6 +83,10 @@
             <button class="btn-amber btn-sm" id="btn-ebay-hub">Open Hub</button>
           </div>
         </div>
+      <!-- Listing Mode Selector -->
+      <div class="mode-toggle-wrap">
+        <button class="mode-btn active" id="btn-mode-single" data-mode="single">Single Listing</button>
+        <button class="mode-btn" id="btn-mode-all" data-mode="all">Variation Listing</button>
       </div>
 
       <!-- No product state (shown when not on Amazon product page) -->
@@ -91,9 +95,9 @@
           <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
         </svg>
         <div class="font-medium">No product loaded</div>
-        <div class="text-xs text-muted">Navigate to an Amazon product page, then click <strong>Scan Product</strong> below</div>
-        <button id="btn-scan-no-product" class="btn btn-secondary btn-sm" style="margin-top:4px">
-          Scan Product
+        <div class="text-xs text-muted" style="margin-bottom:6px">Navigate to an Amazon product page, then load details below.</div>
+        <button id="btn-scan-no-product" class="btn btn-primary btn-w-full">
+          Load Single Product
         </button>
       </div>
 
@@ -114,6 +118,11 @@
             </div>
             <div class="card-content">
 
+              <!-- Context line -->
+              <div id="import-context" class="import-context text-xs text-muted"></div>
+
+              <!-- All-mode fields (hidden in Single mode) -->
+              <div id="all-mode-fields">
               <div class="grid-2">
                 <div class="field">
                   <label for="inp-min-qty">Min quantity</label>
@@ -145,10 +154,26 @@
                   </select>
                 </div>
               </div>
+              </div>
+              <!-- /all-mode-fields -->
 
               <button id="btn-start-import" class="btn btn-primary btn-w-full">
                 Start Import
               </button>
+
+              <!-- Scan preview (shown after successful scan) -->
+              <div id="scan-preview" class="scan-preview hidden">
+                <div class="scan-preview-row">
+                  <img id="preview-img" class="preview-thumb" src="" alt="">
+                  <div class="preview-meta">
+                    <div id="preview-title" class="preview-title"></div>
+                    <div id="preview-asin" class="text-xs text-muted"></div>
+                    <div id="preview-vars" class="text-xs text-muted"></div>
+                    <div id="preview-price" class="preview-price"></div>
+                  </div>
+                </div>
+              </div>
+              <!-- /scan-preview -->
 
             </div>
           </div>
@@ -215,6 +240,7 @@
 <!-- Toast -->
 <div id="toast" class="hidden"></div>
 
+<script src="../common/listing-draft.js"></script>
 <script src="panel-store.js"></script>
 <script src="panel-main.js"></script>
 </body>

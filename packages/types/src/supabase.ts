@@ -817,6 +817,7 @@ export type Database = {
           ebay_sku_encoded: string | null
           final_price: number
           id: string
+          image_url: string | null
           listing_id: string
           parent_asin: string | null
           raw_supplier_price: number | null
@@ -833,6 +834,7 @@ export type Database = {
           ebay_sku_encoded?: string | null
           final_price: number
           id?: string
+          image_url?: string | null
           listing_id: string
           parent_asin?: string | null
           raw_supplier_price?: number | null
@@ -849,6 +851,7 @@ export type Database = {
           ebay_sku_encoded?: string | null
           final_price?: number
           id?: string
+          image_url?: string | null
           listing_id?: string
           parent_asin?: string | null
           raw_supplier_price?: number | null

@@ -8,6 +8,8 @@
 </head>
 <body class="ss-panel-page">
   <div id="snipe-root-wrapper" class="ss-panel-wrapper">
+
+    <!-- Loading overlay -->
     <div class="ss-scrape-overlay" id="ss-scrape-overlay">
       <div class="ss-scrape-status-box">
         <svg class="spin-animation" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -17,257 +19,214 @@
         <span class="ss-scrape-status-text" id="ss-scrape-status-text">Scraping product images...</span>
       </div>
     </div>
+
+    <!-- FAB restore button -->
     <button class="ss-panel-fab" id="panel-restore-btn" type="button" aria-label="Open SellerSuit panel" title="Open SellerSuit panel">
       <img class="ss-panel-fab-icon" src="../assets/logo.png" alt="SellerSuit Logo" width="32" height="32">
     </button>
-    <div class="ss-panel-shell">
-      <header class="ss-header">
-        <div class="ss-header-left">
-          <img class="ss-brand-icon" src="../assets/logo.png" alt="SellerSuit Logo" width="32" height="32">
-          <div class="ss-brand-copy">
-            <span class="ss-brand-name">SellerSuit</span>
-          </div>
-        </div>
 
-        <div class="ss-header-right">
-          <button class="ss-btn ss-btn-outline-green btn-mode-toggle" id="image-mode-toggle" type="button" title="Switch between Fast (passive) and Complete (interactive) extraction modes">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-            <span id="mode-label">Fast Mode</span>
-          </button>
-          <button class="ss-btn ss-btn-outline" id="refresh-images-btn" type="button">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
-            Refresh Images
-          </button>
-          <button class="ss-btn ss-btn-outline" id="download-images-btn" type="button">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2-2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            Download All
-          </button>
-          <div class="auth-status-bar" id="auth-status-bar">
-            <span class="auth-status-icon" id="auth-status-icon" aria-hidden="true">●</span>
-            <span class="auth-status-text" id="auth-status-text"></span>
-            <button class="btn-auth" id="auth-action-btn" type="button">Login</button>
-          </div>
-          <button class="ss-icon-btn" id="panel-night-mode-btn" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-          </button>
-          <button class="ss-icon-btn" id="panel-settings-btn" type="button" aria-label="Panel settings" title="Settings" style="display: none;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-          </button>
-          <button class="ss-icon-btn" id="panel-minimize-btn" type="button" aria-label="Minimize panel" title="Minimize">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-          </button>
-          <button class="ss-icon-btn" id="panel-close-btn" type="button" aria-label="Close panel" title="Close">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-          </button>
-        </div>
-      </header>
+    <div class="ss-panel-shell ssx-active">
 
-    <section class="ss-card ss-image-overview" aria-label="Product images">
-      <div class="ss-image-gallery-container">
-        <div class="gallery-scroll" id="snipe-image-gallery">
-          <div class="gallery-empty"><span>No images available</span></div>
-          <div class="dummy-gallery" style="display: none;">
-            <div class="dummy-main-img"></div>
-            <div class="dummy-thumb"></div>
-            <div class="dummy-thumb"></div>
-            <div class="dummy-thumb"></div>
-            <div class="dummy-more">+6 more</div>
-          </div>
-        </div>
-      </div>
-    </section>
+      <!-- ════════════ EXTENDED EDITOR — PRIMARY VIEW ════════════ -->
+      <div id="ss-extended-editor" class="ssx" style="display:block;">
 
-    <!-- Sidebar-extended: structured product editor (hidden unless source=sidebar) -->
-    <div id="ss-extended-editor" style="display:none; padding: 12px 16px; background: var(--ss-bg-card, #1e293b); border-bottom: 1px solid var(--ss-border, #334155);">
-      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-start;">
-        <div style="flex:1; min-width:220px;">
-          <label style="font-size:11px; color:var(--ss-muted,#94a3b8); display:block; margin-bottom:4px;">Title</label>
-          <input id="ext-title" type="text" maxlength="80" placeholder="eBay title…"
-            style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--ss-border,#334155); background:var(--ss-bg,#0f172a); color:inherit; font-size:13px;">
-        </div>
-        <div style="flex:0 0 110px;">
-          <label style="font-size:11px; color:var(--ss-muted,#94a3b8); display:block; margin-bottom:4px;">Price (sell for)</label>
-          <input id="ext-price" type="text" placeholder="0.00"
-            style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--ss-border,#334155); background:var(--ss-bg,#0f172a); color:inherit; font-size:13px;">
-        </div>
-        <div style="flex:0 0 110px;">
-          <label style="font-size:11px; color:var(--ss-muted,#94a3b8); display:block; margin-bottom:4px;">SKU</label>
-          <input id="ext-sku" type="text" placeholder="AB-ASIN"
-            style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--ss-border,#334155); background:var(--ss-bg,#0f172a); color:inherit; font-size:13px;">
-        </div>
-        <div style="flex:0 0 60px;">
-          <label style="font-size:11px; color:var(--ss-muted,#94a3b8); display:block; margin-bottom:4px;">Qty</label>
-          <input id="ext-qty" type="number" min="1" value="1"
-            style="width:100%; padding:6px 8px; border-radius:6px; border:1px solid var(--ss-border,#334155); background:var(--ss-bg,#0f172a); color:inherit; font-size:13px;">
-        </div>
-      </div>
-      <div id="ext-variations-wrap" style="display:none; margin-top:10px;">
-        <label style="font-size:11px; color:var(--ss-muted,#94a3b8); display:block; margin-bottom:6px;">Variations</label>
-        <div id="ext-variations"></div>
-      </div>
-      <div id="ext-specs-wrap" style="display:none; margin-top:10px;">
-        <div id="ext-specs"></div>
-      </div>
-    </div>
-
-    <div class="ss-grid-layout" id="snipe-main-container">
-      <section class="ss-card ss-titles-section" aria-label="AI generated titles">
-        <button id="generate-ai-titles-btn" style="display: none;" type="button"></button>
-
-        <div class="ss-selected-title-box ai-title-container selected-title-card" id="ai-title-container">
-          <div class="ss-selected-title-header">
-            <span class="ss-selected-label st-match-text">
-              Selected Title
-              <span class="ss-sub-label">(Best Match)</span>
-              <svg viewBox="0 0 24 24" fill="var(--ss-green)" stroke="white" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-            </span>
-            <span class="ss-char-count ai-title-counter st-char-count char-count" id="ai-title-counter">0 / 80 chars</span>
-          </div>
-          <div class="ss-selected-title-body">
-            <div class="ss-title-text ai-title-display st-text title-text" id="ai-generated-title" contenteditable="true" spellcheck="false">Click "Generate" to create optimized eBay title...</div>
-            <div class="ss-selected-actions">
-              <button class="ss-btn ss-btn-outline ss-btn-small btn-slate btn-copy-title" id="copy-title-btn" type="button" style="display:none;">Copy</button>
+        <!-- 1. Top product header -->
+        <div class="ssx-topbar">
+          <div class="ssx-topbar-left">
+            <button class="ssx-back" id="ssx-back-btn" type="button" aria-label="Back">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </button>
+            <div class="ssx-topbar-thumb"><img id="ssx-head-img" src="" alt=""></div>
+            <div class="ssx-topbar-info">
+              <div class="ssx-head-title" id="ssx-head-title">Product title…</div>
+              <div class="ssx-head-meta">
+                <span class="ssx-chip ssx-chip-supplier" id="ssx-head-supplier">
+                  <img class="ssx-mini-logo" src="../assets/logo.png" alt="">Amazon
+                </span>
+                <span class="ssx-chip" id="ssx-head-region">US</span>
+                <span class="ssx-chip ssx-chip-asin" id="ssx-head-asin">ASIN: —</span>
+                <span class="ssx-chip ssx-chip-status" id="ssx-head-state">● Draft</span>
+              </div>
             </div>
           </div>
-        </div>
-
-        <div class="ai-title-options-header">
-          <span>Title Options</span>
-          <label class="sort-by">Sort by:
-            <select aria-label="Sort title options">
-              <option>Relevance</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="ss-title-list title-list inline-title-list" id="snipe-title-list">
-          <div class="ss-title-row inline-title-card title-row selected" id="ai-title-option-1">
-            <div class="ss-title-rank inline-title-rank">1</div>
-            <div class="ss-title-badge ss-badge-best inline-title-badge best">Best</div>
-            <div class="ss-title-content inline-title-text title-text text-muted" id="ai-title-option-1-text">Title option 1 will appear here...</div>
-            <div class="ss-title-meta">
-              <span class="ss-title-chars title-char-count char-count" id="ai-title-option-1-count">0 chars</span>
-            </div>
-            <div class="ss-title-actions inline-title-actions">
-              <button class="ss-btn ss-btn-outline-green ss-btn-small inline-title-use" id="ai-title-option-1-use" type="button">Selected</button>
-              <button class="ss-btn ss-btn-icon ss-btn-outline btn-slate inline-title-copy" id="ai-title-option-1-copy" type="button" aria-label="Copy title option 1">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          <div class="ssx-topbar-right">
+            <div class="ssx-mode-seg" id="ssx-mode-seg">
+              <button class="ssx-mode-btn" data-mode="single" id="ssx-mode-single" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line></svg>
+                Single Listing
+              </button>
+              <button class="ssx-mode-btn active" data-mode="all" id="ssx-mode-all" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                All Variations
               </button>
             </div>
+            <button class="ssx-btn ssx-btn-outline" id="ssx-save-draft-top" type="button">Save Draft</button>
+            <button class="ssx-btn ssx-btn-outline" id="ssx-preview-top" type="button">
+              Preview
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            </button>
+            <button class="ssx-btn ssx-btn-primary" id="ssx-upload-top" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              <span>Upload to eBay</span>
+              <span class="ssx-dropdown-separator"></span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="ssx-caret-icon"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+          </div>
+        </div>
+
+
+        <!-- 3+4. AI title + description two-col (nodes pre-placed in mounts) -->
+        <div class="ssx-two-col">
+          <div class="ssx-card ssx-ai-col">
+            <div class="ssx-card-head">
+              <span class="ssx-card-title">Title <span class="ssx-ai-tag">AI</span></span>
+              <button class="ssx-btn ssx-btn-ai" id="ssx-ai-title-btn" type="button">✦ AI Generate</button>
+            </div>
+            <div class="ssx-mount" id="ssx-title-mount">
+              <!-- AI title container lives here -->
+              <div class="ss-selected-title-box ai-title-container selected-title-card" id="ai-title-container">
+                <div class="ss-selected-title-body">
+                  <div class="ss-selected-title-header">
+                    <span class="ss-char-count ai-title-counter st-char-count char-count" id="ai-title-counter">0 / 80 chars</span>
+                  </div>
+                  <div class="ss-title-text ai-title-display st-text title-text" id="ai-generated-title" contenteditable="true" spellcheck="false">Click AI Generate to create an optimized eBay title…</div>
+                </div>
+                <div class="ss-title-list title-list inline-title-list" id="snipe-title-list"></div>
+              </div>
+            </div>
           </div>
 
-          <div class="ss-title-row inline-title-card title-row" id="ai-title-option-2">
-            <div class="ss-title-rank inline-title-rank ss-rank-blue">2</div>
-            <div class="ss-title-badge ss-badge-blue-light inline-title-badge recommended">Recommended</div>
-            <div class="ss-title-content inline-title-text title-text text-muted" id="ai-title-option-2-text">Title option 2 will appear here...</div>
-            <div class="ss-title-meta">
-              <span class="ss-title-chars title-char-count char-count" id="ai-title-option-2-count">0 chars</span>
+          <div class="ssx-card ssx-ai-col">
+            <div class="ssx-card-head">
+              <span class="ssx-card-title">Description <span class="ssx-ai-tag">AI</span></span>
+              <button class="ssx-btn ssx-btn-ai" id="ssx-ai-desc-btn" type="button">✦ AI Write Description</button>
             </div>
-            <div class="ss-title-actions inline-title-actions">
-              <button class="ss-btn ss-btn-outline-blue ss-btn-small inline-title-use" id="ai-title-option-2-use" type="button">Use Title</button>
-              <button class="ss-btn ss-btn-icon ss-btn-outline btn-slate inline-title-copy" id="ai-title-option-2-copy" type="button" aria-label="Copy title option 2">
+            <div class="ssx-mount" id="ssx-desc-mount">
+              <!-- Description preview lives here -->
+              <div class="ss-desc-body description-preview" id="description-preview">
+                <div class="ss-desc-empty description-placeholder description-empty-state">
+                  <svg class="ss-empty-icon" viewBox="0 0 24 24" fill="none" stroke="var(--ss-green)" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                  <h4 class="ss-empty-title">No description yet</h4>
+                  <p class="ss-empty-subtitle">Click AI Write Description to generate.</p>
+                </div>
+              </div>
+              <button class="ss-btn ss-btn-outline btn-slate btn-copy-desc ss-desc-copy-btn" id="copy-description-btn" type="button" disabled title="Copy HTML" style="display:none;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                Copy
               </button>
+              <div class="ssx-desc-footer" style="display: flex; justify-content: flex-end; margin-top: 6px;">
+                <span class="ss-desc-counter" style="font-size: 12px; color: #22c55e; font-weight: 500; display: inline-flex; align-items: center; gap: 4px;">
+                  162 / 5000
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width: 12px; height: 12px; color: #22c55e;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </span>
+              </div>
             </div>
           </div>
+        </div>
 
-          <div class="ss-title-row inline-title-card title-row" id="ai-title-option-3">
-            <div class="ss-title-rank inline-title-rank ss-rank-purple">3</div>
-            <div class="ss-title-badge ss-badge-purple-light inline-title-badge alternative">Alternative</div>
-            <div class="ss-title-content inline-title-text title-text text-muted" id="ai-title-option-3-text">Title option 3 will appear here...</div>
-            <div class="ss-title-meta">
-              <span class="ss-title-chars title-char-count char-count" id="ai-title-option-3-count">0 chars</span>
-            </div>
-            <div class="ss-title-actions inline-title-actions">
-              <button class="ss-btn ss-btn-outline-purple ss-btn-small inline-title-use" id="ai-title-option-3-use" type="button">Use Title</button>
-              <button class="ss-btn ss-btn-icon ss-btn-outline btn-slate inline-title-copy" id="ai-title-option-3-copy" type="button" aria-label="Copy title option 3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+
+        <!-- 6. Single listing block -->
+        <div class="ssx-card ssx-single-block" id="ssx-single-block" style="display:none;">
+          <div class="ssx-single-grid">
+            <div class="ssx-field"><label>Supplier Price</label><div class="ssx-readout" id="ssx-single-supplier">$0.00</div></div>
+            <div class="ssx-field"><label>eBay Final Price</label><div class="ssx-readout" id="ssx-single-ebay">$0.00</div></div>
+            <div class="ssx-field"><label>Profit</label><div class="ssx-readout ssx-stat-green" id="ssx-single-profit">$0.00</div></div>
+            <div class="ssx-field"><label>SKU</label><div class="ssx-readout" id="ssx-single-sku">—</div></div>
+            <div class="ssx-field"><label>Stock / Status</label><div class="ssx-readout" id="ssx-single-stock">—</div></div>
+          </div>
+        </div>
+
+        <!-- 7. Variations table (all-variations mode) -->
+        <div class="ssx-card ssx-var-block" id="ssx-var-block" style="display:none;">
+          <div class="ssx-var-head">
+            <span class="ssx-card-title">Variations <span class="ssx-var-count" id="ssx-var-count">(0)</span></span>
+            <div class="ssx-var-toolbar">
+              <div class="ssx-search-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" placeholder="Search variations…" id="ssx-var-search" class="ssx-var-search-inp">
+              </div>
+              <button class="ssx-btn ssx-btn-outline" id="ssx-filter-btn" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                Filter
               </button>
+              <button class="ssx-btn ssx-btn-outline" id="ssx-bulkedit-btn" type="button">Bulk Edit ▾</button>
+            </div>
+          </div>
+          <div class="ssx-table-wrap">
+            <table class="ssx-table">
+              <thead>
+                <tr>
+                  <th>Image</th><th>Variant Details</th><th>Supplier Price</th>
+                  <th>eBay Final Price</th><th>Profit</th><th>SKU</th><th>Stock</th><th>Status</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="ssx-var-rows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 8. Image gallery -->
+        <div class="ssx-card ssx-gallery-block">
+          <div class="ssx-gallery-head">
+            <span class="ssx-card-title">Selected Variation Images</span>
+            <span class="ssx-gallery-hint">Single mode shows only selected variation images. In All Variations mode, each variation keeps its own images.</span>
+          </div>
+          <div class="ssx-mount ssx-gallery-mount" id="ssx-gallery-mount">
+            <!-- Image gallery lives here -->
+            <div class="gallery-scroll" id="snipe-image-gallery">
+              <div class="gallery-empty"><span>No images available</span></div>
             </div>
           </div>
         </div>
-      </section>
 
-      <section class="ss-card ss-desc-section" aria-label="Listing description">
-        <button class="ss-btn ss-btn-outline btn-slate btn-copy-desc ss-desc-copy-btn" id="copy-description-btn" type="button" disabled title="Copy HTML">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-        </button>
-        <div class="ss-desc-body description-preview" id="description-preview">
-          <div class="ss-desc-empty description-placeholder description-empty-state">
-            <svg class="ss-empty-icon" viewBox="0 0 24 24" fill="none" stroke="var(--ss-green)" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-            <h4 class="ss-empty-title">No description generated yet</h4>
-            <p class="ss-empty-subtitle">Click Write to create an optimized eBay description.</p>
-            <ul class="ss-checklist description-feature-list">
-              <li class="df-item"><svg viewBox="0 0 24 24" fill="none" stroke="var(--ss-green)" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>SEO Optimized</li>
-              <li class="df-item"><svg viewBox="0 0 24 24" fill="none" stroke="var(--ss-green)" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>Bullet Points</li>
-              <li class="df-item"><svg viewBox="0 0 24 24" fill="none" stroke="var(--ss-green)" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>HTML Formatted</li>
-              <li class="df-item"><svg viewBox="0 0 24 24" fill="none" stroke="var(--ss-green)" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>eBay Policy Compliant</li>
-            </ul>
+        <!-- Hidden legacy fields — required for write-back and upload logic -->
+        <div style="display:none;">
+          <input id="ext-title" type="text" maxlength="80">
+          <input id="ext-price" type="text">
+          <input id="ext-sku" type="text">
+          <input id="ext-qty" type="number" min="1" value="1">
+          <div id="ext-variations-wrap"><div id="ext-variations"></div></div>
+          <div id="ext-specs-wrap"><div id="ext-specs"></div></div>
+          <!-- Legacy pricing/SKU inputs for calculator and SKU engine -->
+          <input type="text" id="sell-it-for-input" placeholder="0.00">
+          <select id="sku-prefix"><option value="AB">AB</option><option value="RC">RC</option></select>
+          <input type="text" id="sku-input" readonly>
+          <!-- Hidden AI/scrape trigger buttons wired by addEventListenersToPanel -->
+          <button id="generate-ai-titles-btn" type="button"></button>
+          <button id="generate-description-btn" type="button"></button>
+          <button id="snipe-title-btn" type="button"></button>
+          <button id="opti-list-btn" type="button">Upload</button>
+          <button id="scrape-preview-btn" type="button"></button>
+          <!-- Panel control buttons (close needed by back/cancel handlers) -->
+          <button id="panel-close-btn" type="button"></button>
+          <button id="panel-minimize-btn" type="button"></button>
+          <button id="panel-night-mode-btn" type="button"></button>
+        </div>
+
+        <!-- 9. Bottom action bar -->
+        <div class="ssx-actionbar">
+          <button class="ssx-btn ssx-btn-ghost" id="ssx-cancel-btn" type="button">Cancel</button>
+          <div class="ssx-actionbar-right">
+            <button class="ssx-btn ssx-btn-outline" id="ssx-save-draft-bot" type="button">Save Draft</button>
+            <button class="ssx-btn ssx-btn-outline" id="ssx-preview-bot" type="button">
+              Preview
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            </button>
+            <button class="ssx-btn ssx-btn-primary" id="ssx-upload-bot" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              <span>Upload to eBay</span>
+              <span class="ssx-dropdown-separator"></span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="ssx-caret-icon"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
           </div>
         </div>
-      </section>
-    </div>
 
-    <footer class="ss-action-bar bottom-action-toolbar actions-row">
-      <div class="ss-action-group ss-action-utility">
-        <span class="ss-action-label">Workflow</span>
-        <button class="ss-btn ss-btn-orange btn-orange btn-solid" id="scrape-preview-btn" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-          Scrape Preview
-        </button>
-        <button class="ss-btn ss-btn-outline btn-slate btn-outline" id="scrape-all-data-btn" type="button" style="display: none;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-          Scrape All Data
-        </button>
       </div>
+      <!-- ════════════ /EXTENDED EDITOR ════════════ -->
 
-      <div class="ss-action-group ss-action-center">
-        <button class="ss-btn ss-btn-green btn-solid" id="snipe-title-btn" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
-          Generate Title
-        </button>
-        <button class="ss-btn ss-btn-green btn-solid btn-generate-desc" id="generate-description-btn" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
-          Write
-        </button>
-        <button class="ss-btn ss-btn-blue btn-solid" id="opti-list-btn" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-          Upload
-        </button>
-        <button class="ss-btn ss-btn-dark btn-slate btn-solid" id="copy-btn" type="button" style="display: none;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-          Copy
-        </button>
-        <button class="ss-btn ss-btn-blue btn-blue-bright btn-solid" id="product-details-btn" type="button" style="display: none;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-          Product Details
-        </button>
-      </div>
+    </div><!-- /.ss-panel-shell -->
 
-      <div class="ss-action-group ss-action-right">
-        <span class="ss-action-label">Pricing</span>
-        <button class="ss-btn ss-btn-teal btn-teal btn-solid" id="calculator-btn" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"></rect><line x1="8" y1="6" x2="16" y2="6"></line></svg>
-          Calculator
-        </button>
-        <button class="ss-btn ss-btn-gold btn-gold btn-solid toolbar-small-btn" id="quick-calc-btn" type="button" style="display: none;">$</button>
-        <div class="input-inline price-field">
-          <input type="text" class="ss-input ss-price-input" id="sell-it-for-input" placeholder="62.56" aria-label="Sell it for price">
-        </div>
-        <select id="sku-prefix" class="ss-select select-inline" aria-label="SKU prefix">
-          <option value="AB">AB</option>
-          <option value="RC">RC</option>
-        </select>
-        <div class="input-inline input-sku sku-field">
-          <input type="text" class="ss-input ss-sku-input" id="sku-input" placeholder="B0CQM9M4YH" aria-label="Generated SKU" readonly>
-        </div>
-        <button class="ss-btn ss-btn-green btn-solid" id="generate-sku-btn" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
-          Generate
-        </button>
-      </div>
-    </footer>
-
+    <!-- Calculator modal (preserved — logic unchanged) -->
     <div id="calculator-popup" class="calculator-popup" style="display: none;">
       <div class="calculator-overlay"></div>
       <div class="calculator-modal" role="dialog" aria-modal="true" aria-labelledby="calculator-title">
@@ -303,6 +262,7 @@
       </div>
     </div>
 
+    <!-- Scrape preview drawer (preserved) -->
     <div id="scrape-preview-drawer" class="scrape-drawer" style="display: none;">
       <div class="scrape-drawer-overlay"></div>
       <div class="scrape-drawer-panel" role="dialog" aria-modal="true" aria-label="Scrape preview">
@@ -319,6 +279,7 @@
       </div>
     </div>
 
+    <!-- Title selection popup (deprecated — kept for rollback safety) -->
     <div id="title-selection-popup" class="title-popup" style="display: none;">
       <div class="title-popup-overlay"></div>
       <div class="title-popup-modal" role="dialog" aria-modal="true" aria-label="Select title">
@@ -326,8 +287,8 @@
         <div class="title-popup-content" id="title-popup-list"></div>
       </div>
     </div>
-    </div>
-  </div>
+
+  </div><!-- /#snipe-root-wrapper -->
 
   <script src="../common/config.js"></script>
   <script src="../common/performance.js"></script>

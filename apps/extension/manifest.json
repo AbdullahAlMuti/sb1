@@ -83,6 +83,7 @@
       ],
       "js": [
         "common/config.js",
+        "common/listing-draft.js",
         "common/pricing-engine.js",
         "common/sku-engine.js",
         "common/performance.js",
@@ -251,6 +252,7 @@
     {
       "resources": [
         "common/config.js",
+        "common/listing-draft.js",
         "common/constants.js",
         "common/performance.js",
         "common/message-handler.js",

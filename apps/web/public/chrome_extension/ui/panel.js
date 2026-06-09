@@ -212,8 +212,16 @@ function updateModeLabel(useFullView) {
 }
 
 function loadImages() {
-  chrome.storage.local.get(['productImages', 'snipedData'], (result) => {
-    const images = result.productImages || result.snipedData?.images || [];
+  // Primary source: currentProduct.images (written by SCRAPE_SINGLE / SCRAPE_VARIANTS).
+  // Fallback: legacy productImages key, then snipedData.
+  chrome.storage.local.get(['currentProduct', 'productImages', 'snipedData'], (result) => {
+    const images =
+      (result.currentProduct && Array.isArray(result.currentProduct.images) && result.currentProduct.images.length
+        ? result.currentProduct.images
+        : null) ||
+      result.productImages ||
+      result.snipedData?.images ||
+      [];
     displayImages(images);
   });
 }
@@ -310,34 +318,33 @@ function hideScrapeOverlay() {
 }
 
 function refreshImages() {
-  console.log('[Panel] Refreshing images...');
-  showScrapeOverlay('Initializing image extraction...');
-  (async () => {
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) throw new Error('No active tab found');
-
-      // Prefer content-script extraction (supports Amazon/Walmart via extractImages handler)
-      const response = await chrome.tabs.sendMessage(tab.id, { action: 'extractImages' });
-      if (!response?.success) throw new Error(response?.error || 'Failed to extract images');
-
-      const images = Array.isArray(response.images) ? response.images : [];
-      await chrome.storage.local.set({ productImages: images });
-      displayImages(images);
-
-      if (typeof UIHelper !== 'undefined') UIHelper.showToast('Images refreshed!', 'success');
-    } catch (err) {
-      console.error('[Panel] Refresh images error:', err);
-      if (typeof UIHelper !== 'undefined') UIHelper.showToast(err.message || 'Failed to refresh images', 'error');
-    } finally {
-      hideScrapeOverlay();
+  // panel.html is the extended view of the side panel — it must NOT re-scrape.
+  // Re-read images from currentProduct (already in storage from the side panel scan).
+  console.log('[Panel] Refreshing images from storage...');
+  chrome.storage.local.get(['currentProduct', 'productImages', 'snipedData'], (result) => {
+    const images =
+      (result.currentProduct && Array.isArray(result.currentProduct.images) && result.currentProduct.images.length
+        ? result.currentProduct.images
+        : null) ||
+      result.productImages ||
+      result.snipedData?.images ||
+      [];
+    displayImages(images);
+    if (typeof UIHelper !== 'undefined') {
+      UIHelper.showToast(images.length ? `${images.length} image(s) loaded` : 'No images in product data', images.length ? 'success' : 'warning');
     }
-  })();
+  });
 }
 
 function downloadAllImages() {
-  chrome.storage.local.get(['productImages'], (result) => {
-    const images = result.productImages || [];
+  chrome.storage.local.get(['currentProduct', 'productImages', 'snipedData'], (result) => {
+    const images =
+      (result.currentProduct && Array.isArray(result.currentProduct.images) && result.currentProduct.images.length
+        ? result.currentProduct.images
+        : null) ||
+      result.productImages ||
+      result.snipedData?.images ||
+      [];
     if (images.length === 0) {
       if (typeof UIHelper !== 'undefined') {
         UIHelper.showToast('No images to download', 'warning');
@@ -1129,7 +1136,7 @@ function initActionButtons() {
         if (isAmazon && tab?.id) {
           optiListBtn.textContent = 'Scraping...';
           const scrapeResp = await new Promise(resolve => {
-            chrome.tabs.sendMessage(tab.id, { action: 'PREPARE_EBAY_LISTING' }, resp => {
+            chrome.tabs.sendMessage(tab.id, { action: 'PREPARE_EBAY_LISTING', options: { skipScrape: true } }, resp => {
               if (chrome.runtime.lastError) { resolve(null); return; }
               resolve(resp);
             });

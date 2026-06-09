@@ -410,6 +410,18 @@ async function showSidebarExtended() {
     if (!wrap) { console.warn('[showSidebarExtended] #ss-extended-editor not in DOM'); return; }
     wrap.style.display = 'block';
 
+    // Hide old panel sections so only the extended editor is visible
+    const shell = document.querySelector('.ss-panel-shell');
+    if (shell) shell.classList.add('ssx-active');
+    ['ss-header', 'snipe-main-container'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    ['.ss-image-overview', '.ss-action-bar.bottom-action-toolbar'].forEach(sel => {
+        const el = document.querySelector(sel);
+        if (el) el.style.display = 'none';
+    });
+
     // Populate scalar fields
     const fld = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
     fld('ext-title', p.title);
@@ -513,6 +525,231 @@ async function showSidebarExtended() {
         origBtn.parentNode.replaceChild(newBtn, origBtn);
         newBtn.addEventListener('click', _handleSidebarUpload);
     }
+
+    // ── Reference-layout render (UI only — reuses existing live nodes/handlers) ──
+    _ssxRenderExtended(p);
+}
+
+// ─── Extended editor reference-layout renderer (UI ONLY) ─────────────────────
+// Populates header/summary/pricing/variant-table, moves live AI + gallery nodes
+// into the new layout, and binds new buttons to EXISTING handlers. No business
+// logic, scraping, pricing, SKU, AI, or upload code is duplicated here.
+
+// Attribute priority for the primary variant label.
+const _SSX_ATTR_PRIORITY = ['color','size','style','pattern','material','capacity','model','pack','flavor','scent'];
+
+function _ssxAttrToString(val) {
+    if (val == null) return '';
+    if (typeof val === 'object') return val.productName || val.value || val.name || '';
+    return String(val);
+}
+
+// Returns { primary: 'Black', chips: [['Color','Black'],['Size','Standard']] }
+function _ssxVariantDetails(attrs) {
+    const entries = Object.entries(attrs || {})
+        .map(([k, v]) => [k, _ssxAttrToString(v)])
+        .filter(([, v]) => v);
+    if (entries.length === 0) return { primary: '—', chips: [] };
+    // pick primary by priority
+    let primaryIdx = -1;
+    for (const pri of _SSX_ATTR_PRIORITY) {
+        primaryIdx = entries.findIndex(([k]) => k.toLowerCase().includes(pri));
+        if (primaryIdx !== -1) break;
+    }
+    if (primaryIdx === -1) primaryIdx = 0;
+    return { primary: entries[primaryIdx][1], chips: entries };
+}
+
+function _ssxMoney(n) {
+    const v = parseFloat(n);
+    return isNaN(v) ? '$0.00' : '$' + v.toFixed(2);
+}
+
+function _ssxText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
+function _ssxImg(id, url) { const el = document.getElementById(id); if (el) { el.src = url || ''; el.style.visibility = url ? 'visible' : 'hidden'; } }
+
+function _ssxRenderExtended(p) {
+    if (!p) return;
+    const variants = Array.isArray(p.variants) ? p.variants : [];
+    const images = Array.isArray(p.images) ? p.images : [];
+    const mainImg = images[0] || (variants[0] && variants[0].img) || p.mainImage || '';
+    const asin = p.asin || p.parentAsin || '';
+    const isSingle = p.isSingleMode || p.mode === 'single' || variants.length <= 1;
+
+    // 1. Header
+    _ssxImg('ssx-head-img', mainImg);
+    _ssxText('ssx-head-title', p.title || 'Product');
+    _ssxText('ssx-head-asin', 'ASIN: ' + (asin || '—'));
+
+    // 2. Summary
+    _ssxImg('ssx-sum-img', mainImg);
+    _ssxText('ssx-sum-asin', asin || '—');
+    _ssxText('ssx-sum-condition', p.condition || 'New');
+    _ssxText('ssx-sum-varcount', String(variants.length));
+
+    // 6. Pricing stats (reuse already-calculated values; no recalculation)
+    const supplierPrices = variants.map(v => parseFloat(v.raw_supplier_price ?? v.price)).filter(n => !isNaN(n));
+    const ebayPrices     = variants.map(v => parseFloat(v.finalPrice)).filter(n => !isNaN(n));
+    const stocks         = variants.map(v => parseInt(v.quantity, 10)).filter(n => !isNaN(n));
+    const baseSupplier   = parseFloat(p.raw_supplier_price ?? p.price) || (supplierPrices[0] || 0);
+    const baseEbay       = parseFloat(p.finalPrice) || (ebayPrices[0] || 0);
+    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    const avgSupplier = supplierPrices.length ? avg(supplierPrices) : baseSupplier;
+    const avgEbay     = ebayPrices.length ? avg(ebayPrices) : baseEbay;
+    const avgProfit   = avgEbay - avgSupplier;
+    const avgProfitPct = avgSupplier > 0 ? (avgProfit / avgSupplier * 100) : 0;
+    const totalStock  = stocks.length ? stocks.reduce((a, b) => a + b, 0) : (parseInt(p.quantity, 10) || 0);
+
+    _ssxText('ssx-stat-supplier', _ssxMoney(avgSupplier));
+    _ssxText('ssx-stat-ebay', _ssxMoney(avgEbay));
+    _ssxText('ssx-stat-profit', `${_ssxMoney(avgProfit)} (${avgProfitPct.toFixed(1)}%)`);
+    _ssxText('ssx-stat-stock', String(totalStock));
+    _ssxText('ssx-stat-varcount', String(variants.length));
+
+    // Move live AI/gallery nodes into reference mounts (preserves listeners)
+    const moveNode = (nodeId, mountId) => {
+        const node = document.getElementById(nodeId);
+        const mount = document.getElementById(mountId);
+        if (node && mount && node.parentElement !== mount) mount.appendChild(node);
+    };
+    moveNode('ai-title-container', 'ssx-title-mount');
+    moveNode('description-preview', 'ssx-desc-mount');
+    moveNode('snipe-image-gallery', 'ssx-gallery-mount');
+
+    // 7/8. Single vs All mode blocks
+    const singleBlock = document.getElementById('ssx-single-block');
+    const varBlock = document.getElementById('ssx-var-block');
+
+    function applyModeView(mode) {
+        const single = mode === 'single';
+        if (singleBlock) singleBlock.style.display = single ? 'block' : 'none';
+        if (varBlock) varBlock.style.display = single ? 'none' : 'block';
+        document.querySelectorAll('#ssx-mode-seg .ssx-mode-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.mode === mode));
+    }
+
+    if (isSingle) {
+        // Single block readouts (selected variant or product-level)
+        const v0 = variants[0] || {};
+        _ssxText('ssx-single-supplier', _ssxMoney(v0.raw_supplier_price ?? v0.price ?? baseSupplier));
+        _ssxText('ssx-single-ebay', _ssxMoney(v0.finalPrice ?? baseEbay));
+        const sProfit = (parseFloat(v0.finalPrice ?? baseEbay) || 0) - (parseFloat(v0.raw_supplier_price ?? v0.price ?? baseSupplier) || 0);
+        _ssxText('ssx-single-profit', _ssxMoney(sProfit));
+        _ssxText('ssx-single-sku', p.ebaySku || v0.sku || '—');
+        _ssxText('ssx-single-stock', `${v0.quantity || p.quantity || 1} · Ready`);
+    } else {
+        _ssxRenderVariantRows(variants, p);
+    }
+    _ssxText('ssx-var-count', `(${variants.length})`);
+    applyModeView(isSingle ? 'single' : 'all');
+
+    // Mode toggle buttons
+    document.querySelectorAll('#ssx-mode-seg .ssx-mode-btn').forEach(btn => {
+        if (btn._ssxBound) return;
+        btn._ssxBound = true;
+        btn.addEventListener('click', () => applyModeView(btn.dataset.mode));
+    });
+
+    // Bind AI buttons → existing hidden generators (reuse, not rewrite)
+    const bindClick = (newId, targetId) => {
+        const nb = document.getElementById(newId);
+        const tgt = document.getElementById(targetId);
+        if (nb && tgt && !nb._ssxBound) { nb._ssxBound = true; nb.addEventListener('click', () => tgt.click()); }
+    };
+    bindClick('ssx-ai-title-btn', 'generate-ai-titles-btn');
+    bindClick('ssx-ai-desc-btn', 'generate-description-btn');
+
+    // Bind Upload/Save/Preview → existing handler (top + bottom bars)
+    ['ssx-upload-top', 'ssx-upload-bot'].forEach(id => {
+        const b = document.getElementById(id);
+        if (b && !b._ssxBound) { b._ssxBound = true; b.addEventListener('click', _handleSidebarUpload); }
+    });
+    ['ssx-save-draft-top', 'ssx-save-draft-bot'].forEach(id => {
+        const b = document.getElementById(id);
+        if (b && !b._ssxBound) { b._ssxBound = true; b.addEventListener('click', () => { _saveExtEdits(); if (window.UIHelper?.showToast) window.UIHelper.showToast('Draft saved', 'success'); }); }
+    });
+    ['ssx-preview-top', 'ssx-preview-bot'].forEach(id => {
+        const b = document.getElementById(id);
+        if (b && !b._ssxBound) { b._ssxBound = true; b.addEventListener('click', () => { const sp = document.getElementById('scrape-preview-btn'); if (sp) sp.click(); }); }
+    });
+    const cancelBtn = document.getElementById('ssx-cancel-btn');
+    if (cancelBtn && !cancelBtn._ssxBound) { cancelBtn._ssxBound = true; cancelBtn.addEventListener('click', () => { const cb = document.getElementById('panel-close-btn'); if (cb) cb.click(); }); }
+    const backBtn = document.getElementById('ssx-back-btn');
+    if (backBtn && !backBtn._ssxBound) { backBtn._ssxBound = true; backBtn.addEventListener('click', () => { const cb = document.getElementById('panel-close-btn'); if (cb) cb.click(); }); }
+    const copyAsinBtn = document.getElementById('ssx-copy-asin');
+    if (copyAsinBtn && !copyAsinBtn._ssxBound) { copyAsinBtn._ssxBound = true; copyAsinBtn.addEventListener('click', () => { if (asin) navigator.clipboard?.writeText(asin); }); }
+}
+
+function _ssxRenderVariantRows(variants, p) {
+    const tbody = document.getElementById('ssx-var-rows');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    variants.forEach(v => {
+        const det = _ssxVariantDetails(v.attrs);
+        const supplier = parseFloat(v.raw_supplier_price ?? v.price) || 0;
+        const ebay = parseFloat(v.finalPrice) || 0;
+        const profit = ebay - supplier;
+        const profitPct = supplier > 0 ? (profit / supplier * 100) : 0;
+        const stock = v.quantity != null ? v.quantity : 1;
+        const sku = v.sku || v.ebaySku || '—';
+
+        const tr = document.createElement('tr');
+
+        const tdImg = document.createElement('td');
+        const img = document.createElement('img');
+        img.className = 'ssx-row-img';
+        img.src = v.img || (Array.isArray(p.images) ? p.images[0] : '') || '';
+        img.alt = det.primary;
+        img.onerror = () => { img.style.visibility = 'hidden'; };
+        tdImg.appendChild(img);
+
+        const tdDet = document.createElement('td');
+        const wrap = document.createElement('div');
+        wrap.className = 'ssx-vd';
+        const prim = document.createElement('span');
+        prim.className = 'ssx-vd-primary';
+        prim.textContent = det.primary;
+        wrap.appendChild(prim);
+        det.chips.forEach(([k, val]) => {
+            const chip = document.createElement('span');
+            chip.className = 'ssx-vd-chip';
+            chip.textContent = `${k}: ${val}`;
+            wrap.appendChild(chip);
+        });
+        tdDet.appendChild(wrap);
+
+        const tdSup = document.createElement('td');
+        tdSup.className = 'ssx-cell-price';
+        tdSup.textContent = _ssxMoney(supplier);
+
+        const tdEbay = document.createElement('td');
+        tdEbay.className = 'ssx-cell-ebay';
+        const ebayInp = document.createElement('input');
+        ebayInp.type = 'text';
+        ebayInp.value = ebay ? ebay.toFixed(2) : '';
+        ebayInp.readOnly = true; // display only (attributes not editable per spec)
+        tdEbay.appendChild(ebayInp);
+
+        const tdProfit = document.createElement('td');
+        tdProfit.className = 'ssx-cell-profit';
+        tdProfit.textContent = `${_ssxMoney(profit)} (${profitPct.toFixed(1)}%)`;
+
+        const tdSku = document.createElement('td');
+        tdSku.className = 'ssx-cell-sku';
+        tdSku.textContent = sku;
+
+        const tdStock = document.createElement('td');
+        tdStock.textContent = String(stock);
+
+        const tdStatus = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = 'ssx-status-ready';
+        badge.textContent = 'Ready';
+        tdStatus.appendChild(badge);
+
+        tr.append(tdImg, tdDet, tdSup, tdEbay, tdProfit, tdSku, tdStock, tdStatus);
+        tbody.appendChild(tr);
+    });
 }
 
 function _saveExtEdits() {
@@ -540,16 +777,73 @@ async function _handleSidebarUpload() {
     try {
         _saveExtEdits();
         await new Promise(r => setTimeout(r, 80));
+
+        // Phase 6: read draft first, fall back to currentProduct
+        let draft = null;
+        if (typeof window.SSListingDraft !== 'undefined') {
+            draft = await window.SSListingDraft.getDraft();
+        }
+
         const result = await chrome.storage.local.get(['currentProduct', 'selectedEbayTitle']);
         const p = result.currentProduct || {};
-        const finalTitle = (document.getElementById('ext-title')?.value?.trim()) ||
-                           result.selectedEbayTitle || p.title || '';
-        const sku = document.getElementById('ext-sku')?.value?.trim() || p.ebaySku || '';
-        if (!finalTitle) { alert('No title set. Fill title first.'); return; }
-        if (!sku) { alert('No SKU. Fill SKU first.'); return; }
+
+        // Resolve title: ext-title field > draft > selectedEbayTitle > product title
+        const extTitle = document.getElementById('ext-title')?.value?.trim();
+        const draftTitle = draft && draft.title;
+        const finalTitle = extTitle || draftTitle || result.selectedEbayTitle || p.title || '';
+        const titleSource = extTitle ? 'manual' : (draftTitle ? (draft.title_source || 'scraped') : 'scraped');
+
+        // Resolve SKU
+        const extSku = document.getElementById('ext-sku')?.value?.trim();
+        const draftSku = draft && draft.sku;
+        const sku = extSku || draftSku || p.ebaySku || '';
+        const skuSource = extSku ? 'manual' : (draftSku ? (draft.sku_source || 'generated') : 'generated');
+
+        // Resolve final price: ext-price > draft.pricing.finalPrice > product.finalPrice
+        const extPriceStr = document.getElementById('ext-price')?.value?.trim();
+        const extPrice = parseFloat(extPriceStr) || 0;
+        const draftFinalPrice = draft && draft.pricing && draft.pricing.finalPrice;
+        const finalPrice = extPrice > 0 ? extPrice : (draftFinalPrice || p.finalPrice || 0);
+        const priceSource = extPrice > 0 ? 'manual' : (draftFinalPrice ? (draft.price_source || 'calculated') : 'calculated');
+
+        // Resolve description: draft > product
+        const description = (draft && draft.description) || p.description || '';
+        const descSource = (draft && draft.description_source) || 'scraped';
+
+        // Resolve images: draft > product
+        const images = (draft && draft.images && draft.images.length > 0) ? draft.images : (p.images || []);
+
+        // Log sources (Phase 6 requirement)
+        console.log('[SS Upload] title_source:', titleSource, '| title:', finalTitle.slice(0, 60));
+        console.log('[SS Upload] price_source:', priceSource, '| finalPrice:', finalPrice);
+        console.log('[SS Upload] sku_source:', skuSource, '| sku:', sku);
+        console.log('[SS Upload] description_source:', descSource, '| desc length:', description.length);
+        console.log('[SS Upload] images count:', images.length);
+
+        // Validate
+        if (!finalTitle) { alert('No title set. Fill title first.'); if (btn) { btn.disabled = false; btn.textContent = 'Upload'; } return; }
+        if (!sku) { alert('No SKU. Fill SKU first.'); if (btn) { btn.disabled = false; btn.textContent = 'Upload'; } return; }
+        if (finalPrice <= 0) {
+            console.warn('[SS Upload] finalPrice is 0 — raw price may not have been calculated yet');
+        }
+
+        const uploadProduct = {
+            ...p,
+            title: finalTitle,
+            description,
+            images,
+            ebaySku: sku,
+            finalPrice: finalPrice || p.finalPrice || 0,
+            price_source: priceSource,
+            title_source: titleSource,
+            description_source: descSource,
+            sku_source: skuSource,
+            useStoredWatermarkedImages: false
+        };
+
         chrome.runtime.sendMessage({
             action: 'import_ebay',
-            product: { ...p, title: finalTitle, ebaySku: sku, useStoredWatermarkedImages: false },
+            product: uploadProduct,
             uploadType: 'classic'
         });
         if (btn) btn.textContent = '✅ Opening eBay…';
@@ -2590,6 +2884,13 @@ const addEventListenersToPanel = () => {
         titleDisplay.addEventListener('input', () => {
             const currentText = titleDisplay.innerText || '';
             titleCounter.textContent = `${currentText.length} / 80 chars`;
+            // Phase 5: patch draft — manual title edit
+            if (typeof window.SSListingDraft !== 'undefined') {
+                window.SSListingDraft.patchDraft({
+                    title: currentText.replace(/\n/g, ' ').trim(),
+                    title_source: 'manual'
+                }).catch(() => {});
+            }
         });
     }
 
@@ -2738,6 +3039,13 @@ const addEventListenersToPanel = () => {
                     // Save titles to storage
                     const titlesToSave = titles.map((t, i) => typeof t === 'object' ? t.title : t);
                     await chrome.storage.local.set({ savedTitles: titlesToSave });
+                    // Phase 5: patch draft — AI title generated (best = first)
+                    if (titlesToSave.length > 0 && typeof window.SSListingDraft !== 'undefined') {
+                        window.SSListingDraft.patchDraft({
+                            title: titlesToSave[0],
+                            title_source: 'ai'
+                        }).catch(() => {});
+                    }
 
                     // TRIGGER INLINE UI safely
                     if (typeof window !== 'undefined' && window.UIHelper && typeof window.UIHelper.renderInlineTitles === 'function') {
@@ -3506,6 +3814,34 @@ const addEventListenersToPanel = () => {
     if (priceInput) {
         priceInput.addEventListener('input', validatePriceInput);
         priceInput.addEventListener('blur', validatePriceInput);
+        // Phase 5: manual price edit → patch draft price_source
+        priceInput.addEventListener('input', () => {
+            if (!priceInput._ssCalcFill && typeof window.SSListingDraft !== 'undefined') {
+                const fp = parseFloat(priceInput.value);
+                if (!isNaN(fp) && fp > 0) {
+                    window.SSListingDraft.patchDraft({
+                        price_source: 'manual',
+                        pricing: { finalPrice: fp }
+                    }).catch(() => {});
+                }
+            }
+        });
+    }
+
+    // Also watch the canonical sell-it-for-input (may differ from .price-field input)
+    const sellItForEl = document.getElementById('sell-it-for-input');
+    if (sellItForEl && sellItForEl !== priceInput) {
+        sellItForEl.addEventListener('input', () => {
+            if (!sellItForEl._ssCalcFill && typeof window.SSListingDraft !== 'undefined') {
+                const fp = parseFloat(sellItForEl.value);
+                if (!isNaN(fp) && fp > 0) {
+                    window.SSListingDraft.patchDraft({
+                        price_source: 'manual',
+                        pricing: { finalPrice: fp }
+                    }).catch(() => {});
+                }
+            }
+        });
     }
 
     if (skuInput) {
@@ -3513,6 +3849,18 @@ const addEventListenersToPanel = () => {
             if (!skuInput.value) {
                 skuInput.style.backgroundColor = '#fff3cd';
                 skuInput.style.borderColor = '#ffc107';
+            }
+        });
+        // Phase 5: manual SKU edit → patch draft sku_source
+        skuInput.addEventListener('input', () => {
+            if (!skuInput._ssAutoSku && typeof window.SSListingDraft !== 'undefined') {
+                const sku = skuInput.value.trim();
+                if (sku) {
+                    window.SSListingDraft.patchDraft({
+                        sku: sku,
+                        sku_source: 'manual'
+                    }).catch(() => {});
+                }
             }
         });
     }
@@ -4120,14 +4468,25 @@ function quickCalculate() {
         document.querySelector('.price-field input[type="text"]') ||
         document.querySelector('input[placeholder*="Sell it for" i]');
     if (sellItForInput) {
+        // Mark as calc-fill so manual-edit listener doesn't misfire
+        sellItForInput._ssCalcFill = true;
         sellItForInput.value = result.finalPrice.toFixed(2);
         sellItForInput.style.backgroundColor = '#e8f5e8';
         sellItForInput.style.borderColor = '#4caf50';
+
+        // Phase 5: patch draft with calculated price
+        if (typeof window.SSListingDraft !== 'undefined') {
+            window.SSListingDraft.patchDraft({
+                pricing: { finalPrice: result.finalPrice, rawPrice: amazonPrice },
+                price_source: 'calculated'
+            }).catch(() => {});
+        }
 
         // Reset styling after 1.5 seconds
         setTimeout(() => {
             sellItForInput.style.backgroundColor = '';
             sellItForInput.style.borderColor = '';
+            sellItForInput._ssCalcFill = false;
         }, 1500);
 
         console.log('💰 Quick calculated price:', result.finalPrice.toFixed(2));
@@ -4669,10 +5028,17 @@ async function loadSKUSettings() {
             // Update UI
             const skuInput = document.getElementById('sku-input');
             if (skuInput) {
+                // Mark as auto-sku so manual-edit listener doesn't misfire
+                skuInput._ssAutoSku = true;
                 skuInput.value = generatedSku;
+                skuInput._ssAutoSku = false;
                 // Save to storage for later use (Opti-List)
                 chrome.storage.local.set({ ebaySku: generatedSku });
                 console.log('✅ Generated SKU:', generatedSku);
+                // Phase 5: patch draft with generated SKU
+                if (typeof window.SSListingDraft !== 'undefined') {
+                    window.SSListingDraft.patchDraft({ sku: generatedSku, sku_source: 'generated' }).catch(() => {});
+                }
             }
         });
 
@@ -4852,8 +5218,8 @@ window.forceLoadExtension = function () {
     }
 
     listButton.addEventListener('click', () => {
-        console.log('🔧 Manual trigger: Loading extension UI...');
-        injectUI();
+        console.log('🔧 Manual trigger: Opening side panel...');
+        chrome.runtime.sendMessage({ action: 'OPEN_SIDE_PANEL' });
         buttonContainer.style.display = 'none';
     });
 
@@ -4990,7 +5356,7 @@ const initializeApp = async () => {
     }
 
     listButton.addEventListener('click', () => {
-        injectUI();
+        chrome.runtime.sendMessage({ action: 'OPEN_SIDE_PANEL' });
         buttonContainer.remove();
     });
 
@@ -5153,10 +5519,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     return;
                 }
                 const product = await window.SsAmazonVariantScraper.scrapeSingleProduct();
-                // Guard log: final images count passed to storage
+                // Guard log: images
                 console.log('[SS SCRAPE_SINGLE] final images count:', product.images ? product.images.length : 0);
                 console.log('[SS SCRAPE_SINGLE] variants[0].img:', product.variants?.[0]?.img || null);
-                await chrome.storage.local.set({ currentProduct: product });
+
+                // Phase 3: apply pricing before storing
+                const rawPrice = parseFloat(product.price) || 0;
+                _applyPricingToProduct(product);
+                console.log('[SS SCRAPE_SINGLE] raw price:', rawPrice, '| finalPrice:', product.finalPrice);
+                if (!product.finalPrice || product.finalPrice <= 0) {
+                    console.warn('[SS SCRAPE_SINGLE] finalPrice missing or zero — check calculator values');
+                }
+
+                // Save to shared draft (also mirrors to currentProduct)
+                if (typeof window.SSListingDraft !== 'undefined') {
+                    const draft = window.SSListingDraft.productToDraft(product, 'single');
+                    await window.SSListingDraft.saveDraft(draft);
+                } else {
+                    // Fallback: legacy local storage only
+                    await chrome.storage.local.set({ currentProduct: product });
+                }
+
                 sendResponse({ success: true, data: product });
             } catch (err) {
                 sendResponse({ success: false, error: err.message });
@@ -5174,7 +5557,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     return;
                 }
                 const product = await window.SsAmazonVariantScraper.scrapeProductWithVariants(request.options || {});
-                await chrome.storage.local.set({ currentProduct: product });
+                console.log('[SS SCRAPE_VARIANTS] variants count:', product.variants ? product.variants.length : 0);
+                console.log('[SS SCRAPE_VARIANTS] images count:', product.images ? product.images.length : 0);
+
+                // Phase 3: apply pricing before storing
+                const rawPrice = parseFloat(product.price) || 0;
+                _applyPricingToProduct(product);
+                console.log('[SS SCRAPE_VARIANTS] raw price:', rawPrice, '| finalPrice:', product.finalPrice);
+                if (!product.finalPrice || product.finalPrice <= 0) {
+                    console.warn('[SS SCRAPE_VARIANTS] finalPrice missing or zero — check calculator values');
+                }
+
+                // Save to shared draft (also mirrors to currentProduct)
+                if (typeof window.SSListingDraft !== 'undefined') {
+                    const draft = window.SSListingDraft.productToDraft(product, 'all');
+                    await window.SSListingDraft.saveDraft(draft);
+                } else {
+                    // Fallback: legacy local storage only
+                    await chrome.storage.local.set({ currentProduct: product });
+                }
+
                 sendResponse({ success: true, data: product });
             } catch (err) {
                 sendResponse({ success: false, error: err.message });
@@ -5230,20 +5632,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         (async () => {
             try {
                 let fullData;
-                if (typeof window.SsAmazonVariantScraper !== 'undefined') {
-                    try {
-                        fullData = await window.SsAmazonVariantScraper.scrapeProductWithVariants(
-                            request.options || { minQty: 0, allowLowQty: true }
-                        );
-                    } catch (scraperErr) {
-                        console.warn('[PREPARE_EBAY_LISTING] SsAmazonVariantScraper failed, using DOM fallback:', scraperErr.message);
+                if (request.options?.skipScrape) {
+                    const result = await chrome.storage.local.get('currentProduct');
+                    fullData = result.currentProduct;
+                }
+                if (!fullData) {
+                    if (typeof window.SsAmazonVariantScraper !== 'undefined') {
+                        try {
+                            fullData = await window.SsAmazonVariantScraper.scrapeProductWithVariants(
+                                request.options || { minQty: 0, allowLowQty: true }
+                            );
+                        } catch (scraperErr) {
+                            console.warn('[PREPARE_EBAY_LISTING] SsAmazonVariantScraper failed, using DOM fallback:', scraperErr.message);
+                            fullData = scrapeFullProductData();
+                        }
+                    } else {
                         fullData = scrapeFullProductData();
                     }
-                } else {
-                    fullData = scrapeFullProductData();
+                    // Keep currentProduct fresh so storedProduct fallback in panel has variant data
+                    await chrome.storage.local.set({ currentProduct: fullData });
                 }
-                // Keep currentProduct fresh so storedProduct fallback in panel has variant data
-                await chrome.storage.local.set({ currentProduct: fullData });
                 const productDetails = scrapeProductDetails();
                 await storeWatermarkedImages();
                 _applyPricingToProduct(fullData);

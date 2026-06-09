@@ -259,6 +259,12 @@ Deno.serve(async (req) => {
     const priceLow  = varCount > 1 ? Math.min(...normVars.map(v => v.final_price)) : (ebayPrice ?? null);
     const priceHigh = varCount > 1 ? Math.max(...normVars.map(v => v.final_price)) : (ebayPrice ?? null);
 
+    // Phase 7: source flags (nullable text fields)
+    const titleSource       = typeof (body as any).title_source       === 'string' ? (body as any).title_source.substring(0, 50)       : null;
+    const descriptionSource = typeof (body as any).description_source === 'string' ? (body as any).description_source.substring(0, 50) : null;
+    const priceSource       = typeof (body as any).price_source       === 'string' ? (body as any).price_source.substring(0, 50)       : null;
+    const skuSource         = typeof (body as any).sku_source         === 'string' ? (body as any).sku_source.substring(0, 50)         : null;
+
     const listingPayload = {
       title:              inferredTitle.trim().substring(0, 500),
       sku:                normSku,
@@ -273,6 +279,11 @@ Deno.serve(async (req) => {
       ebay_data:          ebayData,
       price_low:          priceLow,
       price_high:         priceHigh,
+      // Phase 7: source flags
+      ...(titleSource       ? { title_source:       titleSource       } : {}),
+      ...(descriptionSource ? { description_source: descriptionSource } : {}),
+      ...(priceSource       ? { price_source:       priceSource       } : {}),
+      ...(skuSource         ? { sku_source:         skuSource         } : {}),
     };
 
     // Atomic upsert: parent + all children in one RPC call

@@ -399,11 +399,23 @@
         colorKey = colorKey.trimEnd().replaceAll('/', '\\/');
 
         let img, imgProp;
-        if (colorImages[colorKey]) {
-          img = colorImages[colorKey][0] && colorImages[colorKey][0].hiRes;
+        // Case-insensitive colorImages lookup — Amazon keys vary in casing (e.g. "BLACK" vs "Black")
+        const colorImagesLower = Object.fromEntries(
+          Object.entries(colorImages).map(([k, v]) => [k.toLowerCase(), v])
+        );
+        const ciKey = colorImagesLower[colorKey.toLowerCase()]
+          ? colorKey.toLowerCase()
+          : Object.keys(colorImagesLower).find(k =>
+              k.startsWith(colorKey.split(' ')[0].toLowerCase()) ||
+              colorKey.toLowerCase().startsWith(k.split(' ')[0])
+            );
+        if (ciKey && colorImagesLower[ciKey]) {
+          const ci = colorImagesLower[ciKey][0];
+          img = ci && (ci.hiRes || ci.large || ci.thumb || null);
           imgProp = dimLabels[visualDimIndices[visualDimIndices.length - 1]];
         }
 
+        if (!img) console.warn('[SS Scraper] No img for ASIN', asin, 'colorKey:', colorKey, 'available keys:', Object.keys(colorImages).slice(0, 5));
         results.push({ attrs, price, currency, quantity, img, imgProp, supplierVariantId: asin });
       } catch (asinErr) {
         console.warn('[SS Scraper] Skipped ASIN', asin, ':', asinErr.message);
@@ -462,6 +474,155 @@
     }
 
     return images;
+  }
+
+  // ─── Images (single-mode) ─────────────────────────────────────────────────────
+  // Uses ONLY imageData.colorImages.initial (ATF block = currently displayed variant).
+  // Never reads jqueryData.colorImages — that contains all color variants.
+
+  function getImagesSingle(windowData) {
+    const { imageData } = windowData;
+    const seen = new Set();
+    const images = [];
+
+    function push(url) { if (url && !seen.has(url)) { seen.add(url); images.push(url); } }
+
+    // ATF block only — this is the current selected variant's image set
+    const ci = imageData && imageData.colorImages;
+    if (ci && Array.isArray(ci.initial)) {
+      ci.initial.filter(img => img.hiRes).forEach(img => push(img.hiRes));
+      // Also collect large/thumb fallbacks for initial set
+      if (images.length === 0) {
+        ci.initial.forEach(img => push(img.large || img.thumb || null));
+      }
+    }
+
+    // DOM fallback (current page images only — already reflects selected variant)
+    if (images.length === 0) {
+      document.querySelectorAll('#altImages li img, #imageBlock img').forEach(img => {
+        let src = img.getAttribute('data-old-hires') || img.src || '';
+        if (!src || src.includes('transparent-pixel') || src.includes('base64')) return;
+        push(src.replace(/\._[A-Z0-9,_]+_\./g, '.'));
+      });
+      const landing = document.querySelector('#landingImage, #imgBlkFront');
+      if (landing) {
+        const src = landing.getAttribute('data-old-hires') || landing.src || '';
+        if (src && !seen.has(src)) images.unshift(src);
+      }
+    }
+
+    return images;
+  }
+
+  // ─── Single-product scrape (no multi-ASIN loop) ───────────────────────────────
+  // Scrapes only the currently selected variant. Images = ATF block (current selection).
+
+  async function scrapeSingleProduct() {
+    if (
+      document.querySelector('form[action*="validateCaptcha"]') ||
+      (document.body && document.body.innerText.includes('Type the characters you see in this image'))
+    ) throw new Error('Amazon CAPTCHA detected — please solve it and try again');
+
+    const windowData = getWindowScriptData();
+    const { variationData, jqueryData } = windowData;
+
+    const currentAsin = document.querySelector('input#ASIN, input#asin')?.value ||
+      window.location.pathname.match(/\/(?:dp|gp\/aw\/d)\/([A-Z0-9]{10})/)?.[1] || '';
+
+    const parentAsin = (variationData && (variationData.parentAsin || currentAsin)) ||
+      (jqueryData && jqueryData.parentAsin) || currentAsin;
+
+    const titleRaw = (jqueryData && jqueryData.title) ||
+      (variationData && variationData.title) ||
+      document.querySelector('#productTitle')?.textContent.trim() || '';
+    const title = decodeText(titleRaw.trim());
+
+    const brandEl = document.querySelector('#bylineInfo');
+    const brand = brandEl ? decodeText(brandEl.textContent.trim().replace(/^(Brand:|Visit the|Store)/i, '').trim()) : '';
+
+    const bulletPoints = Array.from(
+      document.querySelectorAll('#feature-bullets li span.a-list-item')
+    ).map(el => el.textContent.trim()).filter(t => t.length > 5);
+
+    const descEl = document.querySelector('#productDescription');
+    const description = descEl ? descEl.textContent.trim().replace(/\s+/g, ' ') : '';
+
+    const category = Array.from(
+      document.querySelectorAll('#wayfinding-breadcrumbs_container li a, .a-breadcrumb a')
+    ).map(el => el.textContent.trim()).filter(Boolean).join(' > ');
+
+    // ── Images: ATF block only ─────────────────────────────────────────────────
+    const images = getImagesSingle(windowData);
+
+    // ── Attributes for current ASIN ────────────────────────────────────────────
+    let attrs = {};
+    if (variationData && variationData.asinToDimensionIndexMap && currentAsin) {
+      const dimIndices = variationData.asinToDimensionIndexMap[currentAsin];
+      if (dimIndices) {
+        variationData.dimensions.forEach((dim, i) => {
+          const idx = dimIndices[i];
+          const label = variationData.variationDisplayLabels[dim] || dim;
+          const valMap = variationData.variationValues && variationData.variationValues[dim];
+          const valArr = variationData.dimensionValuesData && variationData.dimensionValuesData[dim];
+          let raw = valArr ? valArr[idx] : (valMap ? Object.keys(valMap)[idx] : null);
+          if (raw) attrs[label] = { productName: decodeText(String(raw)) };
+        });
+      }
+    }
+    // Fallback: read DOM swatch selection
+    if (Object.keys(attrs).length === 0) {
+      const selColor = document.querySelector('#variation_color_name .selection, #variation_color_name .a-color-base')?.textContent?.trim();
+      const selSize  = document.querySelector('#variation_size_name .selection, #variation_size_name .a-color-base')?.textContent?.trim();
+      if (selColor) attrs['Color'] = { productName: selColor };
+      if (selSize)  attrs['Size']  = { productName: selSize };
+    }
+
+    // ── Price ──────────────────────────────────────────────────────────────────
+    const bb = getBuyboxFromDom();
+    const price    = bb ? bb.priceAmount    : 0;
+    const currency = bb ? resolveCurrency(bb.currencySymbol || '$') : 'USD';
+    const quantity = getQuantityFromDom() || 0;
+    const inStock  = checkStock();
+
+    const specs = {};
+    document.querySelectorAll(
+      '#productOverview_feature_div tr, #productDetails_expanderTables_depthLeftSections tr, #productDetails_techSpec_section_1 tr'
+    ).forEach(row => {
+      const key = row.querySelector('th, .a-col-left')?.textContent.trim();
+      const val = row.querySelector('td, .a-col-right')?.textContent.trim();
+      if (key && val && !['Customer Reviews', 'Best Sellers Rank'].includes(key)) specs[key] = val;
+    });
+
+    const selectedVariant = { attrs, price, currency, quantity, img: images[0] || null, imgProp: undefined, supplierVariantId: currentAsin };
+
+    // ── Guard logs ─────────────────────────────────────────────────────────────
+    console.log('[SS Single] mode: single');
+    console.log('[SS Single] currentAsin:', currentAsin);
+    console.log('[SS Single] attrs:', attrs);
+    console.log('[SS Single] imageCount:', images.length);
+    console.log('[SS Single] images[0]:', images[0] || null);
+
+    return {
+      asin: currentAsin,
+      parentAsin,
+      title,
+      brand,
+      price,
+      currency,
+      quantity,
+      marketplace: 'amazon',
+      url: window.location.href,
+      images,
+      bulletPoints,
+      description,
+      category,
+      specs,
+      inStock,
+      variants: [selectedVariant],
+      hasVariants: false,
+      isSingleMode: true,
+      scrapedAt: Date.now()
+    };
   }
 
   // ─── Main scrape ───────────────────────────────────────────────────────────────
@@ -546,5 +707,5 @@
     };
   }
 
-  window.SsAmazonVariantScraper = { scrapeProductWithVariants };
+  window.SsAmazonVariantScraper = { scrapeProductWithVariants, scrapeSingleProduct };
 })();

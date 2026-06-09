@@ -2,7 +2,7 @@
 // EbayListingApiHelper — ported from SuperDS EbayListingApi + Uploader
 // Exposes: getCategoryRecommendations, createListing, saveListing,
 //          updateListing, extractListingDraft, adaptProduct
-// Also exposes: SellerSuitUploader.run(tabId, product) — full orchestration
+// Also exposes: SellerSuitUploader.run(product) — full orchestration
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Private helpers ─────────────────────────────────────────────────────────
@@ -555,6 +555,11 @@ window.EbayListingApiHelper = (() => {
   // Normalises SellerSuit product schema → fields expected by updateListing /
   // addVariations. Handles both single-item and multi-variation Amazon products.
   function adaptProduct(product) {
+    // Guard log — verify mode + image count entering adapter
+    console.log('[SS adaptProduct] isSingleMode:', !!product.isSingleMode,
+      '| images:', Array.isArray(product.images) ? product.images.length : 0,
+      '| variants:', Array.isArray(product.variants) ? product.variants.length : 0,
+      '| images[0]:', (Array.isArray(product.images) && product.images[0]) || null);
     const bullets = Array.isArray(product.bulletPoints) ? product.bulletPoints : [];
     let descHtml = '';
     if (bullets.length > 0) {
@@ -612,9 +617,17 @@ window.EbayListingApiHelper = (() => {
         }
         // finalPrice stamped by _applyPricingToProduct in amazon_injector at scan time.
         // Falls back to raw price if pricing was not applied (e.g. Walmart path).
+        // Ensure every variant has a unique SKU — if scraper didn't set one, generate
+        // it from parentAsin + attrs so ON CONFLICT (user_id, sku) never collapses
+        // all variants into a single row in listing_variations.
+        const parentAsin = product.parentAsin || product.asin || '';
+        const varSku = v.sku || (window.SSSkuEngine
+          ? window.SSSkuEngine.buildReadable(parentAsin, attrs)
+          : (parentAsin + (Object.values(attrs).map(a => a?.productName || '').join('-') || '')));
         return {
           price:             parseFloat(v.ebayPrice) || parseFloat(v.price) || basePrice,
-          sku:               v.sku || null,
+          raw_supplier_price: parseFloat(v.price) || parseFloat(v.amazonPrice) || basePrice,
+          sku:               varSku,
           attrs,
           img:               v.img || v.image || null, // scraper uses v.img
           imgProp:           v.imgProp || imgProp,
@@ -768,7 +781,7 @@ window.EbayListingApiHelper = (() => {
 
 // ─── SellerSuitUploader ───────────────────────────────────────────────────────
 // Full programmatic upload orchestrator.
-// Call: await window.SellerSuitUploader.run(tabId, product)
+// Call: await window.SellerSuitUploader.run(product)
 // On success, navigates the current tab to the eBay listing draft editor.
 
 // Build a short upload summary for the post-upload toast (3.2).
@@ -789,6 +802,10 @@ function _buildSummary(adapted) {
 // Fire-and-forget DB sync via background SYNC_LISTING handler (3.4).
 function _syncListingToDashboard(adapted, product, draftId) {
   try {
+    // Guard log — final images count reaching uploader
+    console.log('[SS sync] isSingleMode:', !!product.isSingleMode,
+      '| prod_images count:', adapted.prod_images ? adapted.prod_images.length : 0,
+      '| prod_images[0]:', adapted.prod_images?.[0] || null);
     const mainImage = adapted.prod_images?.[0] || null;
     const firstVar = adapted.prod_variations?.[0] || {};
     const listingData = {
@@ -802,6 +819,11 @@ function _syncListingToDashboard(adapted, product, draftId) {
       status:              'active',
       has_variations:      adapted.prod_variations.length > 1,
       variation_count:     adapted.prod_variations.length,
+      // Phase 7: source flags
+      title_source:        product.title_source       || null,
+      description_source:  product.description_source || null,
+      price_source:        product.price_source       || null,
+      sku_source:          product.sku_source         || null,
       // Per-variation detail for listing_variations table upsert in background
       variations: adapted.prod_variations.map(v => ({
         sku:               v.sku || '',
@@ -812,7 +834,9 @@ function _syncListingToDashboard(adapted, product, draftId) {
         stock_quantity:    1,
         variant_asin:      v.variant_asin || v.supplierVariantId || null,
         parent_asin:       product.parentAsin || product.asin || null,
-        attributes:        v.attrs || {}
+        attributes:        v.attrs || {},
+        // Per-variant image if scraper resolved it; fall back to first product image (HTTPS only — skip base64 watermarks)
+        image_url:         [v.img, ...(adapted.prod_images || [])].find(u => u && u.startsWith('http')) || null,
       })),
       ...(mainImage ? {
         amazon_data: { mainImage, imageUrl: mainImage, allImages: adapted.prod_images, source: 'extension', draftId }
@@ -833,7 +857,7 @@ function _syncListingToDashboard(adapted, product, draftId) {
 window._syncListingToDashboard = _syncListingToDashboard;
 
 window.SellerSuitUploader = {
-  async run(tabId, product) {
+  async run(product) {
     const api = window.EbayListingApiHelper;
     console.log('[SS Uploader] Starting programmatic upload for:', product.title?.substring(0, 60));
 

@@ -819,6 +819,11 @@ function _syncListingToDashboard(adapted, product, draftId) {
       status:              'active',
       has_variations:      adapted.prod_variations.length > 1,
       variation_count:     adapted.prod_variations.length,
+      // Phase 7: source flags
+      title_source:        product.title_source       || null,
+      description_source:  product.description_source || null,
+      price_source:        product.price_source       || null,
+      sku_source:          product.sku_source         || null,
       // Per-variation detail for listing_variations table upsert in background
       variations: adapted.prod_variations.map(v => ({
         sku:               v.sku || '',

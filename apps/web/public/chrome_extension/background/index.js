@@ -23,6 +23,13 @@ const getApiKeys = () => typeof ExtensionConfig !== 'undefined' ? ExtensionConfi
 // Set on every SW init — lost on SW restart if only set in event listeners
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 
+// Configure session storage access level so that content scripts can access it
+if (chrome.storage && chrome.storage.session && typeof chrome.storage.session.setAccessLevel === 'function') {
+  chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' }).catch(err => {
+    console.warn('[Background] Failed to set session storage access level:', err);
+  });
+}
+
 importScripts(
   '../common/config.js',
   '../common/constants.js',

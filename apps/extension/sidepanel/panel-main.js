@@ -9,7 +9,7 @@
   let _removedImages = new Set();
   let _variations = [];   // [{ label, values: [string] }]
   let _importing = false;
-  let _mode = 'all';      // 'single' | 'all'
+  let _mode = 'single';      // 'single' | 'all'
 
   /* ── Views ────────────────────────────────── */
   const vLoading  = document.getElementById('view-loading');
@@ -143,6 +143,18 @@
 
     if (hasProduct) {
       renderAdvancedEdit(state);
+      renderPreviewCard(state.product);
+
+      // Check if we need to show "Load Variations" instead of "Start Import"
+      const hasVars = state.product.variants && state.product.variants.length > 1;
+      const btnStartImport = document.getElementById('btn-start-import');
+      if (btnStartImport) {
+        if (_mode === 'all' && !hasVars) {
+          btnStartImport.textContent = 'Load Variations';
+        } else {
+          btnStartImport.textContent = 'Start Import';
+        }
+      }
     }
   }
 
@@ -311,13 +323,33 @@
     const btnSingle = document.getElementById('btn-mode-single');
     const btnAll    = document.getElementById('btn-mode-all');
     const allFields = document.getElementById('all-mode-fields');
-    const ctxEl     = document.getElementById('import-context');
 
     function applyMode(mode) {
       _mode = mode;
       btnSingle.classList.toggle('active', mode === 'single');
       btnAll.classList.toggle('active', mode === 'all');
       allFields.classList.toggle('hidden', mode === 'single');
+
+      // Update initial scan button text
+      const btnScanNP = document.getElementById('btn-scan-no-product');
+      if (btnScanNP && !btnScanNP.disabled) {
+        btnScanNP.textContent = mode === 'single' ? 'Load Single Product' : 'Load Variations';
+      }
+
+      // If product is loaded but doesn't have variations yet and user toggled to 'all',
+      // show "Load Variations" trigger.
+      if (_state && _state.product) {
+        const hasVars = _state.product.variants && _state.product.variants.length > 1;
+        const btnStartImport = document.getElementById('btn-start-import');
+        if (btnStartImport) {
+          if (mode === 'all' && !hasVars) {
+            btnStartImport.textContent = 'Load Variations';
+          } else {
+            btnStartImport.textContent = 'Start Import';
+          }
+        }
+      }
+
       doPeek(); // refresh context line on mode switch
     }
 
@@ -409,32 +441,104 @@
     });
   }
 
+  /* ── Preview card ─────────────────────────── */
+  function renderPreviewCard(product) {
+    if (!product) return;
+    const wrap = document.getElementById('scan-preview');
+    if (!wrap) return;
+
+    const imgEl    = document.getElementById('preview-img');
+    const titleEl  = document.getElementById('preview-title');
+    const asinEl   = document.getElementById('preview-asin');
+    const varsEl   = document.getElementById('preview-vars');
+    const priceEl  = document.getElementById('preview-price');
+
+    const img = (product.images && product.images[0]) || product.mainImage || '';
+    if (imgEl) { imgEl.src = img || ''; imgEl.style.display = img ? '' : 'none'; }
+    if (titleEl) titleEl.textContent = (product.title || '').slice(0, 80) + ((product.title || '').length > 80 ? '…' : '');
+    if (asinEl) asinEl.textContent = product.asin ? 'ASIN: ' + product.asin : '';
+    const vc = product.variants ? product.variants.length : 0;
+    if (varsEl) varsEl.textContent = vc > 1 ? vc + ' variations' : (vc === 1 ? '1 variant' : 'Single product');
+    if (priceEl) {
+      const fp = product.finalPrice || (product.pricing && product.pricing.finalPrice);
+      const rp = product.raw_supplier_price || product.price || (product.pricing && product.pricing.rawPrice);
+      priceEl.textContent = fp ? `$${parseFloat(fp).toFixed(2)} eBay` + (rp ? ` · $${parseFloat(rp).toFixed(2)} supplier` : '') : '';
+    }
+
+    wrap.classList.remove('hidden');
+  }
+
   /* ── Start Import ─────────────────────────── */
   async function doStartImport() {
     if (_importing) return;
-    _importing = true;
 
+    const hasProduct = !!(_state && _state.product);
+    const hasVars = _state && _state.product && _state.product.variants && _state.product.variants.length > 1;
+
+    // Scenario 1: User chose Variation Listing but only loaded a single product. Load variations first.
+    if (hasProduct && _mode === 'all' && !hasVars) {
+      _importing = true;
+      btnStartImport.disabled = true;
+      btnStartImport.innerHTML = '<span class="btn-spinner"></span> Loading variations…';
+      try {
+        const product = await doScan('all');
+        if (product) {
+          showToast(`${product.variants ? product.variants.length : 0} variations loaded ✓`);
+          renderPreviewCard(product);
+        }
+      } catch (err) {
+        showToast('Scan error: ' + err.message);
+      }
+      _importing = false;
+      btnStartImport.disabled = false;
+      btnStartImport.textContent = 'Start Import';
+      return;
+    }
+
+    _importing = true;
     btnStartImport.disabled = true;
-    btnStartImport.innerHTML = '<span class="btn-spinner"></span> Scanning…';
+    btnStartImport.innerHTML = '<span class="btn-spinner"></span> Importing…';
 
     try {
       saveSettings();
-      const product = await doScan(_mode);
-      if (!product) { resetImportBtn(); return; }
+      const product = _state && _state.product;
+      if (!product) {
+        showToast('No product loaded');
+        resetImportBtn();
+        return;
+      }
 
-      // Store to storage → panel-store.onChanged fires → _state.product populated
-      await chrome.storage.local.set({ currentProduct: product });
-      const varCount = product.variants ? product.variants.length : 0;
-      const toastMsg = _mode === 'single'
-        ? 'Product scanned — review in Advanced Edit tab'
-        : `${varCount > 1 ? varCount + ' variations' : 'Product'} scanned — review in Advanced Edit tab`;
-      showToast(toastMsg);
+      // Determine upload type (classic vs draft)
+      const uploadType = selUploadType.value || 'classic';
 
-      // Switch to Advanced Edit tab so user sees the result
-      const advBtn = document.querySelector('.inner-tab-btn[data-tab="advanced"]');
-      if (advBtn) advBtn.click();
+      // Build product payload based on selected mode
+      const finalTitle = (product.title || '').trim();
+      const images = product.images || [];
+      const sku = product.ebaySku || '';
+
+      const ebayProduct = {
+        ...product,
+        title: finalTitle,
+        images,
+        ebaySku: sku,
+        finalPrice: product.finalPrice || 0,
+        quantity: parseInt(inpMinQty.value, 10) || 1,
+        variations: _mode === 'single' ? [] : _variations,
+      };
+
+      // Mirror to storage so panel stays in sync
+      await chrome.storage.local.set({ currentProduct: ebayProduct });
+
+      // Send to background listing runner
+      chrome.runtime.sendMessage({
+        action: 'import_ebay',
+        product: ebayProduct,
+        uploadType: uploadType
+      });
+
+      showToast(uploadType === 'draft' ? 'Opening eBay draft…' : 'Opening eBay lister…');
     } catch (err) {
-      showToast('Scan error: ' + err.message);
+      showToast('Import error: ' + err.message);
     }
 
     resetImportBtn();
@@ -443,7 +547,12 @@
   function resetImportBtn() {
     _importing = false;
     btnStartImport.disabled = false;
-    btnStartImport.textContent = 'Start Import';
+    const hasVars = _state && _state.product && _state.product.variants && _state.product.variants.length > 1;
+    if (_mode === 'all' && !hasVars) {
+      btnStartImport.textContent = 'Load Variations';
+    } else {
+      btnStartImport.textContent = 'Start Import';
+    }
   }
 
   /* ── Advanced upload/draft — triggers eBay lister ── */
@@ -455,29 +564,84 @@
     btn.disabled = true;
     btn.innerHTML = '<span class="btn-spinner"></span>';
 
-    const finalTitle = (inpTitle.value || product.title || '').trim();
-    const images = (product.images || []).filter((_, i) => !_removedImages.has(i));
+    try {
+      // Phase 6: read draft for source-flagged fields
+      let draft = null;
+      if (typeof window.SSListingDraft !== 'undefined') {
+        draft = await window.SSListingDraft.getDraft();
+      }
 
-    // Build the canonical product payload for eBay lister
-    const ebayProduct = {
-      ...product,
-      title: finalTitle,
-      images,
-      quantity: parseInt(inpAdvQty.value, 10) || 1,
-      variations: _variations
-    };
+      // Resolve title: panel input > draft > product
+      const panelTitle = inpTitle.value.trim();
+      const finalTitle = panelTitle || (draft && draft.title) || product.title || '';
+      const titleSource = panelTitle ? 'manual' : ((draft && draft.title_source) || 'scraped');
 
-    // Persist updated product so panel stays in sync
-    await chrome.storage.local.set({ currentProduct: ebayProduct });
+      // Resolve description from draft
+      const description = (draft && draft.description) || product.description || '';
+      const descSource = (draft && draft.description_source) || 'scraped';
 
-    // SW opens eBay tab + stores { [tabId]: { product, isImported: false } }
-    chrome.runtime.sendMessage({
-      action: 'import_ebay',
-      product: ebayProduct,
-      uploadType: asDraft ? 'draft' : 'classic'
-    });
+      // Resolve pricing: draft > product
+      const draftFinalPrice = draft && draft.pricing && draft.pricing.finalPrice;
+      const finalPrice = draftFinalPrice || product.finalPrice || 0;
+      const priceSource = (draft && draft.price_source) || 'calculated';
 
-    showToast(asDraft ? 'Opening eBay draft…' : 'Opening eBay lister…');
+      // Resolve SKU
+      const draftSku = draft && draft.sku;
+      const sku = draftSku || product.ebaySku || '';
+      const skuSource = (draft && draft.sku_source) || 'generated';
+
+      const images = (product.images || []).filter((_, i) => !_removedImages.has(i));
+
+      // Log sources (Phase 6)
+      console.log('[SS Panel Upload] title_source:', titleSource, '| title:', finalTitle.slice(0, 60));
+      console.log('[SS Panel Upload] price_source:', priceSource, '| finalPrice:', finalPrice);
+      console.log('[SS Panel Upload] sku_source:', skuSource, '| sku:', sku);
+      console.log('[SS Panel Upload] description_source:', descSource);
+
+      // Build canonical product payload
+      const ebayProduct = {
+        ...product,
+        title: finalTitle,
+        description,
+        images,
+        ebaySku: sku,
+        finalPrice,
+        quantity: parseInt(inpAdvQty.value, 10) || 1,
+        variations: _variations,
+        title_source: titleSource,
+        description_source: descSource,
+        price_source: priceSource,
+        sku_source: skuSource,
+      };
+
+      // Mirror to storage so panel stays in sync
+      await chrome.storage.local.set({ currentProduct: ebayProduct });
+      if (typeof window.SSListingDraft !== 'undefined') {
+        await window.SSListingDraft.patchDraft({
+          title: finalTitle,
+          title_source: titleSource,
+          description,
+          description_source: descSource,
+          sku,
+          sku_source: skuSource,
+          pricing: { ...(draft && draft.pricing), finalPrice },
+          price_source: priceSource,
+        });
+      }
+
+      // SW opens eBay tab + stores { [tabId]: { product, isImported: false } }
+      chrome.runtime.sendMessage({
+        action: 'import_ebay',
+        product: ebayProduct,
+        uploadType: asDraft ? 'draft' : 'classic'
+      });
+
+      showToast(asDraft ? 'Opening eBay draft…' : 'Opening eBay lister…');
+    } catch (err) {
+      showToast('Upload error: ' + err.message);
+      console.error('[SS Panel Upload] error:', err);
+    }
+
     btn.disabled = false;
     btn.textContent = asDraft ? 'Create draft' : 'Upload';
   }
@@ -617,10 +781,11 @@
     const btnScanNP = document.getElementById('btn-scan-no-product');
     btnScanNP.addEventListener('click', async () => {
       btnScanNP.disabled = true;
-      btnScanNP.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span>';
+      const originalText = _mode === 'single' ? 'Load Single Product' : 'Load Variations';
+      btnScanNP.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span> Loading…';
       await doScan(_mode);
       btnScanNP.disabled = false;
-      btnScanNP.textContent = 'Scan Product';
+      btnScanNP.textContent = originalText;
     });
 
     btnStartImport.addEventListener('click', doStartImport);
@@ -640,6 +805,8 @@
     const btnExtend = document.getElementById('btn-extend');
     if (btnExtend) btnExtend.addEventListener('click', doExtend);
 
+
+
     window.SSPanelStore.subscribe(state => {
       _state = state;
       renderAuth(state);
@@ -651,6 +818,41 @@
 
     // Auto-peek on open to populate context line
     doPeek();
+
+    // Phase 4: restore preview card from existing draft if present
+    _restorePreviewFromDraft();
+  }
+
+  /* ── Restore preview from existing draft on panel open ── */
+  async function _restorePreviewFromDraft() {
+    try {
+      // Try SSListingDraft first (session), fall back to currentProduct (local)
+      let product = null;
+      if (typeof window.SSListingDraft !== 'undefined') {
+        const draft = await window.SSListingDraft.getDraft();
+        if (draft) {
+          // Convert draft back to product-like shape for preview
+          product = {
+            title: draft.title,
+            asin: draft.asin,
+            images: draft.images,
+            mainImage: draft.mainImage,
+            variants: draft.variants,
+            pricing: draft.pricing,
+            finalPrice: draft.pricing && draft.pricing.finalPrice,
+            raw_supplier_price: draft.pricing && draft.pricing.rawPrice,
+            price: draft.pricing && draft.pricing.rawPrice,
+          };
+        }
+      }
+      if (!product) {
+        const data = await new Promise(r => chrome.storage.local.get('currentProduct', r));
+        product = data.currentProduct || null;
+      }
+      if (product) renderPreviewCard(product);
+    } catch (e) {
+      console.warn('[SS panel] _restorePreviewFromDraft error:', e);
+    }
   }
 
   if (document.readyState === 'loading') {

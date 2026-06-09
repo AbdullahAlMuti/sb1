@@ -19,6 +19,8 @@
     "*://*.walmartimages.com/*",
     "*://*.walmartimages.ca/*",
     "https://www.ebay.com/*",
+    "*://msa-b1.ebay.com/*",
+    "*://bulkedit.ebay.com/*",
     "*://amazon.com/*",
     "*://*.amazon.com/*",
     "*://amazon.co.uk/*",
@@ -81,6 +83,7 @@
       ],
       "js": [
         "common/config.js",
+        "common/listing-draft.js",
         "common/pricing-engine.js",
         "common/sku-engine.js",
         "common/performance.js",
@@ -150,22 +153,29 @@
       ],
       "js": [
         "common/config.js",
-        "common/constants.js",
-        "common/auth-helper.js",
+        "common/storage.js",
         "common/pricing-engine.js",
         "common/sku-engine.js",
-        "common/performance.js",
         "common/retry-helper.js",
-        "common/api-client.js",
-        "common/sync-utils.js",
-        "common/storage.js",
-        "common/ui.js",
-        "common/analytics.js",
-        "common/images/core/image-schema.js",
-        "common/images/core/image-cache.js",
-        "common/images/upload/ebay-image-uploader.js",
-        "src/image-uploader.js",
+        "common/ebay-photo-uploader.js",
+        "common/ebay-listing-api.js",
         "content_scripts/ebay_prelist.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://bulkedit.ebay.com/msku*"
+      ],
+      "js": [
+        "common/config.js",
+        "common/storage.js",
+        "common/pricing-engine.js",
+        "common/sku-engine.js",
+        "common/retry-helper.js",
+        "common/ebay-photo-uploader.js",
+        "common/ebay-listing-api.js",
+        "content_scripts/ebay_bulkedit.js"
       ],
       "run_at": "document_idle"
     },
@@ -175,21 +185,29 @@
       ],
       "js": [
         "common/config.js",
-        "common/constants.js",
-        "common/auth-helper.js",
+        "common/storage.js",
         "common/pricing-engine.js",
         "common/sku-engine.js",
-        "common/performance.js",
-        "common/retry-helper.js",
-        "common/api-client.js",
-        "common/sync-utils.js",
-        "common/storage.js",
-        "common/ui.js",
-        "common/analytics.js",
         "common/images/core/image-schema.js",
         "common/images/core/image-cache.js",
         "common/images/upload/ebay-image-uploader.js",
         "src/image-uploader.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://www.ebay.com/itm/*",
+        "*://*.ebay.com/itm/*",
+        "*://*.ebay.co.uk/itm/*",
+        "*://*.ebay.de/itm/*",
+        "*://*.ebay.fr/itm/*",
+        "*://*.ebay.com.au/itm/*",
+        "*://*.ebay.it/itm/*",
+        "*://*.ebay.es/itm/*"
+      ],
+      "js": [
+        "content_scripts/ebay_item_scraper.js"
       ],
       "run_at": "document_idle"
     },
@@ -232,6 +250,7 @@
     {
       "resources": [
         "common/config.js",
+        "common/listing-draft.js",
         "common/constants.js",
         "common/performance.js",
         "common/message-handler.js",
@@ -242,10 +261,12 @@
         "common/editor-tools.js",
         "common/image-renderer.js",
         "common/auth-helper.js",
-        "common/retry-helper.js",
-        "common/api-client.js",
+        "common/ebay-photo-uploader.js",
         "common/pricing-engine.js",
         "common/sku-engine.js",
+        "common/ebay-listing-api.js",
+        "common/retry-helper.js",
+        "common/api-client.js",
         "common/sync-utils.js",
         "ui/panel.html",
         "ui/editor-popup.html",

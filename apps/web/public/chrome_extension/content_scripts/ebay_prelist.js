@@ -191,7 +191,7 @@ function _ssShowDuplicateBlock(listing, onOverride) {
         if (msg.includes('Navigating')) _ssUpdateOverlay('Done! Redirecting to listing editor…');
       };
 
-      await window.SellerSuitUploader.run(tabId, productToRun);
+      await window.SellerSuitUploader.run(productToRun);
       // run() navigates away on success — execution stops here
     } catch (err) {
       console.error('[SS] Upload failed:', err.message || err);
@@ -200,7 +200,7 @@ function _ssShowDuplicateBlock(listing, onOverride) {
         _ssShowVeroBlock(err.veroMatches, async () => {
           _ssShowOverlay('Listing anyway (VeRO override)…');
           try {
-            await window.SellerSuitUploader.run(tabId, { ...productToRun, forceVeroOverride: true });
+            await window.SellerSuitUploader.run({ ...productToRun, forceVeroOverride: true });
           } catch (err2) {
             console.error('[SS] Override upload failed:', err2.message || err2);
             _ssShowError(err2.message || String(err2));
@@ -210,7 +210,7 @@ function _ssShowDuplicateBlock(listing, onOverride) {
         _ssShowDuplicateBlock(err.duplicateListing, async () => {
           _ssShowOverlay('Listing duplicate anyway…');
           try {
-            await window.SellerSuitUploader.run(tabId, { ...productToRun, forceDuplicateOverride: true });
+            await window.SellerSuitUploader.run({ ...productToRun, forceDuplicateOverride: true });
           } catch (err2) {
             console.error('[SS] Override upload failed:', err2.message || err2);
             _ssShowError(err2.message || String(err2));
