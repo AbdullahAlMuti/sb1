@@ -625,7 +625,7 @@ window.EbayListingApiHelper = (() => {
           ? window.SSSkuEngine.buildReadable(parentAsin, attrs)
           : (parentAsin + (Object.values(attrs).map(a => a?.productName || '').join('-') || '')));
         return {
-          price:             parseFloat(v.ebayPrice) || parseFloat(v.price) || basePrice,
+          price:             parseFloat(v.ebayPrice) || parseFloat(v.finalPrice) || parseFloat(v.price) || basePrice,
           raw_supplier_price: parseFloat(v.price) || parseFloat(v.amazonPrice) || basePrice,
           sku:               varSku,
           attrs,

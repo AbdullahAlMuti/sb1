@@ -708,7 +708,10 @@ function _ssxRenderVariantRows(variants, p) {
         const profit = ebay - supplier;
         const profitPct = supplier > 0 ? (profit / supplier * 100) : 0;
         const stock = v.quantity != null ? v.quantity : 1;
-        const sku = v.sku || v.ebaySku || '—';
+        const _skuParent = p.parentAsin || p.asin || '';
+        const sku = v.sku || v.ebaySku || (window.SSSkuEngine
+            ? window.SSSkuEngine.buildReadable(_skuParent, v.attrs)
+            : (_skuParent + (Object.values(v.attrs || {}).map(a => (a && typeof a === 'object' ? a.productName : a) || '').join('-') || '') || '—'));
 
         const tr = document.createElement('tr');
 

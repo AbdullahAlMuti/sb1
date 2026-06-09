@@ -1742,6 +1742,7 @@ function initPanelControls() {
 
       comboWrap.appendChild(row);
     });
+    chrome.storage.local.set({ currentProduct: product });
   }
 
   function _saveExtendedEdits() {
