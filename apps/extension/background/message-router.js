@@ -414,13 +414,73 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           (async () => {
             try {
               if (typeof postCreateListing === 'function') {
-                await postCreateListing({
-                  title: product.title, sku: product.ebaySku || product.asin,
-                  ebay_price: product.price, amazon_price: product.amazonPrice || '',
-                  amazon_url: product.url, amazon_asin: product.asin,
-                  status: 'active',
-                  amazon_data: { image: '' }
-                }, 'import_ebay');
+                let syncPayload = null;
+                const hasVariants = product.hasVariants && Array.isArray(product.variants) && product.variants.length > 1;
+
+                if (hasVariants && window.EbayListingApiHelper) {
+                  try {
+                    const adapted = window.EbayListingApiHelper.adaptProduct(product);
+                    if (adapted && Array.isArray(adapted.prod_variations)) {
+                      const mainImage = adapted.prod_images?.[0] || null;
+                      const firstVar = adapted.prod_variations[0] || {};
+                      syncPayload = {
+                        title:               adapted.prod_title,
+                        sku:                 firstVar.sku || adapted.prod_id || '',
+                        ebay_price:          firstVar.price || null,
+                        raw_supplier_price:  firstVar.raw_supplier_price || parseFloat(product.price) || null,
+                        amazon_price:        parseFloat(product.price) || null,
+                        amazon_url:          product.url || null,
+                        amazon_asin:         product.asin || product.parentAsin || null,
+                        status:              'active',
+                        has_variations:      true,
+                        variation_count:     adapted.prod_variations.length,
+                        // Phase 7: source flags
+                        title_source:        product.title_source       || null,
+                        description_source:  product.description_source || null,
+                        price_source:        product.price_source       || null,
+                        sku_source:          product.sku_source         || null,
+                        variations: adapted.prod_variations.map(v => ({
+                          sku:               v.sku || '',
+                          ebay_sku_encoded:  (window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(v.sku || '') : ''),
+                          final_price:       v.price || 0,
+                          raw_supplier_price: v.raw_supplier_price || 0,
+                          currency:          product.currency || 'USD',
+                          stock_quantity:    1,
+                          variant_asin:      v.variant_asin || v.supplierVariantId || null,
+                          parent_asin:       product.parentAsin || product.asin || null,
+                          attributes:        v.attrs || {},
+                          image_url:         [v.img, ...(adapted.prod_images || [])].find(u => u && u.startsWith('http')) || null,
+                        })),
+                        ...(mainImage ? {
+                          amazon_data: { mainImage, imageUrl: mainImage, allImages: adapted.prod_images, source: 'extension' }
+                        } : {})
+                      };
+                    }
+                  } catch (err) {
+                    console.warn('[import_ebay] failed to adapt variations for sync:', err?.message || err);
+                  }
+                }
+
+                if (!syncPayload) {
+                  syncPayload = {
+                    title: product.title,
+                    sku: product.ebaySku || product.asin,
+                    ebay_price: product.price,
+                    amazon_price: product.amazonPrice || '',
+                    amazon_url: product.url,
+                    amazon_asin: product.asin,
+                    status: 'active',
+                    amazon_data: { image: '' },
+                    has_variations: false,
+                    // Phase 7: source flags
+                    title_source:        product.title_source       || null,
+                    description_source:  product.description_source || null,
+                    price_source:        product.price_source       || null,
+                    sku_source:          product.sku_source         || null,
+                  };
+                }
+
+                await postCreateListing(syncPayload, 'import_ebay');
               }
             } catch (e) { console.warn('[import_ebay] sync error:', e?.message || e); }
           })();

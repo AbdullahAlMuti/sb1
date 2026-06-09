@@ -571,6 +571,23 @@ function _ssxImg(id, url) { const el = document.getElementById(id); if (el) { el
 function _ssxRenderExtended(p) {
     if (!p) return;
     const variants = Array.isArray(p.variants) ? p.variants : [];
+
+    // Ensure all variations have a generated SKU
+    let variantsUpdated = false;
+    variants.forEach(v => {
+        if (!v.sku && v.attrs) {
+            const parentAsin = p.parentAsin || p.asin || '';
+            const skuPrefix = 'AMZ';
+            v.sku = window.SSSkuEngine
+                ? window.SSSkuEngine.buildReadable(parentAsin, v.attrs, skuPrefix)
+                : (parentAsin + (Object.values(v.attrs || {}).map(a => a?.productName || '').join('-') || ''));
+            variantsUpdated = true;
+        }
+    });
+    if (variantsUpdated) {
+        chrome.storage.local.set({ currentProduct: p });
+    }
+
     const images = Array.isArray(p.images) ? p.images : [];
     const mainImg = images[0] || (variants[0] && variants[0].img) || p.mainImage || '';
     const asin = p.asin || p.parentAsin || '';

@@ -30,6 +30,10 @@ if (chrome.storage && chrome.storage.session && typeof chrome.storage.session.se
   });
 }
 
+if (typeof window === 'undefined') {
+  self.window = self;
+}
+
 importScripts(
   '../common/config.js',
   '../common/constants.js',
@@ -39,6 +43,8 @@ importScripts(
   '../common/retry-helper.js',
   '../common/api-client.js',
   '../common/sync-utils.js',
+  '../common/sku-engine.js',
+  '../common/ebay-listing-api.js',
   'listing-runner.js',
   'alarm-handler.js',
   'message-router.js'

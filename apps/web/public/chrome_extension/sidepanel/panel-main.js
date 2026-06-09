@@ -674,6 +674,14 @@
       const finalTitle = (inpTitle.value || product.title || '').trim();
       const images = (product.images || []).filter((_, i) => !_removedImages.has(i));
 
+      // Stamp SKUs onto variants before flush so extended panel + early DB sync have them
+      const parentAsin = product.parentAsin || product.asin || '';
+      (product.variants || []).forEach(v => {
+        if (!v.sku && window.SSSkuEngine) {
+          v.sku = window.SSSkuEngine.buildReadable(parentAsin, v.attrs);
+        }
+      });
+
       const mergedProduct = {
         ...product,
         title: finalTitle,
