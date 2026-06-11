@@ -1581,7 +1581,7 @@ function initPanelControls() {
     const extQty   = document.getElementById('ext-qty');
 
     if (extTitle) extTitle.value = product.title || '';
-    if (extPrice) extPrice.value = product.price || '';
+    if (extPrice) extPrice.value = product.finalPrice || product.price || '';
     if (extSku)   extSku.value   = product.ebaySku || '';
     if (extQty)   extQty.value   = product.quantity || 1;
 
@@ -1783,7 +1783,11 @@ function initPanelControls() {
       const extQty   = document.getElementById('ext-qty');
 
       if (extTitle && extTitle.value) product.title = extTitle.value;
-      if (extPrice && extPrice.value) product.price = extPrice.value;
+      if (extPrice && extPrice.value && parseFloat(extPrice.value) > 0) {
+        const newPrice = parseFloat(extPrice.value);
+        if (newPrice !== parseFloat(product.finalPrice)) product.price_source = 'manual';
+        product.finalPrice = newPrice;
+      }
       if (extSku   && extSku.value)   product.ebaySku = extSku.value;
       if (extQty   && extQty.value)   product.quantity = parseInt(extQty.value, 10) || 1;
 
@@ -1831,11 +1835,17 @@ function initPanelControls() {
       if (!finalTitle) { alert('No title. Fill title first.'); return; }
       if (!sku) { alert('No SKU. Fill SKU first.'); return; }
 
+      const extPriceVal = extPrice && extPrice.value.trim();
+      const finalPrice = parseFloat(extPriceVal) || parseFloat(product.finalPrice) || 0;
+      const priceSource = (parseFloat(extPriceVal) > 0 && parseFloat(extPriceVal) !== parseFloat(product.finalPrice)) ? 'manual' : (product.price_source || 'calculated');
+
       let ebayProduct = {
         ...product,
         title: finalTitle,
         ebaySku: sku,
-        price: (extPrice && extPrice.value.trim()) || product.price,
+        price: product.price,
+        finalPrice,
+        price_source: priceSource,
         quantity: parseInt(document.getElementById('ext-qty')?.value || '1', 10) || 1,
         useStoredWatermarkedImages: false
       };

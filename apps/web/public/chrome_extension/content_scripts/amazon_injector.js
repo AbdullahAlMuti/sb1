@@ -5333,6 +5333,38 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     const _storedCalc3 = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
                     _extCalcValues3 = _storedCalc3.calculatorValues || {};
                 } catch (_) {}
+
+                // Restore manual price overrides from storage before applying pricing
+                const storedProduct = await new Promise(r => chrome.storage.local.get('currentProduct', r));
+                const extProduct = storedProduct.currentProduct || {};
+
+                if (extProduct.price_source === 'manual' && parseFloat(extProduct.finalPrice) > 0) {
+                    fullData.price_source = 'manual';
+                    fullData.finalPrice = extProduct.finalPrice;
+                }
+
+                if (Array.isArray(fullData.variants) && Array.isArray(extProduct.variants)) {
+                    fullData.variants.forEach(fv => {
+                        const match = extProduct.variants.find(ev => {
+                            if (fv.supplierVariantId && fv.supplierVariantId === ev.supplierVariantId) return true;
+                            if (fv.asin && fv.asin === ev.asin) return true;
+                            if (fv.attrs && ev.attrs && Object.keys(fv.attrs).length === Object.keys(ev.attrs).length) {
+                                return Object.entries(fv.attrs).every(([k, v]) => {
+                                    const vName = v && typeof v === 'object' ? v.productName : v;
+                                    const evVal = ev.attrs[k];
+                                    const evName = evVal && typeof evVal === 'object' ? evVal.productName : evVal;
+                                    return vName === evName;
+                                });
+                            }
+                            return false;
+                        });
+                        if (match && parseFloat(match.ebayPrice) > 0) {
+                            fv.ebayPrice = match.ebayPrice;
+                            fv.finalPrice = match.finalPrice || match.ebayPrice;
+                        }
+                    });
+                }
+
                 _applyPricingToProduct(fullData, _extCalcValues3);
                 if (window.SSVariationNormalizer) {
                     fullData = window.SSVariationNormalizer.normalizeProduct(fullData, {
