@@ -163,7 +163,7 @@ const html = <!DOCTYPE html>
           <span>Calculator</span><button id="calculator-close-btn">X</button>
         </div>
         <div class="calculator-content">
-          <input type="number" id="amazon-price" placeholder="Amazon Price"><input type="number" id="tax-percent" value="9"><input type="number" id="tracking-fee" value="0.20"><input type="number" id="ebay-fee-percent" value="20"><input type="number" id="promo-fee-percent" value="10"><input type="number" id="desired-profit">
+          <input type="number" id="supplier-price" placeholder="Supplier Price"><input type="number" id="tax-percent" value="9"><input type="number" id="tracking-fee" value="0.20"><input type="number" id="ebay-fee-percent" value="20"><input type="number" id="promo-fee-percent" value="10"><input type="number" id="desired-profit">
           <div id="calculator-result"><div id="final-price">.00</div></div>
         </div>
       </div>

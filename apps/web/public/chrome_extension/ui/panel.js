@@ -5,6 +5,15 @@
 
 console.log('[Panel] Initializing...');
 
+// Registry-based supplier page check. Hardcoded host list is the fallback
+// only when the suppliers bundle failed to load — registry is authoritative
+// so future suppliers (AliExpress, Temu, …) work without touching this file.
+function isSupplierPage(url) {
+  if (!url) return false;
+  if (window.SSSupplierRegistry) return !!window.SSSupplierRegistry.match(url);
+  return url.includes('amazon.com') || url.includes('walmart.com') || url.includes('walmart.ca');
+}
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -45,6 +54,15 @@ function initPanel() {
   runPanelInitStep('title generation', initTitleGeneration);
   runPanelInitStep('action buttons', initActionButtons);
   runPanelInitStep('calculator', initCalculator);
+
+  // Universal extended workspace: render currentProduct via the shared
+  // common/panel-extended.js module (same logic as the inline Extend path).
+  runPanelInitStep('extended editor', () => {
+    if (typeof showSidebarExtended === 'function') {
+      return showSidebarExtended({ force: true });
+    }
+    console.warn('[Panel] panel-extended.js not loaded — extended editor not rendered');
+  });
 
   console.log('[Panel] All components initialized');
 }
@@ -644,28 +662,9 @@ async function generateAITitles() {
       });
     });
 
-    // If no product data in storage, try to scrape from current page
-    if (!productData.title && !productData.productTitle) {
-      console.log('[Panel] No product data in storage, attempting to scrape from page...');
-
-      // Get active tab and scrape product data
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tabs[0]) {
-        try {
-          const response = await chrome.tabs.sendMessage(tabs[0].id, { action: 'SCRAPE_PRODUCT_DATA' });
-          if (response && response.success && response.data) {
-            productData = response.data;
-            console.log('[Panel] Successfully scraped product data from page');
-          }
-        } catch (scrapeError) {
-          console.error('[Panel] Failed to scrape from page:', scrapeError);
-        }
-      }
-    }
-
     // Final check for product data
     if (!productData.title && !productData.productTitle) {
-      throw new Error('No product data found. Please open an Amazon or Walmart product page and try again.');
+      throw new Error('No product data found. Please scan a product from the side panel first.');
     }
 
     // Call edge function WITH AUTHENTICATION, including title count
@@ -693,6 +692,14 @@ async function generateAITitles() {
 
     if (!result.success) {
       throw new Error(result.error || 'Failed to generate titles');
+    }
+
+    // Normalize response shape: { titles } or { data: { titles } }
+    const titles = Array.isArray(result.titles)
+      ? result.titles
+      : (result.data && Array.isArray(result.data.titles) ? result.data.titles : []);
+    if (!titles.length) {
+      throw new Error('AI returned no titles. Please try again.');
     }
 
     // Display titles inline using unified global helper
@@ -1077,9 +1084,8 @@ function initActionButtons() {
           throw new Error('No active tab found');
         }
 
-        // Check if it's an Amazon or Walmart page
-        if (!tab.url?.includes('amazon.com') && !tab.url?.includes('walmart.com') && !tab.url?.includes('walmart.ca')) {
-          throw new Error('Please open an Amazon or Walmart product page');
+        if (!isSupplierPage(tab.url)) {
+          throw new Error('Please open a supported supplier product page');
         }
 
         // Send message to content script to trigger AI generation
@@ -1125,7 +1131,6 @@ function initActionButtons() {
         const finalPrice = document.getElementById('sell-it-for-input')?.value?.trim();
 
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        const isAmazon = tab?.url?.includes('amazon.com') || tab?.url?.includes('amazon.ca');
 
         if (!selectedTitle) throw new Error('No title selected. Generate & select a title first.');
         if (!sku) throw new Error('Missing SKU. Click Generate SKU first.');
@@ -1133,8 +1138,10 @@ function initActionButtons() {
         let scrapedData = null;
         let scrapedDetails = null;
 
-        if (isAmazon && tab?.id) {
-          optiListBtn.textContent = 'Scraping...';
+        // Attempt PREPARE_EBAY_LISTING for any supplier tab — non-Amazon injectors won't
+        // respond (chrome.runtime.lastError) so we fall through to stored product.
+        if (tab?.id) {
+          optiListBtn.textContent = 'Loading...';
           const scrapeResp = await new Promise(resolve => {
             chrome.tabs.sendMessage(tab.id, { action: 'PREPARE_EBAY_LISTING', options: { skipScrape: true } }, resp => {
               if (chrome.runtime.lastError) { resolve(null); return; }
@@ -1145,25 +1152,37 @@ function initActionButtons() {
             scrapedData = scrapeResp.fullData;
             scrapedDetails = scrapeResp.productDetails;
           } else {
-            // Handler updated currentProduct before responding — re-read to get fresh variant data
+            // Injector updated currentProduct before responding, or supplier has no PREPARE_EBAY_LISTING —
+            // either way, read fresh from storage as authoritative source.
             const fresh = await chrome.storage.local.get('currentProduct');
-            if (fresh.currentProduct?.hasVariants) scrapedData = fresh.currentProduct;
+            if (fresh.currentProduct) scrapedData = fresh.currentProduct;
           }
         }
 
-        const productURL = tab?.url || storedProduct.url || storedProduct.amazonLink || '';
-        const amazonPrice = (scrapedData?.price || storedProduct.price || '').toString().trim();
-        const asin = scrapedData?.asin || storedProduct.asin || storedProduct.ASIN || '';
+        const productURL = tab?.url || storedProduct.url || storedProduct.sourceUrl || '';
+        const supplierPrice = (scrapedData?.price || storedProduct.price || '').toString().trim();
+        const sourceId = scrapedData?.sourceId || storedProduct.sourceId ||
+                         scrapedData?.asin || storedProduct.asin || storedProduct.ASIN || '';
 
-        const ebayProduct = {
+        let ebayProduct = {
           ...storedProduct,
           ...(scrapedData || {}),
           title: selectedTitle,
           ebaySku: sku,
-          price: finalPrice || scrapedData?.price || storedProduct.price,
-          amazonPrice,
+          // price = raw supplier price; the eBay sell price goes in finalPrice.
+          // Writing the sell price into price corrupted supplier-price tracking
+          // and let downstream recalculation override the displayed sell price.
+          price: scrapedData?.price || storedProduct.price,
+          finalPrice: parseFloat(finalPrice) ||
+                      parseFloat(scrapedData?.finalPrice) ||
+                      parseFloat(storedProduct.finalPrice) || 0,
+          price_source: parseFloat(finalPrice) > 0
+            ? 'manual'
+            : (scrapedData?.price_source || storedProduct.price_source || 'calculated'),
+          supplierPrice,
           url: productURL,
-          asin,
+          sourceId,
+          asin: sourceId, // backward compat — message-router reads product.asin for DB sync
           quantity: 1,
           useStoredWatermarkedImages: true,
           ...(scrapedDetails ? {
@@ -1176,6 +1195,12 @@ function initActionButtons() {
             }
           } : {})
         };
+        if (window.SSVariationNormalizer) {
+          ebayProduct = window.SSVariationNormalizer.normalizeProduct(ebayProduct, {
+            dedupe: true,
+            dropInvalid: true
+          });
+        }
 
         chrome.runtime.sendMessage({
           action: 'import_ebay',
@@ -1241,8 +1266,8 @@ function initActionButtons() {
           throw new Error('No active tab found');
         }
 
-        if (!tab.url?.includes('amazon.com')) {
-          throw new Error('Please open an Amazon product page');
+        if (!isSupplierPage(tab.url)) {
+          throw new Error('Please open a supported supplier product page');
         }
 
         const response = await chrome.tabs.sendMessage(tab.id, {
@@ -1288,12 +1313,14 @@ function initActionButtons() {
 function generateSKU() {
   chrome.storage.local.get(['currentProduct', 'snipedData'], (result) => {
     const product = result.currentProduct || result.snipedData || {};
-    const asin = product.asin || product.ASIN || '';
-    const prefix = document.getElementById('sku-prefix')?.value || 'AB';
+    // Supplier-neutral id first; legacy Amazon fields as fallback
+    const sourceId = product.sourceId || product.asin || product.ASIN || '';
+    const prefix = document.getElementById('sku-prefix')?.value
+      || (window.SSSkuEngine?.prefixFor ? window.SSSkuEngine.prefixFor(product.supplier) : 'AB');
     const skuInput = document.getElementById('sku-input');
 
     if (skuInput) {
-      skuInput.value = asin ? `${prefix}-${asin}` : '';
+      skuInput.value = sourceId ? `${prefix}-${sourceId}` : '';
     }
   });
 }
@@ -1335,7 +1362,7 @@ function initCalculator() {
   }
 
   // Auto-calculate on input change
-  const inputs = ['amazon-price', 'tax-percent', 'tracking-fee', 'ebay-fee-percent', 'promo-fee-percent', 'desired-profit', 'payment-fixed-fee'];
+  const inputs = ['supplier-price', 'tax-percent', 'tracking-fee', 'ebay-fee-percent', 'promo-fee-percent', 'desired-profit', 'payment-fixed-fee'];
   inputs.forEach(id => {
     const input = document.getElementById(id);
     if (input) {
@@ -1350,7 +1377,7 @@ function initCalculator() {
 }
 
 function runCalculation() {
-  const sourcePrice = parseFloat(document.getElementById('amazon-price')?.value) || 0;
+  const sourcePrice = parseFloat(document.getElementById('supplier-price')?.value) || 0;
   const taxPercent = parseFloat(document.getElementById('tax-percent')?.value) || 0;
   const trackingFee = parseFloat(document.getElementById('tracking-fee')?.value) || 0;
   const ebayFeePercent = parseFloat(document.getElementById('ebay-fee-percent')?.value) || 0;
@@ -1695,7 +1722,8 @@ function initPanelControls() {
     };
 
     const skuPrefix = document.getElementById('sku-prefix')?.value || 'AB';
-    const parentAsin = product.asin || product.ASIN || product.parentAsin || '';
+    // Supplier-neutral id first; legacy Amazon fields as fallback
+    const parentAsin = product.sourceId || product.asin || product.ASIN || product.parentAsin || '';
 
     variants.forEach((v) => {
       const row = document.createElement('div');
@@ -1803,7 +1831,7 @@ function initPanelControls() {
       if (!finalTitle) { alert('No title. Fill title first.'); return; }
       if (!sku) { alert('No SKU. Fill SKU first.'); return; }
 
-      const ebayProduct = {
+      let ebayProduct = {
         ...product,
         title: finalTitle,
         ebaySku: sku,
@@ -1811,6 +1839,12 @@ function initPanelControls() {
         quantity: parseInt(document.getElementById('ext-qty')?.value || '1', 10) || 1,
         useStoredWatermarkedImages: false
       };
+      if (window.SSVariationNormalizer) {
+        ebayProduct = window.SSVariationNormalizer.normalizeProduct(ebayProduct, {
+          dedupe: true,
+          dropInvalid: true
+        });
+      }
 
       chrome.runtime.sendMessage({
         action: 'import_ebay',

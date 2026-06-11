@@ -44,12 +44,49 @@ Deno.serve(async (req) => {
         // For now, simple trim.
         const cleanSku = sku.trim();
 
-        const { data, error } = await supabase
+        // 1. Try matching directly in listings table by sku (parent SKU match)
+        let { data, error } = await supabase
             .from("listings")
             .select("sku, amazon_url, amazon_asin")
             .eq("user_id", user.id)
             .eq("sku", cleanSku)
             .maybeSingle();
+
+        // 2. If not found, look up in listing_variations (either by readable sku or legacy encoded sku)
+        if (!data && !error) {
+            let { data: varData, error: varError } = await supabase
+                .from("listing_variations")
+                .select("listing_id")
+                .eq("user_id", user.id)
+                .eq("sku", cleanSku)
+                .maybeSingle();
+
+            // If not found by readable variation SKU, check by legacy encoded SKU
+            if (!varData && !varError) {
+                const { data: varDataEncoded, error: varErrorEncoded } = await supabase
+                    .from("listing_variations")
+                    .select("listing_id")
+                    .eq("user_id", user.id)
+                    .eq("ebay_sku_encoded", cleanSku)
+                    .maybeSingle();
+                varData = varDataEncoded;
+                varError = varErrorEncoded;
+            }
+
+            if (varData && !varError) {
+                const { data: parentData, error: parentError } = await supabase
+                    .from("listings")
+                    .select("sku, amazon_url, amazon_asin")
+                    .eq("user_id", user.id)
+                    .eq("id", varData.listing_id)
+                    .maybeSingle();
+                
+                data = parentData;
+                error = parentError;
+            } else if (varError) {
+                error = varError;
+            }
+        }
 
         if (error) {
             console.error("Match error:", error);

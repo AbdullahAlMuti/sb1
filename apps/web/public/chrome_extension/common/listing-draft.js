@@ -123,6 +123,7 @@
       // Core identity
       asin:         d.asin         || null,
       parentAsin:   d.parentAsin   || null,
+      sourceId:     d.sourceId     || d.parentAsin || d.asin || null,
       marketplace:  d.supplier     || 'amazon',
       isSingleMode: d.mode === 'single',
 
@@ -176,10 +177,11 @@
       : null; // filled later by _applyPricingToProduct
 
     return {
-      supplier:    product.marketplace || 'amazon',
+      supplier:    product.marketplace || product.supplier || 'amazon',
       mode:        m,
       asin:        product.asin        || null,
       parentAsin:  product.parentAsin  || null,
+      sourceId:    product.sourceId    || product.parentAsin || product.asin || null,
 
       title:       product.title       || '',
       description: product.description || '',

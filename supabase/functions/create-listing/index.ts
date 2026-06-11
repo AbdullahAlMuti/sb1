@@ -59,10 +59,53 @@ async function resolveAuth(supabase: SupabaseClient, req: Request) {
     const { data: profile } = await supabase.from('profiles').select('id,email,full_name,is_active,account_status,plan_id,credits,default_workspace_id').eq('id', session.user_id).maybeSingle();
     if (!profile) throw new Error('User profile not found');
     if (profile.is_active === false || ['Suspended','Banned'].includes(profile.account_status)) throw new Error('User account not active');
-    const { data: ws } = await supabase.from('workspaces').select('*').eq('id', session.workspace_id).maybeSingle();
-    if (!ws) throw new Error('Workspace not found');
+    
+    // Resolve workspace gracefully
+    let ws = null;
+    if (session.workspace_id) {
+      const { data: wsData } = await supabase.from('workspaces').select('*').eq('id', session.workspace_id).maybeSingle();
+      ws = wsData;
+    }
+    
+    if (!ws) {
+      let workspaceId = profile.default_workspace_id;
+      if (workspaceId) {
+        const { data: wsData } = await supabase.from('workspaces').select('*').eq('id', workspaceId).maybeSingle();
+        ws = wsData;
+      }
+      if (!ws) {
+        const { data: wsData } = await supabase.from('workspaces').select('*').eq('owner_user_id', session.user_id).is('slug', null).maybeSingle();
+        ws = wsData;
+      }
+      if (!ws) {
+        const { data: wsData, error: wsErr } = await supabase.from('workspaces').insert({
+          owner_user_id: session.user_id,
+          name: "Default Workspace",
+          slug: null,
+          status: "active",
+          metadata: { created_by: "create_listing_resolve_auth_fallback" }
+        }).select('*').single();
+        if (wsErr || !wsData) throw new Error(wsErr?.message || 'Failed to create fallback workspace');
+        ws = wsData;
+      }
+      
+      // Ensure workspace membership
+      await supabase.from('workspace_members').upsert({
+        workspace_id: ws.id,
+        user_id: session.user_id,
+        role: 'owner',
+        status: 'active'
+      }, { onConflict: 'workspace_id,user_id' });
+      
+      // Update session and profile default_workspace_id
+      await supabase.from('extension_sessions').update({ workspace_id: ws.id }).eq('id', session.id);
+      if (!profile.default_workspace_id) {
+        await supabase.from('profiles').update({ default_workspace_id: ws.id }).eq('id', session.user_id);
+      }
+    }
+    
     await supabase.from('extension_sessions').update({ last_seen_at: new Date().toISOString() }).eq('id', session.id);
-    return { userId: profile.id as string, workspaceId: session.workspace_id as string, profile, workspace: ws, authMode: 'extension_session' };
+    return { userId: profile.id as string, workspaceId: ws.id as string, profile, workspace: ws, authMode: 'extension_session' };
   }
 
   // Legacy Supabase JWT
@@ -79,6 +122,16 @@ async function resolveAuth(supabase: SupabaseClient, req: Request) {
 }
 
 // ── feature entitlement ───────────────────────────────────────────────────────
+async function planAllowsFeature(supabase: SupabaseClient, planId: string, featureKey: string): Promise<boolean> {
+  const { data: plan } = await supabase.from('plans').select('id,features').eq('id', planId).maybeSingle();
+  if (!plan?.features) return false;
+  const { data: ent } = await supabase.from('feature_entitlements').select('enabled').eq('feature_key', featureKey).eq('plan_id', plan.id).maybeSingle();
+  if (ent) return Boolean(ent.enabled);
+  const f = plan.features as any;
+  if (Array.isArray(f)) return f.includes(featureKey);
+  return Boolean(f[featureKey]);
+}
+
 async function requireFeatureEntitlement(supabase: SupabaseClient, userId: string, workspaceId: string | null, featureKey: string): Promise<boolean> {
   let q = supabase.from('feature_overrides').select('enabled,expires_at').eq('feature_key', featureKey);
   q = workspaceId ? q.or(`user_id.eq.${userId},workspace_id.eq.${workspaceId}`) : q.eq('user_id', userId);
@@ -88,20 +141,59 @@ async function requireFeatureEntitlement(supabase: SupabaseClient, userId: strin
     if (ov.enabled === false) return false;
     if (ov.enabled === true) return true;
   }
-  if (!workspaceId) return false;
-  const { data: sub } = await supabase.from('subscriptions').select('status,plan_id').eq('workspace_id', workspaceId).order('created_at', { ascending: false }).limit(1).maybeSingle();
-  const { data: up } = await supabase.from('user_plans').select('status,plan_id').eq('user_id', userId).maybeSingle();
-  const isActive = sub?.status === 'active' || sub?.status === 'trialing' || up?.status === 'active';
-  if (!isActive) return false;
-  const planId = sub?.plan_id || up?.plan_id;
-  if (!planId) return false;
-  const { data: plan } = await supabase.from('plans').select('id,features').eq('id', planId).maybeSingle();
-  if (!plan?.features) return false;
-  const { data: ent } = await supabase.from('feature_entitlements').select('enabled').eq('feature_key', featureKey).eq('plan_id', plan.id).maybeSingle();
-  if (ent) return Boolean(ent.enabled);
-  const f = plan.features as any;
-  if (Array.isArray(f)) return f.includes(featureKey);
-  return Boolean(f[featureKey]);
+
+  // Fetch all candidates in parallel: profiles.plan_id, user_plans, subscriptions
+  const [
+    profileRes,
+    userPlanRes,
+    subRes
+  ] = await Promise.all([
+    supabase.from('profiles').select('plan_id, is_active, account_status').eq('id', userId).maybeSingle(),
+    supabase.from('user_plans').select('plan_id, status').eq('user_id', userId).maybeSingle(),
+    workspaceId
+      ? supabase
+          .from('subscriptions')
+          .select('plan_id, status')
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null })
+  ]);
+
+  const profile = profileRes.data;
+  const userPlan = userPlanRes.data;
+  const subscription = subRes.data;
+
+  // Block suspended/banned/inactive profiles
+  if (profile?.is_active === false || ['Suspended', 'Banned'].includes(profile?.account_status || '')) {
+    return false;
+  }
+
+  let planId: string | null = null;
+  let isPlanActive = false;
+
+  // 1. Check workspace subscription
+  if (subscription && (subscription.status === 'active' || subscription.status === 'trialing')) {
+    planId = subscription.plan_id;
+    isPlanActive = true;
+  }
+
+  // 2. Check user plan
+  if (!isPlanActive && userPlan && userPlan.status === 'active') {
+    planId = userPlan.plan_id;
+    isPlanActive = true;
+  }
+
+  // 3. Fallback to profiles.plan_id if profile is active
+  if (!isPlanActive && profile && profile.plan_id) {
+    planId = profile.plan_id;
+    isPlanActive = true;
+  }
+
+  if (!isPlanActive || !planId) return false;
+
+  return planAllowsFeature(supabase, planId, featureKey);
 }
 
 // ── plan validation (listing count + credit) ──────────────────────────────────
@@ -167,6 +259,17 @@ function extractAsin(url: string | null | undefined): string | null {
   if (!url) return null;
   const m = String(url).match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i);
   return m?.[1]?.toUpperCase() ?? null;
+}
+
+function cleanPrice(price: any): number | null {
+  if (price === null || price === undefined) return null;
+  if (typeof price === 'number') {
+    return isNaN(price) ? null : price;
+  }
+  const s = String(price).replace(/[^\d.-]/g, '').trim();
+  if (s === '' || s === '-') return null;
+  const parsed = parseFloat(s);
+  return isNaN(parsed) ? null : parsed;
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
@@ -236,8 +339,8 @@ Deno.serve(async (req) => {
       if (!v.allowed) return json({ success: false, error: v.reason, limitType: 'listings', current: v.current, limit: v.limit, upgradeRequired: true }, 402);
     }
 
-    const ebayPrice   = body.ebayPrice   ?? body.ebay_price   ?? null;
-    const amazonPrice = body.amazonPrice ?? body.amazon_price ?? null;
+    const ebayPrice   = cleanPrice(body.ebayPrice   ?? body.ebay_price);
+    const amazonPrice = cleanPrice(body.amazonPrice ?? body.amazon_price);
 
     const rawVars: VariationRow[] = Array.isArray(body.variations) ? body.variations : [];
     const normVars = rawVars
@@ -245,8 +348,8 @@ Deno.serve(async (req) => {
       .map(v => ({
         sku:                v.sku.trim().substring(0, 50),
         ebay_sku_encoded:   typeof v.ebay_sku_encoded === 'string' ? v.ebay_sku_encoded : '',
-        final_price:        Number(v.final_price) || 0,
-        raw_supplier_price: Number(v.raw_supplier_price) || 0,
+        final_price:        cleanPrice(v.final_price) || 0,
+        raw_supplier_price: cleanPrice(v.raw_supplier_price) || 0,
         currency:           v.currency || 'USD',
         stock_quantity:     Number(v.stock_quantity) || 1,
         variant_asin:       v.variant_asin || null,

@@ -447,7 +447,17 @@ export async function validateExtensionAccessToken(supabase: SupabaseClient, req
     throw new Error("User account is not active");
   }
 
-  const { workspace } = await verifyWorkspaceMembership(supabase, session.user_id, session.workspace_id);
+  let workspace = null;
+  try {
+    const res = await verifyWorkspaceMembership(supabase, session.user_id, session.workspace_id);
+    workspace = res.workspace;
+  } catch (_err) {
+    // Fallback: Ensure default workspace exists
+    const res = await ensureDefaultWorkspace(supabase, session.user_id);
+    workspace = res.workspace;
+    // Update session workspace_id so future requests succeed directly
+    await supabase.from("extension_sessions").update({ workspace_id: workspace.id }).eq("id", session.id);
+  }
 
   await supabase
     .from("extension_sessions")
@@ -619,7 +629,7 @@ export async function requireFeatureEntitlement(
   userId: string,
   workspaceId: string | null,
   featureKey: string
-) {
+): Promise<boolean> {
   let overrideQuery = supabase
     .from("feature_overrides")
     .select("enabled, expires_at")
@@ -636,16 +646,62 @@ export async function requireFeatureEntitlement(
     if (override.enabled === true) return true;
   }
 
-  if (!workspaceId) return false;
+  // Fetch all candidates in parallel: profiles.plan_id, user_plans, subscriptions
+  const [
+    profileRes,
+    userPlanRes,
+    subRes
+  ] = await Promise.all([
+    supabase.from("profiles").select("plan_id, is_active, account_status").eq("id", userId).maybeSingle(),
+    supabase.from("user_plans").select("plan_id, status").eq("user_id", userId).maybeSingle(),
+    workspaceId
+      ? supabase
+          .from("subscriptions")
+          .select("plan_id, status")
+          .eq("workspace_id", workspaceId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null })
+  ]);
 
-  const { subscription, userPlan, plan } = await getSubscriptionSnapshot(supabase, userId, workspaceId);
+  const profile = profileRes.data;
+  const userPlan = userPlanRes.data;
+  const subscription = subRes.data;
 
-  // If sub is active or trialing
-  const isActive = subscription.status === "active" || subscription.status === "trialing" || userPlan?.status === "active";
-  if (!isActive) return false;
+  // Block suspended/banned/inactive profiles
+  if (profile?.is_active === false || ["Suspended", "Banned"].includes(profile?.account_status || "")) {
+    return false;
+  }
 
+  let planId: string | null = null;
+  let isPlanActive = false;
+
+  // 1. Check workspace subscription
+  if (subscription && (subscription.status === "active" || subscription.status === "trialing")) {
+    planId = subscription.plan_id;
+    isPlanActive = true;
+  }
+
+  // 2. Check user plan
+  if (!isPlanActive && userPlan && userPlan.status === "active") {
+    planId = userPlan.plan_id;
+    isPlanActive = true;
+  }
+
+  // 3. Fallback to profiles.plan_id if profile is active
+  if (!isPlanActive && profile && profile.plan_id) {
+    planId = profile.plan_id;
+    isPlanActive = true;
+  }
+
+  if (!isPlanActive || !planId) return false;
+
+  // Query the plan
+  const { data: plan } = await supabase.from("plans").select("id, features").eq("id", planId).maybeSingle();
   if (!plan || !plan.features) return false;
 
+  // Query feature entitlements in DB
   const { data: entitlement } = await supabase
     .from("feature_entitlements")
     .select("enabled")

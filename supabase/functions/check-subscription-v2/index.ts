@@ -320,26 +320,49 @@ serve(async (req) => {
       }
     }
 
+    // Resolve plan details from profiles if no active Stripe subscription exists
+    let activePlanId = planDetails?.id || profile?.plan_id;
+    let activePlan = planDetails;
+    if (!activePlan && activePlanId) {
+      const { data: pData } = await supabaseServiceClient
+        .from("plans")
+        .select("id, name, display_name, credits_per_month, max_listings, max_auto_orders")
+        .eq("id", activePlanId)
+        .maybeSingle();
+      if (pData) {
+        activePlan = {
+          id: pData.id,
+          name: pData.name,
+          display_name: pData.display_name ?? pData.name,
+          credits_per_month: pData.credits_per_month ?? 0,
+          max_listings: pData.max_listings ?? 10,
+          max_auto_orders: pData.max_auto_orders ?? 0,
+        };
+        planName = pData.name;
+      }
+    }
+
     // Credits source-of-truth:
     // - profiles.credits is the authoritative remaining balance (deducted on usage, reset on renewal)
     // - plans.credits_per_month is the monthly total
     // - credits_used is derived for display (and also tracked in user_plans for analytics)
-    const creditsTotal = hasActiveSub ? (planDetails?.credits_per_month ?? 0) : 0;
+    const creditsTotal = activePlan ? (activePlan.credits_per_month ?? 0) : 0;
     // Re-read remaining credits from local computed values; if we initialized above,
     // ensure we return the plan total immediately (no "0 remaining" flicker).
-    const creditsRemaining = hasActiveSub ? maybeProfileCredits : 0;
+    const creditsRemaining = maybeProfileCredits;
     const creditsUsed = Math.max(creditsTotal - creditsRemaining, 0);
+    const isSubscribed = hasActiveSub || Boolean(activePlan && activePlan.name !== "free");
 
     return new Response(
       JSON.stringify({
-        subscribed: hasActiveSub,
+        subscribed: isSubscribed,
         plan_name: planName,
-        plan: planDetails,
-         limits: hasActiveSub && planDetails
+        plan: activePlan,
+        limits: activePlan
           ? {
-              credits_per_month: planDetails.credits_per_month,
-              max_listings: planDetails.max_listings,
-              max_auto_orders: planDetails.max_auto_orders,
+              credits_per_month: activePlan.credits_per_month,
+              max_listings: activePlan.max_listings,
+              max_auto_orders: activePlan.max_auto_orders,
             }
           : null,
         usage: {
@@ -349,7 +372,7 @@ serve(async (req) => {
           orders_used: userPlan?.orders_used ?? 0,
           credits_used: creditsUsed,
           current_period_end: userPlan?.current_period_end ?? subscriptionEnd,
-          status: userPlan?.status ?? (hasActiveSub ? 'active' : 'free'),
+          status: userPlan?.status ?? (isSubscribed ? 'active' : 'free'),
         },
         product_id: productId,
         subscription_end: subscriptionEnd,

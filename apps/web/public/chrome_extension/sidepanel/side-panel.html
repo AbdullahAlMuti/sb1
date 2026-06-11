@@ -52,77 +52,82 @@
         <button id="btn-log-out" class="btn btn-outline btn-sm">Log out</button>
       </div>
 
-      <!-- Current store -->
-      <div class="field">
-        <label class="field-label" for="store-select">Current Store</label>
-        <div class="select-wrap">
-          <select id="store-select">
-            <option value="">— No store selected —</option>
-          </select>
-        </div>
+      <!-- Supplier page indicator: shows only "Amazon" / "Walmart" -->
+      <div id="page-status" class="page-status hidden">
+        <span class="page-status-text" id="page-status-text"></span>
       </div>
 
-      <!-- eBay setup warning -->
-      <div id="ebay-warning" class="hidden">
-        <div class="warn-header">
-          <div>
-            <div class="warn-title">⚠ eBay account not set up</div>
-            <div class="warn-subtitle">Complete setup to start importing products</div>
-          </div>
-          <!-- Dismiss button removed for persistence -->
+      <!-- Stale product banner -->
+      <div id="stale-banner" class="stale-banner hidden">
+        <div class="stale-banner-text">
+          <strong>Page changed.</strong> The product below is from a different page.
         </div>
-        <div class="warn-steps">
-          <div class="warn-step">
-            <span class="warn-num">1</span>
-            <span class="warn-step-text">Log in to eBay Seller account</span>
-            <button class="btn-amber btn-sm" id="btn-ebay-login">Log in</button>
-          </div>
-          <div class="warn-step">
-            <span class="warn-num">2</span>
-            <span class="warn-step-text">Enable Seller Hub</span>
-            <button class="btn-amber btn-sm" id="btn-ebay-hub">Open Hub</button>
-          </div>
-        </div>
-      <!-- Listing Mode Selector -->
+        <button id="btn-rescan" class="btn btn-primary btn-sm">Rescan this page</button>
+      </div>
+
+      <!-- Listing mode -->
       <div class="mode-toggle-wrap">
-        <button class="mode-btn active" id="btn-mode-single" data-mode="single">Single Listing</button>
-        <button class="mode-btn" id="btn-mode-all" data-mode="all">Variation Listing</button>
+        <button class="mode-btn active" id="btn-mode-single" data-mode="single">Single item</button>
+        <button class="mode-btn" id="btn-mode-all" data-mode="all">All variations</button>
       </div>
 
-      <!-- No product state (shown when not on Amazon product page) -->
+      <!-- Empty state -->
       <div id="no-product">
-        <svg class="no-product-icon" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
-        </svg>
-        <div class="font-medium">No product loaded</div>
-        <div class="text-xs text-muted" style="margin-bottom:6px">Navigate to an Amazon product page, then load details below.</div>
-        <button id="btn-scan-no-product" class="btn btn-primary btn-w-full">
-          Load Single Product
-        </button>
+        <div class="text-xs text-muted" style="margin-bottom:10px">Open a product page on Amazon or Walmart.</div>
       </div>
 
-      <!-- Product tabs (shown when product loaded) -->
-      <div id="product-tabs" class="inner-tabs hidden">
+      <!-- Product loaded -->
+      <div id="product-tabs" class="product-flow hidden">
 
-        <!-- Tab nav -->
-        <div class="inner-tabs-nav">
-          <button class="inner-tab-btn active" data-tab="import">Import</button>
-          <button class="inner-tab-btn" data-tab="advanced">Advanced Edit</button>
+        <div id="scan-preview" class="scan-preview hidden">
+          <div class="scan-preview-row">
+            <img id="preview-img" class="preview-thumb" src="" alt="">
+            <div class="preview-meta">
+              <div id="preview-title" class="preview-title"></div>
+              <div id="preview-asin" class="text-xs text-muted"></div>
+              <div id="preview-vars" class="text-xs text-muted"></div>
+              <div id="preview-price" class="preview-price"></div>
+            </div>
+          </div>
         </div>
 
-        <!-- ── Import tab ──────────────────────── -->
-        <div id="tab-import" class="tab-content">
-          <div class="card">
-            <div class="card-header">
-              <div class="card-title">Import product</div>
+        <!-- Quick edit (collapsed) -->
+        <details class="panel-details" id="quick-edit">
+          <summary>Quick edit <span class="text-xs text-muted">— title, images, variations</span></summary>
+          <div class="panel-details-body">
+
+            <div class="field">
+              <label for="inp-title">Title</label>
+              <input type="text" id="inp-title" placeholder="Product title…" maxlength="80">
             </div>
-            <div class="card-content">
 
-              <!-- Context line -->
-              <div id="import-context" class="import-context text-xs text-muted"></div>
+            <div class="field">
+              <label>Images <span class="text-xs text-muted">(click to remove)</span></label>
+              <div id="adv-image-grid" class="images-grid"></div>
+              <div id="adv-no-images" class="text-xs text-muted" style="margin-top:4px">No images loaded</div>
+            </div>
 
-              <!-- All-mode fields (hidden in Single mode) -->
-              <div id="all-mode-fields">
+            <div class="field" id="adv-variations-wrap">
+              <label>Variations</label>
+              <div id="adv-variations" class="variations-section"></div>
+              <button id="btn-add-dimension" class="btn btn-outline btn-sm" style="margin-top:8px;width:100%">
+                + Add Dimension
+              </button>
+            </div>
+
+            <div class="field">
+              <label for="inp-adv-qty">Quantity</label>
+              <input type="number" id="inp-adv-qty" min="0" value="1" placeholder="1">
+            </div>
+
+          </div>
+        </details>
+
+        <!-- Listing settings (collapsed) -->
+        <details class="panel-details" id="quick-settings">
+          <summary>Listing settings <span class="text-xs text-muted">— quantity, shipping, type</span></summary>
+          <div class="panel-details-body">
+            <div id="all-mode-fields">
               <div class="grid-2">
                 <div class="field">
                   <label for="inp-min-qty">Min quantity</label>
@@ -145,6 +150,17 @@
                 </label>
               </div>
 
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <div class="toggle-label">Auto-edit</div>
+                  <div class="toggle-desc">Auto-generate price, SKUs and edited first image on upload</div>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="tog-auto-edit">
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+
               <div class="field">
                 <label for="sel-upload-type">Upload type</label>
                 <div class="select-wrap">
@@ -154,81 +170,19 @@
                   </select>
                 </div>
               </div>
-              </div>
-              <!-- /all-mode-fields -->
-
-              <button id="btn-start-import" class="btn btn-primary btn-w-full">
-                Start Import
-              </button>
-
-              <!-- Scan preview (shown after successful scan) -->
-              <div id="scan-preview" class="scan-preview hidden">
-                <div class="scan-preview-row">
-                  <img id="preview-img" class="preview-thumb" src="" alt="">
-                  <div class="preview-meta">
-                    <div id="preview-title" class="preview-title"></div>
-                    <div id="preview-asin" class="text-xs text-muted"></div>
-                    <div id="preview-vars" class="text-xs text-muted"></div>
-                    <div id="preview-price" class="preview-price"></div>
-                  </div>
-                </div>
-              </div>
-              <!-- /scan-preview -->
-
-            </div>
+            </div><!-- /all-mode-fields -->
           </div>
-        </div>
-
-        <!-- ── Advanced Edit tab ────────────────── -->
-        <div id="tab-advanced" class="tab-content hidden">
-          <div class="card">
-            <div class="card-header">
-              <div class="card-title">Advanced edit</div>
-            </div>
-            <div class="card-content">
-
-              <!-- Title -->
-              <div class="field">
-                <label for="inp-title">Title</label>
-                <input type="text" id="inp-title" placeholder="Product title…" maxlength="80">
-              </div>
-
-              <!-- Images grid -->
-              <div class="field">
-                <label>Main images <span class="text-xs text-muted">(click to remove)</span></label>
-                <div id="adv-image-grid" class="images-grid"></div>
-                <div id="adv-no-images" class="text-xs text-muted" style="margin-top:4px">No images loaded</div>
-              </div>
-
-              <!-- Variations -->
-              <div class="field" id="adv-variations-wrap">
-                <label>Variations</label>
-                <div id="adv-variations" class="variations-section"></div>
-                <button id="btn-add-dimension" class="btn btn-outline btn-sm" style="margin-top:8px;width:100%">
-                  + Add Dimension
-                </button>
-              </div>
-
-              <!-- Quantity -->
-              <div class="field">
-                <label for="inp-adv-qty">Quantity</label>
-                <input type="number" id="inp-adv-qty" min="0" value="1" placeholder="1">
-              </div>
-
-              <!-- Action buttons -->
-              <div class="btn-group">
-                <button id="btn-adv-upload" class="btn btn-primary btn-w-full">Upload</button>
-                <button id="btn-adv-draft" class="btn btn-outline btn-w-full">Create draft</button>
-                <button id="btn-extend" class="btn btn-outline btn-w-full">⤢ Extend</button>
-                <button id="btn-adv-cancel" class="btn btn-ghost btn-w-full">Cancel</button>
-              </div>
-
-            </div>
-          </div>
-        </div>
+        </details>
 
       </div>
-      <!-- /product-tabs -->
+      <!-- /product-flow -->
+
+      <!-- Single dynamic action button: Load Product → List on eBay -->
+      <div class="action-stack">
+        <button id="btn-main-action" class="btn btn-primary btn-w-full btn-lg">Load Product</button>
+        <button id="btn-extend" class="btn btn-ghost btn-w-full hidden">⤢ Open full editor</button>
+        <button id="btn-adv-cancel" class="btn btn-ghost btn-w-full hidden">Clear product</button>
+      </div>
 
     </div>
   </div>
@@ -240,7 +194,10 @@
 <!-- Toast -->
 <div id="toast" class="hidden"></div>
 
+<script src="../build/suppliers.bundle.js"></script>
+<script src="../common/variation-normalizer.js"></script>
 <script src="../common/listing-draft.js"></script>
+<script src="freshness.js"></script>
 <script src="panel-store.js"></script>
 <script src="panel-main.js"></script>
 </body>

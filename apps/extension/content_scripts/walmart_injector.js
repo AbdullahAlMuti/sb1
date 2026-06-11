@@ -3,7 +3,7 @@
 let uiInjected = false;
 
 // **IMPROVED** Function to inject the main UI panel
-const injectUI = async () => {
+const injectUI = async ({ fromSidebar = false, sidebarImages = [] } = {}) => {
     if (uiInjected) return;
 
     // Prevent duplicate injection
@@ -45,20 +45,22 @@ const injectUI = async () => {
     uiInjected = true;
     
     // --- Post-injection logic ---
-    scrapeAndDisplayInitialTitle();
-    scrapeAndDisplayImages();
     addEventListenersToPanel();
     addCalculatorEventListeners();
-    
-    // Auto-click DISABLED - User must click "Snipe Title" button manually
-    // Title generation now occurs only on user interaction for better UX control
-    console.log("🎯 Panel loaded - Snipe Title button ready for user interaction");
-    
-    // Auto-calculate price when panel loads
-    setTimeout(() => {
-        console.log('🔄 Auto-calculating price on panel load...');
-        quickCalculate();
-    }, 1500);
+
+    if (fromSidebar) {
+        // Sidebar extend path: render stored images, skip all re-scraping
+        renderGalleryFromUrls(sidebarImages);
+    } else {
+        scrapeAndDisplayInitialTitle();
+        scrapeAndDisplayImages();
+
+        // Auto-calculate price when panel loads
+        setTimeout(() => {
+            console.log('🔄 Auto-calculating price on panel load...');
+            quickCalculate();
+        }, 1500);
+    }
 
     // URL change watcher for auto-reset
     let lastUrl = window.location.href;
@@ -844,6 +846,10 @@ const scrapeCompleteProductData = () => {
     if (details.dimensions && !specifications.Dimensions && !specifications.dimensions) specifications.Dimensions = details.dimensions;
     if (details.weight && !specifications.Weight && !specifications.weight) specifications.Weight = details.weight;
 
+    const idMatch = /\/ip\/(?:[^/]+\/)?(\d+)/.exec(window.location.href || '');
+    const sourceId = idMatch ? idMatch[1] : '';
+    const scrapedPrice = typeof scrapeWalmartPrice === 'function' ? scrapeWalmartPrice() : '0';
+
     return {
         title: title,
         productTitle: title, // Panel supports both
@@ -853,8 +859,73 @@ const scrapeCompleteProductData = () => {
         features: bulletPoints,
         bulletPoints: bulletPoints, // Panel supports both
         specifications: specifications,
-        url: window.location.href
+        url: window.location.href,
+        amazonPrice: scrapedPrice,
+        price: scrapedPrice,
+        supplier: 'walmart',
+        sourceId: sourceId
     };
+};
+
+// Expose the scrape function for the supplier adapter (suppliers/walmart/adapter.js).
+// The adapter is the only consumer — universal code goes through SSSupplierRegistry.
+// Reuses the existing scrapers unchanged: scrapeCompleteProductData (text/specs),
+// scrapeWalmartPrice (hoisted fn declaration), WalmartImageExtractor instance.
+// Price/images failures never fail the scrape — partial product is still usable.
+const _enrichWalmartProduct = async (product) => {
+    // DOM price wins over JSON price when present (buy-box reflects selection)
+    try {
+        const price = scrapeWalmartPrice();
+        if (price) product.price = String(price);
+    } catch (e) {
+        console.warn('[SSWalmartScraper] price scrape failed:', e?.message || e);
+    }
+    // High-res image extractor enriches/overrides JSON images
+    try {
+        const images = await extractor.extractAllImages();
+        if (Array.isArray(images) && images.length) {
+            // extractAllImages returns [{url, size, ...}] — universal shape is URL strings
+            const urls = images.map(i => (i && i.url) || i).filter(u => typeof u === 'string');
+            if (urls.length) {
+                product.images = urls;
+                product.mainImage = urls[0];
+            }
+        }
+    } catch (e) {
+        console.warn('[SSWalmartScraper] image extraction failed:', e?.message || e);
+    }
+    return product;
+};
+
+window.SSWalmartScraper = {
+    scrapeProduct: async () => {
+        // Prefer data-first scraper (__NEXT_DATA__), fall back to DOM scrape
+        let product;
+        try {
+            product = await window.SsWalmartVariantScraper.scrapeSingleProduct();
+            // Merge DOM text scrape for description/specs the JSON path lacks
+            const domData = scrapeCompleteProductData();
+            product.description = product.description || domData.description;
+            product.specifications = domData.specifications;
+            product.features = domData.features;
+            product.bulletPoints = domData.bulletPoints;
+            product.category = domData.category;
+        } catch (e) {
+            console.warn('[SSWalmartScraper] data-first scrape failed, DOM fallback:', e?.message || e);
+            product = scrapeCompleteProductData();
+        }
+        return _enrichWalmartProduct(product);
+    },
+    scrapeVariants: async () => {
+        const product = await window.SsWalmartVariantScraper.scrapeProductWithVariants();
+        const domData = scrapeCompleteProductData();
+        product.description = product.description || domData.description;
+        product.specifications = domData.specifications;
+        product.features = domData.features;
+        product.bulletPoints = domData.bulletPoints;
+        product.category = domData.category;
+        return _enrichWalmartProduct(product);
+    }
 };
 
 const showScrapeOverlay = (text) => {
@@ -887,6 +958,57 @@ const hideScrapeOverlay = () => {
     }
 };
 
+// Render gallery from pre-curated URL array (sidebar extend path — no re-scraping)
+const renderGalleryFromUrls = async (urls = []) => {
+    const galleryContainer = document.getElementById('snipe-image-gallery');
+    if (!galleryContainer) return;
+
+    galleryContainer.innerHTML = '';
+
+    if (!urls.length) {
+        const placeholder = document.createElement('div');
+        placeholder.textContent = 'No images available.';
+        placeholder.style.cssText = 'padding:20px;text-align:center;color:#666;';
+        galleryContainer.appendChild(placeholder);
+        return;
+    }
+
+    const allImages = urls.map(url => ({ url }));
+
+    // Auto-edit (universal checkbox) or legacy autoWatermarkEnabled both turn on
+    // the first-image sticker — same behavior as the Amazon injector.
+    const _wmSettings = await chrome.storage.local.get(['autoWatermarkEnabled', 'autoEditEnabled']);
+    const autoWatermarkEnabled = _wmSettings.autoEditEnabled || _wmSettings.autoWatermarkEnabled || false;
+
+    if (typeof ImageRenderer !== 'undefined') {
+        await ImageRenderer.renderProcessedImages(galleryContainer, allImages, {
+            processImage: async (url, index) => {
+                if (index === 0 && autoWatermarkEnabled) return await processFirstImageWithWatermark(url);
+                return await processImageTo1600x1600NoWatermark(url);
+            },
+            onDelete: (index, container, url) => deleteImageFromStorage(index, container, url),
+            onEdit: (index, url) => window.__SNIPE_OPEN_IMAGE_EDITOR__?.(url, index),
+            getMetadata: (imageInfo, index) => `Image ${index + 1} | 1600x1600`,
+            onProgress: (current, total) => console.log(`[renderGalleryFromUrls] ${current}/${total}`),
+        });
+    } else {
+        for (let i = 0; i < allImages.length; i++) {
+            try {
+                const processedUrl = (i === 0 && autoWatermarkEnabled)
+                    ? await processFirstImageWithWatermark(allImages[i].url)
+                    : await processImageTo1600x1600NoWatermark(allImages[i].url);
+                const imgEl = document.createElement('img');
+                imgEl.src = processedUrl;
+                imgEl.style.cssText = 'max-width:120px;margin:4px;border-radius:4px;';
+                imgEl.setAttribute('data-image-index', i);
+                galleryContainer.appendChild(imgEl);
+            } catch (e) {
+                console.warn(`[renderGalleryFromUrls] image ${i} failed:`, e);
+            }
+        }
+    }
+};
+
 // Listen for messages from popup or panel
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'extractImages') {
@@ -901,6 +1023,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
     
+    // Side-panel scan actions — same contract the Amazon injector implements.
+    // Goes through the supplier registry so universal callers never know the supplier.
+    if (request.action === 'SCRAPE_SINGLE' || request.action === 'SCRAPE_VARIANTS') {
+        (async () => {
+            try {
+                const _adapter = window.SSSupplierRegistry?.match(location.href);
+                if (!_adapter) {
+                    sendResponse({ success: false, error: 'No supplier adapter for this page' });
+                    return;
+                }
+                const raw = request.action === 'SCRAPE_VARIANTS'
+                    ? await _adapter.scrapeVariants(request.options || {})
+                    : await _adapter.scrapeProduct();
+                const product = _adapter.normalize(raw);
+                await chrome.storage.local.set({ currentProduct: product, lastScraped: Date.now() });
+                sendResponse({ success: true, data: product });
+            } catch (err) {
+                sendResponse({ success: false, error: err.message });
+            }
+        })();
+        return true;
+    }
+
     if (request.action === 'SCRAPE_PRODUCT_DATA' || request.action === 'SCRAPE_COMPLETE_PRODUCT') {
         console.log(`[Walmart Injector] Received ${request.action} request`);
         try {
@@ -933,6 +1078,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         } else {
             sendResponse({ success: false, error: 'UI Button not found' });
         }
+        return true;
+    }
+
+    // Handle EXTEND_PANEL — sidebar Extend button: inject panel into Walmart page, show extended editor
+    if (request.action === 'EXTEND_PANEL') {
+        (async () => {
+            try {
+                if (!document.getElementById('snipe-root-wrapper')) {
+                    const d = await chrome.storage.local.get('currentProduct');
+                    const sidebarImages = Array.isArray(d.currentProduct?.images) ? d.currentProduct.images : [];
+                    await injectUI({ fromSidebar: true, sidebarImages });
+                }
+                await showSidebarExtended();
+                chrome.runtime.sendMessage({ action: 'CLOSE_SIDE_PANEL' });
+                sendResponse({ success: true });
+            } catch (e) {
+                console.error('[EXTEND_PANEL] error:', e);
+                sendResponse({ success: false, error: e.message });
+            }
+        })();
         return true;
     }
 });
@@ -1208,10 +1373,19 @@ const scrapeAndDisplayImages = async () => {
     
         console.log(`Processing ${allImages.length} high-quality images with progressive rendering`);
 
+        // Check for Auto-edit (universal checkbox) or legacy Auto Watermark setting
+        const _wmSettings = await chrome.storage.local.get(['autoWatermarkEnabled', 'autoEditEnabled']);
+        const autoWatermarkEnabled = _wmSettings.autoEditEnabled || _wmSettings.autoWatermarkEnabled || false;
+        console.log(`💧 Auto Watermark Enabled: ${autoWatermarkEnabled}`);
+
         // Use performant ImageRenderer if available
         if (typeof ImageRenderer !== 'undefined') {
             await ImageRenderer.renderProcessedImages(galleryContainer, allImages, {
                 processImage: async (url, index) => {
+                    if (index === 0 && autoWatermarkEnabled) {
+                        console.log('💧 Applying watermark to first image (Auto-edit ON)');
+                        return await processFirstImageWithWatermark(url);
+                    }
                     return await processImageTo1600x1600NoWatermark(url);
                 },
                 onDelete: (index, container, url) => {
@@ -1246,7 +1420,9 @@ const scrapeAndDisplayImages = async () => {
                     batchPromises.push((async () => {
                         const imageInfo = allImages[i];
                         try {
-                            const processedImageUrl = await processImageTo1600x1600NoWatermark(imageInfo.url);
+                            const processedImageUrl = (i === 0 && autoWatermarkEnabled)
+                                ? await processFirstImageWithWatermark(imageInfo.url)
+                                : await processImageTo1600x1600NoWatermark(imageInfo.url);
                             return { imageInfo, processedImageUrl, index: i };
                         } catch (error) {
                             console.error(`Failed to process image ${i + 1}:`, error);
@@ -1432,6 +1608,17 @@ const processImageTo1600x1600NoWatermark = (imageUrl) => {
     });
 };
 
+// First-image watermark with safe fallback — a watermark failure must never
+// drop the image, just deliver it unwatermarked.
+const processFirstImageWithWatermark = async (imageUrl) => {
+    try {
+        return await processImageTo1600x1600(imageUrl);
+    } catch (e) {
+        console.warn('💧 Watermark failed, using original image:', e?.message || e);
+        return processImageTo1600x1600NoWatermark(imageUrl);
+    }
+};
+
 // Process image to 1600x1600 with proper aspect ratio and watermark
 const processImageTo1600x1600 = (imageUrl) => {
     return new Promise((resolve, reject) => {
@@ -1573,11 +1760,26 @@ const deleteImageFromStorage = async (imageIndex, imgContainer, imageUrl) => {
         
         if (storedImages.length > imageIndex) {
             storedImages.splice(imageIndex, 1);
-            
+
             await chrome.storage.local.set({ watermarkedImages: storedImages });
             console.log(`Image ${imageIndex + 1} deleted from storage. ${storedImages.length} images remaining.`);
         }
-        
+
+        // Also remove from currentProduct.images — the canonical list the upload
+        // payload reads. Without this, deleted images still uploaded to eBay.
+        // Gallery order mirrors currentProduct.images; bounds-guarded regardless.
+        try {
+            const cp = await chrome.storage.local.get(['currentProduct']);
+            const prod = cp.currentProduct;
+            if (prod && Array.isArray(prod.images) && imageIndex >= 0 && imageIndex < prod.images.length) {
+                prod.images.splice(imageIndex, 1);
+                await chrome.storage.local.set({ currentProduct: prod });
+                console.log(`Image ${imageIndex + 1} also removed from currentProduct.images`);
+            }
+        } catch (cpErr) {
+            console.warn('Could not sync delete to currentProduct.images:', cpErr);
+        }
+
         imgContainer.style.transition = 'all 0.3s ease';
         imgContainer.style.transform = 'scale(0)';
         imgContainer.style.opacity = '0';
@@ -1720,13 +1922,19 @@ const addEventListenersToPanel = () => {
             if (rootWrapper) {
                 rootWrapper.remove();
                 uiInjected = false;
+                chrome.storage.local.get('panelSource', (d) => {
+                    if (d.panelSource === 'sidebar') {
+                        chrome.runtime.sendMessage({ action: 'OPEN_SIDE_PANEL' });
+                    }
+                    chrome.storage.local.remove('panelSource');
+                });
                 const startBtn = document.getElementById('initial-list-button') || document.querySelector('.floating-snipe-btn');
                 if (startBtn) {
                     startBtn.style.display = 'flex';
                 }
             }
         });
-    }    
+    }
     // Snipe Title button
     const snipeTitleBtn = document.getElementById('snipe-title-btn');
     if (snipeTitleBtn) {
@@ -2002,7 +2210,10 @@ const addEventListenersToPanel = () => {
                         },
                         ebaySku: exportData.sku,
                         amazonPrice: walmartPrice,
+                        supplierPrice: walmartPrice,
                         useStoredWatermarkedImages: true,
+                        supplier: 'walmart',
+                        sourceId: exportData.itemId || '',
                     };
 
                     chrome.runtime.sendMessage({
@@ -2491,115 +2702,6 @@ const initializeApp = () => {
         console.log('❌ Not on Walmart domain, skipping initialization');
         return;
     }
-    
-    // Check for Walmart product page URL pattern (/ip/ path)
-    const hasWalmartProductPath = window.location.pathname.includes('/ip/');
-    console.log('📍 Has Walmart product path (/ip/):', hasWalmartProductPath);
-    
-    // Check og:type meta tag for product indication
-    const ogTypeMeta = document.querySelector('meta[property="og:type"]');
-    const ogType = ogTypeMeta?.getAttribute('content') || '';
-    const isProductOgType = ogType.toLowerCase().includes('product');
-    console.log('🏷️ og:type meta:', ogType, '| Is product:', isProductOgType);
-    
-    let attempts = 0;
-    const maxAttempts = 50;
-    
-    const interval = setInterval(() => {
-        attempts++;
-        console.log(`🔍 Attempt ${attempts}/${maxAttempts} - Checking for Walmart product page...`);
-        
-        const existingButton = document.getElementById('initial-list-button');
-        
-        // Check for Walmart-specific product page indicators (no Amazon selectors)
-        const walmartIndicators = {
-            productUrlPath: hasWalmartProductPath,
-            ogTypeProduct: isProductOgType,
-            productTitle: !!document.querySelector('h1[itemprop="name"], .prod-ProductTitle, [data-testid="product-title"]'),
-            productImage: !!document.querySelector('.prod-hero-image, [data-testid="hero-image"], .product-image-container'),
-            priceElement: !!document.querySelector('[itemprop="price"], .price-characteristic, [data-testid="price"], .price-group'),
-            addToCart: !!document.querySelector('[data-testid="add-to-cart-button"], button[data-automation-id="atc-button"]'),
-            productDetails: !!document.querySelector('.specifications-table, [data-testid="product-specifications"]'),
-            buyBox: !!document.querySelector('.prod-product-cta-add-to-cart, .add-to-cart-section'),
-            itemId: !!document.querySelector('[data-item-id], [data-product-id]')
-        };
-        
-        console.log('🔍 Walmart indicators found:', walmartIndicators);
-        
-        const isWalmartProductPage = Object.values(walmartIndicators).some(Boolean);
-        
-        if (isWalmartProductPage && !existingButton) {
-            console.log('✅ Walmart product page detected, creating List it button...');
-            clearInterval(interval);
-            
-            const listButton = document.createElement('button');
-            listButton.id = 'initial-list-button';
-            listButton.innerHTML = `
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                    <path d="M12 5v14M5 12h14"/>
-                </svg>
-                <span>List to eBay</span>
-            `;
-            listButton.style.cssText = `
-                position: fixed;
-                bottom: 24px;
-                right: 24px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-                color: white;
-                border: none;
-                border-radius: 12px;
-                padding: 14px 24px;
-                cursor: pointer;
-                font-size: 14px;
-                font-weight: 600;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4), 0 0 0 0 rgba(99, 102, 241, 0.4);
-                transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-                z-index: 2147483647;
-                animation: sellersuit-pulse 2s infinite;
-            `;
-
-            // Add keyframe animation for pulse effect
-            if (!document.getElementById('sellersuit-button-styles')) {
-                const styleSheet = document.createElement('style');
-                styleSheet.id = 'sellersuit-button-styles';
-                styleSheet.textContent = `
-                    @keyframes sellersuit-pulse {
-                        0%, 100% { box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4), 0 0 0 0 rgba(99, 102, 241, 0.4); }
-                        50% { box-shadow: 0 4px 20px rgba(99, 102, 241, 0.6), 0 0 0 8px rgba(99, 102, 241, 0); }
-                    }
-                `;
-                document.head.appendChild(styleSheet);
-            }
-            
-            listButton.addEventListener('mouseenter', () => {
-                listButton.style.background = 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)';
-                listButton.style.transform = 'translateY(-2px) scale(1.02)';
-                listButton.style.boxShadow = '0 8px 24px rgba(99, 102, 241, 0.5)';
-                listButton.style.animation = 'none';
-            });
-            
-            listButton.addEventListener('mouseleave', () => {
-                listButton.style.background = 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)';
-                listButton.style.transform = 'translateY(0) scale(1)';
-                listButton.style.boxShadow = '0 4px 14px rgba(99, 102, 241, 0.4)';
-                listButton.style.animation = 'sellersuit-pulse 2s infinite';
-            });
-            
-            document.body.appendChild(listButton);
-            
-            listButton.addEventListener('click', () => {
-                injectUI();
-                listButton.remove();
-            });
-        } else if (attempts >= maxAttempts) {
-            console.log('⏰ Timeout reached - stopping attempts to find Walmart product page');
-            clearInterval(interval);
-        }
-    }, 500);
 };
 
 // Calculator Functions
@@ -2614,7 +2716,7 @@ function openCalculator() {
         loadCalculatorValues();
 
         // THEN overwrite Walmart price with fresh scrape
-        const walmartPriceInput = document.getElementById('amazon-price');
+        const walmartPriceInput = document.getElementById('supplier-price');
         if (walmartPriceInput) {
             const scrapedPrice = scrapeWalmartPrice();
             if (scrapedPrice !== 'No price found') {
@@ -2764,7 +2866,7 @@ function quickCalculate() {
 function calculatePrice() {
     console.log('🧮 Starting price calculation...');
     
-    const walmartPrice = parseFloat(document.getElementById('amazon-price').value) || 0;
+    const walmartPrice = parseFloat(document.getElementById('supplier-price').value) || 0;
     const taxPercent = parseFloat(document.getElementById('tax-percent').value) || 0;
     const trackingFee = parseFloat(document.getElementById('tracking-fee').value) || 0;
     const ebayFeePercent = parseFloat(document.getElementById('ebay-fee-percent').value) || 0;
@@ -3307,7 +3409,7 @@ async function generateSKU() {
         }
         const priceInput = document.getElementById('sell-it-for-input');
         const ebayPrice = priceInput ? priceInput.value : '';
-        const walmartPriceInput = document.getElementById('amazon-price');
+        const walmartPriceInput = document.getElementById('supplier-price');
         const walmartPrice = walmartPriceInput ? walmartPriceInput.value : '';
         
         if (selectedTitle && ebayPrice && walmartPrice) {
@@ -3335,78 +3437,7 @@ async function generateSKU() {
 // Manual trigger function for debugging
 window.forceLoadExtension = function() {
     console.log('🔧 Manually triggering extension load...');
-    
-    const existingButton = document.getElementById('initial-list-button');
-    if (existingButton) {
-        existingButton.remove();
-    }
-    
-    const listButton = document.createElement('button');
-    listButton.id = 'initial-list-button';
-    listButton.innerHTML = `
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-            <path d="M12 5v14M5 12h14"/>
-        </svg>
-        <span>List to eBay</span>
-    `;
-    listButton.style.cssText = `
-        position: fixed;
-        bottom: 24px;
-        right: 24px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        padding: 14px 24px;
-        cursor: pointer;
-        font-size: 14px;
-        font-weight: 600;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4), 0 0 0 0 rgba(99, 102, 241, 0.4);
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        z-index: 9998;
-        animation: sellersuit-pulse 2s infinite;
-    `;
-
-    // Add keyframe animation for pulse effect
-    if (!document.getElementById('sellersuit-button-styles')) {
-        const styleSheet = document.createElement('style');
-        styleSheet.id = 'sellersuit-button-styles';
-        styleSheet.textContent = `
-            @keyframes sellersuit-pulse {
-                0%, 100% { box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4), 0 0 0 0 rgba(99, 102, 241, 0.4); }
-                50% { box-shadow: 0 4px 20px rgba(99, 102, 241, 0.6), 0 0 0 8px rgba(99, 102, 241, 0); }
-            }
-        `;
-        document.head.appendChild(styleSheet);
-    }
-    
-    listButton.addEventListener('mouseenter', () => {
-        listButton.style.background = 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)';
-        listButton.style.transform = 'translateY(-2px) scale(1.02)';
-        listButton.style.boxShadow = '0 8px 24px rgba(99, 102, 241, 0.5)';
-        listButton.style.animation = 'none';
-    });
-    
-    listButton.addEventListener('mouseleave', () => {
-        listButton.style.background = 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)';
-        listButton.style.transform = 'translateY(0) scale(1)';
-        listButton.style.boxShadow = '0 4px 14px rgba(99, 102, 241, 0.4)';
-        listButton.style.animation = 'sellersuit-pulse 2s infinite';
-    });
-    
-    document.body.appendChild(listButton);
-    
-    listButton.addEventListener('click', () => {
-        console.log('🔧 Manual trigger: Loading extension UI...');
-        injectUI();
-        listButton.remove();
-    });
-    
-    console.log('✅ Manual List it button created!');
+    injectUI();
 };
 
 // Debug function to check page elements
@@ -3442,14 +3473,6 @@ function startExtension() {
 
     // Try to initialize
     initializeApp();
-
-    // If button wasn't injected, retry after short delay
-    setTimeout(() => {
-        if (!document.getElementById('initial-list-button') && !document.getElementById('snipe-root-wrapper')) {
-            console.log('[Walmart Injector] Button not found, retrying...');
-            initializeApp();
-        }
-    }, 1000);
 }
 
 // Multiple initialization strategies for reliability
@@ -3462,7 +3485,7 @@ if (document.readyState === 'complete') {
 }
 
 window.addEventListener('load', () => {
-    if (!document.getElementById('initial-list-button') && !document.getElementById('snipe-root-wrapper')) {
+    if (!document.getElementById('snipe-root-wrapper')) {
         console.log('[Walmart Injector] Load event - attempting initialization');
         startExtension();
     }

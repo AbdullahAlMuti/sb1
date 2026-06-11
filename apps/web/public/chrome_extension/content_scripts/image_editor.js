@@ -126,7 +126,23 @@
       console.error('Failed to save to storage', e);
     }
 
-    // 3. Remove Iframe
+    // 3. Persist into currentProduct.images — the canonical image list that the
+    // upload payload reads (adaptProduct → prod_images). Without this the edit
+    // lived only in watermarkedImages and the ORIGINAL image got uploaded.
+    // EPS uploader accepts data URLs directly (Strategy 0).
+    try {
+      const d = await chrome.storage.local.get('currentProduct');
+      const p = d.currentProduct;
+      if (p && Array.isArray(p.images) && activeImageIndex >= 0 && activeImageIndex < p.images.length) {
+        p.images[activeImageIndex] = dataUrl;
+        await chrome.storage.local.set({ currentProduct: p });
+        console.log('✅ Edited image persisted to currentProduct.images[' + activeImageIndex + ']');
+      }
+    } catch (e) {
+      console.error('Failed to persist edited image to currentProduct', e);
+    }
+
+    // 4. Remove Iframe
     closeEditorFrame();
   }
 

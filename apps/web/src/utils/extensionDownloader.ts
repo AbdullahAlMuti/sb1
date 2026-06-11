@@ -138,7 +138,22 @@ Visit your dashboard at the SellerSuit website for support and documentation.
   let successCount = 0;
   let failCount = 0;
 
-  for (const filePath of extensionFiles) {
+  // Try to load dynamic file list from files.json
+  let filesToDownload = extensionFiles;
+  try {
+    const manifestResp = await fetch(`${baseUrl}/chrome_extension/files.json`);
+    if (manifestResp.ok) {
+      const dynamicFiles = await manifestResp.json();
+      if (Array.isArray(dynamicFiles) && dynamicFiles.length > 0) {
+        filesToDownload = dynamicFiles;
+        if (import.meta.env.DEV) console.log(`[Extension Downloader] Loaded ${filesToDownload.length} files dynamically`);
+      }
+    }
+  } catch (e) {
+    console.warn('[Extension Downloader] Failed to fetch dynamic files.json, falling back to static list:', e);
+  }
+
+  for (const filePath of filesToDownload) {
     try {
       // Try to fetch the file from the chrome_extension folder
       const response = await fetch(`${baseUrl}/chrome_extension/${filePath}`);

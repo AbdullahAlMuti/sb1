@@ -27,3 +27,29 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Playwright test data and profiles
+.playwright_data*
+
+# Agent directories
+.claude/
+.gemini/
+.agents/
+agents/
+
+# GitHub workflows (ignored to allow OAuth app push without workflow scope)
+.github/
+
+# Scratch scripts and temp screenshots
+scratch/
+
+# Root-level test / script files
+/*.cjs
+/*.mjs
+/*.html
+/*.png
+ebay_listing_agent.js
+original_runEbayAutomation.js
+
+# Reference directory
+reference/

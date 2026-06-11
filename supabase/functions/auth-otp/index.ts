@@ -46,17 +46,31 @@ async function hashOtp(userId: string, email: string, code: string): Promise<str
   return sha256(`auth-otp:${userId}:${email}:${code}`);
 }
 
+// O(1) indexed lookup. The previous implementation paged through
+// auth.admin.listUsers (up to 20k users in memory) on every OTP request,
+// which breaks past ~20k users and scans the auth table on every login.
 async function findUserByEmail(supabaseAdmin: SupabaseClient, email: string) {
-  for (let page = 1; page <= 20; page++) {
-    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
-      page,
-      perPage: 1000,
-    });
-    if (error) throw error;
+  // 1. Fast path: indexed lookup in public.profiles (kept in sync with auth.users).
+  const { data: profile, error: profileErr } = await supabaseAdmin
+    .from("profiles")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle();
+  if (profileErr) throw profileErr;
 
-    const user = data?.users?.find((u) => u.email?.toLowerCase() === email);
-    if (user) return user;
-    if (!data?.users || data.users.length < 1000) break;
+  if (profile?.id) {
+    const { data, error } = await supabaseAdmin.auth.admin.getUserById(profile.id);
+    if (!error && data?.user) return data.user;
+  }
+
+  // 2. Fallback: direct indexed query on auth.users via SECURITY DEFINER RPC —
+  // covers users whose profile row is missing or whose email casing drifted.
+  const { data: rpcUser, error: rpcErr } = await supabaseAdmin.rpc("get_auth_user_id_by_email", {
+    p_email: email,
+  });
+  if (!rpcErr && rpcUser) {
+    const { data, error } = await supabaseAdmin.auth.admin.getUserById(rpcUser as string);
+    if (!error && data?.user) return data.user;
   }
 
   return null;

@@ -74,8 +74,14 @@ Deno.serve(async (req) => {
 
     const goal = (user.user_metadata && (user.user_metadata as any).goal) || null;
 
-    // Create profile without a plan - user must pay to get access
-    // No free plan exists - plan_id will be set after payment
+    // Get Trial plan ID
+    const { data: trialPlan } = await supabaseAdmin
+      .from('plans')
+      .select('id')
+      .eq('name', 'Trial')
+      .maybeSingle();
+
+    // Create profile with default Trial plan and 20 credits
     const { data: created, error: createError } = await supabaseAdmin
       .from('profiles')
       .insert({
@@ -83,6 +89,7 @@ Deno.serve(async (req) => {
         full_name: fullName,
         credits: 20,
         is_active: true, // Active for trial usage
+        plan_id: trialPlan?.id ?? null,
         settings: goal ? { goal } : {},
       })
       .select('*')

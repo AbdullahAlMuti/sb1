@@ -115,19 +115,10 @@ const SyncUtils = (() => {
    * @returns {Promise<{success: boolean, data: object|null, error: string|null}>}
    */
   async function syncListing(listingData) {
-    let token = null;
-    if (typeof AuthHelper !== 'undefined') {
-      const authState = await AuthHelper.getAuthToken();
-      token = authState.token;
-    } else {
-      const data = await chrome.storage.local.get(['saasToken']);
-      token = data.saasToken;
-    }
-
-    if (!token) {
-      const error = 'Not authenticated. Please log in to SellerSuit before syncing listings.';
+    if (typeof AuthHelper === 'undefined') {
+      const error = 'AuthHelper is not available.';
       await recordListingSyncError({ source: 'sync_utils', error, listingData });
-      return { success: false, source: 'sync_utils', status: 401, error };
+      return { success: false, source: 'sync_utils', status: 500, error };
     }
 
     try {
@@ -152,32 +143,16 @@ const SyncUtils = (() => {
 
       syncLog('info', 'Syncing listing via create-listing...', { title: listingData.title, sku: listingData.sku });
 
-      let response;
-      const url = `${SUPABASE_URL}/functions/v1/create-listing`;
-      const options = {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(enrichedListingData),
-      };
+      const response = await AuthHelper.callEdgeFunction('create-listing', enrichedListingData);
+      const result = response.data;
+      const status = response.status || 0;
 
-      if (typeof RetryHelper !== 'undefined') {
-        response = await RetryHelper.fetchWithRetry(url, options, 3, 1000);
-      } else {
-        response = await fetch(url, options);
-      }
-
-      const result = await parseResponseBody(response);
-
-      if (!response.ok) {
-        const error = result?.error || result?.message || `create-listing failed with HTTP ${response.status}`;
-        syncLog('error', 'Sync listing failed', { status: response.status, error });
+      if (response.error) {
+        const error = response.error || `create-listing failed with HTTP ${status}`;
+        syncLog('error', 'Sync listing failed', { status, error });
         await recordListingSyncError({
           source: 'sync_utils',
-          status: response.status,
+          status,
           error,
           details: result,
           listingData
@@ -185,7 +160,7 @@ const SyncUtils = (() => {
         return {
           success: false,
           source: 'sync_utils',
-          status: response.status,
+          status,
           error,
           details: result
         };
@@ -196,7 +171,7 @@ const SyncUtils = (() => {
         success: true,
         source: 'sync_utils',
         listingId: result?.listing?.id,
-        status: response.status,
+        status,
         details: result
       };
     } catch (err) {

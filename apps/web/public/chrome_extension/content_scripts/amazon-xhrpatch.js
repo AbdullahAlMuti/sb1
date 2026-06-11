@@ -63,7 +63,70 @@
           }]
         });
       } else {
-        buyboxRaw = '{"desktop_buybox_group_1":[]}';
+        // Robust fallback: search for currency pattern directly inside priceToPay block
+        const p2pIndex = text.indexOf('priceToPay');
+        let foundPrice = false;
+        if (p2pIndex !== -1) {
+          const sub = text.substring(p2pIndex, p2pIndex + 1000);
+          let decoded = sub.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+          decoded = decoded.replace(/&#x([0-9a-fA-F]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+                           .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d, 10)));
+          const currencyRegex = /(\$|£|€|¥|A\$|C\$|₹|R\$)\s*(\d[\d.,\s]*\d|\d)|(\d[\d.,\s]*\d|\d)\s*(\$|£|€|¥|A\$|C\$|₹|R\$)/;
+          const match = decoded.match(currencyRegex);
+          if (match) {
+            let rawNum = '';
+            let sym = '$';
+            if (match[2]) {
+              rawNum = match[2].trim();
+              sym = match[1];
+            } else if (match[3]) {
+              rawNum = match[3].trim();
+              sym = match[4];
+            }
+            rawNum = rawNum.replace(/\s/g, '');
+            let decimalSep = '.';
+            const lastComma = rawNum.lastIndexOf(',');
+            const lastDot = rawNum.lastIndexOf('.');
+            if (lastComma !== -1 && lastDot !== -1) {
+              decimalSep = lastComma > lastDot ? ',' : '.';
+            } else if (lastComma !== -1) {
+              if (rawNum.length - lastComma === 4) {
+                decimalSep = '.';
+              } else {
+                decimalSep = ',';
+              }
+            } else if (lastDot !== -1) {
+              if (rawNum.length - lastDot === 4) {
+                decimalSep = ',';
+              } else {
+                decimalSep = '.';
+              }
+            }
+            let priceStr = '';
+            for (let i = 0; i < rawNum.length; i++) {
+              const ch = rawNum[i];
+              if (ch >= '0' && ch <= '9') {
+                priceStr += ch;
+              } else if (ch === decimalSep) {
+                priceStr += '.';
+              }
+            }
+            const price = parseFloat(priceStr);
+            if (price > 0) {
+              buyboxRaw = JSON.stringify({
+                desktop_buybox_group_1: [{
+                  priceAmount: price,
+                  currencySymbol: sym,
+                  displayPrice: `${sym}${price}`
+                }]
+              });
+              foundPrice = true;
+            }
+          }
+        }
+        if (!foundPrice) {
+          buyboxRaw = '{"desktop_buybox_group_1":[]}';
+        }
       }
     }
 
@@ -102,8 +165,10 @@
         break;
       case 'getBuybox': {
         const asin = msg.asin;
+        // 2s cap per ASIN — the old 15s wait stacked up across missing ASINs
+        // and froze the scrape; absent entries fall back to the empty buybox.
         let tries = 0;
-        while (!buyboxCache[asin] && tries++ < 150) {
+        while (!buyboxCache[asin] && tries++ < 20) {
           await new Promise(r => setTimeout(r, 100));
         }
         window.postMessage({

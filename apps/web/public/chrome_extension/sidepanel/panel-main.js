@@ -8,7 +8,7 @@
   let _state = null;
   let _removedImages = new Set();
   let _variations = [];   // [{ label, values: [string] }]
-  let _importing = false;
+  let _busy = false;      // main button in-flight guard
   let _mode = 'single';      // 'single' | 'all'
 
   /* ── Views ────────────────────────────────── */
@@ -18,27 +18,27 @@
 
   /* ── Main elements ────────────────────────── */
   const elVersion      = document.getElementById('panel-version');
-  const elStoreSelect  = document.getElementById('store-select');
-  const elEbayWarning  = document.getElementById('ebay-warning');
   const elNoProduct    = document.getElementById('no-product');
   const elProductTabs  = document.getElementById('product-tabs');
 
-  /* ── Import tab ───────────────────────────── */
+  /* ── Settings fields ──────────────────────── */
   const inpMinQty      = document.getElementById('inp-min-qty');
   const inpShipping    = document.getElementById('inp-shipping');
   const togLowQty      = document.getElementById('tog-low-qty');
+  const togAutoEdit    = document.getElementById('tog-auto-edit');
   const selUploadType  = document.getElementById('sel-upload-type');
-  const btnStartImport = document.getElementById('btn-start-import');
 
-  /* ── Advanced Edit tab ────────────────────── */
+  /* ── Quick edit fields ────────────────────── */
   const inpTitle       = document.getElementById('inp-title');
   const advImageGrid   = document.getElementById('adv-image-grid');
   const advNoImages    = document.getElementById('adv-no-images');
   const advVariations  = document.getElementById('adv-variations');
   const btnAddDim      = document.getElementById('btn-add-dimension');
   const inpAdvQty      = document.getElementById('inp-adv-qty');
-  const btnAdvUpload   = document.getElementById('btn-adv-upload');
-  const btnAdvDraft    = document.getElementById('btn-adv-draft');
+
+  /* ── Actions ──────────────────────────────── */
+  const btnMainAction  = document.getElementById('btn-main-action');
+  const btnExtend      = document.getElementById('btn-extend');
   const btnAdvCancel   = document.getElementById('btn-adv-cancel');
 
   /* ── Toast ────────────────────────────────── */
@@ -57,20 +57,6 @@
     vLoading.classList.toggle('hidden', name !== 'loading');
     vAuth.classList.toggle('hidden', name !== 'auth');
     vMain.classList.toggle('hidden', name !== 'main');
-  }
-
-  /* ── Tab switching ────────────────────────── */
-  function initInnerTabs() {
-    const tabNav = document.querySelector('.inner-tabs-nav');
-    if (!tabNav) return;
-    tabNav.addEventListener('click', e => {
-      const btn = e.target.closest('.inner-tab-btn');
-      if (!btn) return;
-      const tabId = btn.dataset.tab;
-      tabNav.querySelectorAll('.inner-tab-btn').forEach(b => b.classList.toggle('active', b === btn));
-      document.getElementById('tab-import').classList.toggle('hidden', tabId !== 'import');
-      document.getElementById('tab-advanced').classList.toggle('hidden', tabId !== 'advanced');
-    });
   }
 
   /* ── Version ──────────────────────────────── */
@@ -101,6 +87,24 @@
       if (s.allowLowQty != null) togLowQty.checked   = s.allowLowQty;
       if (s.uploadType)          selUploadType.value = s.uploadType;
     });
+    // Auto-edit is a top-level key — content scripts and panel.html read it
+    // directly without knowing the side panel settings blob.
+    if (togAutoEdit) {
+      chrome.storage.local.get('autoEditEnabled', d => {
+        togAutoEdit.checked = !!d.autoEditEnabled;
+      });
+      if (!togAutoEdit._bound) {
+        togAutoEdit._bound = true;
+        togAutoEdit.addEventListener('change', () => {
+          chrome.storage.local.set({ autoEditEnabled: togAutoEdit.checked });
+        });
+        chrome.storage.onChanged.addListener((changes, area) => {
+          if (area === 'local' && changes.autoEditEnabled) {
+            togAutoEdit.checked = !!changes.autoEditEnabled.newValue;
+          }
+        });
+      }
+    }
   }
 
   /* ── Auth ─────────────────────────────────── */
@@ -111,51 +115,64 @@
     renderMain(state);
   }
 
-  /* ── Store selector ───────────────────────── */
-  function renderStore(state) {
-    if (!elStoreSelect) return;
-    const email = state.auth && state.auth.email;
-    if (email) {
-      if (!elStoreSelect.querySelector(`option[value="${CSS.escape(email)}"]`)) {
-        const opt = document.createElement('option');
-        opt.value = email;
-        opt.textContent = email;
-        elStoreSelect.appendChild(opt);
-      }
-      elStoreSelect.value = email;
+  /* ── Main action button ───────────────────────
+     Single dynamic CTA. Before a product is loaded it scans ("Load Product" /
+     "Load Variations"); once a product is in state it morphs to "List on eBay"
+     (upload type — classic vs draft — comes from Listing settings). */
+  function _mainButtonRole() {
+    const hasProduct = !!(_state && _state.product);
+    if (!hasProduct) return 'scan';
+    const hasVars = _state.product.variants && _state.product.variants.length > 1;
+    if (_mode === 'all' && !hasVars) return 'scan'; // need variations first
+    return 'list';
+  }
+
+  function updateMainButton() {
+    if (!btnMainAction || _busy) return;
+    const role = _mainButtonRole();
+    if (role === 'scan') {
+      btnMainAction.textContent = _mode === 'all' ? 'Load Variations' : 'Load Product';
+    } else {
+      btnMainAction.textContent = 'List on eBay';
     }
   }
 
-  /* ── eBay warning ─────────────────────────── */
-  function renderEbayWarning(state) {
-    const needsWarn = state.sync && state.sync.ebaySessionRequired;
-    elEbayWarning.classList.toggle('hidden', !needsWarn);
+  async function onMainAction() {
+    if (_busy) return;
+    const role = _mainButtonRole();
+    _busy = true;
+    btnMainAction.disabled = true;
+
+    try {
+      if (role === 'scan') {
+        btnMainAction.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span> Loading…';
+        const product = await doScan(_mode);
+        if (product) renderPreviewCard(product);
+      } else {
+        btnMainAction.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span>';
+        await doAdvancedUpload(selUploadType.value === 'draft');
+      }
+    } finally {
+      _busy = false;
+      btnMainAction.disabled = false;
+      updateMainButton();
+    }
   }
 
   /* ── Main render ──────────────────────────── */
   function renderMain(state) {
-    renderStore(state);
-    renderEbayWarning(state);
-
     const hasProduct = !!(state.product);
     elNoProduct.classList.toggle('hidden', hasProduct);
     elProductTabs.classList.toggle('hidden', !hasProduct);
+    if (btnExtend) btnExtend.classList.toggle('hidden', !hasProduct);
+    if (btnAdvCancel) btnAdvCancel.classList.toggle('hidden', !hasProduct);
 
     if (hasProduct) {
       renderAdvancedEdit(state);
       renderPreviewCard(state.product);
-
-      // Check if we need to show "Load Variations" instead of "Start Import"
-      const hasVars = state.product.variants && state.product.variants.length > 1;
-      const btnStartImport = document.getElementById('btn-start-import');
-      if (btnStartImport) {
-        if (_mode === 'all' && !hasVars) {
-          btnStartImport.textContent = 'Load Variations';
-        } else {
-          btnStartImport.textContent = 'Start Import';
-        }
-      }
     }
+    updateMainButton();
+    refreshPageStatus();
   }
 
   /* ── Advanced Edit render ─────────────────── */
@@ -329,63 +346,80 @@
       btnSingle.classList.toggle('active', mode === 'single');
       btnAll.classList.toggle('active', mode === 'all');
       allFields.classList.toggle('hidden', mode === 'single');
-
-      // Update initial scan button text
-      const btnScanNP = document.getElementById('btn-scan-no-product');
-      if (btnScanNP && !btnScanNP.disabled) {
-        btnScanNP.textContent = mode === 'single' ? 'Load Single Product' : 'Load Variations';
-      }
-
-      // If product is loaded but doesn't have variations yet and user toggled to 'all',
-      // show "Load Variations" trigger.
-      if (_state && _state.product) {
-        const hasVars = _state.product.variants && _state.product.variants.length > 1;
-        const btnStartImport = document.getElementById('btn-start-import');
-        if (btnStartImport) {
-          if (mode === 'all' && !hasVars) {
-            btnStartImport.textContent = 'Load Variations';
-          } else {
-            btnStartImport.textContent = 'Start Import';
-          }
-        }
-      }
-
-      doPeek(); // refresh context line on mode switch
+      updateMainButton();
     }
 
     btnSingle.addEventListener('click', () => applyMode('single'));
     btnAll.addEventListener('click', () => applyMode('all'));
   }
 
-  /* ── Peek product (fast, no AJAX) ────────── */
-  async function doPeek() {
-    const ctxEl = document.getElementById('import-context');
-    if (!ctxEl) return;
+  /* ── Supplier page detection ─────────────────
+     Registry-based: any registered supplier adapter (Amazon, Walmart, future
+     AliExpress/Temu) makes the page importable. Falls back to an Amazon host
+     check only if the suppliers bundle failed to load. */
+  function isSupplierPage(url) {
+    if (!url) return false;
+    if (window.SSSupplierRegistry) return !!window.SSSupplierRegistry.match(url);
+    return url.includes('amazon.');
+  }
 
+  /* ── Freshness guard ──────────────────────────
+     A scanned product may only be uploaded while the active tab still shows
+     that product (SSFreshness.isFresh: sourceId-in-URL, scannedUrl fallback).
+     Tab switches/navigation re-evaluate live; upload paths hard-block. */
+
+  function _productIsFreshForTab(tab) {
+    const product = _state && _state.product;
+    if (!product) return true; // nothing loaded — nothing stale
+    if (!tab || !tab.url) return true; // cannot evaluate — don't block UI
+    if (!isSupplierPage(tab.url)) return true; // off-supplier browsing (eBay, dashboard) is fine
+    return window.SSFreshness ? window.SSFreshness.isFresh(product, tab.url) : true;
+  }
+
+  async function refreshPageStatus() {
     const tab = await getActiveTab();
-    if (!tab || !tab.url || !tab.url.includes('amazon.')) {
-      ctxEl.textContent = 'Open an Amazon product page to begin';
-      return;
+
+    // 1. Supplier indicator — single minimal text label ("Amazon" / "Walmart"),
+    //    hidden entirely off supplier pages.
+    const statusEl = document.getElementById('page-status');
+    const textEl = document.getElementById('page-status-text');
+    if (statusEl && textEl) {
+      const onSupplier = tab && tab.url && isSupplierPage(tab.url);
+      if (onSupplier) {
+        const adapter = window.SSSupplierRegistry && window.SSSupplierRegistry.match(tab.url);
+        const name = adapter && adapter.supplierId
+          ? adapter.supplierId.charAt(0).toUpperCase() + adapter.supplierId.slice(1)
+          : 'Amazon';
+        textEl.textContent = name;
+      }
+      statusEl.classList.toggle('hidden', !onSupplier);
     }
 
-    chrome.tabs.sendMessage(tab.id, { action: 'PEEK_PRODUCT' }, resp => {
-      if (chrome.runtime.lastError || !resp || !resp.success) {
-        ctxEl.textContent = '';
-        return;
-      }
-      const { title, variantCount, selectedLabel } = resp.data;
-      const shortTitle = title ? (title.length > 42 ? title.slice(0, 42) + '…' : title) : '';
-      if (_mode === 'single') {
-        ctxEl.textContent = selectedLabel
-          ? `Importing: "${selectedLabel}" — current page selection`
-          : `Importing current page variant`;
-      } else {
-        const countStr = variantCount > 1 ? ` (${variantCount} variations)` : '';
-        ctxEl.textContent = shortTitle
-          ? `Importing all variations${countStr}`
-          : '';
-      }
-    });
+    // 2. Stale banner + CTA gating
+    const fresh = _productIsFreshForTab(tab);
+    const banner = document.getElementById('stale-banner');
+    if (banner) banner.classList.toggle('hidden', fresh);
+    const actions = document.querySelector('.action-stack');
+    if (actions) actions.classList.toggle('stale', !fresh);
+  }
+
+  async function assertFreshForUpload() {
+    const tab = await getActiveTab();
+    if (_productIsFreshForTab(tab)) return true;
+    showToast('This page shows a different product than the one loaded. Rescan first.');
+    refreshPageStatus();
+    return false;
+  }
+
+  function initTabWatchers() {
+    try {
+      chrome.tabs.onActivated.addListener(() => refreshPageStatus());
+      chrome.tabs.onUpdated.addListener((tabId, info) => {
+        if (info.url || info.status === 'complete') refreshPageStatus();
+      });
+    } catch (e) {
+      console.warn('[SS panel] tab watchers unavailable:', e);
+    }
   }
 
   /* ── Get active tab ───────────────────────── */
@@ -398,13 +432,26 @@
   }
 
   /* ── Scan product ─────────────────────────── */
+
+  // Tie the freshly scanned product to the page it came from so the freshness
+  // guard can detect navigation away (scannedUrl is SSFreshness's fallback key
+  // for suppliers without a URL-visible sourceId).
+  function _stampScan(tabUrl) {
+    chrome.storage.local.get('currentProduct', (d) => {
+      if (!d.currentProduct) return;
+      chrome.storage.local.set({
+        currentProduct: { ...d.currentProduct, scannedUrl: tabUrl, scannedAt: Date.now() }
+      });
+    });
+  }
+
   async function doScan(mode) {
     const scanMode = mode || _mode || 'all';
     const tab = await getActiveTab();
     if (!tab) { showToast('No active tab found'); return null; }
 
-    if (!tab.url || !tab.url.includes('amazon.')) {
-      showToast('Navigate to an Amazon product page first');
+    if (!tab.url || !isSupplierPage(tab.url)) {
+      showToast('Navigate to a supported product page first');
       return null;
     }
 
@@ -418,6 +465,8 @@
             showToast('Scan failed: ' + ((resp && resp.error) || 'unknown'));
             resolve(null);
           } else {
+            _stampScan(tab.url);
+            refreshPageStatus();
             resolve(resp.data);
           }
         });
@@ -434,6 +483,8 @@
             showToast('Scan failed: ' + ((resp && resp.error) || 'unknown'));
             resolve(null);
           } else {
+            _stampScan(tab.url);
+            refreshPageStatus();
             resolve(resp.data);
           }
         });
@@ -456,7 +507,13 @@
     const img = (product.images && product.images[0]) || product.mainImage || '';
     if (imgEl) { imgEl.src = img || ''; imgEl.style.display = img ? '' : 'none'; }
     if (titleEl) titleEl.textContent = (product.title || '').slice(0, 80) + ((product.title || '').length > 80 ? '…' : '');
-    if (asinEl) asinEl.textContent = product.asin ? 'ASIN: ' + product.asin : '';
+    if (asinEl) {
+      const srcId = product.sourceId || product.asin || '';
+      const idLabel = window.SSSupplierRegistry?.getMeta
+        ? window.SSSupplierRegistry.getMeta(product.supplier).idLabel
+        : 'ID';
+      asinEl.textContent = srcId ? `${idLabel}: ${srcId}` : '';
+    }
     const vc = product.variants ? product.variants.length : 0;
     if (varsEl) varsEl.textContent = vc > 1 ? vc + ' variations' : (vc === 1 ? '1 variant' : 'Single product');
     if (priceEl) {
@@ -468,101 +525,13 @@
     wrap.classList.remove('hidden');
   }
 
-  /* ── Start Import ─────────────────────────── */
-  async function doStartImport() {
-    if (_importing) return;
-
-    const hasProduct = !!(_state && _state.product);
-    const hasVars = _state && _state.product && _state.product.variants && _state.product.variants.length > 1;
-
-    // Scenario 1: User chose Variation Listing but only loaded a single product. Load variations first.
-    if (hasProduct && _mode === 'all' && !hasVars) {
-      _importing = true;
-      btnStartImport.disabled = true;
-      btnStartImport.innerHTML = '<span class="btn-spinner"></span> Loading variations…';
-      try {
-        const product = await doScan('all');
-        if (product) {
-          showToast(`${product.variants ? product.variants.length : 0} variations loaded ✓`);
-          renderPreviewCard(product);
-        }
-      } catch (err) {
-        showToast('Scan error: ' + err.message);
-      }
-      _importing = false;
-      btnStartImport.disabled = false;
-      btnStartImport.textContent = 'Start Import';
-      return;
-    }
-
-    _importing = true;
-    btnStartImport.disabled = true;
-    btnStartImport.innerHTML = '<span class="btn-spinner"></span> Importing…';
-
-    try {
-      saveSettings();
-      const product = _state && _state.product;
-      if (!product) {
-        showToast('No product loaded');
-        resetImportBtn();
-        return;
-      }
-
-      // Determine upload type (classic vs draft)
-      const uploadType = selUploadType.value || 'classic';
-
-      // Build product payload based on selected mode
-      const finalTitle = (product.title || '').trim();
-      const images = product.images || [];
-      const sku = product.ebaySku || '';
-
-      const ebayProduct = {
-        ...product,
-        title: finalTitle,
-        images,
-        ebaySku: sku,
-        finalPrice: product.finalPrice || 0,
-        quantity: parseInt(inpMinQty.value, 10) || 1,
-        variations: _mode === 'single' ? [] : _variations,
-      };
-
-      // Mirror to storage so panel stays in sync
-      await chrome.storage.local.set({ currentProduct: ebayProduct });
-
-      // Send to background listing runner
-      chrome.runtime.sendMessage({
-        action: 'import_ebay',
-        product: ebayProduct,
-        uploadType: uploadType
-      });
-
-      showToast(uploadType === 'draft' ? 'Opening eBay draft…' : 'Opening eBay lister…');
-    } catch (err) {
-      showToast('Import error: ' + err.message);
-    }
-
-    resetImportBtn();
-  }
-
-  function resetImportBtn() {
-    _importing = false;
-    btnStartImport.disabled = false;
-    const hasVars = _state && _state.product && _state.product.variants && _state.product.variants.length > 1;
-    if (_mode === 'all' && !hasVars) {
-      btnStartImport.textContent = 'Load Variations';
-    } else {
-      btnStartImport.textContent = 'Start Import';
-    }
-  }
-
-  /* ── Advanced upload/draft — triggers eBay lister ── */
+  /* ── Upload — triggers eBay lister ─────────── */
   async function doAdvancedUpload(asDraft) {
     const product = _state && _state.product;
     if (!product) { showToast('No product loaded — scan first'); return; }
 
-    const btn = asDraft ? btnAdvDraft : btnAdvUpload;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="btn-spinner"></span>';
+    // Stale guard: never upload a product the active page no longer shows
+    if (!(await assertFreshForUpload())) return;
 
     try {
       // Phase 6: read draft for source-flagged fields
@@ -580,15 +549,16 @@
       const description = (draft && draft.description) || product.description || '';
       const descSource = (draft && draft.description_source) || 'scraped';
 
-      // Resolve pricing: draft > product
+      // Resolve pricing: edited product > draft. Draft is scan-time state and
+      // must not resurrect old Amazon calculated prices over panel edits.
       const draftFinalPrice = draft && draft.pricing && draft.pricing.finalPrice;
-      const finalPrice = draftFinalPrice || product.finalPrice || 0;
-      const priceSource = (draft && draft.price_source) || 'calculated';
+      const finalPrice = product.finalPrice || draftFinalPrice || 0;
+      const priceSource = product.price_source || (draft && draft.price_source) || 'calculated';
 
-      // Resolve SKU
+      // Resolve SKU: edited product wins over scan-time draft.
       const draftSku = draft && draft.sku;
-      const sku = draftSku || product.ebaySku || '';
-      const skuSource = (draft && draft.sku_source) || 'generated';
+      const sku = product.ebaySku || draftSku || '';
+      const skuSource = product.sku_source || (draft && draft.sku_source) || 'generated';
 
       const images = (product.images || []).filter((_, i) => !_removedImages.has(i));
 
@@ -599,7 +569,7 @@
       console.log('[SS Panel Upload] description_source:', descSource);
 
       // Build canonical product payload
-      const ebayProduct = {
+      let ebayProduct = {
         ...product,
         title: finalTitle,
         description,
@@ -607,12 +577,18 @@
         ebaySku: sku,
         finalPrice,
         quantity: parseInt(inpAdvQty.value, 10) || 1,
-        variations: _variations,
+        variations: _mode === 'single' ? [] : _variations,
         title_source: titleSource,
         description_source: descSource,
         price_source: priceSource,
         sku_source: skuSource,
       };
+      if (window.SSVariationNormalizer) {
+        ebayProduct = window.SSVariationNormalizer.normalizeProduct(ebayProduct, {
+          dedupe: true,
+          dropInvalid: true
+        });
+      }
 
       // Mirror to storage so panel stays in sync
       await chrome.storage.local.set({ currentProduct: ebayProduct });
@@ -641,9 +617,6 @@
       showToast('Upload error: ' + err.message);
       console.error('[SS Panel Upload] error:', err);
     }
-
-    btn.disabled = false;
-    btn.textContent = asDraft ? 'Create draft' : 'Upload';
   }
 
   /* ── Extend — open panel.html tab with current sidebar state ── */
@@ -651,7 +624,9 @@
     const product = _state && _state.product;
     if (!product) { showToast('No product loaded — scan first'); return; }
 
-    const btnExtend = document.getElementById('btn-extend');
+    // Stale guard: the extended editor must open with the on-page product
+    if (!(await assertFreshForUpload())) return;
+
     if (btnExtend) { btnExtend.disabled = true; btnExtend.textContent = 'Opening…'; }
 
     try {
@@ -675,20 +650,26 @@
       const images = (product.images || []).filter((_, i) => !_removedImages.has(i));
 
       // Stamp SKUs onto variants before flush so extended panel + early DB sync have them
-      const parentAsin = product.parentAsin || product.asin || '';
+      const skuRoot = product.sourceId || product.parentAsin || product.asin || '';
       (product.variants || []).forEach(v => {
         if (!v.sku && window.SSSkuEngine) {
-          v.sku = window.SSSkuEngine.buildReadable(parentAsin, v.attrs);
+          v.sku = window.SSSkuEngine.buildReadable(skuRoot, v.attrs, window.SSSkuEngine.prefixFor(product.supplier));
         }
       });
 
-      const mergedProduct = {
+      let mergedProduct = {
         ...product,
         title: finalTitle,
         images,
         quantity: parseInt(inpAdvQty.value, 10) || 1,
         variations: normalizedVariations
       };
+      if (window.SSVariationNormalizer) {
+        mergedProduct = window.SSVariationNormalizer.normalizeProduct(mergedProduct, {
+          dedupe: true,
+          dropInvalid: true
+        });
+      }
 
       // Flush to storage, then trigger in-page panel via content script
       await new Promise(resolve => chrome.storage.local.set({
@@ -697,7 +678,7 @@
       }, resolve));
 
       const tab = await getActiveTab();
-      if (!tab || !tab.id) { showToast('No active tab — navigate to Amazon product page'); return; }
+      if (!tab || !tab.id) { showToast('No active tab — navigate to a supported product page'); return; }
 
       await new Promise((resolve, reject) => {
         chrome.tabs.sendMessage(tab.id, { action: 'EXTEND_PANEL' }, resp => {
@@ -708,20 +689,34 @@
           }
         });
       });
+
+      // Record which tab owns this extended session so the close handler can
+      // reopen the side panel for the correct tab, not whatever is active later.
+      chrome.storage.session.set({ ssPanelSourceTabId: tab.id }).catch(() => {});
+
+      // Close the side panel — injected panel.html is now the active editor.
+      // Only one of the two views should be visible at a time.
+      chrome.runtime.sendMessage({ action: 'CLOSE_SIDE_PANEL', tabId: tab.id });
     } catch (err) {
       showToast('Extend failed: ' + err.message);
     } finally {
-      if (btnExtend) { btnExtend.disabled = false; btnExtend.textContent = '⤢ Extend'; }
+      if (btnExtend) { btnExtend.disabled = false; btnExtend.textContent = '⤢ Open full editor'; }
     }
   }
 
+  // "Clear product" — drop the loaded product entirely so a stale item can
+  // never linger between sourcing sessions. Storage removal flows back through
+  // panel-store.onChanged → renderMain shows the empty scan state.
   function doAdvCancel() {
     inpTitle._dirty = false;
     inpAdvQty._dirty = false;
     advVariations._dirty = false;
     _removedImages.clear();
-    if (_state) renderAdvancedEdit(_state);
-    showToast('Edits reset');
+    _variations = [];
+    chrome.storage.local.remove(['currentProduct', 'panelSource'], () => {
+      showToast('Product cleared');
+      refreshPageStatus();
+    });
   }
 
   /* ── Log out ──────────────────────────────── */
@@ -751,23 +746,6 @@
     });
   }
 
-  /* ── eBay warning ─────────────────────────── */
-  function initEbayWarning() {
-    const btnDismiss = document.getElementById('btn-warn-dismiss');
-    if (btnDismiss) {
-      btnDismiss.addEventListener('click', () => {
-        chrome.storage.local.set({ ebaySessionRequired: false });
-        elEbayWarning.classList.add('hidden');
-      });
-    }
-    document.getElementById('btn-ebay-login').addEventListener('click', () => {
-      chrome.tabs.create({ url: 'https://www.ebay.com/signin/' });
-    });
-    document.getElementById('btn-ebay-hub').addEventListener('click', () => {
-      chrome.tabs.create({ url: 'https://www.ebay.com/sh/ovw' });
-    });
-  }
-
   /* ── Dirty tracking ───────────────────────── */
   function initDirtyTracking() {
     inpTitle.addEventListener('input', () => { inpTitle._dirty = true; });
@@ -779,9 +757,7 @@
     showView('loading');
     loadVersion();
     loadSettings();
-    initInnerTabs();
     initAuthLinks();
-    initEbayWarning();
     initDirtyTracking();
 
     document.getElementById('btn-sign-in').addEventListener('click', doSignIn);
@@ -789,17 +765,8 @@
 
     initModeToggle();
 
-    const btnScanNP = document.getElementById('btn-scan-no-product');
-    btnScanNP.addEventListener('click', async () => {
-      btnScanNP.disabled = true;
-      const originalText = _mode === 'single' ? 'Load Single Product' : 'Load Variations';
-      btnScanNP.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span> Loading…';
-      await doScan(_mode);
-      btnScanNP.disabled = false;
-      btnScanNP.textContent = originalText;
-    });
+    btnMainAction.addEventListener('click', onMainAction);
 
-    btnStartImport.addEventListener('click', doStartImport);
     [inpMinQty, inpShipping, togLowQty, selUploadType].forEach(el =>
       el.addEventListener('change', saveSettings)
     );
@@ -809,14 +776,24 @@
       advVariations._dirty = true;
       renderVariationsEditor();
     });
-    btnAdvUpload.addEventListener('click', () => doAdvancedUpload(false));
-    btnAdvDraft.addEventListener('click', () => doAdvancedUpload(true));
     btnAdvCancel.addEventListener('click', doAdvCancel);
-
-    const btnExtend = document.getElementById('btn-extend');
     if (btnExtend) btnExtend.addEventListener('click', doExtend);
 
+    // Stale banner → rescan current page
+    const btnRescan = document.getElementById('btn-rescan');
+    if (btnRescan) {
+      btnRescan.addEventListener('click', async () => {
+        btnRescan.disabled = true;
+        btnRescan.textContent = 'Rescanning…';
+        await doScan(_mode);
+        btnRescan.disabled = false;
+        btnRescan.textContent = 'Rescan this page';
+        refreshPageStatus();
+      });
+    }
 
+    initTabWatchers();
+    refreshPageStatus();
 
     window.SSPanelStore.subscribe(state => {
       _state = state;
@@ -826,9 +803,6 @@
     const snap = window.SSPanelStore.getState();
     _state = snap;
     renderAuth(snap);
-
-    // Auto-peek on open to populate context line
-    doPeek();
 
     // Phase 4: restore preview card from existing draft if present
     _restorePreviewFromDraft();
@@ -845,6 +819,7 @@
           // Convert draft back to product-like shape for preview
           product = {
             title: draft.title,
+            sourceId: draft.sourceId,
             asin: draft.asin,
             images: draft.images,
             mainImage: draft.mainImage,

@@ -41,15 +41,19 @@
               <div class="ssx-head-title" id="ssx-head-title">Product title…</div>
               <div class="ssx-head-meta">
                 <span class="ssx-chip ssx-chip-supplier" id="ssx-head-supplier">
-                  <img class="ssx-mini-logo" src="../assets/logo.png" alt="">Amazon
+                  <img class="ssx-mini-logo" src="../assets/logo.png" alt="">Supplier
                 </span>
                 <span class="ssx-chip" id="ssx-head-region">US</span>
-                <span class="ssx-chip ssx-chip-asin" id="ssx-head-asin">ASIN: —</span>
+                <span class="ssx-chip ssx-chip-asin" id="ssx-head-asin">ID: —</span>
                 <span class="ssx-chip ssx-chip-status" id="ssx-head-state">● Draft</span>
               </div>
             </div>
           </div>
           <div class="ssx-topbar-right">
+            <label class="ssx-autoedit" id="ssx-autoedit-wrap" title="Auto-generate price, SKUs and edited first image on upload">
+              <input type="checkbox" id="ssx-autoedit-toggle">
+              <span>Auto-edit</span>
+            </label>
             <div class="ssx-mode-seg" id="ssx-mode-seg">
               <button class="ssx-mode-btn" data-mode="single" id="ssx-mode-single" type="button">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line></svg>
@@ -129,9 +133,9 @@
         <div class="ssx-card ssx-single-block" id="ssx-single-block" style="display:none;">
           <div class="ssx-single-grid">
             <div class="ssx-field"><label>Supplier Price</label><div class="ssx-readout" id="ssx-single-supplier">$0.00</div></div>
-            <div class="ssx-field"><label>eBay Final Price</label><div class="ssx-readout" id="ssx-single-ebay">$0.00</div></div>
+            <div class="ssx-field"><label>eBay Final Price</label><input class="ssx-readout ssx-readout-input" id="ssx-single-ebay" type="text" inputmode="decimal" placeholder="0.00"></div>
             <div class="ssx-field"><label>Profit</label><div class="ssx-readout ssx-stat-green" id="ssx-single-profit">$0.00</div></div>
-            <div class="ssx-field"><label>SKU</label><div class="ssx-readout" id="ssx-single-sku">—</div></div>
+            <div class="ssx-field"><label>SKU</label><input class="ssx-readout ssx-readout-input" id="ssx-single-sku" type="text" maxlength="50" spellcheck="false"></div>
             <div class="ssx-field"><label>Stock / Status</label><div class="ssx-readout" id="ssx-single-stock">—</div></div>
           </div>
         </div>
@@ -238,7 +242,7 @@
           <button id="calculator-close-btn" class="calculator-close" type="button" aria-label="Close calculator">X</button>
         </div>
         <div class="calculator-content">
-          <label>Amazon Price<input type="number" id="amazon-price" placeholder="Amazon Price"></label>
+          <label>Supplier Price<input type="number" id="supplier-price" placeholder="Supplier Price"></label>
           <label>Tax Percent<input type="number" id="tax-percent" value="9"></label>
           <label>Tracking Fee<input type="number" id="tracking-fee" value="0.20"></label>
           <label>eBay Fee Percent<input type="number" id="ebay-fee-percent" value="20"></label>
@@ -290,6 +294,7 @@
 
   </div><!-- /#snipe-root-wrapper -->
 
+  <script src="../build/suppliers.bundle.js"></script>
   <script src="../common/config.js"></script>
   <script src="../common/performance.js"></script>
   <script src="../common/ui.js"></script>
@@ -299,6 +304,9 @@
   <script src="../common/description-generator.js"></script>
   <script src="../common/pricing-engine.js"></script>
   <script src="../common/sku-engine.js"></script>
+  <script src="../common/variation-normalizer.js"></script>
+  <script src="../common/listing-draft.js"></script>
+  <script src="../common/panel-extended.js"></script>
   <script src="calculator.js"></script>
   <script src="panel.js"></script>
 </body>

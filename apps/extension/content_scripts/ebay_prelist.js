@@ -5,6 +5,63 @@
 // Old DOM-automation ScenarioManager has been removed.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── First-image watermark (Auto-edit) ────────────────────────────────────────
+// Same canvas pipeline as the injectors' processImageTo1600x1600: 1600×1600
+// white canvas, aspect-fit, watermark bottom-right at 1/4 width. Lives here too
+// because the quick-import path never renders a supplier-page gallery — the
+// sticker is applied right before SellerSuitUploader.run().
+
+function _ssWatermarkImage(imageUrl) {
+  return new Promise((resolve, reject) => {
+    const watermark = new Image();
+    const sourceImage = new Image();
+    sourceImage.crossOrigin = 'Anonymous';
+
+    const watermarkPromise = new Promise((res, rej) => {
+      watermark.onload = res;
+      watermark.onerror = () => rej(new Error('Failed to load watermark'));
+    });
+    const sourcePromise = new Promise((res, rej) => {
+      sourceImage.onload = res;
+      sourceImage.onerror = () => rej(new Error(`Failed to load image: ${imageUrl}`));
+    });
+
+    watermark.src = chrome.runtime.getURL('assets/watermark.png');
+    sourceImage.src = imageUrl;
+
+    Promise.all([watermarkPromise, sourcePromise]).then(() => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = 1600;
+      canvas.height = 1600;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, 1600, 1600);
+
+      const sourceAspect = sourceImage.naturalWidth / sourceImage.naturalHeight;
+      let drawWidth, drawHeight, drawX, drawY;
+      if (sourceAspect > 1) {
+        drawWidth = 1600;
+        drawHeight = 1600 / sourceAspect;
+        drawX = 0;
+        drawY = (1600 - drawHeight) / 2;
+      } else {
+        drawHeight = 1600;
+        drawWidth = 1600 * sourceAspect;
+        drawX = (1600 - drawWidth) / 2;
+        drawY = 0;
+      }
+      ctx.drawImage(sourceImage, drawX, drawY, drawWidth, drawHeight);
+
+      const padding = 20;
+      const watermarkWidth = 1600 / 4;
+      const watermarkHeight = (watermark.naturalHeight / watermark.naturalWidth) * watermarkWidth;
+      ctx.drawImage(watermark, 1600 - watermarkWidth - padding, 1600 - watermarkHeight - padding, watermarkWidth, watermarkHeight);
+
+      resolve(canvas.toDataURL('image/jpeg', 1.0));
+    }).catch(reject);
+  });
+}
+
 // ─── Overlay helpers (used by programmatic upload path) ───────────────────────
 
 function _ssShowOverlay(msg) {
@@ -175,6 +232,22 @@ function _ssShowDuplicateBlock(listing, onOverride) {
       const imgStore = await chrome.storage.local.get('watermarkedImages');
       const wm = imgStore.watermarkedImages || [];
       if (wm.length) productToRun = { ...productToRun, images: wm };
+    } else {
+      // Auto-edit: quick-import path skips the gallery, so the first-image
+      // sticker is applied here, right before upload. Supplier-agnostic —
+      // works on whatever images the product carries. Failure keeps original.
+      const flags = await chrome.storage.local.get(['autoEditEnabled', 'autoWatermarkEnabled']);
+      const autoEditOn = flags.autoEditEnabled || flags.autoWatermarkEnabled || false;
+      const firstImg = Array.isArray(productToRun.images) ? productToRun.images[0] : null;
+      if (autoEditOn && typeof firstImg === 'string' && firstImg.startsWith('http')) {
+        try {
+          const stamped = await _ssWatermarkImage(firstImg);
+          productToRun = { ...productToRun, images: [stamped, ...productToRun.images.slice(1)] };
+          console.log('[SS] Auto-edit: watermark applied to first image');
+        } catch (e) {
+          console.warn('[SS] Auto-edit watermark failed, using original image:', e?.message || e);
+        }
+      }
     }
 
     await chrome.storage.local.set({ [storageKey]: { ...entry, product: productToRun, isImported: true } });

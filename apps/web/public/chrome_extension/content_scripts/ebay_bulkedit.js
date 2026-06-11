@@ -56,7 +56,7 @@
 
     // 3.4 — sync to dashboard now that variations are saved
     if (typeof window._syncListingToDashboard === 'function') {
-      window._syncListingToDashboard(adapted, entry.product, entry.draftId);
+      await window._syncListingToDashboard(adapted, entry.product, entry.draftId);
     }
 
     // Mark as imported, clear needsVariations (keep ssSummary for toast)

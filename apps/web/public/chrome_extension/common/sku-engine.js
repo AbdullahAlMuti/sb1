@@ -16,7 +16,7 @@ window.SSSkuEngine = (() => {
       h ^= str.charCodeAt(i);
       h = (h * 0x01000193) >>> 0;
     }
-    return (h % 1679616).toString(36).toUpperCase().padStart(4, '0'); // 4-char base36
+    return (h % 2176782336).toString(36).toUpperCase().padStart(6, '0'); // 6-char base36
   }
 
   /**
@@ -26,30 +26,53 @@ window.SSSkuEngine = (() => {
    *                                                  → 'AMZ-B08XYZ-COLO-RED-SIZE-L'
    * @param {string} parentAsin
    * @param {object} attrs  — { "Color": { productName: "Red" }, ... } or flat { "Color": "Red" }
-   * @param {string} [supplier] — default 'AMZ'
+   * @param {string} [supplier] — default 'AZS'
    */
   function buildReadable(parentAsin, attrs, supplier) {
-    supplier = (supplier || 'AMZ').toUpperCase().slice(0, 4);
+    supplier = (supplier || 'AZS').toUpperCase().slice(0, 4);
     const root = supplier + '-' + String(parentAsin || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const parts = Object.keys(attrs || {}).sort().map(k => {
       const rawVal = attrs[k];
       const val = (rawVal && typeof rawVal === 'object') ? (rawVal.productName || '') : String(rawVal || '');
-      return _clean(k, 4) + '-' + _clean(val, 6);
+      return _clean(k, 4) + '-' + _clean(val, 16);
     });
-    const full = parts.length ? root + '-' + parts.join('-') : root;
-    if (full.length <= MAX_LEN) return full;
+    const readable = parts.length ? root + '-' + parts.join('-') : root;
+    if (readable.length <= MAX_LEN) return readable;
+
+    // Construct un-truncated string for hashing to guarantee uniqueness
+    const hashParts = Object.keys(attrs || {}).sort().map(k => {
+      const rawVal = attrs[k];
+      const val = (rawVal && typeof rawVal === 'object') ? (rawVal.productName || '') : String(rawVal || '');
+      return k + ':' + val;
+    });
+    const hashInput = root + '|' + hashParts.join('|');
+
     // overflow: keep root + hash suffix
-    const suffix = '-' + _hash32(full);
+    const suffix = '-' + _hash32(hashInput);
     return root.slice(0, MAX_LEN - suffix.length) + suffix;
   }
 
   /**
-   * Encode readable SKU → base64 for eBay Custom Label field.
-   * Call ONLY at upload time. Never store base64 in DB as primary SKU.
+   * Supplier key → SKU prefix. Pure lookup, no algorithm change:
+   * 'amazon' (and unknown/missing — back-compat) → 'AZS', 'walmart' → 'WMS',
+   * future suppliers → first 3 alphanumeric chars uppercased.
+   * @param {string} [supplier] — normalized product.supplier
    */
-  function encodeForEbay(readableSku) {
-    return btoa(unescape(encodeURIComponent(String(readableSku || ''))));
+  function prefixFor(supplier) {
+    const s = String(supplier || '').toLowerCase();
+    if (!s || s === 'amazon') return 'AZS';
+    if (s === 'walmart') return 'WMS';
+    const cleaned = s.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+    return cleaned || 'AZS';
   }
 
-  return { buildReadable, encodeForEbay, MAX_LEN };
+  /**
+   * Return the readable SKU directly for eBay Custom Label.
+   * Do not base64 encode as it makes Custom Labels unreadable.
+   */
+  function encodeForEbay(readableSku) {
+    return String(readableSku || '').trim();
+  }
+
+  return { buildReadable, encodeForEbay, prefixFor, MAX_LEN };
 })();

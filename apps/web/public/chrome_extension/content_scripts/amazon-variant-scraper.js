@@ -167,6 +167,59 @@
 
   // ─── Buybox + quantity from DOM ────────────────────────────────────────────────
 
+  function _cleanPriceText(str) {
+    if (!str) return null;
+    let decoded = str.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+    decoded = decoded.replace(/&#x([0-9a-fA-F]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+                     .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d, 10)));
+    const currencyRegex = /(\$|£|€|¥|A\$|C\$|₹|R\$)\s*(\d[\d.,\s]*\d|\d)|(\d[\d.,\s]*\d|\d)\s*(\$|£|€|¥|A\$|C\$|₹|R\$)/;
+    const match = decoded.match(currencyRegex);
+    if (match) {
+      let rawNum = '';
+      let sym = '$';
+      if (match[2]) {
+        rawNum = match[2].trim();
+        sym = match[1];
+      } else if (match[3]) {
+        rawNum = match[3].trim();
+        sym = match[4];
+      }
+      rawNum = rawNum.replace(/\s/g, '');
+      let decimalSep = '.';
+      const lastComma = rawNum.lastIndexOf(',');
+      const lastDot = rawNum.lastIndexOf('.');
+      if (lastComma !== -1 && lastDot !== -1) {
+        decimalSep = lastComma > lastDot ? ',' : '.';
+      } else if (lastComma !== -1) {
+        if (rawNum.length - lastComma === 4) {
+          decimalSep = '.';
+        } else {
+          decimalSep = ',';
+        }
+      } else if (lastDot !== -1) {
+        if (rawNum.length - lastDot === 4) {
+          decimalSep = ',';
+        } else {
+          decimalSep = '.';
+        }
+      }
+      let priceStr = '';
+      for (let i = 0; i < rawNum.length; i++) {
+        const ch = rawNum[i];
+        if (ch >= '0' && ch <= '9') {
+          priceStr += ch;
+        } else if (ch === decimalSep) {
+          priceStr += '.';
+        }
+      }
+      const price = parseFloat(priceStr);
+      if (price > 0) {
+        return { price, symbol: sym };
+      }
+    }
+    return null;
+  }
+
   function getBuyboxFromDom() {
     const el = document.querySelector('.twister-plus-buying-options-price-data');
     if (el && el.textContent) {
@@ -176,12 +229,20 @@
         if (g && g.length > 0) return g[0];
       } catch (_) {}
     }
-    const priceEl = document.querySelector('.priceToPay, #corePrice_feature_div .a-price, #price_inside_buybox');
+    const priceEl = document.querySelector('.priceToPay, #corePrice_feature_div .a-price, #price_inside_buybox, .apexPriceToPay, #priceblock_ourprice, #priceblock_dealprice');
     if (priceEl) {
       const sym   = (priceEl.querySelector('.a-price-symbol')?.textContent || '$').trim();
       const whole = (priceEl.querySelector('.a-price-whole')?.textContent || '').replace(/[^\d]/g, '');
       const frac  = (priceEl.querySelector('.a-price-fraction')?.textContent || '00').trim();
-      const price = parseFloat(`${whole || 0}.${frac}`);
+      let price = parseFloat(`${whole || 0}.${frac}`);
+      if (!(price > 0)) {
+        const rawText = priceEl.querySelector('.a-offscreen')?.textContent || priceEl.textContent || '';
+        const parsed = _cleanPriceText(rawText);
+        if (parsed && parsed.price > 0) {
+          price = parsed.price;
+          return { priceAmount: price, currencySymbol: parsed.symbol || sym };
+        }
+      }
       if (price > 0) return { priceAmount: price, currencySymbol: sym };
     }
     return null;
@@ -309,14 +370,17 @@
           // Select/dropdown option — open dropdown then click
           const hasDropdown = container && container.querySelectorAll('option').length > 0;
           if (hasDropdown) {
+            // Bounded retry — an option that never renders must not hang the
+            // scrape forever (v2 fallback path runs inside user-visible flows).
             let optEl = document.querySelector(optEntry);
-            while (!optEl) {
+            let dropTries = 0;
+            while (!optEl && dropTries++ < 40) {
               const dropBtn = container && container.querySelector('span[data-action="a-dropdown-button"]');
               if (dropBtn) dropBtn.click();
               await sleep(50);
               optEl = document.querySelector(optEntry);
             }
-            optEl.click();
+            if (optEl) optEl.click();
           }
         } else {
           // li element — click button, input, or anchor inside it
@@ -336,7 +400,9 @@
           }
         }
 
-        await sleep(50);
+        // 50ms fired clicks faster than Amazon's Twister JS could issue the
+        // matching XHR, so prices were dropped and Phase 2 fell back to $999.
+        await sleep(250);
       }
     }
 
@@ -708,4 +774,11 @@
   }
 
   window.SsAmazonVariantScraper = { scrapeProductWithVariants, scrapeSingleProduct };
+
+  // Test-only surface — exposes the pure JSON-repair pipeline (no DOM) so the
+  // brittle SuperDS-ported parsing can be regression-locked by node:test. These
+  // are the same function references used by the scraper; nothing is altered.
+  window.SsAmazonVariantScraper._internals = {
+    _fixQuotes, _robustParse, _removeKey, _balanceBraces, _prepareJson, _parseWindowJson, _cleanPriceText,
+  };
 })();

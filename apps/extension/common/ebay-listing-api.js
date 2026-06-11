@@ -6,6 +6,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Private helpers ─────────────────────────────────────────────────────────
+// Robust float cleaning helper
+function _cleanFloat(val) {
+  if (val === null || val === undefined) return 0;
+  if (typeof val === 'number') return val;
+  const cleaned = String(val).replace(/[^\d.-]/g, '');
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
 
 function _extractAllMatches(regex, str) {
   const results = [];
@@ -305,7 +314,7 @@ window.EbayListingApiHelper = (() => {
     // 2.3 — Promoted Listings: opt-in via product.meta.promoteListing
     if (product.meta?.promoteListing) {
       payload.promotedListingSelection = true;
-      const pct = parseFloat(product.meta.promotePercent);
+      const pct = _cleanFloat(product.meta.promotePercent);
       if (!isNaN(pct) && pct > 0) payload.adRate = pct;
     }
 
@@ -317,10 +326,18 @@ window.EbayListingApiHelper = (() => {
       payload.quantity = product.prod_qty || 1;
     }
 
-    // Use readable SKU from first variation (set by adaptProduct via SSSkuEngine).
-    // Encode to base64 for eBay Custom Label field only at upload time.
-    if (product.ebaySku || product.prod_id) {
-      payload.sku = btoa(unescape(encodeURIComponent(product.ebaySku || product.prod_id)));
+    // Use readable SKU from first variation (set by adaptProduct via SSSkuEngine —
+    // carries the user-edited SKU when one exists). `product` here is the ADAPTED
+    // object, which has no ebaySku field, so reading it always fell through to
+    // prod_id (raw ASIN) and silently discarded edited SKUs. Multi-variation
+    // listings keep prod_id at the parent level: per-variant SKUs are set in
+    // addVariations. Encode to base64 for eBay Custom Label only at upload time.
+    const isSingleListing = (product.prod_variations || []).length <= 1;
+    const customLabelSku =
+      (isSingleListing && product.prod_variations?.[0]?.sku) ||
+      product.ebaySku || product.prod_id;
+    if (customLabelSku) {
+      payload.sku = window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(customLabelSku) : customLabelSku;
     }
 
     return saveListing(csrfToken, draftId, payload);
@@ -413,6 +430,43 @@ window.EbayListingApiHelper = (() => {
     return { draftId, draftCsrfValue, epsData, listingModel, aspectNames };
   }
 
+  function matchAspectName(attrName, aspectNames) {
+    const clean = s => s.toLowerCase().replace(/[\s_]/g, '');
+    const attrClean = clean(attrName);
+    
+    // 1. Try exact/case-insensitive match
+    let match = aspectNames.find(a => clean(a) === attrClean);
+    if (match) return match;
+    
+    // 2. Try singular/plural matching
+    const isPlural = attrClean.endsWith('s');
+    const singular = isPlural ? attrClean.slice(0, -1) : attrClean;
+    const plural = isPlural ? attrClean : attrClean + 's';
+    
+    match = aspectNames.find(a => {
+      const c = clean(a);
+      return c === singular || c === plural || c === singular + 's' || (c.endsWith('s') && c.slice(0, -1) === singular);
+    });
+    if (match) return match;
+    
+    // 3. Special cases for color/colour
+    if (attrClean.includes('color') || attrClean.includes('colour')) {
+      match = aspectNames.find(a => {
+        const c = clean(a);
+        return c.includes('color') || c.includes('colour');
+      });
+      if (match) return match;
+    }
+    
+    // 4. Special cases for size
+    if (attrClean.includes('size')) {
+      match = aspectNames.find(a => clean(a).includes('size'));
+      if (match) return match;
+    }
+    
+    return attrName;
+  }
+
   // ── addVariations ────────────────────────────────────────────────────────
   // Called on the bulkedit.ebay.com page after draft is created.
   // Uploads per-variation images, builds MSKU payload, POSTs to msku-update.
@@ -431,20 +485,17 @@ window.EbayListingApiHelper = (() => {
     // so it stays consistent across all iterations.
     const rawImgProp = variations[0]?.imgProp || null;
     // Determine final (post-rename) imgPropKey before the loop
-    let imgPropKey = rawImgProp
-      ? (aspectNames.includes(rawImgProp) ? rawImgProp + 's' : rawImgProp)
-      : null;
+    let imgPropKey = rawImgProp ? matchAspectName(rawImgProp, aspectNames) : null;
 
     for (let idx = 0; idx < variations.length; idx++) {
       const variation = { ...variations[idx] }; // shallow copy — don't mutate source
       if (!variation.price || variation.price < 1) variation.price = 0.99;
 
-      // Rename attr keys that match eBay aspect names: Color→Colors, Size→Sizes
-      // eBay msku-update expects plural keys when the aspect list uses them.
+      // Rename attr keys to match the exact eBay aspect names (case/plural matching)
       const rawAttrs = variation.attrs || {};
       const attrs    = {};
       for (const attrName of Object.keys(rawAttrs)) {
-        const finalKey  = aspectNames.includes(attrName) ? attrName + 's' : attrName;
+        const finalKey  = matchAspectName(attrName, aspectNames);
         attrs[finalKey] = rawAttrs[attrName];
       }
 
@@ -504,8 +555,8 @@ window.EbayListingApiHelper = (() => {
           quantity: 1   // always 1 for dropshipping — never use supplier stock count
         },
         sku:         variation.sku
-                       ? btoa(unescape(encodeURIComponent(variation.sku)))
-                       : (variation.supplierVariantId ? btoa(unescape(encodeURIComponent(variation.supplierVariantId))) : ''),
+                       ? (window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(variation.sku) : variation.sku)
+                       : (variation.supplierVariantId ? (window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(variation.supplierVariantId) : variation.supplierVariantId) : ''),
         state:       'enabled',
         productInfo: {},
         index:       variationItems.length
@@ -555,6 +606,9 @@ window.EbayListingApiHelper = (() => {
   // Normalises SellerSuit product schema → fields expected by updateListing /
   // addVariations. Handles both single-item and multi-variation Amazon products.
   function adaptProduct(product) {
+    // Universal supplier identity — Amazon: asin/parentAsin. Future suppliers: sourceId.
+    const sourceId = product.sourceId || product.parentAsin || product.asin || '';
+
     // Guard log — verify mode + image count entering adapter
     console.log('[SS adaptProduct] isSingleMode:', !!product.isSingleMode,
       '| images:', Array.isArray(product.images) ? product.images.length : 0,
@@ -574,23 +628,53 @@ window.EbayListingApiHelper = (() => {
       .replace(/<img[^>]*>/gi, '');
     if (!descHtml.trim()) descHtml = '<p>Quality product.</p>';
 
-    const basePrice = parseFloat(product.price) || 0.99;
+    const basePrice = _cleanFloat(product.price) || 0.99;
     const hasRealVariants = product.hasVariants &&
                             Array.isArray(product.variants) &&
                             product.variants.length > 1;
 
     let prod_variations;
     if (hasRealVariants) {
-      // Filter out ghost/unavailable variants before building prod_variations.
-      // Amazon scraper returns all matrix slots; filter those with no attrs and
-      // those explicitly flagged unavailable.
-      const validVariants = product.variants.filter(v => {
+      // Filter out ghost/unavailable/deleted variants before building prod_variations.
+      // Validate unique combinationKey and fail fast (throw) on duplicates.
+      const seenCombos = new Set();
+      const validVariants = [];
+      
+      (product.variants || []).forEach(v => {
+        if (v.isDeleted === true || v.deleted === true) return;
+        
         const hasAttrs  = v.attrs  && Object.keys(v.attrs).length  > 0;
         const hasSpecs  = v.specs  && Object.keys(v.specs).length  > 0;
-        if (!hasAttrs && !hasSpecs) return false;
-        if (v.inStock === false) return false;
-        return true;
+        if (!hasAttrs && !hasSpecs) return;
+        if (v.inStock === false) return;
+        
+        // Compute canonical combination key
+        let combo = '';
+        if (window.SSVariationNormalizer) {
+          const optVals = window.SSVariationNormalizer.optionValuesFromVariant(v);
+          combo = window.SSVariationNormalizer.combinationKey(optVals);
+        } else {
+          const rawAttrs = v.attrs || {};
+          combo = Object.entries(rawAttrs)
+            .map(([k, val]) => {
+              const str = val && typeof val === 'object' ? (val.productName || '') : String(val || '');
+              return `${k.toLowerCase()}=${str.toLowerCase()}`;
+            })
+            .sort()
+            .join('\u001f');
+        }
+        
+        if (combo) {
+          if (seenCombos.has(combo)) {
+            const prettyCombo = combo.split('\u001f').join(', ');
+            throw new Error(`Duplicate variation combination detected: ${prettyCombo}`);
+          }
+          seenCombos.add(combo);
+        }
+        
+        validVariants.push(v);
       });
+      
       const sourceVariants = validVariants.length > 0 ? validVariants : product.variants;
 
       // imgProp: the attr key that groups variation images (e.g. "Color").
@@ -598,10 +682,13 @@ window.EbayListingApiHelper = (() => {
       const firstV   = sourceVariants[0];
       const firstAttrs = firstV.attrs || {};
       const attrKeys   = Object.keys(firstAttrs);
-      const imgProp  = firstV.imgProp
+      const rawImgProp  = firstV.imgProp
         || attrKeys.find(k => /colou?r/i.test(k))
         || attrKeys[0]
         || null;
+      const imgProp = (rawImgProp && window.SSVariationNormalizer)
+        ? window.SSVariationNormalizer.normalizeLabel(rawImgProp)
+        : rawImgProp;
 
       prod_variations = sourceVariants.map(v => {
         // Scraper format: v.attrs = { "Color": { productName: "Red" }, ... }
@@ -620,43 +707,43 @@ window.EbayListingApiHelper = (() => {
         // Ensure every variant has a unique SKU — if scraper didn't set one, generate
         // it from parentAsin + attrs so ON CONFLICT (user_id, sku) never collapses
         // all variants into a single row in listing_variations.
-        const parentAsin = product.parentAsin || product.asin || '';
         const varSku = v.sku || (window.SSSkuEngine
-          ? window.SSSkuEngine.buildReadable(parentAsin, attrs)
-          : (parentAsin + (Object.values(attrs).map(a => a?.productName || '').join('-') || '')));
+          ? window.SSSkuEngine.buildReadable(sourceId, attrs, window.SSSkuEngine.prefixFor(product.supplier))
+          : (sourceId + (Object.values(attrs).map(a => a?.productName || '').join('-') || '')));
         return {
-          price:             parseFloat(v.ebayPrice) || parseFloat(v.finalPrice) || parseFloat(v.price) || basePrice,
-          raw_supplier_price: parseFloat(v.price) || parseFloat(v.amazonPrice) || basePrice,
+          price:             _cleanFloat(v.ebayPrice) || _cleanFloat(v.finalPrice) || _cleanFloat(v.price) || basePrice,
+          raw_supplier_price: _cleanFloat(v.price) || basePrice,
           sku:               varSku,
           attrs,
           img:               v.img || v.image || null, // scraper uses v.img
-          imgProp:           v.imgProp || imgProp,
+          imgProp:           ((v.imgProp && window.SSVariationNormalizer ? window.SSVariationNormalizer.normalizeLabel(v.imgProp) : v.imgProp) || imgProp),
           supplierVariantId: v.supplierVariantId || v.asin || null,
           variant_asin:      v.supplierVariantId || v.asin || null
         };
       });
     } else {
-      const finalPrice = product.finalPrice || basePrice;
-      const sku = (window.SSSkuEngine)
-        ? window.SSSkuEngine.buildReadable(product.parentAsin || product.asin || '', {})
-        : (product.parentAsin || product.asin || '');
+      const finalPrice = _cleanFloat(product.finalPrice) || basePrice;
+      // User-edited SKU (panel ebaySku) wins; otherwise generate from sourceId.
+      const sku = product.ebaySku || ((window.SSSkuEngine)
+        ? window.SSSkuEngine.buildReadable(sourceId, {}, window.SSSkuEngine.prefixFor(product.supplier))
+        : sourceId);
       prod_variations = [{
         price:              finalPrice,
-        raw_supplier_price: product.raw_supplier_price || basePrice,
+        raw_supplier_price: _cleanFloat(product.raw_supplier_price) || basePrice,
         sku,
-        variant_asin:       product.asin || product.parentAsin || null
+        variant_asin:       sourceId || null
       }];
     }
 
     return {
-      prod_title:      _enforceEbayTitle(product.title || product.asin || 'Product'),
+      prod_title:      _enforceEbayTitle(product.title || sourceId || 'Product'),
       prod_images:     Array.isArray(product.images) ? product.images.slice(0, 12) : [],
-      prod_specs:      product.specs || {},
+      prod_specs:      product.specs || product.specifications || {},
       prod_desc:       descHtml,
-      prod_id:         product.asin  || product.parentAsin || '',
+      prod_id:         sourceId,
       prod_qty:        1, // always 1 for dropshipping — never use supplier stock count
       prod_variations,
-      supplier:        'amazon',
+      supplier:        product.supplier || product.marketplace || 'amazon',
       meta:            {
         country:        'US',
         promoteListing: !!product.promoteListing,
@@ -787,7 +874,7 @@ window.EbayListingApiHelper = (() => {
 // Build a short upload summary for the post-upload toast (3.2).
 function _buildSummary(adapted) {
   const prices = adapted.prod_variations
-    .map(v => parseFloat(v.price))
+    .map(v => _cleanFloat(v.price))
     .filter(n => !isNaN(n) && n > 0);
   const lo = prices.length ? Math.min(...prices) : null;
   const hi = prices.length ? Math.max(...prices) : null;
@@ -801,57 +888,95 @@ function _buildSummary(adapted) {
 
 // Fire-and-forget DB sync via background SYNC_LISTING handler (3.4).
 function _syncListingToDashboard(adapted, product, draftId) {
-  try {
-    // Guard log — final images count reaching uploader
-    console.log('[SS sync] isSingleMode:', !!product.isSingleMode,
-      '| prod_images count:', adapted.prod_images ? adapted.prod_images.length : 0,
-      '| prod_images[0]:', adapted.prod_images?.[0] || null);
-    const mainImage = adapted.prod_images?.[0] || null;
-    const firstVar = adapted.prod_variations?.[0] || {};
-    const listingData = {
-      title:               adapted.prod_title,
-      sku:                 firstVar.sku || adapted.prod_id || '',
-      ebay_price:          firstVar.price || null,
-      raw_supplier_price:  firstVar.raw_supplier_price || parseFloat(product.price) || null,
-      amazon_price:        parseFloat(product.price) || null,
-      amazon_url:          product.url || null,
-      amazon_asin:         product.asin || product.parentAsin || null,
-      status:              'active',
-      has_variations:      adapted.prod_variations.length > 1,
-      variation_count:     adapted.prod_variations.length,
-      // Phase 7: source flags
-      title_source:        product.title_source       || null,
-      description_source:  product.description_source || null,
-      price_source:        product.price_source       || null,
-      sku_source:          product.sku_source         || null,
-      // Per-variation detail for listing_variations table upsert in background
-      variations: adapted.prod_variations.map(v => ({
-        sku:               v.sku || '',
-        ebay_sku_encoded:  (window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(v.sku || '') : ''),
-        final_price:       v.price || 0,
-        raw_supplier_price: v.raw_supplier_price || 0,
-        currency:          product.currency || 'USD',
-        stock_quantity:    1,
-        variant_asin:      v.variant_asin || v.supplierVariantId || null,
-        parent_asin:       product.parentAsin || product.asin || null,
-        attributes:        v.attrs || {},
-        // Per-variant image if scraper resolved it; fall back to first product image (HTTPS only — skip base64 watermarks)
-        image_url:         [v.img, ...(adapted.prod_images || [])].find(u => u && u.startsWith('http')) || null,
-      })),
-      ...(mainImage ? {
-        amazon_data: { mainImage, imageUrl: mainImage, allImages: adapted.prod_images, source: 'extension', draftId }
-      } : {})
-    };
-    chrome.runtime.sendMessage({ action: 'SYNC_LISTING', payload: listingData }, () => {
-      if (chrome.runtime.lastError) {
-        console.warn('[SS Sync] SYNC_LISTING failed:', chrome.runtime.lastError.message);
-      } else {
+  return new Promise((resolve) => {
+    try {
+      // Guard log — final images count reaching uploader
+      console.log('[SS sync] isSingleMode:', !!product.isSingleMode,
+        '| prod_images count:', adapted.prod_images ? adapted.prod_images.length : 0,
+        '| prod_images[0]:', adapted.prod_images?.[0] || null);
+      const mainImage = adapted.prod_images?.[0] || null;
+      const firstVar = adapted.prod_variations?.[0] || {};
+      const listingData = {
+        title:               adapted.prod_title,
+        sku:                 firstVar.sku || adapted.prod_id || '',
+        ebay_price:          firstVar.price || null,
+        raw_supplier_price:  firstVar.raw_supplier_price || _cleanFloat(product.price) || null,
+        // Supplier-neutral fields (preferred going forward)
+        supplier:            product.supplier || 'amazon',
+        supplier_id:         product.sourceId || product.asin || product.parentAsin || null,
+        supplier_url:        product.url || null,
+        supplier_price:      _cleanFloat(product.price) || null,
+        // Legacy Amazon-named fields — kept until backend/DB migrates
+        amazon_price:        _cleanFloat(product.price) || null,
+        amazon_url:          product.url || null,
+        amazon_asin:         product.parentAsin || product.asin || null,
+        status:              'active',
+        has_variations:      adapted.prod_variations.length > 1,
+        variation_count:     adapted.prod_variations.length,
+        // Phase 7: source flags
+        title_source:        product.title_source       || null,
+        description_source:  product.description_source || null,
+        price_source:        product.price_source       || null,
+        sku_source:          product.sku_source         || null,
+        // Per-variation detail for listing_variations table upsert in background
+        variations: adapted.prod_variations.map(v => ({
+          sku:               v.sku || '',
+          ebay_sku_encoded:  (window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(v.sku || '') : ''),
+          final_price:       v.price || 0,
+          raw_supplier_price: v.raw_supplier_price || 0,
+          currency:          product.currency || 'USD',
+          stock_quantity:    1,
+          variant_asin:      v.variant_asin || v.supplierVariantId || null,
+          parent_asin:       product.parentAsin || product.asin || null,
+          attributes:        v.attrs || {},
+          // Per-variant image if scraper resolved it; fall back to first product image (HTTPS only — skip base64 watermarks)
+          image_url:         [v.img, ...(adapted.prod_images || [])].find(u => u && u.startsWith('http')) || null,
+        })),
+        ...(mainImage ? {
+          amazon_data: { mainImage, imageUrl: mainImage, allImages: adapted.prod_images, source: 'extension', draftId }
+        } : {})
+      };
+      chrome.runtime.sendMessage({ action: 'SYNC_LISTING', payload: listingData }, (resp) => {
+        if (chrome.runtime.lastError) {
+          console.warn('[SS Sync] SYNC_LISTING failed:', chrome.runtime.lastError.message);
+          resolve({ success: false, error: chrome.runtime.lastError.message });
+          return;
+        }
+        if (resp && resp.success === false) {
+          // Don't swallow — the listing went to eBay but the dashboard write
+          // failed. Tell the user so they don't discover it weeks later.
+          console.error('[SS Sync] Dashboard sync FAILED:', resp.status || '', resp.error || 'unknown error');
+          const syncErrMsg = 'Listed on eBay, but saving to your dashboard failed: ' + (resp.error || 'unknown error');
+          if (window.UIHelper?.showToast) {
+            window.UIHelper.showToast(syncErrMsg, 'error');
+          } else {
+            // Prelist/bulkedit pages don't load ui.js — minimal inline toast so
+            // the failure is never invisible.
+            try {
+              const div = document.createElement('div');
+              div.setAttribute('superSolid', 'true');
+              div.style.cssText = [
+                'position:fixed', 'bottom:24px', 'right:24px', 'z-index:999999',
+                'background:#d32f2f', 'color:#fff', 'padding:14px 18px',
+                'border-radius:8px', 'font-family:sans-serif', 'font-size:13px',
+                'max-width:360px', 'box-shadow:0 4px 16px rgba(0,0,0,.3)'
+              ].join(';');
+              div.textContent = syncErrMsg;
+              document.body.appendChild(div);
+              setTimeout(() => div.remove(), 12000);
+            } catch (_) { /* non-DOM context — console error above is the record */ }
+          }
+          resolve(resp);
+          return;
+        }
         console.log('[SS Sync] Listing synced to dashboard.');
-      }
-    });
-  } catch (err) {
-    console.warn('[SS Sync] sync error:', err.message);
-  }
+        resolve(resp || { success: true });
+      });
+    } catch (err) {
+      console.warn('[SS Sync] sync error:', err.message);
+      resolve({ success: false, error: err.message });
+    }
+  });
 }
 
 window._syncListingToDashboard = _syncListingToDashboard;
@@ -886,7 +1011,7 @@ window.SellerSuitUploader = {
     }
 
     // 0c. Duplicate check (1.2) — warn if this ASIN already listed by user
-    const dupAsin = product.asin || product.parentAsin || '';
+    const dupAsin = product.parentAsin || product.asin || '';
     if (dupAsin && !product.forceDuplicateOverride) {
       console.log('[SS Uploader] Checking for duplicate listing...');
       const dup = await api.checkDuplicate(dupAsin);
@@ -958,7 +1083,7 @@ window.SellerSuitUploader = {
       // 5a. Single-variation: mark done, go straight to draft editor
       // Sync to dashboard now (3.4) — variations handled later for multi.
       const uploadSessionId = crypto.randomUUID();
-      _syncListingToDashboard(adapted, product, draftId);
+      await _syncListingToDashboard(adapted, product, draftId);
       await chrome.storage.local.set({
         [uploadSessionId]: {
           product,

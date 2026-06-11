@@ -94,6 +94,7 @@
                 {
                     action: 'SYNC_TOKEN',
                     token: tokenData.accessToken,
+                    refreshToken: tokenData.refreshToken,
                     user: tokenData.user,
                     expiresAt: tokenData.expiresAt
                 },

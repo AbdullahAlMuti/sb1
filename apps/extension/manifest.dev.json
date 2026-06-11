@@ -45,9 +45,6 @@
   "background": {
     "service_worker": "background/index.js"
   },
-  "side_panel": {
-    "default_path": "sidepanel/side-panel.html"
-  },
   "action": {
     "default_title": "SellerSuit"
   },
@@ -84,32 +81,7 @@
         "*://*.amazon.com.au/*"
       ],
       "js": [
-        "common/config.js",
-        "common/listing-draft.js",
-        "common/pricing-engine.js",
-        "common/sku-engine.js",
-        "common/performance.js",
-        "common/storage.js",
-        "common/ui.js",
-        "common/analytics.js",
-        "common/undo-manager.js",
-        "common/editor-tools.js",
-        "common/image-renderer.js",
-        "ui/calculator.js",
-        "common/images/core/image-schema.js",
-        "common/images/core/image-normalizer.js",
-        "common/images/core/image-deduper.js",
-        "common/images/core/image-validator.js",
-        "common/images/core/image-cache.js",
-        "common/images/core/extraction-engine.js",
-        "common/images/adapters/amazon.image-adapter.js",
-        "common/images/fallback/modal-click-extractor.js",
-        "common/amazon_image_extractor.js",
-        "common/full_view_image_extractor.js",
-        "content_scripts/amazon-variant-scraper.js",
-        "content_scripts/amazon_injector.js",
-        "content_scripts/image_editor.js",
-        "content_scripts/amazon_fulfiller.js"
+        "build/amazon.bundle.js"
       ],
       "css": [
         "ui/panel.css"
@@ -122,26 +94,7 @@
         "*://www.walmart.ca/*"
       ],
       "js": [
-        "common/config.js",
-        "common/pricing-engine.js",
-        "common/sku-engine.js",
-        "common/performance.js",
-        "common/storage.js",
-        "common/ui.js",
-        "common/analytics.js",
-        "common/undo-manager.js",
-        "common/editor-tools.js",
-        "common/image-renderer.js",
-        "ui/calculator.js",
-        "common/images/core/image-schema.js",
-        "common/images/core/image-normalizer.js",
-        "common/images/core/image-deduper.js",
-        "common/images/core/image-validator.js",
-        "common/images/core/image-cache.js",
-        "common/images/core/extraction-engine.js",
-        "common/images/adapters/walmart.image-adapter.js",
-        "content_scripts/walmart_injector.js",
-        "content_scripts/image_editor.js"
+        "build/walmart.bundle.js"
       ],
       "css": [
         "ui/panel.css"

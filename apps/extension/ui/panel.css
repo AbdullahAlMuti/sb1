@@ -2287,6 +2287,59 @@ body.ss-dark-mode .ss-panel-wrapper .ss-scrape-overlay {
   color: var(--x-text);
 }
 
+/* Editable readouts (SKU, price) — same look, signal editability on focus */
+input.ssx-readout-input {
+  width: 100%;
+  font-family: inherit;
+  outline: none;
+}
+input.ssx-readout-input:focus {
+  border-color: var(--ss-green, #22c55e);
+  background: #fff;
+}
+
+/* Auto-edit checkbox (topbar) */
+.ssx-autoedit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--x-muted);
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 10px;
+  border: 1px solid var(--x-border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.ssx-autoedit input {
+  accent-color: var(--ss-green, #22c55e);
+  cursor: pointer;
+}
+.ssx-autoedit:has(input:checked) {
+  color: var(--ss-green, #16a34a);
+  border-color: var(--ss-green, #22c55e);
+}
+
+/* Per-variation delete button */
+.ssx-var-del {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--x-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--x-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ssx-var-del:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.06);
+}
+
 @container (max-width: 920px) {
   .ssx-single-grid {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -2734,16 +2787,84 @@ body.ss-dark-mode .ss-panel-wrapper .ss-scrape-overlay {
     align-items: stretch;
     padding: 12px 16px;
   }
-  
+
   .ssx-actionbar-right {
     flex-direction: column;
     gap: 8px;
     width: 100%;
   }
-  
+
   .ssx-actionbar .ssx-btn {
     width: 100%;
     justify-content: center;
   }
+
+  /* Topbar right — stack all controls vertically at narrow width */
+  .ssx-topbar-right {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .ssx-topbar-right .ssx-autoedit {
+    order: -1;
+    justify-content: flex-start;
+  }
+
+  .ssx-mode-seg {
+    width: 100%;
+  }
+
+  .ssx-mode-btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .ssx-topbar-right .ssx-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Single listing grid — 2-col at narrow width */
+  .ssx-single-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@container (max-width: 400px) {
+  /* Hide product thumbnail in topbar to save space */
+  .ssx-topbar-thumb {
+    display: none;
+  }
+
+  .ssx-head-title {
+    font-size: 13.5px;
+  }
+
+  .ssx-chip {
+    font-size: 10px;
+    padding: 2px 5px;
+  }
+
+  /* Single column at very small widths */
+  .ssx-single-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Tighten card spacing */
+  .ssx .ssx-card {
+    margin: 8px 12px;
+  }
+
+  .ssx-topbar {
+    padding: 12px;
+    gap: 8px;
+  }
+}
+
+/* Ensure panel.html standalone page is scrollable and padded on all viewports */
+body.ss-panel-page {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 

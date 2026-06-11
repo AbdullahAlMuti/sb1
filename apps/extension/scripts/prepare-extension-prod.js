@@ -79,6 +79,27 @@ if (fs.existsSync(WEB_PUBLIC_DIR)) {
   
   copyFolderRecursive(DIST_DIR, WEB_PUBLIC_DIR);
   console.log(`✅ Synced to: ${WEB_PUBLIC_DIR}`);
+
+  // 5. Generate files.json listing all files in WEB_PUBLIC_DIR
+  const fileList = [];
+  function collectFiles(dir, baseDir) {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        collectFiles(fullPath, baseDir);
+      } else {
+        const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+        if (relPath !== 'files.json' && relPath !== 'README.txt') {
+          fileList.push(relPath);
+        }
+      }
+    }
+  }
+  collectFiles(WEB_PUBLIC_DIR, WEB_PUBLIC_DIR);
+  fs.writeFileSync(path.join(WEB_PUBLIC_DIR, 'files.json'), JSON.stringify(fileList, null, 2));
+  console.log(`✅ Generated files.json in: ${WEB_PUBLIC_DIR} (${fileList.length} files)`);
 } else {
   console.log('⚠️ Web public directory not found, skipping sync.');
 }
+

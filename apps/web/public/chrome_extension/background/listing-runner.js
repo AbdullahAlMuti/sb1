@@ -1,6 +1,8 @@
 /**
- * SellerSuit Amazon Bulk Runner
- * Manages the background state machine for bulk listing items from Amazon to eBay.
+ * SellerSuit Bulk Listing Runner
+ * Manages the background state machine for bulk listing items from a supplier
+ * site (Amazon, Walmart, …) to eBay. Supplier detection happens in the content
+ * script: any injector that answers SCRAPE_COMPLETE_PRODUCT works here.
  */
 
 // getUrls and getApiKeys are declared globally in background/index.js
@@ -20,13 +22,6 @@ function debugLog(message) {
     if (bulkState.dashboardTabId) {
         chrome.tabs.sendMessage(bulkState.dashboardTabId, { type: 'BULK_JOB_DEBUG', message: message }).catch(()=>{});
     }
-    // Send to local log server for debugging
-    const localDebugUrl = 'http://' + 'local' + 'host' + ':4005';
-    fetch(localDebugUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: message })
-    }).catch(()=>{});
 }
 
 
@@ -104,9 +99,9 @@ async function processNextItem() {
     updateDashboardStatus(bulkState.currentIndex, 'Processing');
 
     try {
-        debugLog(`Step 1: Scraping Amazon... calling scrapeAmazon`);
-        // Step 1: Scrape Amazon
-        const scrapedData = await scrapeAmazon(currentUrl);
+        debugLog(`Step 1: Scraping supplier page... calling scrapeSupplierProduct`);
+        // Step 1: Scrape supplier page (Amazon, Walmart, … — any injector answering SCRAPE_COMPLETE_PRODUCT)
+        const scrapedData = await scrapeSupplierProduct(currentUrl);
         
         updateDashboardStatus(bulkState.currentIndex, 'Generating AI Title');
 
@@ -144,12 +139,12 @@ async function processNextItem() {
 // Core Engine Functions
 // ---------------------------------------------
 
-async function scrapeAmazon(url) {
+async function scrapeSupplierProduct(url) {
     return new Promise((resolve, reject) => {
         let isDone = false;
-        debugLog(`scrapeAmazon promise started for ${url}`);
+        debugLog(`scrapeSupplierProduct promise started for ${url}`);
         const timeout = setTimeout(() => {
-            debugLog(`scrapeAmazon timeout triggered!`);
+            debugLog(`scrapeSupplierProduct timeout triggered!`);
             if (isDone) return;
             isDone = true;
             if (bulkState.currentTabId) chrome.tabs.remove(bulkState.currentTabId).catch(() => {});
@@ -250,6 +245,12 @@ async function runSmartEngine(scrapedData, url) {
         title: aiTitle,
         sku: sku,
         ebay_price: calculatedPrice,
+        // Supplier-neutral fields (preferred going forward)
+        supplier: scrapedData.supplier || 'amazon',
+        supplier_id: scrapedData.sourceId || scrapedData.asin || null,
+        supplier_url: url,
+        supplier_price: scrapedData.price ? scrapedData.price.replace(/[^\d.]/g, '') : "0",
+        // Legacy Amazon-named fields — kept until backend/DB migrates
         amazon_price: scrapedData.price ? scrapedData.price.replace(/[^\d.]/g, '') : "0",
         amazon_url: url,
         amazon_asin: scrapedData.asin || "NOASIN",
@@ -399,36 +400,26 @@ async function recordListingSyncError({ source = 'background', status = null, er
 }
 
 async function postCreateListing(payload, source = 'background') {
-  const tokenData = await chrome.storage.local.get(['saasToken']);
-  if (!tokenData.saasToken) {
-    const error = 'Not authenticated. Missing legacy saasToken.';
-    await recordListingSyncError({ source, status: 401, error, payload });
-    return { success: false, source, status: 401, error };
+  if (typeof AuthHelper === 'undefined') {
+    const error = 'AuthHelper is not defined.';
+    await recordListingSyncError({ source, status: 500, error, payload });
+    return { success: false, source, status: 500, error };
   }
 
-  const urls = getUrls();
-  const apiKeys = getApiKeys();
-  const response = await fetch(`${urls.SUPABASE_FUNCTIONS}/create-listing`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${tokenData.saasToken}`,
-      'apikey': apiKeys.SUPABASE_ANON
-    },
-    body: JSON.stringify(payload)
-  });
-  const data = await parseListingSyncResponse(response);
+  const response = await AuthHelper.callEdgeFunction('create-listing', payload);
+  const data = response.data;
+  const status = response.status || 0;
 
-  if (!response.ok) {
-    const error = data?.error || data?.message || `create-listing failed with HTTP ${response.status}`;
-    await recordListingSyncError({ source, status: response.status, error, details: data, payload });
-    return { success: false, source, status: response.status, error, details: data };
+  if (response.error) {
+    const error = response.error || `create-listing failed with HTTP ${status}`;
+    await recordListingSyncError({ source, status, error, details: data, payload });
+    return { success: false, source, status, error, details: data };
   }
 
   return {
     success: true,
     source,
-    status: response.status,
+    status,
     listingId: data?.listing?.id,
     data
   };

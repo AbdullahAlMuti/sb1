@@ -33,6 +33,10 @@ window.EbayPhotoUploader = {
     fd.append('wm',        '');
 
     // ── Strategy 0: data URL → Blob directly (watermarked images from panel) ──
+    // EpsBasic returns semicolon-separated text (SUCCESS;photoId) for all
+    // multipart uploads — same as the blob/proxy strategies — so this only
+    // builds the File and falls through to the shared fetch + parse below.
+    let usedStrategy = 'blob';
     if (imageUrl.startsWith('data:image')) {
       const [header, b64] = imageUrl.split(',');
       const mime = (header.match(/:(.*?);/) || [])[1] || 'image/jpeg';
@@ -41,34 +45,29 @@ window.EbayPhotoUploader = {
       for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
       const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
       fd.append('w', new File([arr], `photo.${ext}`, { type: mime }));
-      const resp = await fetch('https://msa-b1.ebay.com/ws/eBayISAPI.dll?EpsBasic', { method: 'POST', body: fd });
-      const text = await resp.text();
-      const match = text.match(/<PhotoID>([^<]+)<\/PhotoID>/);
-      if (!match) throw new Error('EPS rejected data URL upload');
-      return match[1];
-    }
-
-    // ── Strategy 1: fetch image blob directly ────────────────────────────────
-    // Content script has host_permissions for *.media-amazon.com, *.ssl-images-
-    // amazon.com, *.images-amazon.com, *.walmartimages.com — covers all major
-    // supplier CDNs. Append as File so EPS accepts binary multipart upload.
-    let usedStrategy = 'blob';
-    try {
-      const imgResp = await fetch(imageUrl, { mode: 'cors' });
-      if (!imgResp.ok) throw new Error(`Image fetch ${imgResp.status}`);
-      const blob    = await imgResp.blob();
-      const mime    = blob.type || 'image/jpeg';
-      const ext     = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
-      fd.append('w', new File([blob], `photo.${ext}`, { type: mime }));
-    } catch (fetchErr) {
-      // ── Strategy 2: fallback to proxy URL ──────────────────────────────────
-      // EPS server fetches from this URL. Requires proxy endpoint to be live.
-      console.warn('[SS EPS] Direct blob fetch failed, using proxy fallback:', fetchErr.message);
-      usedStrategy = 'proxy';
-      const proxyUrl = imageUrl.includes(_SS_IMG_PROXY)
-        ? imageUrl
-        : `${_SS_IMG_PROXY}?url=${encodeURIComponent(imageUrl)}`;
-      fd.append('w', proxyUrl);
+      usedStrategy = 'dataurl';
+    } else {
+      // ── Strategy 1: fetch image blob directly ──────────────────────────────
+      // Content script has host_permissions for *.media-amazon.com, *.ssl-images-
+      // amazon.com, *.images-amazon.com, *.walmartimages.com — covers all major
+      // supplier CDNs. Append as File so EPS accepts binary multipart upload.
+      try {
+        const imgResp = await fetch(imageUrl, { mode: 'cors' });
+        if (!imgResp.ok) throw new Error(`Image fetch ${imgResp.status}`);
+        const blob    = await imgResp.blob();
+        const mime    = blob.type || 'image/jpeg';
+        const ext     = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg';
+        fd.append('w', new File([blob], `photo.${ext}`, { type: mime }));
+      } catch (fetchErr) {
+        // ── Strategy 2: fallback to proxy URL ────────────────────────────────
+        // EPS server fetches from this URL. Requires proxy endpoint to be live.
+        console.warn('[SS EPS] Direct blob fetch failed, using proxy fallback:', fetchErr.message);
+        usedStrategy = 'proxy';
+        const proxyUrl = imageUrl.includes(_SS_IMG_PROXY)
+          ? imageUrl
+          : `${_SS_IMG_PROXY}?url=${encodeURIComponent(imageUrl)}`;
+        fd.append('w', proxyUrl);
+      }
     }
 
     const resp  = await fetch('https://msa-b1.ebay.com/ws/eBayISAPI.dll?EpsBasic', {

@@ -540,3 +540,113 @@ input[type="number"] { padding-right: 6px; }
   color: hsl(var(--primary));
   margin-top: 2px;
 }
+
+/* ─── Redesign: page status strip ─────────────────────────── */
+.page-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: hsl(var(--secondary));
+  border: 1px solid hsl(var(--border));
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.page-status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #94a3b8;
+  flex: 0 0 auto;
+}
+.page-status.ok .page-status-dot { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.15); }
+.page-status.off .page-status-dot { background: #94a3b8; }
+.page-status.ok .page-status-text { color: #15803d; font-weight: 500; }
+.page-status-text { color: hsl(var(--muted-foreground)); }
+
+/* ─── Redesign: stale product banner ──────────────────────── */
+.stale-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  font-size: 12.5px;
+  color: #92400e;
+  margin-bottom: 12px;
+}
+.stale-banner strong { color: #78350f; }
+
+/* ─── Redesign: step labels ───────────────────────────────── */
+.step-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: hsl(var(--muted-foreground));
+  margin: 14px 0 8px;
+}
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ─── Redesign: collapsible sections ──────────────────────── */
+.panel-details {
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.panel-details summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+}
+.panel-details summary::-webkit-details-marker { display: none; }
+.panel-details summary::before {
+  content: '▸';
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  transition: transform .15s ease;
+}
+.panel-details[open] summary::before { transform: rotate(90deg); }
+.panel-details[open] summary { border-bottom: 1px solid hsl(var(--border)); }
+.panel-details-body { padding: 12px; }
+
+/* ─── Redesign: action stack ──────────────────────────────── */
+.action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.btn-lg { padding-top: 11px; padding-bottom: 11px; font-size: 14.5px; font-weight: 600; }
+
+/* Disabled-stale CTA treatment */
+.action-stack.stale .btn-primary {
+  opacity: .5;
+  pointer-events: none;
+}
+
+/* Product flow container */
+.product-flow { margin-top: 4px; }

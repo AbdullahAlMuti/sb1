@@ -16,6 +16,26 @@ const LOGOUT_STORAGE_KEYS = [
   "copyButtonData"
 ];
 
+function cleanPrice(price) {
+  if (price === null || price === undefined) return null;
+  if (typeof price === 'number') {
+    return isNaN(price) ? null : price;
+  }
+  const s = String(price).replace(/[^\d.-]/g, '').trim();
+  if (s === '' || s === '-') return null;
+  const parsed = parseFloat(s);
+  return isNaN(parsed) ? null : parsed;
+}
+
+function detectSupplier(product) {
+  if (!product) return 'amazon';
+  if (product.supplier === 'walmart') return 'walmart';
+  if (product.supplier === 'amazon') return 'amazon';
+  const url = product.url || product.amazonUrl || '';
+  if (url.includes('walmart.')) return 'walmart';
+  return 'amazon';
+}
+
 function createLogger(prefix) {
   const icons = { debug: '🔍', info: 'ℹ️', success: '✅', warn: '⚠️', error: '❌' };
 
@@ -218,6 +238,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'CLOSE_SIDE_PANEL') {
+    (async () => {
+      try {
+        let windowId;
+        if (sender?.tab?.windowId) {
+          windowId = sender.tab.windowId;
+        } else if (request.tabId) {
+          const tab = await chrome.tabs.get(request.tabId);
+          windowId = tab.windowId;
+        } else {
+          const win = await chrome.windows.getCurrent();
+          windowId = win.id;
+        }
+        await chrome.sidePanel.close({ windowId });
+        sendResponse({ ok: true });
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
   if (request.action === 'OPEN_BACKGROUND_TAB') {
     chrome.tabs.create({ url: request.url, active: false });
     sendResponse({ ok: true });
@@ -287,6 +329,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       (async () => {
         try {
           const saveData = { saasToken: request.token, authTimestamp: Date.now() };
+          if (request.refreshToken) {
+            saveData.saasRefreshToken = request.refreshToken;
+          }
           if (request.user) {
             saveData.saasUser = request.user;
             saveData.userId = request.user.id;
@@ -409,82 +454,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           ebayListingTabId: String(tabId)
         });
 
-        // Fire-and-forget DB sync when product has sku (e.g. from "List on eBay" button)
-        if (product.ebaySku || product.asin) {
-          (async () => {
-            try {
-              if (typeof postCreateListing === 'function') {
-                let syncPayload = null;
-                const hasVariants = product.hasVariants && Array.isArray(product.variants) && product.variants.length > 1;
-
-                if (hasVariants && window.EbayListingApiHelper) {
-                  try {
-                    const adapted = window.EbayListingApiHelper.adaptProduct(product);
-                    if (adapted && Array.isArray(adapted.prod_variations)) {
-                      const mainImage = adapted.prod_images?.[0] || null;
-                      const firstVar = adapted.prod_variations[0] || {};
-                      syncPayload = {
-                        title:               adapted.prod_title,
-                        sku:                 firstVar.sku || adapted.prod_id || '',
-                        ebay_price:          firstVar.price || null,
-                        raw_supplier_price:  firstVar.raw_supplier_price || parseFloat(product.price) || null,
-                        amazon_price:        parseFloat(product.price) || null,
-                        amazon_url:          product.url || null,
-                        amazon_asin:         product.asin || product.parentAsin || null,
-                        status:              'active',
-                        has_variations:      true,
-                        variation_count:     adapted.prod_variations.length,
-                        // Phase 7: source flags
-                        title_source:        product.title_source       || null,
-                        description_source:  product.description_source || null,
-                        price_source:        product.price_source       || null,
-                        sku_source:          product.sku_source         || null,
-                        variations: adapted.prod_variations.map(v => ({
-                          sku:               v.sku || '',
-                          ebay_sku_encoded:  (window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(v.sku || '') : ''),
-                          final_price:       v.price || 0,
-                          raw_supplier_price: v.raw_supplier_price || 0,
-                          currency:          product.currency || 'USD',
-                          stock_quantity:    1,
-                          variant_asin:      v.variant_asin || v.supplierVariantId || null,
-                          parent_asin:       product.parentAsin || product.asin || null,
-                          attributes:        v.attrs || {},
-                          image_url:         [v.img, ...(adapted.prod_images || [])].find(u => u && u.startsWith('http')) || null,
-                        })),
-                        ...(mainImage ? {
-                          amazon_data: { mainImage, imageUrl: mainImage, allImages: adapted.prod_images, source: 'extension' }
-                        } : {})
-                      };
-                    }
-                  } catch (err) {
-                    console.warn('[import_ebay] failed to adapt variations for sync:', err?.message || err);
-                  }
-                }
-
-                if (!syncPayload) {
-                  syncPayload = {
-                    title: product.title,
-                    sku: product.ebaySku || product.asin,
-                    ebay_price: product.price,
-                    amazon_price: product.amazonPrice || '',
-                    amazon_url: product.url,
-                    amazon_asin: product.asin,
-                    status: 'active',
-                    amazon_data: { image: '' },
-                    has_variations: false,
-                    // Phase 7: source flags
-                    title_source:        product.title_source       || null,
-                    description_source:  product.description_source || null,
-                    price_source:        product.price_source       || null,
-                    sku_source:          product.sku_source         || null,
-                  };
-                }
-
-                await postCreateListing(syncPayload, 'import_ebay');
-              }
-            } catch (e) { console.warn('[import_ebay] sync error:', e?.message || e); }
-          })();
-        }
+        // DB sync intentionally NOT done here. import_ebay fires BEFORE the
+        // eBay upload runs, so syncing at this point wrote dashboard rows for
+        // uploads that later failed, raced the authoritative post-upload sync,
+        // and silently skipped Walmart products (gate was ebaySku || asin).
+        // The dashboard write happens after a successful upload only:
+        //   single-variation → SellerSuitUploader.run → _syncListingToDashboard
+        //   multi-variation  → ebay_bulkedit.js after addVariations
+        // Both route through SYNC_LISTING → postCreateListing.
       } catch (e) {
         console.warn('[import_ebay] Error:', e?.message || e);
       }
@@ -503,9 +480,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           const result = await chrome.storage.local.get('listedCount');
           await chrome.storage.local.set({ listedCount: (result.listedCount || 0) + 1 });
           if (typeof postCreateListing === 'function') {
+            const detectedSup = detectSupplier({
+              supplier: request.supplier,
+              url: request.productURL
+            });
+            const parsedEbayPrice = cleanPrice(request.finalPrice);
+            const parsedSupplierPrice = cleanPrice(request.amazonPrice || request.supplierPrice);
+
             await postCreateListing({
               title: request.title, sku: request.sku,
-              ebay_price: request.finalPrice, amazon_price: request.amazonPrice,
+              ebay_price: parsedEbayPrice,
+              // Supplier-neutral fields (preferred going forward)
+              supplier: detectedSup,
+              supplier_id: request.sourceId || request.asin || null,
+              supplier_url: request.productURL,
+              supplier_price: parsedSupplierPrice,
+              // Legacy Amazon-named fields — kept until backend/DB migrates
+              amazon_price: parsedSupplierPrice,
               amazon_url: request.productURL, amazon_asin: request.asin,
               status: "active", amazon_data: { image: request.mainImage }
             }, 'start_optilist').catch(e => console.warn('[START_OPTILIST] sync error:', e?.message || e));

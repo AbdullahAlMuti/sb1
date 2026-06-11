@@ -213,7 +213,10 @@ function extractAsinFromAmazonUrl(url: string | null | undefined): string | null
 
 function decodeSku(encoded: string | null | undefined, fallback: string): string {
   if (!encoded) return fallback;
+  if (encoded === fallback) return fallback;
+  if (encoded.includes('-')) return fallback;
   try {
+    if (!/^[A-Za-z0-9+/=]+$/.test(encoded)) return fallback;
     return decodeURIComponent(escape(window.atob(encoded)));
   } catch {
     return fallback;
@@ -754,9 +757,9 @@ export default function Listings() {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(listing => 
-        listing.title?.toLowerCase().includes(query) ||
-        listing.sku?.toLowerCase().includes(query) ||
-        listing.amazon_asin?.toLowerCase().includes(query)
+        (listing.title?.toLowerCase() || '').includes(query) ||
+        (listing.sku?.toLowerCase() || '').includes(query) ||
+        (listing.amazon_asin?.toLowerCase() || '').includes(query)
       );
     }
 

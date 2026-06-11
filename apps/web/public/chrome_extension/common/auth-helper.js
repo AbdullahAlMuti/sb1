@@ -222,7 +222,8 @@ const AuthHelper = (() => {
       log('warn', `Cannot call ${functionName}: No auth token`);
       return { 
         data: null, 
-        error: 'Not authenticated. Please log in to your SellerSuit account.' 
+        error: 'Not authenticated. Please log in to your SellerSuit account.',
+        status: 401
       };
     }
 
@@ -281,44 +282,106 @@ const AuthHelper = (() => {
               // A subsequent call will automatically try the legacy fallback if enabled
             }
           }
+
+          // If using legacy session, try refresh once
+          if (type === 'legacy' && !isRetry) {
+            log('info', 'Legacy token expired, attempting refresh...');
+            const refreshSuccess = await refreshLegacyToken();
+            if (refreshSuccess) {
+              log('success', 'Legacy refresh succeeded, retrying original request');
+              return performEdgeFunctionCall(functionName, body, options, true);
+            } else {
+              log('error', 'Legacy refresh failed');
+            }
+          }
+
           return {
             data: null,
-            error: clipped || 'Session expired. Please log in again.'
+            error: clipped || 'Session expired. Please log in again.',
+            status: response.status
           };
         }
 
         if (response.status === 429) {
           return {
             data: null,
-            error: clipped || 'Rate limit exceeded. Please try again in a moment.'
+            error: clipped || 'Rate limit exceeded. Please try again in a moment.',
+            status: response.status
           };
         }
 
         if (response.status === 402) {
           return {
             data: null,
-            error: clipped || 'AI credits exhausted. Please add funds to your account.'
+            error: clipped || 'AI credits exhausted. Please add funds to your account.',
+            status: response.status
           };
         }
 
         return {
           data: null,
-          error: clipped || `API error: ${response.status}`
+          error: clipped || `API error: ${response.status}`,
+          status: response.status
         };
       }
 
       const data = await response.json();
       log('success', `${functionName} completed`, { success: data.success });
       
-      return { data, error: null };
+      return { data, error: null, status: response.status };
 
     } catch (error) {
       log('error', `Network error calling ${functionName}`, error.message);
       return { 
         data: null, 
-        error: 'Network error. Please check your connection.' 
+        error: 'Network error. Please check your connection.',
+        status: 0
       };
     }
+  }
+
+  /**
+   * Refresh legacy Supabase session token
+   */
+  async function refreshLegacyToken() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['saasRefreshToken'], async (result) => {
+        if (!result.saasRefreshToken) {
+          log('warn', 'No legacy refresh token available in storage');
+          return resolve(false);
+        }
+
+        try {
+          const url = `${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`;
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(SUPABASE_ANON_KEY ? { apikey: SUPABASE_ANON_KEY } : {})
+            },
+            body: JSON.stringify({ refresh_token: result.saasRefreshToken })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.access_token) {
+              log('success', 'Legacy Supabase token refreshed successfully');
+              await chrome.storage.local.set({
+                saasToken: data.access_token,
+                saasRefreshToken: data.refresh_token,
+                authTimestamp: Date.now()
+              });
+              return resolve(true);
+            }
+          } else {
+            log('error', `Legacy refresh failed with status: ${response.status}`);
+          }
+        } catch (e) {
+          log('error', 'Legacy token refresh exception', e);
+        }
+        resolve(false);
+      });
+    });
   }
 
   /**
@@ -476,6 +539,7 @@ const AuthHelper = (() => {
     setNewAuthSession,
     clearNewAuthSession,
     refreshExtensionToken,
+    refreshLegacyToken,
     getAuthToken,
     isAuthenticated,
     getAuthHeaders,
