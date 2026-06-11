@@ -340,13 +340,55 @@
         }
 
         if (data.type === 'RESUME_BULK_JOB') {
-            chrome.runtime.sendMessage({ action: 'RESUME_BULK_JOB' });
+            chrome.runtime.sendMessage({ action: 'RESUME_BULK_JOB', payload: data.payload });
         }
 
         if (data.type === 'STOP_BULK_JOB') {
             chrome.runtime.sendMessage({ action: 'STOP_BULK_JOB' });
         }
+
+        // Dashboard asks the worker for its persisted job state (page reload resync)
+        if (data.type === 'GET_BULK_STATE') {
+            chrome.runtime.sendMessage({ action: 'GET_BULK_STATE' }, (response) => {
+                if (chrome.runtime.lastError) {
+                    window.postMessage({ type: 'BULK_JOB_STATE', payload: { active: false, error: chrome.runtime.lastError.message } }, '*');
+                    return;
+                }
+                window.postMessage({ type: 'BULK_JOB_STATE', payload: response || { active: false } }, '*');
+            });
+        }
+
+        // "Add to Bulk List" inbox — items queued from the extension side panel.
+        // The bridge content script reads chrome.storage directly.
+        if (data.type === 'GET_BULK_INBOX') {
+            chrome.storage.local.get('bulkInbox', (d) => {
+                window.postMessage({ type: 'BULK_INBOX', items: Array.isArray(d.bulkInbox) ? d.bulkInbox : [] }, '*');
+            });
+        }
+
+        if (data.type === 'CLEAR_BULK_INBOX') {
+            const ids = Array.isArray(data.ids) ? data.ids : null;
+            chrome.storage.local.get('bulkInbox', (d) => {
+                const items = Array.isArray(d.bulkInbox) ? d.bulkInbox : [];
+                const remaining = ids ? items.filter(it => !ids.includes(it.id)) : [];
+                chrome.storage.local.set({ bulkInbox: remaining });
+            });
+        }
     });
+
+    // Push side-panel "Add to Bulk List" items to the dashboard live
+    try {
+        chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === 'local' && changes.bulkInbox) {
+                const items = Array.isArray(changes.bulkInbox.newValue) ? changes.bulkInbox.newValue : [];
+                if (items.length > 0) {
+                    window.postMessage({ type: 'BULK_INBOX', items }, '*');
+                }
+            }
+        });
+    } catch (e) {
+        log('debug', 'bulkInbox storage watcher unavailable', e);
+    }
 
     /**
      * Listen for messages from the Extension Background Script and forward to Web Dashboard
@@ -360,7 +402,7 @@
             }, '*');
         }
         
-        if (request.type === 'BULK_JOB_PROGRESS_UPDATE' || request.type === 'BULK_JOB_FINISHED' || request.type === 'BULK_JOB_DEBUG') {
+        if (request.type === 'BULK_JOB_PROGRESS_UPDATE' || request.type === 'BULK_JOB_FINISHED' || request.type === 'BULK_JOB_DEBUG' || request.type === 'BULK_JOB_PAUSED') {
             window.postMessage(request, '*');
         }
         

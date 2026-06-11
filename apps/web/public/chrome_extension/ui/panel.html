@@ -76,8 +76,19 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="ssx-caret-icon"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </button>
           </div>
+        </div>        <!-- 8. Image gallery -->
+        <div class="ssx-card ssx-gallery-block">
+          <div class="ssx-gallery-head">
+            <span class="ssx-card-title">Selected Variation Images</span>
+            <span class="ssx-gallery-hint">Single mode shows only selected variation images. In All Variations mode, each variation keeps its own images.</span>
+          </div>
+          <div class="ssx-mount ssx-gallery-mount" id="ssx-gallery-mount">
+            <!-- Image gallery lives here -->
+            <div class="gallery-scroll" id="snipe-image-gallery">
+              <div class="gallery-empty"><span>No images available</span></div>
+            </div>
+          </div>
         </div>
-
 
         <!-- 3+4. AI title + description two-col (nodes pre-placed in mounts) -->
         <div class="ssx-two-col">
@@ -169,20 +180,6 @@
           </div>
         </div>
 
-        <!-- 8. Image gallery -->
-        <div class="ssx-card ssx-gallery-block">
-          <div class="ssx-gallery-head">
-            <span class="ssx-card-title">Selected Variation Images</span>
-            <span class="ssx-gallery-hint">Single mode shows only selected variation images. In All Variations mode, each variation keeps its own images.</span>
-          </div>
-          <div class="ssx-mount ssx-gallery-mount" id="ssx-gallery-mount">
-            <!-- Image gallery lives here -->
-            <div class="gallery-scroll" id="snipe-image-gallery">
-              <div class="gallery-empty"><span>No images available</span></div>
-            </div>
-          </div>
-        </div>
-
         <!-- Hidden legacy fields — required for write-back and upload logic -->
         <div style="display:none;">
           <input id="ext-title" type="text" maxlength="80">
@@ -207,23 +204,6 @@
           <button id="panel-night-mode-btn" type="button"></button>
         </div>
 
-        <!-- 9. Bottom action bar -->
-        <div class="ssx-actionbar">
-          <button class="ssx-btn ssx-btn-ghost" id="ssx-cancel-btn" type="button">Cancel</button>
-          <div class="ssx-actionbar-right">
-            <button class="ssx-btn ssx-btn-outline" id="ssx-save-draft-bot" type="button">Save Draft</button>
-            <button class="ssx-btn ssx-btn-outline" id="ssx-preview-bot" type="button">
-              Preview
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-            </button>
-            <button class="ssx-btn ssx-btn-primary" id="ssx-upload-bot" type="button">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-              <span>Upload to eBay</span>
-              <span class="ssx-dropdown-separator"></span>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="ssx-caret-icon"><polyline points="6 9 12 15 18 9"></polyline></svg>
-            </button>
-          </div>
-        </div>
 
       </div>
       <!-- ════════════ /EXTENDED EDITOR ════════════ -->

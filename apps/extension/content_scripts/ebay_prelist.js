@@ -250,6 +250,24 @@ function _ssShowDuplicateBlock(listing, onOverride) {
       }
     }
 
+    // Bulk Lister mode: the background worker drives this tab and waits for a
+    // BULK_ITEM_RESULT keyed by the ORIGINAL uploadSessionId. Stamp it onto the
+    // product so the multi-variation bulkedit hop can report against it too.
+    const isBulkRun = !!entry.bulkMode;
+    if (isBulkRun) {
+      productToRun = { ...productToRun, bulkMode: true, __ssBulkSessionId: storageKey };
+    }
+
+    function _ssReportBulkResult(result) {
+      try {
+        chrome.runtime.sendMessage({
+          action: 'BULK_ITEM_RESULT',
+          uploadSessionId: storageKey,
+          ...result
+        }, () => { void chrome.runtime.lastError; });
+      } catch (_) { /* background unreachable — worker timeout will handle it */ }
+    }
+
     await chrome.storage.local.set({ [storageKey]: { ...entry, product: productToRun, isImported: true } });
     _ssShowOverlay('Preparing your eBay listing…');
 
@@ -264,10 +282,28 @@ function _ssShowDuplicateBlock(listing, onOverride) {
         if (msg.includes('Navigating')) _ssUpdateOverlay('Done! Redirecting to listing editor…');
       };
 
-      await window.SellerSuitUploader.run(productToRun);
-      // run() navigates away on success — execution stops here
+      const runResult = await window.SellerSuitUploader.run(productToRun);
+      // Non-bulk: run() navigates away on success — execution stops here.
+      // Bulk single-variation: run() returns a terminal result instead.
+      if (isBulkRun && runResult && runResult.ssBulk) {
+        _ssUpdateOverlay('Listed! Moving to the next item…');
+        _ssReportBulkResult({
+          success: true,
+          listingId: runResult.listingId || null,
+          variationCount: runResult.variationCount ?? 1,
+          draftId: runResult.draftId || null
+        });
+      }
     } catch (err) {
       console.error('[SS] Upload failed:', err.message || err);
+
+      // Bulk runs are unattended — report the failure (incl. VeRO/duplicate)
+      // to the worker instead of showing blocking modals.
+      if (isBulkRun) {
+        _ssReportBulkResult({ success: false, error: err.message || String(err) });
+        _ssShowError(err.message || String(err));
+        return;
+      }
 
       if (err.isVeroBlock && Array.isArray(err.veroMatches)) {
         _ssShowVeroBlock(err.veroMatches, async () => {

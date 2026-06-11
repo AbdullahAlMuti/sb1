@@ -719,6 +719,49 @@
     });
   }
 
+  /* ── Add to Bulk List ─────────────────────────
+     Queues the current supplier page into the chrome.storage bulkInbox. The
+     dashboard Bulk Lister pulls the inbox via the bridge (GET_BULK_INBOX /
+     storage watcher) and persists items as bulk_job_items (source 'extension'). */
+  async function doBulkAdd() {
+    const btn = document.getElementById('btn-bulk-add');
+    const tab = await getActiveTab();
+    if (!tab || !tab.url || !isSupplierPage(tab.url)) {
+      showToast('Navigate to a supported product page first');
+      return;
+    }
+
+    const adapter = window.SSSupplierRegistry && window.SSSupplierRegistry.match(tab.url);
+    const product = _state && _state.product;
+    const fresh = window.SSFreshness && product ? window.SSFreshness.isFresh(product, tab.url) : false;
+
+    const entry = {
+      id: crypto.randomUUID(),
+      url: tab.url,
+      supplier: (adapter && adapter.supplierId) || null,
+      // metadata only when the loaded product actually matches this page
+      title: (fresh && product && product.title) || tab.title || null,
+      image: (fresh && product && ((product.images && product.images[0]) || product.mainImage)) || null,
+      addedAt: Date.now()
+    };
+
+    if (btn) btn.disabled = true;
+    try {
+      const data = await new Promise(r => chrome.storage.local.get('bulkInbox', r));
+      const inbox = Array.isArray(data.bulkInbox) ? data.bulkInbox : [];
+      if (inbox.some(it => it.url === entry.url)) {
+        showToast('Already in your Bulk List');
+        return;
+      }
+      await new Promise(r => chrome.storage.local.set({ bulkInbox: [...inbox, entry] }, r));
+      showToast(`Added to Bulk List (${inbox.length + 1} pending) — open Dashboard → Bulk Lister`);
+    } catch (err) {
+      showToast('Could not add: ' + err.message);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
   /* ── Log out ──────────────────────────────── */
   function doLogOut() {
     chrome.storage.local.remove(['saasToken', 'saasUser', 'userEmail'], () => {
@@ -778,6 +821,8 @@
     });
     btnAdvCancel.addEventListener('click', doAdvCancel);
     if (btnExtend) btnExtend.addEventListener('click', doExtend);
+    const btnBulkAdd = document.getElementById('btn-bulk-add');
+    if (btnBulkAdd) btnBulkAdd.addEventListener('click', doBulkAdd);
 
     // Stale banner → rescan current page
     const btnRescan = document.getElementById('btn-rescan');

@@ -398,6 +398,80 @@ export type Database = {
           },
         ]
       }
+      bulk_job_items: {
+        Row: {
+          created_at: string
+          draft_overrides: Json
+          ebay_price: number | null
+          error: string | null
+          id: string
+          image_url: string | null
+          listing_id: string | null
+          position: number
+          sku: string | null
+          source: string
+          status: string
+          supplier: string | null
+          supplier_item_id: string | null
+          supplier_price: number | null
+          supplier_url: string
+          title: string | null
+          updated_at: string
+          user_id: string
+          variation_count: number | null
+        }
+        Insert: {
+          created_at?: string
+          draft_overrides?: Json
+          ebay_price?: number | null
+          error?: string | null
+          id?: string
+          image_url?: string | null
+          listing_id?: string | null
+          position?: number
+          sku?: string | null
+          source?: string
+          status?: string
+          supplier?: string | null
+          supplier_item_id?: string | null
+          supplier_price?: number | null
+          supplier_url: string
+          title?: string | null
+          updated_at?: string
+          user_id: string
+          variation_count?: number | null
+        }
+        Update: {
+          created_at?: string
+          draft_overrides?: Json
+          ebay_price?: number | null
+          error?: string | null
+          id?: string
+          image_url?: string | null
+          listing_id?: string | null
+          position?: number
+          sku?: string | null
+          source?: string
+          status?: string
+          supplier?: string | null
+          supplier_item_id?: string | null
+          supplier_price?: number | null
+          supplier_url?: string
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+          variation_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bulk_job_items_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "listings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       calculator_settings: {
         Row: {
           created_at: string

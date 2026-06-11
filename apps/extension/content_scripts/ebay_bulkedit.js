@@ -41,6 +41,19 @@
 
   console.log('[SS Bulkedit] Starting AddVariations for draftId:', entry.draftId);
 
+  // Bulk Lister mode: report the terminal result against the worker's ORIGINAL
+  // session id (carried through SellerSuitUploader as entry.bulkSessionId).
+  const isBulkRun = !!entry.bulkMode;
+  function _ssReportBulkResult(result) {
+    try {
+      chrome.runtime.sendMessage({
+        action: 'BULK_ITEM_RESULT',
+        uploadSessionId: entry.bulkSessionId || storageKey,
+        ...result
+      }, () => { void chrome.runtime.lastError; });
+    } catch (_) { /* background unreachable — worker timeout handles it */ }
+  }
+
   try {
     const api     = window.EbayListingApiHelper;
     const adapted = api.adaptProduct(entry.product);
@@ -52,11 +65,25 @@
       entry.smsAspects || []
     );
 
-    console.log('[SS Bulkedit] AddVariations complete. Navigating to draft editor...');
+    console.log('[SS Bulkedit] AddVariations complete.');
 
     // 3.4 — sync to dashboard now that variations are saved
+    let syncResp = null;
     if (typeof window._syncListingToDashboard === 'function') {
-      await window._syncListingToDashboard(adapted, entry.product, entry.draftId);
+      syncResp = await window._syncListingToDashboard(adapted, entry.product, entry.draftId);
+    }
+
+    if (isBulkRun) {
+      // Worker owns this tab: report + clean this phase's session blob; the
+      // background closes the tab. No navigation to the draft editor.
+      _ssReportBulkResult({
+        success: true,
+        listingId: (syncResp && syncResp.listingId) || null,
+        variationCount: adapted.prod_variations.length,
+        draftId: entry.draftId
+      });
+      await chrome.storage.local.remove(storageKey).catch(() => {});
+      return;
     }
 
     // Mark as imported, clear needsVariations (keep ssSummary for toast)
@@ -74,6 +101,10 @@
 
   } catch (err) {
     console.error('[SS Bulkedit] addVariations failed:', err.message || err);
+    if (isBulkRun) {
+      _ssReportBulkResult({ success: false, error: err.message || String(err) });
+      chrome.storage.local.remove(storageKey).catch(() => {});
+    }
 
     // Show error toast
     const div = document.createElement('div');

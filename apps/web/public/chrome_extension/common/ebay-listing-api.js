@@ -1083,7 +1083,23 @@ window.SellerSuitUploader = {
       // 5a. Single-variation: mark done, go straight to draft editor
       // Sync to dashboard now (3.4) — variations handled later for multi.
       const uploadSessionId = crypto.randomUUID();
-      await _syncListingToDashboard(adapted, product, draftId);
+      const syncResp = await _syncListingToDashboard(adapted, product, draftId);
+
+      // Bulk Lister path: the worker owns this tab. Return a terminal result
+      // instead of navigating to the draft editor — ebay_prelist.js reports it
+      // via BULK_ITEM_RESULT and the background closes the tab.
+      if (product.bulkMode) {
+        console.log('[SS Uploader] Single variation (bulk) — done, returning result.');
+        return {
+          ssBulk: true,
+          success: true,
+          draftId,
+          listingId: (syncResp && syncResp.listingId) || null,
+          variationCount: adapted.prod_variations.length,
+          syncOk: !(syncResp && syncResp.success === false)
+        };
+      }
+
       await chrome.storage.local.set({
         [uploadSessionId]: {
           product,
@@ -1109,7 +1125,13 @@ window.SellerSuitUploader = {
           smsAspects:  aspectNames,
           categoryId,
           needsVariations: true,
-          ssSummary
+          ssSummary,
+          // Bulk Lister metadata — ebay_bulkedit.js reports the terminal
+          // BULK_ITEM_RESULT against the worker's ORIGINAL session id.
+          ...(product.bulkMode ? {
+            bulkMode: true,
+            bulkSessionId: product.__ssBulkSessionId || null
+          } : {})
         }
       });
       console.log('[SS Uploader] Multi-variation — navigating to bulkedit MSKU editor...');

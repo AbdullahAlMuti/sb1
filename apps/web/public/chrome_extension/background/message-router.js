@@ -386,6 +386,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  // ── Bulk Lister internal signaling (before the unlock gate: BULK_ITEM_RESULT
+  //    comes from our own eBay content scripts mid-upload and must never be
+  //    swallowed or trigger the gate's dashboard-tab side effect) ──
+  if (request.action === 'BULK_ITEM_RESULT') {
+    sendResponse(handleBulkItemResult(request));
+    return true;
+  }
+
+  if (request.action === 'GET_BULK_STATE') {
+    getBulkState().then(sendResponse);
+    return true;
+  }
+
   const isUnlocked = AuthHelper.isUnlocked();
   if (!isUnlocked) {
     AuthHelper.verifyAuthStatus().then(unlocked => {
@@ -518,28 +531,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true, meta: { activeTab: sender.tab.id } });
     return true;
   } else if (request.action === 'START_BULK_JOB') {
-    const dashboardTabId = sender?.tab?.id;
     if (typeof startBulkJob === 'function') {
-      startBulkJob(request.payload, dashboardTabId).then(sendResponse);
+      startBulkJob(request.payload).then(sendResponse);
     }
     return true;
   } else if (request.action === 'PAUSE_BULK_JOB') {
     if (typeof pauseBulkJob === 'function') {
-      pauseBulkJob();
+      pauseBulkJob().then(sendResponse);
+    } else {
+      sendResponse({ success: true });
     }
-    sendResponse({ success: true });
     return true;
   } else if (request.action === 'RESUME_BULK_JOB') {
-    const dashboardTabId = sender?.tab?.id;
     if (typeof startBulkJob === 'function') {
-      startBulkJob({}, dashboardTabId).then(sendResponse);
+      startBulkJob(request.payload || {}).then(sendResponse);
     }
     return true;
   } else if (request.action === 'STOP_BULK_JOB') {
     if (typeof stopBulkJob === 'function') {
-      stopBulkJob();
+      stopBulkJob().then(sendResponse);
+    } else {
+      sendResponse({ success: true });
     }
-    sendResponse({ success: true });
     return true;
   } else if (request.action === "LOG_TO_SHEET") {
     if (typeof SyncUtils !== 'undefined') {

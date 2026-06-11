@@ -200,9 +200,18 @@ describe('eBay upload stays supplier-neutral', () => {
     }
   });
 
-  test('listing-runner writes supplier-neutral fields', () => {
+  test('bulk runner reuses the single-item upload pipeline (no parallel uploader)', () => {
     const src = read('background/listing-runner.js');
-    assert.ok(src.includes('supplier_id'), 'runner must emit supplier-neutral supplier_id');
-    assert.ok(src.includes('supplier_url'), 'runner must emit supplier-neutral supplier_url');
+    // Scrape goes through the supplier adapter seam, not the legacy flat scrape
+    assert.ok(src.includes("'SCRAPE_VARIANTS'"), 'runner must scrape via the adapter SCRAPE_VARIANTS seam');
+    assert.ok(!src.includes('SCRAPE_COMPLETE_PRODUCT'), 'runner must not use the legacy flat scrape');
+    // Upload goes through the uploadSessionId → prelist tab flow that
+    // SellerSuitUploader/ebay_prelist own — never a second eBay writer.
+    assert.ok(src.includes('uploadSessionId'), 'runner must hand off via uploadSessionId entries');
+    assert.ok(src.includes('/sl/prelist/suggest'), 'runner must open the eBay prelist entry page');
+    assert.ok(!src.includes('runSmartEngine'), 'parallel pricing/title engine must stay deleted');
+    // DB rows are written post-upload by _syncListingToDashboard → SYNC_LISTING,
+    // so the runner must not call create-listing before the eBay upload.
+    assert.ok(!src.includes('syncToDatabase'), 'runner must not sync to DB before upload');
   });
 });

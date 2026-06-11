@@ -1,356 +1,525 @@
 /**
- * SellerSuit Bulk Listing Runner
- * Manages the background state machine for bulk listing items from a supplier
- * site (Amazon, Walmart, …) to eBay. Supplier detection happens in the content
- * script: any injector that answers SCRAPE_COMPLETE_PRODUCT works here.
+ * SellerSuit Bulk Listing Runner (v2)
+ *
+ * Background worker for the dashboard Bulk Lister. Processes queue items one
+ * at a time through the SAME pipeline the side panel uses:
+ *   supplier tab → adapter SCRAPE_VARIANTS (variants + pricing + normalizer)
+ *   → duplicate pre-check → dashboard overrides (manual tier)
+ *   → import_ebay-style uploadSessionId entry → eBay prelist tab
+ *   → SellerSuitUploader.run() (+ ebay_bulkedit for variations)
+ *   → BULK_ITEM_RESULT message back here → status + cleanup → next item.
+ *
+ * There is intentionally NO second upload implementation here — the eBay
+ * upload, image handling, SKU/pricing and DB sync are the existing ones.
+ *
+ * State is persisted to chrome.storage.local (BULK_STATE_KEY) after every
+ * transition so a service-worker restart resumes instead of losing the job.
+ * Scheduling uses chrome.alarms (MV3-safe), never bare setTimeout across items.
  */
 
 // getUrls and getApiKeys are declared globally in background/index.js
+// window.SSBulkCore is loaded from bulk-core.js (pure state logic)
 
-const bulkState = {
-    urls: [],
-    currentIndex: 0,
-    intervalMs: 60000,
-    isRunning: false,
-    currentTabId: null,
-    dashboardTabId: null,
-    timer: null
+const BULK_STATE_KEY  = 'bulkJobStateV2';
+const BULK_LOCK_KEY   = 'bulkUploadLock';
+const BULK_ALARM_NEXT = 'ss-bulk-next';
+const BULK_ALARM_RESUME = 'ss-bulk-resume';
+
+const SCRAPE_TIMEOUT_MS  = 90 * 1000;   // variant scrape clicks through options — give it room
+const UPLOAD_TIMEOUT_MS  = 5 * 60 * 1000;
+const LOCK_STALE_MS      = 8 * 60 * 1000;
+
+const bulkRuntime = {
+  state: null,              // hydrated SSBulkCore state
+  supplierTabId: null,
+  ebayTabId: null,
+  uploadWaiters: new Map(), // uploadSessionId → { resolve, timer }
+  processing: false         // re-entrancy guard within one SW lifetime
 };
 
-function debugLog(message) {
-    console.log(`[DEBUG] ${message}`);
-    if (bulkState.dashboardTabId) {
-        chrome.tabs.sendMessage(bulkState.dashboardTabId, { type: 'BULK_JOB_DEBUG', message: message }).catch(()=>{});
-    }
+function bulkLog(message) {
+  console.log(`[Bulk Runner] ${message}`);
 }
 
+// ── persistence ──────────────────────────────────────────────────────────────
 
-// Start or Resume a bulk job
-async function startBulkJob(payload, dashboardTabId) {
-    bulkState.dashboardTabId = dashboardTabId || bulkState.dashboardTabId;
-    debugLog(`startBulkJob called. isRunning: ${bulkState.isRunning}`);
-    if (bulkState.isRunning) return { success: false, message: 'Job already running' };
-    
-    if (payload.urls && payload.urls.length > 0) {
-        debugLog(`Received ${payload.urls.length} URLs. Setting currentIndex to ${payload.currentIndex || 0}`);
-        bulkState.urls = payload.urls;
-        bulkState.currentIndex = payload.currentIndex || 0;
-        bulkState.intervalMs = (payload.interval || 60) * 1000;
-    }
-
-    if (bulkState.currentIndex >= bulkState.urls.length) {
-        debugLog(`currentIndex (${bulkState.currentIndex}) >= urls.length (${bulkState.urls.length}). Aborting.`);
-        return { success: false, message: 'All URLs processed' };
-    }
-
-    bulkState.isRunning = true;
-    
-    debugLog(`Starting job at index ${bulkState.currentIndex} with ${bulkState.intervalMs}ms interval`);
-    processNextItem();
-    
-    return { success: true };
+async function saveBulkState() {
+  if (!bulkRuntime.state) return;
+  await chrome.storage.local.set({ [BULK_STATE_KEY]: bulkRuntime.state });
 }
 
-function pauseBulkJob() {
-    bulkState.isRunning = false;
-    if (bulkState.timer) {
-        clearTimeout(bulkState.timer);
-        bulkState.timer = null;
-    }
-    console.log('[Bulk Runner] Job paused');
-    
-    // Close the current tab if any
-    if (bulkState.currentTabId) {
-        chrome.tabs.remove(bulkState.currentTabId).catch(() => {});
-        bulkState.currentTabId = null;
-    }
+async function loadBulkState() {
+  if (bulkRuntime.state) return bulkRuntime.state;
+  const data = await chrome.storage.local.get(BULK_STATE_KEY);
+  bulkRuntime.state = data[BULK_STATE_KEY] || null;
+  return bulkRuntime.state;
 }
 
-function stopBulkJob() {
-    pauseBulkJob();
-    bulkState.urls = [];
-    bulkState.currentIndex = 0;
-    console.log('[Bulk Runner] Job stopped');
+// ── dashboard notifications (broadcast — bridge.js only runs on dashboard) ──
+
+function broadcastToDashboard(message) {
+  try {
+    chrome.tabs.query({}, tabs => {
+      for (const tab of tabs) {
+        chrome.tabs.sendMessage(tab.id, message).catch(() => {});
+      }
+    });
+  } catch (_) { /* non-fatal */ }
 }
 
-async function processNextItem() {
-    debugLog(`processNextItem called. isRunning: ${bulkState.isRunning}`);
-    if (!bulkState.isRunning) return;
+function notifyItemProgress(item) {
+  broadcastToDashboard({
+    type: 'BULK_JOB_PROGRESS_UPDATE',
+    payload: {
+      itemId: item.id,
+      status: item.status,
+      error: item.error || null,
+      listingId: item.listingId || null,
+      variationCount: item.variationCount ?? null,
+      title: item.title || null,
+      image: item.image || null,
+      supplier: item.supplier || null,
+      supplierId: item.supplierId || null,
+      ebayPrice: item.ebayPrice ?? null,
+      supplierPrice: item.supplierPrice ?? null,
+      sku: item.sku || null,
+      counts: window.SSBulkCore.counts(bulkRuntime.state),
+      isRunning: !!(bulkRuntime.state && bulkRuntime.state.isRunning)
+    }
+  });
+}
 
-    if (bulkState.currentIndex >= bulkState.urls.length) {
-        debugLog(`All items processed! Index: ${bulkState.currentIndex}`);
-        bulkState.isRunning = false;
-        
-        // Notify the bridge
-        if (bulkState.dashboardTabId) {
-            chrome.tabs.sendMessage(bulkState.dashboardTabId, { type: 'BULK_JOB_FINISHED' }).catch(()=>{});
-        }
-        
-        if (bulkState.processingWindowId) {
-            chrome.windows.remove(bulkState.processingWindowId).catch(() => {});
-            bulkState.processingWindowId = null;
-        }
-        return;
+function notifyJobFinished(reason) {
+  broadcastToDashboard({
+    type: 'BULK_JOB_FINISHED',
+    payload: { reason: reason || 'completed', counts: window.SSBulkCore.counts(bulkRuntime.state) }
+  });
+}
+
+function notifyJobPaused(reason) {
+  broadcastToDashboard({
+    type: 'BULK_JOB_PAUSED',
+    payload: { reason: reason || 'paused', counts: window.SSBulkCore.counts(bulkRuntime.state) }
+  });
+}
+
+// ── upload lock (no double-listing) ──────────────────────────────────────────
+
+async function acquireUploadLock(itemId) {
+  const data = await chrome.storage.local.get(BULK_LOCK_KEY);
+  const lock = data[BULK_LOCK_KEY];
+  if (lock && lock.itemId !== itemId && Date.now() - (lock.at || 0) < LOCK_STALE_MS) {
+    return false;
+  }
+  await chrome.storage.local.set({ [BULK_LOCK_KEY]: { itemId, at: Date.now() } });
+  return true;
+}
+
+async function releaseUploadLock(itemId) {
+  const data = await chrome.storage.local.get(BULK_LOCK_KEY);
+  const lock = data[BULK_LOCK_KEY];
+  if (!lock || lock.itemId === itemId) {
+    await chrome.storage.local.remove(BULK_LOCK_KEY);
+  }
+}
+
+// ── public API (called from message-router) ──────────────────────────────────
+
+/**
+ * Start a new job (payload.items present) or resume the persisted one.
+ * @returns {{success:boolean, message?:string, state?:object}}
+ */
+async function startBulkJob(payload) {
+  payload = payload || {};
+  await loadBulkState();
+
+  if (bulkRuntime.state && bulkRuntime.state.isRunning) {
+    return { success: false, message: 'A bulk job is already running' };
+  }
+
+  // Auth gate — fail fast with a clear message instead of failing every item.
+  const isAuth = typeof AuthHelper !== 'undefined' ? await AuthHelper.verifyAuthStatus() : false;
+  if (!isAuth) {
+    return { success: false, message: 'Not logged in to SellerSuit — open the dashboard and log in first.' };
+  }
+
+  if (Array.isArray(payload.items) && payload.items.length > 0) {
+    bulkRuntime.state = window.SSBulkCore.createState(payload);
+  } else if (!bulkRuntime.state) {
+    return { success: false, message: 'No items to process' };
+  } else {
+    // resume: allow interval/settings refresh without rebuilding the queue
+    if (payload.interval) bulkRuntime.state.intervalMs = window.SSBulkCore.sanitizeIntervalMs(payload.interval);
+  }
+
+  if (!window.SSBulkCore.nextQueuedItem(bulkRuntime.state)) {
+    return { success: false, message: 'All items already processed' };
+  }
+
+  bulkRuntime.state.isRunning = true;
+  bulkRuntime.state.updatedAt = Date.now();
+  await saveBulkState();
+  bulkLog(`Job started: ${bulkRuntime.state.items.length} items, interval ${bulkRuntime.state.intervalMs}ms`);
+
+  processNextBulkItem();
+  return { success: true, state: getBulkPublicState() };
+}
+
+async function pauseBulkJob() {
+  await loadBulkState();
+  if (!bulkRuntime.state) return { success: true };
+  bulkRuntime.state.isRunning = false;
+  bulkRuntime.state.updatedAt = Date.now();
+  await chrome.alarms.clear(BULK_ALARM_NEXT).catch(() => {});
+  await saveBulkState();
+  bulkLog('Job paused');
+  // The in-flight item (if any) is allowed to finish — pausing only stops
+  // claiming the NEXT item, so we never abandon a half-created eBay draft.
+  return { success: true, state: getBulkPublicState() };
+}
+
+async function stopBulkJob() {
+  await pauseBulkJob();
+  await chrome.alarms.clear(BULK_ALARM_RESUME).catch(() => {});
+  if (bulkRuntime.supplierTabId) {
+    chrome.tabs.remove(bulkRuntime.supplierTabId).catch(() => {});
+    bulkRuntime.supplierTabId = null;
+  }
+  bulkRuntime.state = null;
+  await chrome.storage.local.remove([BULK_STATE_KEY, BULK_LOCK_KEY]);
+  bulkLog('Job stopped and cleared');
+  return { success: true };
+}
+
+/** Serializable snapshot for the dashboard (GET_BULK_STATE). */
+function getBulkPublicState() {
+  const s = bulkRuntime.state;
+  if (!s) return { active: false };
+  return {
+    active: true,
+    isRunning: s.isRunning,
+    intervalMs: s.intervalMs,
+    settings: s.settings,
+    currentItemId: s.currentItemId,
+    counts: window.SSBulkCore.counts(s),
+    items: s.items.map(it => ({
+      id: it.id, url: it.url, status: it.status, error: it.error,
+      listingId: it.listingId, variationCount: it.variationCount,
+      title: it.title, image: it.image, supplier: it.supplier,
+      supplierId: it.supplierId || null,
+      ebayPrice: it.ebayPrice ?? null, supplierPrice: it.supplierPrice ?? null,
+      sku: it.sku || null
+    }))
+  };
+}
+
+async function getBulkState() {
+  await loadBulkState();
+  return getBulkPublicState();
+}
+
+/**
+ * Terminal signal from ebay_prelist.js / ebay_bulkedit.js for one upload.
+ * msg: { uploadSessionId, success, listingId?, variationCount?, error? }
+ */
+function handleBulkItemResult(msg) {
+  const waiter = bulkRuntime.uploadWaiters.get(msg.uploadSessionId);
+  if (!waiter) {
+    bulkLog(`BULK_ITEM_RESULT for unknown session ${msg.uploadSessionId} — ignored`);
+    return { success: false, message: 'No waiter for session' };
+  }
+  bulkRuntime.uploadWaiters.delete(msg.uploadSessionId);
+  clearTimeout(waiter.timer);
+  waiter.resolve({
+    success: !!msg.success,
+    listingId: msg.listingId || null,
+    variationCount: msg.variationCount ?? null,
+    error: msg.error || null
+  });
+  return { success: true };
+}
+
+// ── core loop ─────────────────────────────────────────────────────────────────
+
+async function processNextBulkItem() {
+  if (bulkRuntime.processing) return;
+  bulkRuntime.processing = true;
+  try {
+    await loadBulkState();
+    const state = bulkRuntime.state;
+    if (!state || !state.isRunning) return;
+
+    const item = window.SSBulkCore.nextQueuedItem(state);
+    if (!item) {
+      await finishBulkJob();
+      return;
     }
 
-    const currentUrl = bulkState.urls[bulkState.currentIndex];
-    debugLog(`Processing ${currentUrl}`);
+    if (!(await acquireUploadLock(item.id))) {
+      bulkLog('Upload lock held elsewhere — retrying in 60s');
+      chrome.alarms.create(BULK_ALARM_NEXT, { delayInMinutes: 1 });
+      return;
+    }
 
-    updateDashboardStatus(bulkState.currentIndex, 'Processing');
+    state.currentItemId = item.id;
+    await transitionItem(item.id, { status: 'scraping', error: null, startedAt: Date.now() });
+    bulkLog(`Processing ${item.url}`);
 
+    let product = null;
     try {
-        debugLog(`Step 1: Scraping supplier page... calling scrapeSupplierProduct`);
-        // Step 1: Scrape supplier page (Amazon, Walmart, … — any injector answering SCRAPE_COMPLETE_PRODUCT)
-        const scrapedData = await scrapeSupplierProduct(currentUrl);
-        
-        updateDashboardStatus(bulkState.currentIndex, 'Generating AI Title');
+      // 1. Scrape — full variant scan via the supplier adapter pipeline
+      //    (registry → adapter → normalizer → pricing engine), same as the panel.
+      product = await scrapeSupplierProduct(item.url, state.settings);
 
-        // Step 2: Smart Engine (AI Title & Pricing)
-        const optimizedData = await runSmartEngine(scrapedData, currentUrl);
+      // 2. Snapshot for the dashboard card
+      const summary = window.SSBulkCore.summarizeProduct(product);
+      await transitionItem(item.id, summary);
 
-        updateDashboardStatus(bulkState.currentIndex, 'Syncing to Supabase');
+      // 3. Duplicate pre-check — bulk runs unattended, so skip instead of modal.
+      const dupId = product.parentAsin || product.asin || product.sourceId || null;
+      if (dupId && typeof AuthHelper !== 'undefined') {
+        try {
+          const dupResp = await AuthHelper.callEdgeFunction('check-duplicate', { asin: dupId });
+          if (dupResp && dupResp.data && dupResp.data.duplicate) {
+            await finishItem(item.id, { status: 'skipped', error: 'Already listed (duplicate supplier ID)' });
+            return scheduleNext();
+          }
+        } catch (_) { /* fail-open like the panel path */ }
+      }
 
-        // Step 3: Save to Database (Opti-List)
-        await syncToDatabase(optimizedData);
+      // 4. Data priority: user-edited dashboard overrides win over scraped data.
+      product = window.SSBulkCore.applyOverrides(product, item.overrides);
+      if (state.settings.useAiTitle) product = { ...product, useAiTitle: true };
 
-        updateDashboardStatus(bulkState.currentIndex, 'Listing to eBay Drafts');
+      // 5. Upload through the existing non-API uploader.
+      await transitionItem(item.id, { status: 'uploading' });
+      const result = await uploadViaEbayTab(product, item.id);
 
-        // Step 4: Inject into eBay
-        await createEbayDraft(optimizedData);
-        
-        updateDashboardStatus(bulkState.currentIndex, 'Completed', true);
-
+      if (result.success) {
+        await finishItem(item.id, {
+          status: 'listed',
+          listingId: result.listingId,
+          variationCount: result.variationCount ?? (product.variants ? product.variants.length : 1)
+        });
+      } else {
+        await failItem(item.id, result.error || 'eBay upload failed');
+      }
     } catch (error) {
-        console.error(`[Bulk Runner] Error processing index ${bulkState.currentIndex}:`, error);
-        updateDashboardStatus(bulkState.currentIndex, `Failed: ${error.message || 'Unknown error'}`, false, true);
+      const msg = error && error.message ? error.message : 'Unknown error';
+      console.error(`[Bulk Runner] Item ${item.id} failed:`, msg);
+      await failItem(item.id, msg);
+
+      // CAPTCHA / logged-out / plan-limit errors will fail every following
+      // item too — pause the job so the user can fix the cause once.
+      if (window.SSBulkCore.isJobBlockingError(msg)) {
+        bulkRuntime.state.isRunning = false;
+        await saveBulkState();
+        notifyJobPaused(msg);
+        bulkLog(`Job paused (blocking error): ${msg}`);
+        await releaseUploadLock(item.id);
+        return;
+      }
+    } finally {
+      await releaseUploadLock(item.id);
     }
 
-    // Step 5: Wait and Loop
-    if (bulkState.isRunning) {
-        bulkState.currentIndex++;
-        console.log(`[Bulk Runner] Waiting ${bulkState.intervalMs}ms before next item...`);
-        bulkState.timer = setTimeout(() => {
-            processNextItem();
-        }, bulkState.intervalMs);
-    }
+    scheduleNext();
+  } finally {
+    bulkRuntime.processing = false;
+  }
 }
 
-// ---------------------------------------------
-// Core Engine Functions
-// ---------------------------------------------
-
-async function scrapeSupplierProduct(url) {
-    return new Promise((resolve, reject) => {
-        let isDone = false;
-        debugLog(`scrapeSupplierProduct promise started for ${url}`);
-        const timeout = setTimeout(() => {
-            debugLog(`scrapeSupplierProduct timeout triggered!`);
-            if (isDone) return;
-            isDone = true;
-            if (bulkState.currentTabId) chrome.tabs.remove(bulkState.currentTabId).catch(() => {});
-            reject(new Error('Scraping timeout (15s) - Page stuck or CAPTCHA'));
-        }, 15000);
-
-        function attachListener(tabId) {
-            debugLog(`attachListener called for tab ${tabId}. Starting poll interval.`);
-            const pollInterval = setInterval(() => {
-                if (isDone) {
-                    clearInterval(pollInterval);
-                    return;
-                }
-                
-                debugLog(`Polling Amazon Tab ${tabId} for SCRAPE_COMPLETE_PRODUCT...`);
-                chrome.tabs.sendMessage(tabId, { action: "SCRAPE_COMPLETE_PRODUCT" }, (response) => {
-                    if (isDone) return;
-                    
-                    if (chrome.runtime.lastError) {
-                        // This is expected if the content script hasn't loaded yet.
-                        debugLog(`Poll failed (content script not ready yet): ${chrome.runtime.lastError.message}`);
-                        return;
-                    }
-                    
-                    if (response && response.success) {
-                        debugLog(`Received successful response from Amazon content script!`);
-                        isDone = true;
-                        clearInterval(pollInterval);
-                        clearTimeout(timeout);
-                        
-                        // Remove Amazon tab after scrape
-                        chrome.tabs.remove(tabId).catch(() => {});
-                        bulkState.currentTabId = null;
-                        
-                        resolve(response.data);
-                    }
-                });
-            }, 2000); // Poll every 2 seconds
-        }
-
-        // Just create a normal tab
-        debugLog(`Calling chrome.tabs.create for Amazon URL`);
-        chrome.tabs.create({ url: url, active: true }, (tab) => {
-            debugLog(`chrome.tabs.create callback fired. lastError: ${chrome.runtime.lastError ? chrome.runtime.lastError.message : 'none'}`);
-            if (chrome.runtime.lastError) {
-                clearTimeout(timeout);
-                return reject(new Error(chrome.runtime.lastError.message));
-            }
-            bulkState.currentTabId = tab.id;
-            attachListener(bulkState.currentTabId);
-        });
-    });
+async function finishBulkJob() {
+  const state = bulkRuntime.state;
+  if (!state) return;
+  state.isRunning = false;
+  state.currentItemId = null;
+  await saveBulkState();
+  await chrome.storage.local.remove(BULK_LOCK_KEY).catch(() => {});
+  bulkLog('All items processed');
+  notifyJobFinished('completed');
 }
 
-async function runSmartEngine(scrapedData, url) {
-    console.log('[Bulk Runner] Running Smart Engine...');
-    
-    // Default fallback values
-    let aiTitle = scrapedData.title ? scrapedData.title.substring(0, 80) : "Item";
-    let calculatedPrice = "0.00";
-    let sku = "AB" + Date.now().toString().slice(-6);
-    
-    // Math: Calculate eBay price (30% markup)
-    if (scrapedData.price) {
-        const rawPriceMatch = scrapedData.price.match(/[\d.]+/);
-        if (rawPriceMatch) {
-            const rawPrice = parseFloat(rawPriceMatch[0]);
-            calculatedPrice = (rawPrice * 1.30).toFixed(2);
-        }
-    }
-    
-    // AI: Attempt to generate Title via Supabase
-    try {
-        const tokenData = await chrome.storage.local.get(['saasToken']);
-        const urls = getUrls();
-        const apiKeys = getApiKeys();
-        if (tokenData.saasToken && urls && urls.SUPABASE_FUNCTIONS) {
-            const resp = await fetch(`${urls.SUPABASE_FUNCTIONS}/generate-titles`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json', 
-                    'apikey': apiKeys.SUPABASE_ANON, 
-                    'Authorization': `Bearer ${tokenData.saasToken}` 
-                },
-                body: JSON.stringify(scrapedData)
-            });
-            const json = await resp.json();
-            if (json.success && json.titles && json.titles.length > 0) {
-                aiTitle = json.titles[0].title || json.titles[0];
-                aiTitle = aiTitle.substring(0, 80);
-            }
-        }
-    } catch (e) {
-        console.warn('[Bulk Runner] AI Title generation failed, using raw title.', e);
-    }
+// Called at the end of one item, still inside processNextBulkItem's
+// re-entrancy guard — so the no-items-left case must finish inline rather
+// than re-enter processNextBulkItem (which would bounce off the guard).
+function scheduleNext() {
+  const state = bulkRuntime.state;
+  if (!state || !state.isRunning) return;
+  if (!window.SSBulkCore.nextQueuedItem(state)) {
+    finishBulkJob();
+    return;
+  }
+  const minutes = Math.max(0.5, state.intervalMs / 60000);
+  chrome.alarms.create(BULK_ALARM_NEXT, { delayInMinutes: minutes });
+  bulkLog(`Next item in ${Math.round(minutes * 60)}s`);
+}
 
-    return {
-        title: aiTitle,
-        sku: sku,
-        ebay_price: calculatedPrice,
-        // Supplier-neutral fields (preferred going forward)
-        supplier: scrapedData.supplier || 'amazon',
-        supplier_id: scrapedData.sourceId || scrapedData.asin || null,
-        supplier_url: url,
-        supplier_price: scrapedData.price ? scrapedData.price.replace(/[^\d.]/g, '') : "0",
-        // Legacy Amazon-named fields — kept until backend/DB migrates
-        amazon_price: scrapedData.price ? scrapedData.price.replace(/[^\d.]/g, '') : "0",
-        amazon_url: url,
-        amazon_asin: scrapedData.asin || "NOASIN",
-        status: "active",
-        amazon_data: { 
-            image: scrapedData.mainImage || (scrapedData.allImages && scrapedData.allImages.length > 0 ? scrapedData.allImages[0] : ""),
-            all_images: scrapedData.allImages || [],
-            description: scrapedData.description || ""
-        }
+async function transitionItem(itemId, patch) {
+  bulkRuntime.state = window.SSBulkCore.patchItem(bulkRuntime.state, itemId, patch);
+  await saveBulkState();
+  const item = window.SSBulkCore.getItem(bulkRuntime.state, itemId);
+  if (item) notifyItemProgress(item);
+}
+
+async function finishItem(itemId, patch) {
+  bulkRuntime.state.currentItemId = null;
+  await transitionItem(itemId, patch);
+}
+
+async function failItem(itemId, error) {
+  await finishItem(itemId, { status: 'failed', error: String(error).slice(0, 500) });
+}
+
+// ── step 1: supplier scrape ───────────────────────────────────────────────────
+
+function scrapeSupplierProduct(url, settings) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    let pollInterval = null;
+
+    const cleanup = () => {
+      if (pollInterval) clearInterval(pollInterval);
+      if (bulkRuntime.supplierTabId) {
+        chrome.tabs.remove(bulkRuntime.supplierTabId).catch(() => {});
+        bulkRuntime.supplierTabId = null;
+      }
     };
-}
 
-async function syncToDatabase(payload) {
-    console.log('[Bulk Runner] Simulating START_OPTILIST database sync...');
-    try {
-        // Reuse the exact postCreateListing function
-        const syncResult = await postCreateListing(payload, 'bulk_runner');
-        if (!syncResult.success) {
-            console.warn('[Bulk Runner] Listing sync failed:', syncResult);
-            throw new Error('Database sync failed');
-        }
-        return true;
-    } catch (e) {
-        console.warn('[Bulk Runner] Database error:', e);
-        throw e; // Fail the item if db sync fails
-    }
-}
+    const timeout = setTimeout(() => {
+      if (done) return;
+      done = true;
+      cleanup();
+      reject(new Error('Scraping timed out — page stuck, blocked, or CAPTCHA'));
+    }, SCRAPE_TIMEOUT_MS);
 
-async function createEbayDraft(productData) {
-    return new Promise((resolve, reject) => {
-        let isDone = false;
-        const timeout = setTimeout(() => {
-            if (isDone) return;
-            isDone = true;
-            reject(new Error('eBay listing timeout (15s) - Page stuck'));
-        }, 15000);
+    chrome.tabs.create({ url, active: true }, (tab) => {
+      if (chrome.runtime.lastError) {
+        clearTimeout(timeout);
+        return reject(new Error(chrome.runtime.lastError.message));
+      }
+      bulkRuntime.supplierTabId = tab.id;
+      let scrapeInFlight = false;
 
-        function attachListener(tabId) {
-            chrome.tabs.onUpdated.addListener(function listener(tId, info, updatedTab) {
-                if (isDone) {
-                    chrome.tabs.onUpdated.removeListener(listener);
-                    return;
-                }
-                if (tId === tabId && (info.status === 'complete' || updatedTab.status === 'complete')) {
-                    chrome.tabs.onUpdated.removeListener(listener);
-                    
-                    setTimeout(() => {
-                        if (isDone) return;
-                        isDone = true;
-                        clearTimeout(timeout);
-                        
-                        const storageData = {
-                            ebayTitle: productData.title,
-                            ebayPrice: productData.ebay_price,
-                            ebaySku: productData.sku,
-                            amazonPrice: productData.amazon_price,
-                            productTitle: productData.title,
-                            selectedEbayDescription: productData.amazon_data?.description || "",
-                            imageUrls: productData.amazon_data?.all_images || [],
-                            watermarkedImages: (productData.amazon_data?.all_images || []).map(url => ({
-                                url: url,
-                                isWatermarked: false,
-                                isReplaced: false
-                            }))
-                        };
-                        chrome.storage.local.set(storageData, () => {
-                             try {
-                                 chrome.tabs.sendMessage(tabId, { action: "RUN_EBAY_LISTER" }, (response) => {
-                                     resolve();
-                                 });
-                             } catch (e) {
-                                 resolve();
-                             }
-                        });
-                    }, 2500);
-                }
-            });
-        }
-
-        const ebayUrl = "https://www.ebay.com/sl/prelist/suggest?sr=sh";
-        chrome.tabs.create({ url: ebayUrl, active: true }, (tab) => {
-            if (chrome.runtime.lastError) {
-                clearTimeout(timeout);
-                return reject(new Error(chrome.runtime.lastError.message));
-            }
-            attachListener(tab.id);
+      pollInterval = setInterval(() => {
+        if (done || scrapeInFlight) return;
+        scrapeInFlight = true;
+        chrome.tabs.sendMessage(tab.id, {
+          action: 'SCRAPE_VARIANTS',
+          options: { minQty: settings.minQty || 0, allowLowQty: settings.allowLowQty !== false }
+        }, (response) => {
+          scrapeInFlight = false;
+          if (done) return;
+          if (chrome.runtime.lastError) return; // content script not ready yet — keep polling
+          if (!response) return;
+          done = true;
+          clearTimeout(timeout);
+          cleanup();
+          if (response.success && response.data) {
+            resolve(response.data);
+          } else {
+            reject(new Error((response && response.error) || 'Scrape failed'));
+          }
         });
+      }, 3000);
     });
+  });
 }
 
-function updateDashboardStatus(index, statusText, isCompleted = false, isError = false) {
-    const payload = { index, status: statusText, isCompleted, isError };
-    
-    if (bulkState.dashboardTabId) {
-        chrome.tabs.sendMessage(bulkState.dashboardTabId, { type: 'BULK_JOB_PROGRESS_UPDATE', payload }).catch(()=>{});
-    }
+// ── step 5: eBay upload via existing pipeline ─────────────────────────────────
+
+/**
+ * Mirrors the import_ebay handler (message-router.js) but adds bulk metadata
+ * and awaits a BULK_ITEM_RESULT terminal signal from the eBay content scripts.
+ */
+function uploadViaEbayTab(product, bulkItemId) {
+  return new Promise((resolve) => {
+    const uploadSessionId = crypto.randomUUID();
+    const ebayUrl = `https://www.ebay.com/sl/prelist/suggest?sr=shBulkLister&uploadSessionId=${uploadSessionId}`;
+
+    const settle = (result) => {
+      // Close the eBay tab and clean the session blob — bulk runs must not
+      // accumulate product/image data in chrome.storage (rule: cleanup without
+      // corrupting storage; the preview image lives in the DB row).
+      if (bulkRuntime.ebayTabId) {
+        chrome.tabs.remove(bulkRuntime.ebayTabId).catch(() => {});
+        bulkRuntime.ebayTabId = null;
+      }
+      chrome.storage.local.remove(uploadSessionId).catch(() => {});
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => {
+      bulkRuntime.uploadWaiters.delete(uploadSessionId);
+      settle({ success: false, error: 'eBay upload timed out (5 min) — page stuck or eBay flow changed' });
+    }, UPLOAD_TIMEOUT_MS);
+
+    bulkRuntime.uploadWaiters.set(uploadSessionId, {
+      timer,
+      resolve: (result) => settle(result)
+    });
+
+    (async () => {
+      const bulkProduct = { ...product, bulkMode: true };
+      await chrome.storage.local.set({
+        [uploadSessionId]: {
+          product: bulkProduct,
+          isImported: false,
+          uploadType: 'classic',
+          bulkMode: true,
+          bulkItemId
+        },
+        ebayListingTitle: bulkProduct.title || ''
+      });
+
+      chrome.tabs.create({ url: ebayUrl, active: true }, (tab) => {
+        if (chrome.runtime.lastError) {
+          clearTimeout(timer);
+          bulkRuntime.uploadWaiters.delete(uploadSessionId);
+          settle({ success: false, error: chrome.runtime.lastError.message });
+          return;
+        }
+        bulkRuntime.ebayTabId = tab.id;
+      });
+    })().catch((e) => {
+      clearTimeout(timer);
+      bulkRuntime.uploadWaiters.delete(uploadSessionId);
+      settle({ success: false, error: 'Could not stage upload: ' + (e && e.message ? e.message : e) });
+    });
+  });
 }
+
+// ── alarms + SW-restart recovery ─────────────────────────────────────────────
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === BULK_ALARM_NEXT || alarm.name === BULK_ALARM_RESUME) {
+    processNextBulkItem();
+  }
+});
+
+// On SW (re)start: recover a persisted running job. Items stuck mid-flight are
+// requeued (scraping) or failed with guidance (uploading — ambiguous outcome).
+(async () => {
+  try {
+    const state = await loadBulkState();
+    if (!state) return;
+    const { state: recovered, changed } = window.SSBulkCore.recoverState(state);
+    bulkRuntime.state = recovered;
+    if (changed) await saveBulkState();
+    if (recovered.isRunning && window.SSBulkCore.nextQueuedItem(recovered)) {
+      bulkLog('Recovered running job after restart — resuming in 15s');
+      chrome.alarms.create(BULK_ALARM_RESUME, { delayInMinutes: 0.25 });
+    } else if (recovered.isRunning) {
+      recovered.isRunning = false;
+      await saveBulkState();
+    }
+  } catch (e) {
+    console.warn('[Bulk Runner] recovery failed:', e && e.message);
+  }
+})();
 
 // ═══════════════════════════════════════════════════════════
-// LISTING SYNC HELPERS (Moved from background.js for global access)
+// LISTING SYNC HELPERS (shared with message-router / panel paths)
 // ═══════════════════════════════════════════════════════════
 
 async function parseListingSyncResponse(response) {
