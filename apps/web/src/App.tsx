@@ -22,8 +22,6 @@ import RefundPolicy from "./pages/legal/RefundPolicy";
 import Auth from "./pages/auth/Auth";
 import Register from "./pages/auth/Register";
 import VerifyEmail from "./pages/auth/VerifyEmail";
-import CheckoutSuccess from "./pages/billing/CheckoutSuccess";
-import PaymentRequired from "./pages/billing/PaymentRequired";
 import Dashboard from "./pages/dashboard/Dashboard";
 import Alerts from "./pages/dashboard/Alerts";
 import Orders from "./pages/dashboard/Orders";
@@ -32,8 +30,6 @@ import Listings from "./pages/dashboard/Listings";
 import NewListing from "./pages/dashboard/NewListing";
 import BulkLister from "./pages/dashboard/BulkLister";
 import ExtensionConnect from "./pages/dashboard/ExtensionConnect";
-import Subscription from "./pages/dashboard/Subscription";
-import BillingUsage from "./pages/dashboard/BillingUsage";
 import DashboardSettings from "./pages/dashboard/Settings";
 import CalculatorSettings from "./pages/dashboard/CalculatorSettings";
 import ProfitableProducts from "./pages/dashboard/ProfitableProducts";
@@ -51,7 +47,6 @@ import StoreDesignsPage from "./pages/integrations/shopify/StoreDesignsPage";
 import AdLibraryPage from "./pages/integrations/shopify/AdLibraryPage";
 import AiCopyStudio from "./pages/integrations/shopify/AiCopyStudio";
 import SavedItemsPage from "./pages/integrations/shopify/SavedItemsPage";
-import BillingPage from "./pages/integrations/shopify/BillingPage";
 import SettingsPage from "./pages/integrations/shopify/SettingsPage";
 import HelpPage from "./pages/integrations/shopify/HelpPage";
 import EbayLayout from "./pages/integrations/ebay/EbayLayout";
@@ -94,7 +89,7 @@ const ShopifyRoutes = () => (
       <Route path="ai-ad-generator" element={<AiCopyStudio />} />
       <Route path="ai-product-tools" element={<AiCopyStudio />} />
       <Route path="saved-items" element={<SavedItemsPage />} />
-      <Route path="billing" element={<BillingPage />} />
+      <Route path="billing" element={<Navigate to="../settings" replace />} />
       <Route path="settings" element={<SettingsPage />} />
       <Route path="help" element={<HelpPage />} />
     </Route>
@@ -144,8 +139,8 @@ const App = () => (
                 <Route path="/documentation" element={<Documentation />} />
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/register" element={<Register />} />
-                <Route path="/checkout/success" element={<CheckoutSuccess />} />
-                <Route path="/payment-required" element={<PaymentRequired />} />
+                <Route path="/checkout/*" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/payment-required" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
 
                 <Route path="/privacy" element={<PrivacyPolicy />} />
@@ -169,8 +164,8 @@ const App = () => (
                   <Route path="ebay-orders" element={<EbayOrders />} />
                   <Route path="orders" element={<Orders />} />
                   <Route path="alerts" element={<Alerts />} />
-                  <Route path="subscription" element={<Subscription />} />
-                  <Route path="billing" element={<BillingUsage />} />
+                  <Route path="subscription" element={<Navigate to="/dashboard/settings" replace />} />
+                  <Route path="billing" element={<Navigate to="/dashboard/settings" replace />} />
                   <Route path="extension" element={<ExtensionConnect />} />
                   <Route path="calculator" element={<CalculatorSettings />} />
                   <Route path="best-selling" element={<BestSellingItems />} />
@@ -189,7 +184,7 @@ const App = () => (
                 <Route path="/listings" element={<Navigate to="/dashboard/listings" replace />} />
                 <Route path="/products" element={<Navigate to="/dashboard/product-research" replace />} />
                 <Route path="/inventory" element={<Navigate to="/dashboard/listings" replace />} />
-                <Route path="/billing" element={<Navigate to="/dashboard/billing" replace />} />
+                <Route path="/billing" element={<Navigate to="/dashboard/settings" replace />} />
                 <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
 
                 <Route path="/extension-viewer" element={<ExtensionViewer />} />

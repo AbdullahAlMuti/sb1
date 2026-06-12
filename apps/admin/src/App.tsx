@@ -15,7 +15,6 @@ import {
   Bot,
   Boxes,
   ClipboardList,
-  CreditCard,
   Lock,
   Package,
   PlugZap,
@@ -33,21 +32,17 @@ import {
 import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminUsers from "./pages/AdminUsers";
-import AdminPlans from "./pages/AdminPlans";
 import AdminNotices from "./pages/AdminNotices";
 import AdminAudit from "./pages/AdminAudit";
 import AdminSettings from "./pages/AdminSettings";
-import AdminPayments from "./pages/AdminPayments";
 import AdminUsage from "./pages/AdminUsage";
 import AdminRoles from "./pages/AdminRoles";
 import AdminPrompts from "./pages/AdminPrompts";
 import AdminAISettings from "./pages/AdminAISettings";
-import AdminCoupons from "./pages/AdminCoupons";
 import AdminBestSelling from "./pages/AdminBestSelling";
 import AdminMustSell from "./pages/AdminMustSell";
 import AdminExtension from "./pages/AdminExtension";
 import AdminExtensionControl from "./pages/AdminExtensionControl";
-import AdminCredits from "./pages/AdminCredits";
 import AdminProfitableProducts from "./pages/AdminProfitableProducts";
 import AdminModulePage from "./pages/AdminModulePage";
 import AdminShopifyApp from "./pages/AdminShopifyApp";
@@ -68,8 +63,8 @@ const AdminRouteChildren = () => (
     <Route path="overview" element={<AdminDashboard />} />
     <Route path="users" element={<AdminUsers />} />
     <Route path="users/:userId" element={<AdminUsers />} />
-    <Route path="workspaces" element={<AdminModulePage title="Workspaces" description="Manage tenants, members, ownership, store counts, billing state, and tenant health from one place." icon={Boxes} primaryAction="Create workspace" moduleType="users" />} />
-    <Route path="workspaces/:workspaceId" element={<AdminModulePage title="Workspace Details" description="Inspect workspace members, stores, integrations, usage, billing, audit history, and support actions." icon={Boxes} primaryAction="Add member" moduleType="users" />} />
+    <Route path="workspaces" element={<AdminModulePage title="Workspaces" description="Manage tenants, members, ownership, store counts, usage state, and tenant health from one place." icon={Boxes} primaryAction="Create workspace" moduleType="users" />} />
+    <Route path="workspaces/:workspaceId" element={<AdminModulePage title="Workspace Details" description="Inspect workspace members, stores, integrations, usage, audit history, and support actions." icon={Boxes} primaryAction="Add member" moduleType="users" />} />
     <Route path="stores" element={<AdminModulePage title="Stores" description="Monitor connected seller stores, provider accounts, store health, sync coverage, and operational status." icon={Store} primaryAction="Add store" moduleType="commerce" />} />
     <Route path="stores/:storeId" element={<AdminModulePage title="Store Details" description="Inspect store integrations, products, listings, orders, sync jobs, and recent operational history." icon={Store} primaryAction="Run store check" moduleType="commerce" />} />
     <Route path="integrations" element={<AdminModulePage title="Integrations" description="Manage marketplace accounts across eBay, Shopify, Amazon, and future providers with provider-aware filters." icon={PlugZap} primaryAction="Connect provider" moduleType="operations" />} />
@@ -87,13 +82,13 @@ const AdminRouteChildren = () => (
     <Route path="sync-jobs/:jobId" element={<AdminModulePage title="Sync Job Details" description="Inspect job attempts, logs, provider errors, linked records, and replay options." icon={Activity} primaryAction="Retry job" moduleType="operations" />} />
     <Route path="webhook-events" element={<AdminModulePage title="Webhook Events" description="Inspect webhook deliveries, signatures, idempotency keys, replay options, and payload access." icon={Webhook} primaryAction="Replay event" moduleType="operations" />} />
     <Route path="webhook-events/:eventId" element={<AdminModulePage title="Webhook Event Details" description="Review protected payload, linked sync job, delivery status, and replay audit trail." icon={Webhook} primaryAction="Replay webhook" moduleType="operations" />} />
-    <Route path="billing" element={<AdminPayments />} />
-    <Route path="plans" element={<AdminPlans />} />
-    <Route path="subscriptions" element={<AdminPayments />} />
-    <Route path="payments" element={<AdminPayments />} />
+    <Route path="billing" element={<Navigate to="/overview" replace />} />
+    <Route path="plans" element={<Navigate to="/overview" replace />} />
+    <Route path="subscriptions" element={<Navigate to="/overview" replace />} />
+    <Route path="payments" element={<Navigate to="/overview" replace />} />
     <Route path="usage" element={<AdminUsage />} />
-    <Route path="credits" element={<AdminCredits />} />
-    <Route path="coupons" element={<AdminCoupons />} />
+    <Route path="credits" element={<Navigate to="/usage" replace />} />
+    <Route path="coupons" element={<Navigate to="/overview" replace />} />
     <Route path="ai" element={<AdminAISettings />} />
     <Route path="ai-settings" element={<AdminAISettings />} />
     <Route path="automation" element={<AdminPrompts />} />

@@ -7,18 +7,14 @@ import {
   Sparkles,
   BarChart3,
   Users,
-  CreditCard,
   Megaphone,
   ClipboardList,
-  DollarSign,
   ShieldCheck,
-  Crown,
   Puzzle,
   TrendingUp,
   Flame,
   Activity,
   Gem,
-  Coins,
   Truck,
   type LucideIcon,
 } from 'lucide-react';
@@ -38,8 +34,6 @@ export type RouteKey =
   | 'listings'
   | 'ebay-orders'
   | 'orders'
-  | 'subscription'
-  | 'billing-usage'
   | 'extension'
   | 'product-research'
   | 'best-selling'
@@ -50,8 +44,6 @@ export type RouteKey =
   | 'admin-dashboard'
   | 'admin-users'
   | 'admin-roles'
-  | 'admin-plans'
-  | 'admin-payments'
   | 'admin-usage'
   | 'admin-notices'
   | 'admin-best-selling'
@@ -59,11 +51,9 @@ export type RouteKey =
   | 'admin-profitable-products'
   | 'admin-prompts'
   | 'admin-extension'
-  | 'admin-coupons'
   | 'admin-audit'
   | 'admin-settings'
-  | 'admin-ai-settings'
-  | 'admin-credits';
+  | 'admin-ai-settings';
 
 /**
  * Route definitions - maps route keys to actual paths
@@ -75,8 +65,6 @@ export const ROUTE_PATHS: Record<RouteKey, string> = {
   'listings': '/dashboard/listings',
   'ebay-orders': '/dashboard/ebay-orders',
   'orders': '/dashboard/orders',
-  'subscription': '/dashboard/subscription',
-  'billing-usage': '/dashboard/billing',
   'extension': '/dashboard/extension',
   'product-research': '/dashboard/product-research',
   'best-selling': '/dashboard/best-selling',
@@ -88,8 +76,6 @@ export const ROUTE_PATHS: Record<RouteKey, string> = {
   'admin-dashboard': '/admin',
   'admin-users': '/admin/users',
   'admin-roles': '/admin/roles',
-  'admin-plans': '/admin/plans',
-  'admin-payments': '/admin/payments',
   'admin-usage': '/admin/usage',
   'admin-notices': '/admin/notices',
   'admin-best-selling': '/admin/best-selling',
@@ -97,11 +83,9 @@ export const ROUTE_PATHS: Record<RouteKey, string> = {
   'admin-profitable-products': '/admin/profitable-products',
   'admin-prompts': '/admin/prompts',
   'admin-extension': '/admin/extension',
-  'admin-coupons': '/admin/coupons',
   'admin-audit': '/admin/audit',
   'admin-settings': '/admin/settings',
   'admin-ai-settings': '/admin/ai-settings',
-  'admin-credits': '/admin/credits',
 };
 
 /**
@@ -156,8 +140,6 @@ export const USER_NAV_SECTIONS: NavSectionConfig[] = [
       { key: 'listings', icon: Package, label: 'Listings' },
       { key: 'ebay-orders', icon: ShoppingCart, label: 'eBay Orders' },
       { key: 'orders', icon: Truck, label: 'Auto Orders' },
-      { key: 'subscription', icon: Crown, label: 'Subscription' },
-      { key: 'billing-usage', icon: CreditCard, label: 'Billing & Usage' },
       { key: 'extension', icon: Puzzle, label: 'Extension' },
     ],
   },
@@ -191,14 +173,10 @@ export const ADMIN_NAV_SECTIONS: NavSectionConfig[] = [
     ],
   },
   {
-    id: 'billing',
-    label: 'Billing',
+    id: 'operations',
+    label: 'Operations',
     items: [
-      { key: 'admin-plans', icon: CreditCard, label: 'Plans' },
-      { key: 'admin-payments', icon: DollarSign, label: 'Payments' },
       { key: 'admin-usage', icon: Activity, label: 'Usage' },
-      { key: 'admin-credits', icon: Coins, label: 'Credits Tool' },
-      { key: 'admin-coupons', icon: CreditCard, label: 'Coupons' },
     ],
   },
   {

@@ -130,6 +130,19 @@ serve(async (req) => {
 
     logStep("Processing event", { type: event.type, id: event.id });
 
+    // Idempotency: skip events we've already processed
+    const { error: insertError } = await supabase
+      .from("stripe_events")
+      .insert({ id: event.id, type: event.type });
+
+    if (insertError?.code === "23505") {
+      logStep("Duplicate event, skipping", { id: event.id });
+      return new Response(JSON.stringify({ received: true, duplicate: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;

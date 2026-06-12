@@ -6,7 +6,6 @@ import {
   Boxes,
   ChevronLeft,
   ClipboardList,
-  CreditCard,
   FileClock,
   Gauge,
   LifeBuoy,
@@ -23,7 +22,6 @@ import {
   Tags,
   Users,
   Webhook,
-  XCircle,
   type LucideIcon,
 } from "lucide-react";
 import SellerSuitLogo from "@repo/ui/brand/SellerSuitLogo";
@@ -71,15 +69,8 @@ const navGroups: AdminNavGroup[] = [
     items: [
       { label: "Sync Health", href: "/sync-health", icon: Activity, badge: 6 },
       { label: "Webhook Events", href: "/webhook-events", icon: Webhook },
+      { label: "Usage", href: "/usage", icon: Receipt },
       { label: "Support", href: "/support", icon: LifeBuoy, badge: 4 },
-    ],
-  },
-  {
-    label: "Revenue",
-    items: [
-      { label: "Billing", href: "/billing", icon: CreditCard },
-      { label: "Usage / Credits", href: "/usage", icon: Receipt },
-      { label: "Coupons", href: "/coupons", icon: XCircle },
     ],
   },
   {

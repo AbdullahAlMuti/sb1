@@ -1,6 +1,5 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@repo/auth/hooks/useAuth';
-import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { getDashboardPathForGoal } from '@repo/config/navigation';
 import { Loader2, Mail, RefreshCw, ArrowLeft } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
@@ -18,11 +17,10 @@ export function ProtectedRoute({
   requireSuperAdmin = false,
 }: ProtectedRouteProps) {
   const { user, profile, isAdmin, isSuperAdmin, isLoading, isEmailVerified, resendVerificationEmail, signOut } = useAuth();
-  const { subscribed, isLoading: subscriptionLoading, planName } = useSubscription();
   const location = useLocation();
   const [isResending, setIsResending] = useState(false);
 
-  if (isLoading || subscriptionLoading || (user && !profile)) {
+  if (isLoading || (user && !profile)) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -146,14 +144,6 @@ export function ProtectedRoute({
   if ((isAdmin || isSuperAdmin) && !requireAdmin && !requireSuperAdmin) {
     return <Navigate to="/admin" replace />;
   }
-
-  // PAYMENT REQUIRED: Block access if user has no active paid subscription (admins bypass)
-  // Disabled: all users bypass payment check and access dashboard for free
-  /*
-  if (!subscribed && !isAdmin && !isSuperAdmin) {
-    return <Navigate to="/payment-required" replace />;
-  }
-  */
 
   return <>{children}</>;
 }

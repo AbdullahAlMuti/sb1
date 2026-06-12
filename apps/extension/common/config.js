@@ -98,8 +98,8 @@ const ExtensionConfig = (() => {
     ENABLE_SYNC_QUEUE: true,
     
     // Auth Fallback Defaults (Overridden by remote config if available)
-    EXTENSION_NEW_AUTH_ENABLED: false,
-    EXTENSION_LEGACY_FALLBACK_ENABLED: true,
+    EXTENSION_NEW_AUTH_ENABLED: true,
+    EXTENSION_LEGACY_FALLBACK_ENABLED: false,
     EXTENSION_PAIRING_FALLBACK_ENABLED: true,
     EXTENSION_AUTO_CONNECT_ENABLED: false
   });

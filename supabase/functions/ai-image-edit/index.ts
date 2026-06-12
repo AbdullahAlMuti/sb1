@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, createServiceClient } from "../_shared/extension-session.ts";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
+import { validateUserPlan, deductUsage, createLimitExceededResponse } from "../_shared/plan-middleware.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,6 +32,10 @@ serve(async (req) => {
       windowSeconds: 60,
     });
     if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
+
+    // Require at least 1 credit
+    const planCheck = await validateUserPlan(supabase, authContext.userId, 'credit', 1);
+    if (!planCheck.allowed) return createLimitExceededResponse(planCheck, corsHeaders);
 
     const { image, prompt } = await req.json();
 
@@ -128,8 +133,11 @@ serve(async (req) => {
 
     console.log("Successfully processed AI image edit");
 
+    // Deduct 1 credit after confirmed success
+    await deductUsage(supabase, authContext.userId, 'credit', 1, { description: 'AI image edit' });
+
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         editedImage: editedImageUrl,
         message: data.choices?.[0]?.message?.content || "Image edited successfully"
       }),

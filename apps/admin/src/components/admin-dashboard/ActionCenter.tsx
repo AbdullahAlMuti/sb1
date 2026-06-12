@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Clock, CreditCard, KeyRound, ShieldAlert, Webhook, XCircle, type LucideIcon } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, KeyRound, ShieldAlert, Webhook, XCircle, type LucideIcon } from "lucide-react";
 import { Button } from "@repo/ui/components/ui/button";
 import { Card, CardContent } from "@repo/ui/components/ui/card";
 import { cn } from "@repo/ui/lib/utils";
@@ -43,14 +43,6 @@ export const defaultActionItems: ActionCenterItem[] = [
     action: "Reconnect",
     severity: "warning",
     icon: KeyRound,
-  },
-  {
-    title: "Payment Failures",
-    count: 7,
-    description: "Expiring subscriptions",
-    action: "Resolve",
-    severity: "warning",
-    icon: CreditCard,
   },
   {
     title: "Webhook Issues",

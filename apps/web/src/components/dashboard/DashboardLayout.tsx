@@ -3,47 +3,20 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { DashboardSidebar } from './DashboardSidebar';
 import { DashboardHeader } from './DashboardHeader';
 import { NoticesBanner } from './NoticesBanner';
-import { CreditsLowBanner } from './CreditsLowBanner';
 import { cn } from '@repo/ui/lib/utils';
 import { Menu, Bell, Moon, Sun } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
 import { Sheet, SheetContent } from '@repo/ui/components/ui/sheet';
 import { useAuth } from '@repo/auth/hooks/useAuth';
 import { useTheme } from '@repo/ui/theme/useTheme';
-import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { useAlerts } from '@repo/api-client/hooks/useAlerts';
-import { supabase } from '@repo/api-client/supabase/client';
-import { toast } from 'sonner';
 
 export function DashboardLayout() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { subscribed, planName, usage, limits, openCustomerPortal } = useSubscription();
   const navigate = useNavigate();
-
-  const creditsTotal = usage?.credits_total ?? limits?.credits_per_month ?? 0;
-  const creditsRemaining = usage?.credits_remaining ?? 0;
-  const creditsUsed = usage?.credits_used ?? Math.max(creditsTotal - creditsRemaining, 0);
-
-  // Only paid/trialing users (i.e. subscribed) should see low-credit warnings.
-  // Brand-new users (free / unsubscribed) must not see phantom warnings.
-  const isInitializingCredits = Boolean(subscribed) && creditsTotal > 0 && creditsRemaining === 0 && creditsUsed === 0;
-  const eligibleForCreditWarning = Boolean(subscribed) && !isInitializingCredits;
-
-  // One-time toast when credits are low (<= 5)
-  useEffect(() => {
-    const shouldToast = eligibleForCreditWarning && creditsTotal > 0 && creditsRemaining <= 5;
-    if (!shouldToast) {
-      sessionStorage.removeItem('low_credits_toast_shown');
-      return;
-    }
-
-    if (sessionStorage.getItem('low_credits_toast_shown')) return;
-    sessionStorage.setItem('low_credits_toast_shown', '1');
-    toast.warning('Credits running low. Renew to avoid interruptions.');
-  }, [creditsRemaining, creditsTotal, eligibleForCreditWarning]);
 
   // Sidebar collapse state is managed via props from DashboardSidebar
 
@@ -146,12 +119,6 @@ export function DashboardLayout() {
         </div>
 
         <main className="flex-1 p-4 lg:p-6 xl:p-8">
-          <CreditsLowBanner
-            creditsRemaining={creditsRemaining}
-            creditsTotal={creditsTotal}
-            eligible={eligibleForCreditWarning}
-            onRenew={() => openCustomerPortal()}
-          />
           <NoticesBanner />
           <Outlet />
         </main>

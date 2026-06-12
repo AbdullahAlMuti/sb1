@@ -1,10 +1,9 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
+import {
   Bell, 
   TrendingUp, 
   TrendingDown,
-  AlertTriangle,
   CheckCircle2,
   Clock,
   ArrowUpRight,
@@ -20,7 +19,6 @@ import {
   Minus,
 } from 'lucide-react';
 import { useAuth } from '@repo/auth/hooks/useAuth';
-import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { supabase } from '@repo/api-client/supabase/client';
 import { Button } from '@repo/ui/components/ui/button';
 import { Badge } from '@repo/ui/components/ui/badge';
@@ -123,7 +121,6 @@ const itemVariants = {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { profile, user } = useAuth();
-  const { planName } = useSubscription();
   const { data: whatsappConfig } = useWhatsAppConfig();
   
   const [datePreset, setDatePreset] = useState<DateRangePreset>('month');
@@ -217,7 +214,7 @@ export default function Dashboard() {
         // Top listings
         supabase
           .from('listings')
-          .select('*')
+          .select('id, title, sku, amazon_asin, ebay_price, amazon_price, status, amazon_data')
           .eq('user_id', user.id)
           .order('ebay_price', { ascending: false })
           .limit(5),
@@ -229,14 +226,14 @@ export default function Dashboard() {
         // Current period eBay orders (synced from extension) - use explicit cast
         supabase
           .from('ebay_orders' as any)
-          .select('*')
+          .select('order_status, total_amount, order_date')
           .eq('user_id', user.id)
           .gte('order_date', dateRange.from.toISOString())
           .lte('order_date', dateRange.to.toISOString()) as any,
         // Previous period eBay orders for comparison
         supabase
           .from('ebay_orders' as any)
-          .select('*')
+          .select('order_status, total_amount, order_date')
           .eq('user_id', user.id)
           .gte('order_date', previousRange.from.toISOString())
           .lte('order_date', previousRange.to.toISOString()) as any,
@@ -490,8 +487,6 @@ export default function Dashboard() {
     );
   };
 
-  const insufficientCredits = (profile?.credits || 0) < 1;
-
   if (isLoading) {
     return (
       <div className="space-y-8 max-w-7xl mx-auto pb-8">
@@ -590,33 +585,6 @@ export default function Dashboard() {
           </Button>
         </div>
       </motion.div>
-
-      {/* Insufficient Credits Warning */}
-      {insufficientCredits && (
-        <motion.div 
-          variants={itemVariants}
-          className="bg-gradient-to-r from-destructive/10 via-destructive/5 to-transparent border border-destructive/20 rounded-2xl p-5 flex items-center gap-4 backdrop-blur-sm"
-        >
-          <div className="p-2.5 rounded-xl bg-destructive/15">
-            <AlertTriangle className="h-5 w-5 text-destructive" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-destructive">
-              Credits Running Low
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Upgrade your plan to continue creating listings.
-            </p>
-          </div>
-          <Button 
-            size="sm" 
-            className="rounded-xl shadow-md flex-shrink-0"
-            onClick={() => navigate('/dashboard/subscription')}
-          >
-            Upgrade Now
-          </Button>
-        </motion.div>
-      )}
 
       {/* Top Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">

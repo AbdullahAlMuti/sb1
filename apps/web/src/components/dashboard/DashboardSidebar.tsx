@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { LogOut, ChevronLeft, Rocket, Shield } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { LogOut, ChevronLeft } from 'lucide-react';
 import { useAuth } from '@repo/auth/hooks/useAuth';
 import { useNavigation, useNavigationConfig, type NavItemConfig, type NavSectionConfig } from '@repo/config/useNavigation';
 import { Button } from '@repo/ui/components/ui/button';
@@ -22,7 +22,6 @@ export function DashboardSidebar({
     isAdmin,
     signOut
   } = useAuth();
-  const navigate = useNavigate();
   const {
     isActive,
     isAdminSection
@@ -105,29 +104,6 @@ export function DashboardSidebar({
           {adminPanelLink && <NavItemComponent item={adminPanelLink} />}
         </div>
       </nav>
-
-      {/* Pro Access Card */}
-      {!effectiveCollapsed && !isAdminSection && <div className="px-3 pb-3">
-          <div className="rounded-lg p-3 relative cursor-pointer bg-card border border-border shadow-sm hover:bg-muted/50" onClick={() => {
-        onMobileClose?.();
-        navigate('/dashboard/subscription');
-      }}>
-            <div className="flex items-center gap-2 mb-2">
-              <Rocket className="h-4 w-4 text-muted-foreground" />
-              <h3 className="font-semibold text-foreground text-sm">Get Pro Access</h3>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed mb-3">
-              Unlock premium features
-            </p>
-            <Button variant="outline" size="sm" className="w-full text-xs h-8 font-medium" onClick={e => {
-            e.stopPropagation();
-            onMobileClose?.();
-            navigate('/dashboard/subscription');
-          }}>
-              Upgrade Now
-            </Button>
-          </div>
-        </div>}
 
       {/* Footer - Logout */}
       <div className="p-3 border-t border-border">

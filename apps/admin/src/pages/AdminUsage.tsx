@@ -74,7 +74,7 @@ export default function AdminUsage() {
   const { data: usageData, isLoading } = useQuery({
     queryKey: ['admin-usage', dateRange],
     queryFn: async () => {
-      const [usageLogs, profiles, plans] = await Promise.all([
+      const [usageLogs, profiles] = await Promise.all([
         supabase
           .from('usage_logs')
           .select('*')
@@ -82,14 +82,12 @@ export default function AdminUsage() {
           .lte('created_at', dateRange.to.toISOString())
           .order('created_at', { ascending: true }),
         // email is no longer stored in profiles; fetch only existing columns
-        supabase.from('profiles').select('id, plan_id, credits'),
-        supabase.from('plans').select('*'),
+        supabase.from('profiles').select('id, credits'),
       ]);
 
       return {
         usageLogs: (usageLogs.data || []) as Array<{ credits_used?: number; user_id?: string; created_at?: string }>,
         profiles: profiles.data || [],
-        plans: plans.data || [],
       };
     },
   });
@@ -98,18 +96,15 @@ export default function AdminUsage() {
   const stats = useMemo(() => {
     if (!usageData) return null;
 
-    const { usageLogs, profiles, plans } = usageData;
+    const { usageLogs, profiles } = usageData;
     
     const totalApiCalls = usageLogs.length;
     const totalCreditsUsed = usageLogs.reduce((sum, log) => sum + (log.credits_used || 0), 0);
     const activeUsers = new Set(usageLogs.map(log => log.user_id)).size;
     const totalUsers = profiles.length;
     
-    // Calculate API calls limit (mock - based on plan credits)
-    const totalCreditsLimit = profiles.reduce((sum, profile) => {
-      const plan = plans.find(p => p.id === profile.plan_id);
-      return sum + (plan?.credits_per_month || 100);
-    }, 0);
+    // Operational budget estimate; billing plans have been removed.
+    const totalCreditsLimit = profiles.reduce((sum) => sum + 100, 0);
 
     // Mock storage and bandwidth (would come from actual metrics in production)
     const storageUsed = 284; // GB
@@ -245,7 +240,7 @@ export default function AdminUsage() {
     const recentLogs = usageData.usageLogs.slice(-10).reverse();
     
     const activities = [
-      { icon: ArrowUpRight, title: 'API rate limit increased', description: 'Upgraded to Professional plan', time: '2 hours ago', type: 'info' },
+      { icon: ArrowUpRight, title: 'API capacity adjusted', description: 'Operational threshold updated', time: '2 hours ago', type: 'info' },
       { icon: AlertTriangle, title: 'High API usage detected', description: 'Approaching 85% of monthly limit', time: '5 hours ago', type: 'warning' },
       { icon: Check, title: 'Storage optimization completed', description: 'Freed up 45 GB of storage space', time: '1 day ago', type: 'success' },
       { icon: Users, title: 'New team members added', description: '12 users added to workspace', time: '2 days ago', type: 'info' },
@@ -535,8 +530,8 @@ export default function AdminUsage() {
                   <div>
                     <p className="font-medium text-sm text-orange-800 dark:text-orange-200">Approaching Limit</p>
                     <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
-                      You're using {((stats.apiCalls.current / stats.apiCalls.limit) * 100).toFixed(1)}% of your API calls. 
-                      Consider upgrading your plan.
+                      You're using {((stats.apiCalls.current / stats.apiCalls.limit) * 100).toFixed(1)}% of your API calls.
+                      Review capacity before usage continues growing.
                     </p>
                   </div>
                 </div>

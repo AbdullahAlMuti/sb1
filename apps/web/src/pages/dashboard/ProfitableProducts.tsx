@@ -106,9 +106,10 @@ export default function ProfitableProducts() {
     queryKey: ['profitable-products', searchQuery, selectedCountry],
     queryFn: async () => {
       let query = (supabase.from('profitable_products' as any) as any)
-        .select('*')
+        .select('id, title, description, image_url, price, shipping_cost, profit, stock, sales_count, total_sold, sku, tags, discount, country, category, ebay_url')
         .eq('is_active', true)
-        .order('position', { ascending: true }); // Default to position ordering found in Admin
+        .order('position', { ascending: true })
+        .limit(200); // cap payload; admin rarely adds >200 curated products
 
       if (searchQuery) {
         query = query.ilike('title', `%${searchQuery}%`);

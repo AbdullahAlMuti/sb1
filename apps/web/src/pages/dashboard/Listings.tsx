@@ -546,7 +546,8 @@ export default function Listings() {
         .select("*")
         .eq("user_id", user.id)
         .order("updated_at", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(500);
 
       if (error) {
         console.error("[Listings] Query error:", error);

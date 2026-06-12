@@ -2,8 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
-  CreditCard,
-  DollarSign,
   PlugZap,
   RefreshCw,
   ShieldAlert,
@@ -29,8 +27,6 @@ interface DashboardStats {
   listings: number;
   orders: number;
   failedJobs: number;
-  activeSubscriptions: number;
-  revenue: number;
 }
 
 const fallbackStats: DashboardStats = {
@@ -39,8 +35,6 @@ const fallbackStats: DashboardStats = {
   listings: 0,
   orders: 0,
   failedJobs: 23,
-  activeSubscriptions: 0,
-  revenue: 0,
 };
 
 const integrationRecords: IntegrationRecord[] = [
@@ -136,18 +130,14 @@ export default function AdminDashboard() {
 
     async function loadStats() {
       setIsLoading(true);
-      const [profiles, activeProfiles, listings, orders, subscriptions] = await Promise.all([
+      const [profiles, activeProfiles, listings, orders] = await Promise.all([
         supabase.from("profiles").select("*", { count: "exact", head: true }),
         supabase.from("profiles").select("*", { count: "exact", head: true }).eq("is_active", true),
         supabase.from("listings").select("*", { count: "exact", head: true }),
         (supabase.from("ebay_orders" as any) as any).select("*", { count: "exact", head: true }),
-        (supabase.from("user_plans" as any) as any).select("status, plans(price_monthly)").eq("status", "active"),
       ]);
 
       if (!mounted) return;
-
-      const revenueRows = ((subscriptions.data ?? []) as any[]);
-      const revenue = revenueRows.reduce((sum, row) => sum + Number(row?.plans?.price_monthly ?? 0), 0);
 
       setStats({
         totalUsers: profiles.count ?? 0,
@@ -155,8 +145,6 @@ export default function AdminDashboard() {
         listings: listings.count ?? 0,
         orders: orders.count ?? 0,
         failedJobs: 23,
-        activeSubscriptions: revenueRows.length,
-        revenue,
       });
       setIsLoading(false);
     }
@@ -210,12 +198,12 @@ export default function AdminDashboard() {
         sparkline: [22, 16, 20, 13, 18, 11, 9],
       },
       {
-        title: "MRR",
-        value: `$${stats.revenue.toLocaleString()}`,
-        trend: 15.8,
+        title: "Active Users",
+        value: isLoading ? "..." : stats.activeUsers.toLocaleString(),
+        trend: 9.4,
         comparison: "vs previous period",
-        action: "View revenue",
-        icon: DollarSign,
+        action: "View users",
+        icon: Users,
         tone: "green" as const,
         sparkline: [40, 42, 47, 45, 51, 55, 61],
       },

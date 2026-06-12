@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@repo/api-client/supabase/client';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
@@ -38,85 +38,136 @@ interface SubscriptionState {
 
 type BillingInterval = 'monthly' | 'yearly';
 
+// Module-level cache shared across all hook instances so that mounting 13
+// components doesn't fire 13 simultaneous requests to check-subscription-v2.
+const CACHE_TTL = 300_000; // 5 minutes — matches the old polling interval
+let _cachedState: SubscriptionState | null = null;
+let _cacheKey = ''; // userId — invalidate on user change
+let _lastFetch = 0;
+let _inflight: Promise<void> | null = null;
+const _listeners = new Set<() => void>();
+
+function notifyListeners() {
+  _listeners.forEach(fn => fn());
+}
+
 export function useSubscription() {
   const { user, session } = useAuth();
-  const [subscription, setSubscription] = useState<SubscriptionState>({
-    subscribed: false,
-    planName: 'free',
-    plan: null,
-    limits: null,
-    usage: null,
-    productId: null,
-    subscriptionEnd: null,
-    stripeSubscriptionId: null,
-    isLoading: true,
-  });
+  const [, rerender] = useState(0);
+  const userIdRef = useRef<string | undefined>(undefined);
 
-  const checkSubscription = useCallback(async () => {
+  // Invalidate cache when user changes
+  if (user?.id !== userIdRef.current) {
+    userIdRef.current = user?.id;
+    if (_cacheKey !== (user?.id ?? '')) {
+      _cachedState = null;
+      _lastFetch = 0;
+      _inflight = null;
+      _cacheKey = user?.id ?? '';
+    }
+  }
+
+  const checkSubscription = useCallback(async (force = false) => {
     if (!session?.access_token) {
-      setSubscription(prev => ({ ...prev, isLoading: false }));
+      _cachedState = _cachedState
+        ? { ..._cachedState, isLoading: false }
+        : { subscribed: false, planName: 'free', plan: null, limits: null, usage: null, productId: null, subscriptionEnd: null, stripeSubscriptionId: null, isLoading: false };
+      notifyListeners();
       return;
     }
 
-    try {
-      const { data, error } = await supabase.functions.invoke('check-subscription-v2', {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
+    const now = Date.now();
+    if (!force && _cachedState && now - _lastFetch < CACHE_TTL) {
+      // Already fresh — just rerender this instance if needed
+      notifyListeners();
+      return;
+    }
 
-      if (error) {
-        // Only log once per session to reduce noise
+    // Deduplicate: if a request is already in flight, wait for it
+    if (_inflight) {
+      await _inflight;
+      notifyListeners();
+      return;
+    }
+
+    _inflight = (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('check-subscription-v2', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+
+        if (error) {
+          if (!sessionStorage.getItem('subscription_error_logged')) {
+            console.warn('Subscription check unavailable - using profile data as fallback');
+            sessionStorage.setItem('subscription_error_logged', 'true');
+          }
+          if (_cachedState) _cachedState = { ..._cachedState, isLoading: false };
+          notifyListeners();
+          return;
+        }
+
+        sessionStorage.removeItem('subscription_error_logged');
+
+        _cachedState = {
+          subscribed: data?.subscribed ?? false,
+          planName: data?.plan_name || 'free',
+          plan: data?.plan ?? null,
+          limits: data?.limits ?? null,
+          usage: data?.usage ?? null,
+          productId: data?.product_id ?? null,
+          subscriptionEnd: data?.subscription_end ?? null,
+          stripeSubscriptionId: data?.stripe_subscription_id ?? null,
+          isLoading: false,
+        };
+        _lastFetch = Date.now();
+        notifyListeners();
+      } catch {
         if (!sessionStorage.getItem('subscription_error_logged')) {
-          console.warn('Subscription check unavailable - using profile data as fallback');
+          console.warn('Subscription check failed - using default state');
           sessionStorage.setItem('subscription_error_logged', 'true');
         }
-        // Fallback: Use profile data from useAuth instead
-        setSubscription(prev => ({ ...prev, isLoading: false }));
-        return;
+        if (_cachedState) _cachedState = { ..._cachedState, isLoading: false };
+        notifyListeners();
+      } finally {
+        _inflight = null;
       }
+    })();
 
-      // Clear error flag on success
-      sessionStorage.removeItem('subscription_error_logged');
-
-      // Handle both success and error responses from the edge function
-      if (data?.error) {
-        console.warn('Subscription check returned error:', data.error);
-        setSubscription({
-          subscribed: data.subscribed ?? false,
-          planName: data.plan_name ?? 'free',
-          plan: data.plan ?? null,
-          limits: data.limits ?? null,
-          usage: data.usage ?? null,
-          productId: null,
-          subscriptionEnd: null,
-          stripeSubscriptionId: null,
-          isLoading: false,
-        });
-        return;
-      }
-
-      setSubscription({
-        subscribed: data.subscribed ?? false,
-        planName: data.plan_name || 'free',
-        plan: data.plan ?? null,
-        limits: data.limits ?? null,
-        usage: data.usage ?? null,
-        productId: data.product_id ?? null,
-        subscriptionEnd: data.subscription_end ?? null,
-        stripeSubscriptionId: data.stripe_subscription_id ?? null,
-        isLoading: false,
-      });
-    } catch (error) {
-      // Only log once per session to reduce noise
-      if (!sessionStorage.getItem('subscription_error_logged')) {
-        console.warn('Subscription check failed - using default state');
-        sessionStorage.setItem('subscription_error_logged', 'true');
-      }
-      // Gracefully handle errors - don't break the app
-      setSubscription(prev => ({ ...prev, isLoading: false }));
-    }
+    await _inflight;
   }, [session?.access_token]);
+
+  // Subscribe to cache updates so all instances rerender together
+  useEffect(() => {
+    const trigger = () => rerender(n => n + 1);
+    _listeners.add(trigger);
+    return () => { _listeners.delete(trigger); };
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      checkSubscription();
+    } else {
+      _cachedState = { subscribed: false, planName: 'free', plan: null, limits: null, usage: null, productId: null, subscriptionEnd: null, stripeSubscriptionId: null, isLoading: false };
+      _lastFetch = 0;
+      notifyListeners();
+    }
+  }, [user, checkSubscription]);
+
+  // Single global polling interval: only the first mounted instance owns it
+  const isFirstRef = useRef(false);
+  useEffect(() => {
+    if (!user) return;
+    // Only set up the interval once across all instances in this tab
+    if (_listeners.size > 1) return; // others already have it
+    isFirstRef.current = true;
+    const id = setInterval(() => checkSubscription(), CACHE_TTL);
+    return () => { clearInterval(id); };
+  }, [user, checkSubscription]);
+
+  const subscription: SubscriptionState = _cachedState ?? {
+    subscribed: false, planName: 'free', plan: null, limits: null, usage: null,
+    productId: null, subscriptionEnd: null, stripeSubscriptionId: null, isLoading: !!user,
+  };
 
   const createCheckout = async (
     planId: string,
@@ -188,35 +239,6 @@ export function useSubscription() {
       toast.error('Failed to open billing portal');
     }
   };
-
-  useEffect(() => {
-    if (user) {
-      checkSubscription();
-    } else {
-      setSubscription({
-        subscribed: false,
-        planName: 'free',
-        plan: null,
-        limits: null,
-        usage: null,
-        productId: null,
-        subscriptionEnd: null,
-        stripeSubscriptionId: null,
-        isLoading: false,
-      });
-    }
-  }, [user, checkSubscription]);
-
-  // Refresh subscription status less frequently (every 5 minutes) to reduce API calls
-  useEffect(() => {
-    if (!user) return;
-
-    const interval = setInterval(() => {
-      checkSubscription();
-    }, 300000); // Every 5 minutes instead of every minute
-
-    return () => clearInterval(interval);
-  }, [user, checkSubscription]);
 
   return {
     ...subscription,
