@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { cn } from '@repo/ui/lib/utils';
 import { getDashboardPathForGoal } from '@repo/config/navigation';
+import { SHOPIFY_ENABLED } from '@repo/config/marketplaceScope';
 import SellerSuitLogo from '@repo/ui/brand/SellerSuitLogo';
 import { OtpInput } from '@repo/auth/components/auth/OtpInput';
 import { TurnstileCaptcha } from '@repo/auth/components/auth/TurnstileCaptcha';
@@ -289,8 +290,13 @@ export default function Register() {
             </div>
 
             {/* Options list */}
+            {/* eBay-only scope (see AI_AGENT_SCOPE_EBAY_ONLY.md): while Shopify is
+                disabled, only the eBay goal is offered. Re-enabling Shopify in
+                marketplaceScope restores the Shopify and "Both" cards. */}
             <div className="space-y-3">
-              {options.map((option) => {
+              {options
+                .filter((option) => SHOPIFY_ENABLED || option.id === 'ebay')
+                .map((option) => {
                 const isSelected = selectedGoal === option.id;
                 return (
                   <button

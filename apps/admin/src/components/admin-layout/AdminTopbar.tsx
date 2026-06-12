@@ -25,11 +25,14 @@ import {
   SelectValue,
 } from "@repo/ui/components/ui/select";
 import { cn } from "@repo/ui/lib/utils";
+import { SHOPIFY_ENABLED } from "@repo/config/marketplaceScope";
 
+// eBay-only scope (see AI_AGENT_SCOPE_EBAY_ONLY.md): the Shopify provider filter
+// is hidden while Shopify is disabled.
 const providers = [
   { id: "all", label: "All" },
   { id: "ebay", label: "eBay" },
-  { id: "shopify", label: "Shopify" },
+  ...(SHOPIFY_ENABLED ? [{ id: "shopify", label: "Shopify" }] : []),
   { id: "amazon", label: "Amazon" },
 ];
 

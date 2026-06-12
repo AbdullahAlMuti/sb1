@@ -20,7 +20,7 @@ const pipeline = [
 const tableRows = [
   { product: "Compact air purifier", source: "Amazon", channel: "eBay", profit: "$18.40", status: "Ready" },
   { product: "Wireless label printer", source: "Walmart", channel: "eBay", profit: "$31.20", status: "Syncing" },
-  { product: "LED desk lamp", source: "Amazon", channel: "Shopify", profit: "$12.75", status: "Mapped" },
+  { product: "LED desk lamp", source: "Amazon", channel: "eBay", profit: "$12.75", status: "Mapped" },
 ];
 
 const HeroSection = () => {

@@ -10,8 +10,10 @@ import { Sheet, SheetContent } from '@repo/ui/components/ui/sheet';
 import { useAuth } from '@repo/auth/hooks/useAuth';
 import { useTheme } from '@repo/ui/theme/useTheme';
 import { useAlerts } from '@repo/api-client/hooks/useAlerts';
+import { useSentryUser } from '@/hooks/useSentryUser';
 
 export function DashboardLayout() {
+  useSentryUser();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const { user } = useAuth();

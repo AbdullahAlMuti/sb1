@@ -50,6 +50,7 @@ import SavedItemsPage from "./pages/integrations/shopify/SavedItemsPage";
 import SettingsPage from "./pages/integrations/shopify/SettingsPage";
 import HelpPage from "./pages/integrations/shopify/HelpPage";
 import EbayLayout from "./pages/integrations/ebay/EbayLayout";
+import { SHOPIFY_ENABLED } from "@repo/config/marketplaceScope";
 
 const queryClient = new QueryClient();
 const ADMIN_ORIGIN = import.meta.env.VITE_ADMIN_URL ?? "https://admin.sellersuit.com";
@@ -69,7 +70,13 @@ function AdminRedirect() {
   return <ExternalRedirect to={`${ADMIN_ORIGIN}${adminPath}${location.search}${location.hash}`} />;
 }
 
-const ShopifyRoutes = () => (
+// eBay-only scope (see AI_AGENT_SCOPE_EBAY_ONLY.md): while Shopify is disabled,
+// every Shopify route redirects to the eBay dashboard. The page components stay
+// imported and recoverable — re-enabling is a flag flip in marketplaceScope.
+const ShopifyRoutes = () =>
+  SHOPIFY_ENABLED ? <ShopifyRoutesInner /> : <Navigate to="/dashboard/ebay" replace />;
+
+const ShopifyRoutesInner = () => (
   <Routes>
     <Route
       element={

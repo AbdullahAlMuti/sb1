@@ -18,6 +18,7 @@ import {
   Truck,
   type LucideIcon,
 } from 'lucide-react';
+import { marketplaceScope } from './marketplaceScope';
 
 // ============================================
 // NAVIGATION CONFIGURATION
@@ -251,7 +252,9 @@ export const ADMIN_PANEL_LINK: NavItemConfig = {
 export type SellerGoal = 'ebay' | 'shopify' | 'both' | string | null | undefined;
 
 export function getDashboardPathForGoal(goal: SellerGoal): string {
-  if (goal === 'shopify') return '/dashboard/shopify';
-  if (goal === 'both') return '/dashboard/ebay';
+  // eBay-only scope (see AI_AGENT_SCOPE_EBAY_ONLY.md): Shopify is disabled, so
+  // every goal resolves to the eBay workspace. Re-enable Shopify by flipping
+  // marketplaceScope.shopify.enabled, then restore the goal === 'shopify' branch.
+  if (marketplaceScope.shopify.enabled && goal === 'shopify') return '/dashboard/shopify';
   return '/dashboard/ebay';
 }

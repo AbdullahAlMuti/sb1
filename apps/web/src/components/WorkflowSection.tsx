@@ -39,8 +39,8 @@ const WorkflowSection = () => {
             </h2>
           </div>
           <p className="max-w-md text-sm leading-6 text-muted-foreground">
-            This structure gives Shopify room to be added as a real sales channel later without
-            rewriting your existing eBay and extension flows.
+            This structure keeps your eBay and extension flows fast and reliable, with room to add
+            new sales channels later without a rewrite.
           </p>
         </div>
 

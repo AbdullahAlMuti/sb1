@@ -1,11 +1,29 @@
 {
   "version": 1,
   "skills": {
+    "accessibility": {
+      "source": "microsoft/vscode",
+      "sourceType": "github",
+      "skillPath": ".github/skills/accessibility/SKILL.md",
+      "computedHash": "24e094e092d674671d139d266d4418daad84ee03622da9389d7f0a51da47ac10"
+    },
+    "canary-watch": {
+      "source": "affaan-m/everything-claude-code",
+      "sourceType": "github",
+      "skillPath": "skills/canary-watch/SKILL.md",
+      "computedHash": "96957e9763f1cdb1ed4d9a51e6cae0ef0ab9d8e616a72f8420f208c70795f3f0"
+    },
     "code-security": {
       "source": "semgrep/skills",
       "sourceType": "github",
       "skillPath": "skills/code-security/SKILL.md",
       "computedHash": "a4b931c20f8ebe7d4de8a4a91df449684516f1af129b773c34ed0e02b294a622"
+    },
+    "database-optimizer": {
+      "source": "jeffallan/claude-skills",
+      "sourceType": "github",
+      "skillPath": "skills/database-optimizer/SKILL.md",
+      "computedHash": "68cf96c6db0436f5a98b72cfa976ba583c87495a409b7bcb414a7c49ad5955d1"
     },
     "deploy-to-vercel": {
       "source": "vercel-labs/agent-skills",
@@ -31,10 +49,16 @@
       "skillPath": "skills/github-actions-docs/SKILL.md",
       "computedHash": "ead3fa2aff18e829c468dee593e1dc897aa95dc7a07d9ff8ff9f30c296b19af8"
     },
-    "playwright-best-practices": {
-      "source": "currents-dev/playwright-best-practices-skill",
+    "performance-optimization": {
+      "source": "addyosmani/agent-skills",
       "sourceType": "github",
-      "skillPath": "SKILL.md",
+      "skillPath": "skills/performance-optimization/SKILL.md",
+      "computedHash": "e143bfc3b19f8009b3399bdd96deba13e4edb6cdbd9f7f30b570ba5ea49e3613"
+    },
+    "playwright-best-practices": {
+      "source": "midudev/autoskills",
+      "sourceType": "github",
+      "skillPath": "packages/autoskills/skills-registry/playwright-best-practices/SKILL.md",
       "computedHash": "6db654e753257e642d6507d59b4fc633a2382e93429748ba0fb6817c23ef5216"
     },
     "redis-js": {
@@ -42,6 +66,12 @@
       "sourceType": "github",
       "skillPath": "skills/SKILL.md",
       "computedHash": "f5baf3d41c689601e94dc73dd75349dbdde82f34f3f018f23a1ff47ed45c7d84"
+    },
+    "security-and-hardening": {
+      "source": "addyosmani/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/security-and-hardening/SKILL.md",
+      "computedHash": "149ac0ecdf73998b17ba8edb51aaf614771dd576e50924058bf3bdedff3329f4"
     },
     "semgrep": {
       "source": "semgrep/skills",

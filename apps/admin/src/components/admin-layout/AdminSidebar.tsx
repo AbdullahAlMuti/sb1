@@ -28,6 +28,7 @@ import SellerSuitLogo from "@repo/ui/brand/SellerSuitLogo";
 import { Button } from "@repo/ui/components/ui/button";
 import { Badge } from "@repo/ui/components/ui/badge";
 import { cn } from "@repo/ui/lib/utils";
+import { SHOPIFY_ENABLED } from "@repo/config/marketplaceScope";
 
 type AdminNavItem = {
   label: string;
@@ -77,7 +78,11 @@ const navGroups: AdminNavGroup[] = [
     label: "Platform",
     items: [
       { label: "AI / Automation", href: "/ai", icon: Bot },
-      { label: "Shopify App", href: "/shopify-app", icon: ShoppingBag },
+      // eBay-only scope (see AI_AGENT_SCOPE_EBAY_ONLY.md): the Shopify App admin
+      // entry is hidden while Shopify is disabled. The page stays mounted.
+      ...(SHOPIFY_ENABLED
+        ? [{ label: "Shopify App", href: "/shopify-app", icon: ShoppingBag }]
+        : []),
       { label: "eBay App", href: "/ebay-app", icon: ShoppingBag },
       { label: "Extension Setup", href: "/extension", icon: PlugZap },
       { label: "Extension Control", href: "/extension-control", icon: ShieldCheck },

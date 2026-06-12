@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@repo/auth/hooks/useAuth';
 import { getDashboardPathForGoal } from '@repo/config/navigation';
+import { SHOPIFY_ENABLED } from '@repo/config/marketplaceScope';
 import { Loader2, Mail, RefreshCw, ArrowLeft } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
 import { useState } from 'react';
@@ -39,8 +40,16 @@ export function ProtectedRoute({
   if (profile && !requireAdmin && !requireSuperAdmin && !isAdmin && !isSuperAdmin) {
     const userGoal = (profile.settings as any)?.goal as string | undefined;
     const isShopifyRoute = location.pathname.startsWith('/dashboard/shopify');
-    
-    if (userGoal === 'shopify') {
+
+    if (!SHOPIFY_ENABLED) {
+      // eBay-only scope (see AI_AGENT_SCOPE_EBAY_ONLY.md): Shopify is disabled.
+      // Funnel every non-admin user to the eBay workspace regardless of their
+      // stored goal, and never route anyone to the Shopify dashboard. This keeps
+      // existing goal === 'shopify' / 'both' accounts from being stranded.
+      if (isShopifyRoute || location.pathname === '/dashboard') {
+        return <Navigate to="/dashboard/ebay" replace />;
+      }
+    } else if (userGoal === 'shopify') {
       // If goal is shopify and they are trying to access standard/eBay routes under /dashboard,
       // redirect them to the Shopify dashboard.
       if (location.pathname === '/dashboard' || (location.pathname.startsWith('/dashboard/') && !isShopifyRoute)) {
