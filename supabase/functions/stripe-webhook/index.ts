@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { trialEndFor } from "../_shared/billing.ts";
+import { sendBillingEmail } from "../_shared/email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -49,6 +51,150 @@ serve(async (req) => {
       .eq("stripe_customer_id", customerId)
       .maybeSingle();
     return data?.id ?? null;
+  };
+
+  // Subscription ended (canceled/unpaid/deleted): there is no free plan —
+  // the user drops to the explicit no-plan state and the choose-plan gate.
+  const downgradeToNoPlan = async (userId: string, reason: string, clearSubscriptionId: boolean) => {
+    const planPatch: Record<string, unknown> = {
+      plan_id: null,
+      status: "canceled",
+      orders_used: 0,
+      updated_at: new Date().toISOString(),
+    };
+    if (clearSubscriptionId) {
+      planPatch.stripe_subscription_id = null;
+      planPatch.current_period_end = null;
+    }
+
+    await supabase.from("user_plans").update(planPatch).eq("user_id", userId);
+    await supabase.from("profiles").update({ plan_id: null, credits: 0 }).eq("id", userId);
+
+    await supabase.from("credit_transactions").insert({
+      user_id: userId,
+      amount: 0,
+      transaction_type: "plan_grant",
+      balance_after: 0,
+      description: "Subscription ended",
+      metadata: { reason },
+    });
+
+    logStep("User downgraded to no plan", { userId, reason });
+  };
+
+  const getUserEmailAndName = async (userId: string): Promise<{ email: string; name?: string } | null> => {
+    const { data } = await supabase
+      .from("profiles")
+      .select("email, full_name")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!data?.email) return null;
+    return { email: data.email, name: data.full_name ?? undefined };
+  };
+
+  // $1 trial purchase (checkout.session.completed with mode === "payment").
+  // The trial_used_at claim is atomic, so replayed events and double
+  // purchases activate at most once.
+  const activateTrialFromSession = async (session: Stripe.Checkout.Session) => {
+    const userId = session.metadata?.user_id;
+    const planId = session.metadata?.plan_id;
+    const stripeCustomerId = typeof session.customer === "string" ? session.customer : null;
+
+    if (!userId || !planId) {
+      logStep("Payment-mode session missing metadata", { sessionId: session.id });
+      return;
+    }
+
+    const { data: plan } = await supabase
+      .from("plans")
+      .select("id, name, is_trial, trial_duration_days, credits_per_month, max_auto_orders")
+      .eq("id", planId)
+      .maybeSingle();
+
+    if (!plan?.is_trial) {
+      logStep("Payment-mode session for non-trial plan, ignoring", { sessionId: session.id, planId });
+      return;
+    }
+
+    const { data: claimed } = await supabase
+      .from("profiles")
+      .update({ trial_used_at: new Date().toISOString() })
+      .eq("id", userId)
+      .is("trial_used_at", null)
+      .select("id");
+
+    if (!claimed?.length) {
+      logStep("Trial already claimed, skipping activation", { userId, sessionId: session.id });
+      return;
+    }
+
+    const now = new Date();
+    const trialEnd = trialEndFor(now, plan.trial_duration_days ?? 7);
+
+    const planPayload = {
+      user_id: userId,
+      plan_id: plan.id,
+      status: "trialing",
+      stripe_subscription_id: null,
+      current_period_start: now.toISOString(),
+      current_period_end: trialEnd.toISOString(),
+      trial_end: trialEnd.toISOString(),
+      orders_used: 0,
+      credits_used: 0,
+      updated_at: now.toISOString(),
+    };
+
+    const { data: existingPlan } = await supabase
+      .from("user_plans")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (existingPlan) {
+      await supabase.from("user_plans").update(planPayload).eq("user_id", userId);
+    } else {
+      await supabase.from("user_plans").insert(planPayload);
+    }
+
+    const profileUpdate: Record<string, unknown> = {
+      plan_id: plan.id,
+      credits: plan.credits_per_month,
+    };
+    if (stripeCustomerId) profileUpdate.stripe_customer_id = stripeCustomerId;
+    await supabase.from("profiles").update(profileUpdate).eq("id", userId);
+
+    await supabase.from("credit_transactions").insert({
+      user_id: userId,
+      amount: plan.credits_per_month,
+      transaction_type: "plan_grant",
+      balance_after: plan.credits_per_month,
+      description: "Trial activated",
+      metadata: { plan_id: plan.id, session_id: session.id, trial_end: trialEnd.toISOString() },
+    });
+
+    // Belt-and-braces: mark the Stripe customer so a wiped/re-created account
+    // reusing the same customer cannot start a second trial.
+    if (stripeCustomerId) {
+      try {
+        await stripe.customers.update(stripeCustomerId, { metadata: { trial_used: "true" } });
+      } catch (err) {
+        logStep("Failed to set customer trial metadata (non-fatal)", { error: String(err) });
+      }
+    }
+
+    logStep("Trial activated", { userId, trialEnd: trialEnd.toISOString() });
+
+    // Fire-and-forget — never let email failure fail the webhook
+    getUserEmailAndName(userId).then((u) => {
+      if (u) {
+        sendBillingEmail({
+          to: u.email,
+          type: "trial_started",
+          userName: u.name,
+          trialEndDate: trialEnd.toISOString(),
+        }).catch((e) => logStep("trial_started email error (non-fatal)", { error: String(e) }));
+      }
+    }).catch(() => {});
   };
 
   const syncActiveSubscriptionToUser = async (subscription: Stripe.Subscription, userId: string) => {
@@ -155,6 +301,11 @@ serve(async (req) => {
         const userId = session.metadata?.user_id;
         const stripeCustomerId = typeof session.customer === "string" ? session.customer : null;
 
+        if (session.mode === "payment") {
+          await activateTrialFromSession(session);
+          break;
+        }
+
         if (userId && session.subscription) {
           // Fetch subscription details
           const subscription = await stripe.subscriptions.retrieve(
@@ -235,6 +386,17 @@ serve(async (req) => {
             });
 
             logStep("User plan updated", { userId, planName: planData.name });
+
+            getUserEmailAndName(userId).then((u) => {
+              if (u) {
+                sendBillingEmail({
+                  to: u.email,
+                  type: "subscription_activated",
+                  userName: u.name,
+                  planName: planData.name,
+                }).catch((e) => logStep("subscription_activated email error (non-fatal)", { error: String(e) }));
+              }
+            }).catch(() => {});
           } else {
             logStep("No matching plan found for price", { priceId });
           }
@@ -337,40 +499,13 @@ serve(async (req) => {
               .eq("id", userPlan.user_id);
 
           } else if (subscription.status === "canceled" || subscription.status === "unpaid") {
-            // Downgrade to free
-            const { data: freePlan } = await supabase
-              .from("plans")
-              .select("id, credits_per_month")
-              .eq("name", "free")
-              .maybeSingle();
-
+            await downgradeToNoPlan(userPlan.user_id, subscription.status, false);
+          } else if (subscription.status === "past_due") {
             await supabase
               .from("user_plans")
-              .update({
-                plan_id: freePlan?.id || null,
-                status: "canceled",
-                orders_used: 0,
-                updated_at: new Date().toISOString(),
-              })
+              .update({ status: "past_due", updated_at: new Date().toISOString() })
               .eq("user_id", userPlan.user_id);
-
-            await supabase
-              .from("profiles")
-              .update({ 
-                plan_id: freePlan?.id || null, 
-                credits: freePlan?.credits_per_month ?? 0 
-              })
-              .eq("id", userPlan.user_id);
-
-            // Log credit transaction for downgrade
-            await supabase.from("credit_transactions").insert({
-              user_id: userPlan.user_id,
-              amount: freePlan?.credits_per_month ?? 0,
-              transaction_type: "plan_grant",
-              balance_after: freePlan?.credits_per_month ?? 0,
-              description: "Downgraded to free plan",
-              metadata: { reason: subscription.status },
-            });
+            logStep("Subscription past_due", { userId: userPlan.user_id });
           }
 
           logStep("User subscription synced", { userId: userPlan.user_id, status: subscription.status });
@@ -384,53 +519,77 @@ serve(async (req) => {
         const subscription = event.data.object as Stripe.Subscription;
         logStep("Subscription deleted", { subscriptionId: subscription.id });
 
-        // Find user by subscription ID
         const { data: userPlan } = await supabase
           .from("user_plans")
-          .select("user_id")
+          .select("user_id, plan_id")
           .eq("stripe_subscription_id", subscription.id)
           .maybeSingle();
 
         if (userPlan) {
-          const { data: freePlan } = await supabase
-            .from("plans")
-            .select("id, credits_per_month")
-            .eq("name", "free")
-            .maybeSingle();
+          // Capture plan name before downgrade clears plan_id
+          let cancelledPlanName: string | undefined;
+          if (userPlan.plan_id) {
+            const { data: planRow } = await supabase
+              .from("plans")
+              .select("name")
+              .eq("id", userPlan.plan_id)
+              .maybeSingle();
+            cancelledPlanName = planRow?.name ?? undefined;
+          }
 
-          await supabase
-            .from("user_plans")
-            .update({
-              plan_id: freePlan?.id || null,
-              status: "canceled",
-              stripe_subscription_id: null,
-              current_period_end: null,
-              orders_used: 0,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("user_id", userPlan.user_id);
+          await downgradeToNoPlan(userPlan.user_id, "subscription_deleted", true);
 
-          await supabase
-            .from("profiles")
-            .update({ 
-              plan_id: freePlan?.id || null, 
-              credits: freePlan?.credits_per_month ?? 0 
-            })
-            .eq("id", userPlan.user_id);
-
-          // Log credit transaction
-          await supabase.from("credit_transactions").insert({
-            user_id: userPlan.user_id,
-            amount: freePlan?.credits_per_month ?? 0,
-            transaction_type: "plan_grant",
-            balance_after: freePlan?.credits_per_month ?? 0,
-            description: "Subscription canceled - downgraded to free plan",
-            metadata: {},
-          });
-
-          logStep("User downgraded to free", { userId: userPlan.user_id });
+          getUserEmailAndName(userPlan.user_id).then((u) => {
+            if (u) {
+              sendBillingEmail({
+                to: u.email,
+                type: "subscription_cancelled",
+                userName: u.name,
+                planName: cancelledPlanName,
+              }).catch((e) => logStep("subscription_cancelled email error (non-fatal)", { error: String(e) }));
+            }
+          }).catch(() => {});
         } else {
           logStep("No user_plan found for subscription", { subscriptionId: subscription.id });
+        }
+        break;
+      }
+
+      case "invoice.payment_failed": {
+        const invoice = event.data.object as Stripe.Invoice;
+        logStep("Payment failed", { invoiceId: invoice.id, subscriptionId: invoice.subscription });
+
+        if (invoice.subscription) {
+          const { data: userPlan } = await supabase
+            .from("user_plans")
+            .select("user_id")
+            .eq("stripe_subscription_id", invoice.subscription as string)
+            .maybeSingle();
+
+          if (userPlan) {
+            // No plan/credit changes — Stripe retries the charge; access is
+            // restored by invoice.payment_succeeded or revoked by
+            // customer.subscription.deleted.
+            await supabase
+              .from("user_plans")
+              .update({ status: "past_due", updated_at: new Date().toISOString() })
+              .eq("user_id", userPlan.user_id);
+            logStep("User marked past_due", { userId: userPlan.user_id });
+
+            getUserEmailAndName(userPlan.user_id).then((u) => {
+              if (u) {
+                sendBillingEmail({
+                  to: u.email,
+                  type: "payment_failed",
+                  userName: u.name,
+                  amountCents: (invoice.amount_due ?? 0) || undefined,
+                  currency: invoice.currency ?? "usd",
+                }).catch((e) => logStep("payment_failed email error (non-fatal)", { error: String(e) }));
+              }
+            }).catch(() => {});
+          } else {
+            logStep("No user_plan found for subscription", { subscriptionId: invoice.subscription });
+          }
         }
         break;
       }
@@ -502,11 +661,26 @@ serve(async (req) => {
                 },
               });
 
-              logStep("Credits and orders refreshed", { 
-                userId: userPlan.user_id, 
+              logStep("Credits and orders refreshed", {
+                userId: userPlan.user_id,
                 credits: planData.credits_per_month,
-                maxOrders: planData.max_auto_orders 
+                maxOrders: planData.max_auto_orders,
               });
+
+              getUserEmailAndName(userPlan.user_id).then((u) => {
+                if (u) {
+                  sendBillingEmail({
+                    to: u.email,
+                    type: "payment_receipt",
+                    userName: u.name,
+                    planName: planData.name,
+                    amountCents: (invoice.amount_paid ?? 0) || undefined,
+                    currency: invoice.currency ?? "usd",
+                    invoiceUrl: (invoice as any).hosted_invoice_url ?? undefined,
+                    nextBillingDate: new Date(subscription.current_period_end * 1000).toISOString(),
+                  }).catch((e) => logStep("payment_receipt email error (non-fatal)", { error: String(e) }));
+                }
+              }).catch(() => {});
             }
           } else {
             logStep("No user_plan found for subscription", { subscriptionId: invoice.subscription });
@@ -559,6 +733,21 @@ serve(async (req) => {
                 credits: planData.credits_per_month,
                 maxOrders: planData.max_auto_orders,
               });
+
+              getUserEmailAndName(userPlan.user_id).then((u) => {
+                if (u) {
+                  sendBillingEmail({
+                    to: u.email,
+                    type: "payment_receipt",
+                    userName: u.name,
+                    planName: planData.name,
+                    amountCents: (invoice.amount_paid ?? 0) || undefined,
+                    currency: invoice.currency ?? "usd",
+                    invoiceUrl: (invoice as any).hosted_invoice_url ?? undefined,
+                    nextBillingDate: new Date(subscription.current_period_end * 1000).toISOString(),
+                  }).catch((e) => logStep("payment_receipt email error (invoice.paid, non-fatal)", { error: String(e) }));
+                }
+              }).catch(() => {});
             }
           }
         }
