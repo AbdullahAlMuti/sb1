@@ -19,8 +19,10 @@ import { useAuth } from '@repo/auth/hooks/useAuth';
 import { cn } from '@repo/ui/lib/utils';
 
 const planIcons: Record<string, React.ComponentType<{ className?: string }>> = {
-  free: Crown,
+  none: Crown,
+  trial: Crown,
   starter: Zap,
+  pro: Crown,
   growth: Rocket,
   enterprise: Building2,
 };
@@ -105,7 +107,7 @@ export function PlanOverview({ creditsRemaining, creditsMax }: PlanOverviewProps
               <p className="text-xs text-muted-foreground">
                 {subscribed && subscriptionEnd 
                   ? `Renews ${new Date(subscriptionEnd).toLocaleDateString()}`
-                  : 'Free tier'
+                  : 'No active subscription'
                 }
               </p>
             </div>

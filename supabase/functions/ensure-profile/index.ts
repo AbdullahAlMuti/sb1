@@ -74,22 +74,17 @@ Deno.serve(async (req) => {
 
     const goal = (user.user_metadata && (user.user_metadata as any).goal) || null;
 
-    // Get Trial plan ID
-    const { data: trialPlan } = await supabaseAdmin
-      .from('plans')
-      .select('id')
-      .eq('name', 'Trial')
-      .maybeSingle();
-
-    // Create profile with default Trial plan and 20 credits
+    // New signups have no plan; trial is chosen explicitly from /choose-plan.
+    // handle_new_user() trigger sets the same defaults — this is the safety net
+    // for users who authenticate before the trigger fires.
     const { data: created, error: createError } = await supabaseAdmin
       .from('profiles')
       .insert({
         id: user.id,
         full_name: fullName,
-        credits: 20,
-        is_active: true, // Active for trial usage
-        plan_id: trialPlan?.id ?? null,
+        credits: 0,
+        is_active: true,
+        plan_id: null,
         settings: goal ? { goal } : {},
       })
       .select('*')

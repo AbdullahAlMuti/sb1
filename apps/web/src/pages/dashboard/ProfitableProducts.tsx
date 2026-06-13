@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { FeatureGate } from '@/components/FeatureGate';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@repo/api-client/supabase/client';
 import { Card, CardContent } from '@repo/ui/components/ui/card';
@@ -202,6 +203,7 @@ export default function ProfitableProducts() {
   };
 
   return (
+    <FeatureGate flag="profitable_products">
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -544,5 +546,6 @@ export default function ProfitableProducts() {
         </div>
       )}
     </div>
+    </FeatureGate>
   );
 }

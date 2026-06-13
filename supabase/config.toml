@@ -22,6 +22,15 @@ verify_jwt = true
 [functions.admin-adjust-credits]
 verify_jwt = true
 
+[functions.admin-sync-stripe-plans]
+verify_jwt = true # Handler additionally requires the admin/super_admin role.
+
+[functions.check-subscription-v2]
+verify_jwt = true
+
+[functions.ensure-profile]
+verify_jwt = true
+
 [functions.auth-status]
 verify_jwt = true
 

@@ -222,21 +222,15 @@ Deno.serve(async (req) => {
 
         // If the user has no profile yet (common for brand-new accounts), create it now.
         if (!profile) {
-          const { data: freePlan } = await supabase
-            .from('plans')
-            .select('id')
-            .eq('name', 'free')
-            .maybeSingle();
-
           const { data: createdProfile, error: createProfileError } = await supabase
             .from('profiles')
             .insert({
               id: user.id,
               email: user.email ?? '',
               full_name: (user.user_metadata as any)?.full_name ?? user.email ?? null,
-              credits: 5,
+              credits: 0,
               is_active: true,
-              plan_id: freePlan?.id ?? null,
+              plan_id: null,
             })
             .select('credits, plan_id')
             .single();

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { FeatureGate } from '@/components/FeatureGate';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@repo/api-client/supabase/client';
 import { 
@@ -72,6 +73,7 @@ export default function BestSellingItems() {
   };
 
   return (
+    <FeatureGate flag="top_selling_products">
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -274,5 +276,6 @@ export default function BestSellingItems() {
         <p>Page {currentPage} of {totalPages || 1}</p>
       </div>
     </div>
+    </FeatureGate>
   );
 }

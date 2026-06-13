@@ -36,6 +36,37 @@ serve(async (req) => {
 
     console.log(`[ai-product-research] User authenticated: ${userId} (${authContext.authMode})`);
 
+    // Server-side feature flag check
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('plan_id')
+      .eq('id', userId)
+      .single();
+
+    if (profile?.plan_id) {
+      const { data: plan } = await supabase
+        .from('plans')
+        .select('feature_flags')
+        .eq('id', profile.plan_id)
+        .single();
+
+      const flags = (plan?.feature_flags ?? {}) as Record<string, unknown>;
+      const enabled = flags['ai_product_research'];
+      const hasAccess = typeof enabled === 'boolean' ? enabled : typeof enabled === 'number' ? enabled > 0 : Boolean(enabled);
+
+      if (!hasAccess) {
+        return new Response(JSON.stringify({ error: 'This feature requires an eligible plan.' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } else {
+      return new Response(JSON.stringify({ error: 'No active plan.' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const requestBody = await req.json();
     
     // SECURITY: Input validation and sanitization

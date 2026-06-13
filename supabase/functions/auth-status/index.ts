@@ -36,8 +36,8 @@ Deno.serve(async (req) => {
       console.error('[auth-status] Profile error:', profileError);
     }
 
-    const planName = profile?.plans?.name || 'free';
-    const planDisplayName = profile?.plans?.display_name || 'Free';
+    const planName = profile?.plans?.name || 'none';
+    const planDisplayName = profile?.plans?.display_name || 'No Plan';
 
     const response = {
       success: true,

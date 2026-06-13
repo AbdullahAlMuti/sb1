@@ -11,6 +11,7 @@ interface Profile {
   is_active: boolean;
   plan_id: string | null;
   settings: Record<string, unknown> | null;
+  onboarding_completed: boolean | null;
 }
 
 interface UserRole {
@@ -97,6 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               !Array.isArray(ensuredProfile.settings)
                 ? (ensuredProfile.settings as Record<string, unknown>)
                 : null,
+            onboarding_completed: (ensuredProfile as any).onboarding_completed ?? null,
           };
           setProfile(profileData);
         }
@@ -115,6 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         settings: typeof data.settings === 'object' && data.settings !== null && !Array.isArray(data.settings)
           ? data.settings as Record<string, unknown>
           : null,
+        onboarding_completed: (data as any).onboarding_completed ?? null,
       };
       setProfile(profileData);
     } catch (err) {

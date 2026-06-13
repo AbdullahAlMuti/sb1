@@ -227,6 +227,7 @@
         "common/api-client.js",
         "common/sync-utils.js",
         "ui/panel.html",
+        "ui/panel.css",
         "ui/editor-popup.html",
         "ui/editor_frame.html",
         "ui/editor-popup.css",

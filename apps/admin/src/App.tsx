@@ -48,6 +48,11 @@ import AdminModulePage from "./pages/AdminModulePage";
 import AdminShopifyApp from "./pages/AdminShopifyApp";
 import AdminEbayApp from "./pages/AdminEbayApp";
 import AdminIntegrationDetail from "./pages/AdminIntegrationDetail";
+import AdminPlans from "./pages/AdminPlans";
+import AdminPlanFeatures from "./pages/AdminPlanFeatures";
+import AdminPlanPrices from "./pages/AdminPlanPrices";
+import AdminSubscriptions from "./pages/AdminSubscriptions";
+import AdminCheckoutSessions from "./pages/AdminCheckoutSessions";
 
 const queryClient = new QueryClient();
 
@@ -83,8 +88,11 @@ const AdminRouteChildren = () => (
     <Route path="webhook-events" element={<AdminModulePage title="Webhook Events" description="Inspect webhook deliveries, signatures, idempotency keys, replay options, and payload access." icon={Webhook} primaryAction="Replay event" moduleType="operations" />} />
     <Route path="webhook-events/:eventId" element={<AdminModulePage title="Webhook Event Details" description="Review protected payload, linked sync job, delivery status, and replay audit trail." icon={Webhook} primaryAction="Replay webhook" moduleType="operations" />} />
     <Route path="billing" element={<Navigate to="/overview" replace />} />
-    <Route path="plans" element={<Navigate to="/overview" replace />} />
-    <Route path="subscriptions" element={<Navigate to="/overview" replace />} />
+    <Route path="plans" element={<AdminPlans />} />
+    <Route path="plans/:id/features" element={<AdminPlanFeatures />} />
+    <Route path="plans/:id/prices" element={<AdminPlanPrices />} />
+    <Route path="subscriptions" element={<AdminSubscriptions />} />
+    <Route path="checkout-sessions" element={<AdminCheckoutSessions />} />
     <Route path="payments" element={<Navigate to="/overview" replace />} />
     <Route path="usage" element={<AdminUsage />} />
     <Route path="credits" element={<Navigate to="/usage" replace />} />

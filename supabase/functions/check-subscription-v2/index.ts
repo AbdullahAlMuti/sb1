@@ -1,6 +1,12 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import {
+  resolveAccessState,
+  shouldFlipToExpired,
+  billingIntervalForPrice,
+  type AccessState,
+} from "../_shared/billing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +17,58 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : "";
   console.log(`[CHECK-SUBSCRIPTION-V2] ${step}${detailsStr}`);
 };
+
+type PlanDetails = {
+  id: string;
+  name: string;
+  display_name: string;
+  credits_per_month: number;
+  max_listings: number;
+  max_auto_orders: number;
+  is_trial: boolean;
+  feature_flags: Record<string, unknown>;
+  stripe_price_id_monthly: string | null;
+  stripe_price_id_yearly: string | null;
+  stripe_price_id_one_time: string | null;
+};
+
+const PLAN_COLUMNS =
+  "id, name, display_name, credits_per_month, max_listings, max_auto_orders, is_trial, feature_flags, stripe_price_id_monthly, stripe_price_id_yearly, stripe_price_id_one_time";
+
+function toPlanDetails(row: Record<string, unknown> | null): PlanDetails | null {
+  if (!row?.id) return null;
+  return {
+    id: String(row.id),
+    name: String(row.name ?? "none"),
+    display_name: String(row.display_name ?? row.name ?? "none"),
+    credits_per_month: Number(row.credits_per_month ?? 0),
+    max_listings: Number(row.max_listings ?? 0),
+    max_auto_orders: Number(row.max_auto_orders ?? 0),
+    is_trial: Boolean(row.is_trial),
+    feature_flags: (row.feature_flags as Record<string, unknown>) ?? {},
+    stripe_price_id_monthly: (row.stripe_price_id_monthly as string) ?? null,
+    stripe_price_id_yearly: (row.stripe_price_id_yearly as string) ?? null,
+    stripe_price_id_one_time: (row.stripe_price_id_one_time as string) ?? null,
+  };
+}
+
+function emptyResponse(extra?: Record<string, unknown>) {
+  return {
+    subscribed: false,
+    plan_name: "none",
+    plan: null,
+    limits: null,
+    usage: null,
+    trial: null,
+    access: "none" as AccessState,
+    billing_interval: null,
+    cancel_at_period_end: false,
+    product_id: null,
+    subscription_end: null,
+    stripe_subscription_id: null,
+    ...extra,
+  };
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -24,17 +82,11 @@ serve(async (req) => {
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.replace(/^Bearer\s+/i, "").trim();
 
-  // Stateless auth client: validates the caller JWT using the Authorization header.
   const supabaseAuthClient = createClient(supabaseUrl, supabaseAnonKey, {
     auth: { persistSession: false },
-    global: {
-      headers: {
-        Authorization: authHeader,
-      },
-    },
+    global: { headers: { Authorization: authHeader } },
   });
 
-  // Service client for DB writes.
   const supabaseServiceClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },
   });
@@ -46,99 +98,78 @@ serve(async (req) => {
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
 
     if (!authHeader || !authHeader.toLowerCase().startsWith("bearer ")) {
-      return new Response(
-        JSON.stringify({
-          subscribed: false,
-          plan_name: "free",
-          plan: null,
-          limits: null,
-          usage: null,
-          product_id: null,
-          subscription_end: null,
-          stripe_subscription_id: null,
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 200,
-        },
-      );
+      return new Response(JSON.stringify(emptyResponse()), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
 
-   // Avoid relying on a server-side session in edge runtime; validate the explicit JWT
-   const { data: userData, error: userError } = await supabaseAuthClient.auth.getUser(token);
+    const { data: userData, error: userError } = await supabaseAuthClient.auth.getUser(token);
 
     if (userError || !userData?.user?.email) {
       logStep("Auth error - returning unauthenticated response", {
         error: userError?.message ?? "missing_user",
       });
-      return new Response(
-        JSON.stringify({
-          subscribed: false,
-          plan_name: "free",
-          plan: null,
-          limits: null,
-          usage: null,
-          product_id: null,
-          subscription_end: null,
-          stripe_subscription_id: null,
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 200,
-        },
-      );
+      return new Response(JSON.stringify(emptyResponse()), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
 
     const user = userData.user;
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
-    // Find an active/trialing subscription for this email.
-    const customers = await stripe.customers.list({ email: user.email, limit: 10 });
+    const { data: profile } = await supabaseServiceClient
+      .from("profiles")
+      .select("credits, plan_id, stripe_customer_id")
+      .eq("id", user.id)
+      .maybeSingle();
 
-    const subscriptionCandidates: Array<{
-      customerId: string;
-      subscription: Stripe.Subscription | null;
-    }> = customers.data.length
-      ? await Promise.all(
-          customers.data.map(async (customer: Stripe.Customer) => {
-            try {
-              const subs = await stripe.subscriptions.list({
-                customer: customer.id,
-                status: "all",
-                limit: 10,
-              });
+    // Resolve an active/trialing Stripe subscription. Prefer the stored
+    // customer id; fall back to an email scan for legacy profiles.
+    const findActiveSubscription = async (): Promise<Stripe.Subscription | null> => {
+      const candidateCustomerIds: string[] = [];
+      if (typeof profile?.stripe_customer_id === "string" && profile.stripe_customer_id) {
+        candidateCustomerIds.push(profile.stripe_customer_id);
+      } else {
+        const customers = await stripe.customers.list({ email: user.email!, limit: 10 });
+        candidateCustomerIds.push(...customers.data.map((c: Stripe.Customer) => c.id));
+      }
 
-              const activeSub =
-                subs.data.find((s: Stripe.Subscription) => s.status === "active" || s.status === "trialing") ??
-                null;
-              return { customerId: customer.id, subscription: activeSub };
-            } catch (e) {
-              logStep("Stripe subscriptions lookup failed", { customerId: customer.id });
-              return { customerId: customer.id, subscription: null };
-            }
-          }),
-        )
-      : [];
+      for (const customerId of candidateCustomerIds) {
+        try {
+          const subs = await stripe.subscriptions.list({
+            customer: customerId,
+            status: "all",
+            limit: 10,
+          });
+          const activeSub = subs.data.find(
+            (s: Stripe.Subscription) =>
+              s.status === "active" || s.status === "trialing" || s.status === "past_due",
+          );
+          if (activeSub) return activeSub;
+        } catch (_e) {
+          logStep("Stripe subscriptions lookup failed", { customerId });
+        }
+      }
+      return null;
+    };
 
-    const activeEntry = subscriptionCandidates.find((c) => Boolean(c.subscription)) ?? null;
-    const hasActiveSub = Boolean(activeEntry?.subscription);
+    const subscription = await findActiveSubscription();
+    const hasActiveSub = Boolean(
+      subscription && (subscription.status === "active" || subscription.status === "trialing"),
+    );
 
     let productId: string | null = null;
-    let planName = "free";
     let subscriptionEnd: string | null = null;
     let stripeSubscriptionId: string | null = null;
-    let planDetails: {
-      id: string;
-      name: string;
-      display_name: string;
-      credits_per_month: number;
-      max_listings: number;
-      max_auto_orders: number;
-    } | null = null;
+    let planDetails: PlanDetails | null = null;
+    let billingInterval: ReturnType<typeof billingIntervalForPrice> = null;
+    let cancelAtPeriodEnd = false;
 
-    if (hasActiveSub && activeEntry?.subscription) {
-      const subscription = activeEntry.subscription;
+    if (subscription) {
       stripeSubscriptionId = subscription.id;
+      cancelAtPeriodEnd = Boolean(subscription.cancel_at_period_end);
 
       const cpe = (subscription as any).current_period_end;
       if (Number.isFinite(cpe)) {
@@ -155,36 +186,27 @@ serve(async (req) => {
       const { data: planData } = stripePriceId
         ? await supabaseServiceClient
             .from("plans")
-            .select("id, name, display_name, credits_per_month, max_listings, max_auto_orders")
+            .select(PLAN_COLUMNS)
             .or(`stripe_price_id_monthly.eq.${stripePriceId},stripe_price_id_yearly.eq.${stripePriceId}`)
             .maybeSingle()
-        : { data: null } as any;
+        : ({ data: null } as any);
 
-       // Fallback to free if no matching plan found
-       planName = planData?.name || "free";
-
-      if (planData?.id) {
-        planDetails = {
-          id: planData.id,
-          name: planData.name,
-          display_name: planData.display_name ?? planData.name,
-           credits_per_month: planData.credits_per_month ?? 0,
-          max_listings: planData.max_listings ?? 10,
-          max_auto_orders: planData.max_auto_orders ?? 0,
-        };
+      planDetails = toPlanDetails(planData);
+      if (planDetails) {
+        billingInterval = billingIntervalForPrice(planDetails, stripePriceId ?? null);
       }
 
-      // Persist plan info (best-effort)
-      if (planData?.id) {
+      // Persist plan info (best-effort) for paid subscriptions
+      if (planDetails && hasActiveSub) {
         const { data: existingPlan } = await supabaseServiceClient
           .from("user_plans")
-          .select("id, orders_used")
+          .select("id")
           .eq("user_id", user.id)
           .maybeSingle();
 
         const payload = {
           user_id: user.id,
-          plan_id: planData.id,
+          plan_id: planDetails.id,
           status: "active",
           stripe_subscription_id: stripeSubscriptionId,
           current_period_end: subscriptionEnd,
@@ -194,177 +216,107 @@ serve(async (req) => {
         if (existingPlan) {
           await supabaseServiceClient.from("user_plans").update(payload).eq("user_id", user.id);
         } else {
-          await supabaseServiceClient.from("user_plans").insert({
-            ...payload,
-            orders_used: 0,
-          });
+          await supabaseServiceClient.from("user_plans").insert({ ...payload, orders_used: 0 });
         }
 
         await supabaseServiceClient
           .from("profiles")
-          .update({ plan_id: planData.id })
+          .update({ plan_id: planDetails.id })
           .eq("id", user.id);
-      } else {
-        logStep("No matching plan found for price", { stripePriceId });
+      } else if (!planDetails) {
+        logStep("No matching plan found for subscription price");
       }
     }
 
-    // IMPORTANT:
-    // For users without an active Stripe subscription, we intentionally do NOT
-    // fall back to a "free" plan row from the DB to avoid showing phantom totals
-    // (e.g. 100000) for brand-new users.
-    // Only resolve plan details via Stripe (active/trialing subscription).
+    // Local plan state: trials and lapsed subscriptions have no live Stripe
+    // subscription, so user_plans + profiles.plan_id carry the state.
+    const { data: userPlan } = await supabaseServiceClient
+      .from("user_plans")
+      .select(
+        "plan_id, status, trial_end, orders_used, credits_used, current_period_start, current_period_end",
+      )
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-    // Also return basic usage/limits so dashboard can render plan limits + usage.
-    const [{ data: profile }, { data: userPlan }, { count: listingsCount }] = await Promise.all([
+    if (!planDetails) {
+      const localPlanId = userPlan?.plan_id || profile?.plan_id;
+      if (localPlanId) {
+        const { data: pData } = await supabaseServiceClient
+          .from("plans")
+          .select(PLAN_COLUMNS)
+          .eq("id", localPlanId)
+          .maybeSingle();
+        planDetails = toPlanDetails(pData);
+        if (planDetails?.is_trial) billingInterval = "one_time";
+      }
+    }
+
+    // Reactive trial expiry: flip status so analytics can see expirations
+    // without a cron. Server-side enforcement lives in the DB gating RPCs.
+    if (shouldFlipToExpired(userPlan, planDetails, new Date())) {
+      await supabaseServiceClient
+        .from("user_plans")
+        .update({ status: "expired", updated_at: new Date().toISOString() })
+        .eq("user_id", user.id);
+      if (userPlan) userPlan.status = "expired";
+      logStep("Trial expired (lazy flip)", { userId: user.id });
+    }
+
+    const access = subscription && hasActiveSub && planDetails && !planDetails.is_trial
+      ? ("active" as AccessState)
+      : subscription && subscription.status === "past_due"
+        ? ("past_due" as AccessState)
+        : resolveAccessState(userPlan, planDetails, new Date());
+
+    // Credits accounting: profiles.credits is the authoritative remaining
+    // balance; plans.credits_per_month is the per-period total.
+    const [{ count: listingsCount }] = await Promise.all([
       supabaseServiceClient
-        .from('profiles')
-        .select('credits, plan_id')
-        .eq('id', user.id)
-        .maybeSingle(),
-      supabaseServiceClient
-        .from('user_plans')
-        .select('orders_used, credits_used, current_period_start, current_period_end, status')
-        .eq('user_id', user.id)
-        .maybeSingle(),
-      supabaseServiceClient
-        .from('listings')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('status', 'active'),
+        .from("listings")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("status", "active"),
     ]);
 
-    // Credits initialization hardening:
-    // Sometimes Stripe says subscription is active, but profile credits remain near zero.
-    // We treat it as "not initialized" when:
-    // - active/trialing subscription
-    // - plan credits > 0
-    // - user_plans.credits_used is 0 (not tracking usage yet)
-    // - profile.credits is very low (<= 5)
-    // Then we compute minimal usage from credit_transactions (usage) in the current period
-    // and set remaining = planTotal - used.
-    let maybeProfileCredits = Math.max(profile?.credits ?? 0, 0);
-    const maybeCreditsUsed = Math.max(userPlan?.credits_used ?? 0, 0);
-    const planCredits = Math.max(planDetails?.credits_per_month ?? 0, 0);
-
-    if (hasActiveSub && planDetails?.id && planCredits > 0 && maybeCreditsUsed === 0 && maybeProfileCredits <= 5) {
-      const periodStart = userPlan?.current_period_start
-        ? new Date(userPlan.current_period_start)
-        : new Date(Date.now() - 35 * 24 * 60 * 60 * 1000);
-      const periodStartIso = periodStart.toISOString();
-
-      const [{ data: recentUsageTx }, { data: existingGrantTx }] = await Promise.all([
-        supabaseServiceClient
-          .from('credit_transactions')
-          .select('amount, created_at')
-          .eq('user_id', user.id)
-          .eq('transaction_type', 'usage')
-          .gte('created_at', periodStartIso)
-          .limit(1000),
-        supabaseServiceClient
-          .from('credit_transactions')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('transaction_type', 'plan_grant')
-          .gte('created_at', periodStartIso)
-          .limit(1),
-      ]);
-
-      const usedFromTx = Array.isArray(recentUsageTx)
-        ? recentUsageTx.reduce((sum: number, tx: any) => sum + Math.max(-(Number(tx.amount) || 0), 0), 0)
-        : 0;
-
-      const hasGrantThisPeriod = Boolean(existingGrantTx?.length);
-
-      // Only auto-init when usage is still tiny; avoid overwriting legitimate low balances.
-      if (!hasGrantThisPeriod && usedFromTx <= 5) {
-        const desiredRemaining = Math.max(planCredits - usedFromTx, 0);
-
-        if (desiredRemaining > maybeProfileCredits) {
-          logStep('Credits appear uninitialized; backfilling from plan total', {
-            userId: user.id,
-            planId: planDetails.id,
-            planCredits,
-            usedFromTx,
-            oldRemaining: maybeProfileCredits,
-            newRemaining: desiredRemaining,
-          });
-
-          const { error: initErr } = await supabaseServiceClient
-            .from('profiles')
-            .update({ credits: desiredRemaining })
-            .eq('id', user.id);
-
-          if (initErr) {
-            logStep('Credits initialization failed (best-effort)', { error: initErr.message });
-          } else {
-            // Best-effort audit trail.
-            const delta = desiredRemaining - maybeProfileCredits;
-            await supabaseServiceClient.from('credit_transactions').insert({
-              user_id: user.id,
-              amount: delta,
-              balance_after: desiredRemaining,
-              transaction_type: 'plan_grant',
-              description: 'Plan credits initialized',
-              metadata: {
-                plan_id: planDetails.id,
-                plan_credits_total: planCredits,
-                inferred_usage: usedFromTx,
-                period_start: periodStartIso,
-              },
-            });
-
-            maybeProfileCredits = desiredRemaining;
-          }
-        }
-      }
-    }
-
-    // Resolve plan details from profiles if no active Stripe subscription exists
-    let activePlanId = planDetails?.id || profile?.plan_id;
-    let activePlan = planDetails;
-    if (!activePlan && activePlanId) {
-      const { data: pData } = await supabaseServiceClient
-        .from("plans")
-        .select("id, name, display_name, credits_per_month, max_listings, max_auto_orders")
-        .eq("id", activePlanId)
-        .maybeSingle();
-      if (pData) {
-        activePlan = {
-          id: pData.id,
-          name: pData.name,
-          display_name: pData.display_name ?? pData.name,
-          credits_per_month: pData.credits_per_month ?? 0,
-          max_listings: pData.max_listings ?? 10,
-          max_auto_orders: pData.max_auto_orders ?? 0,
-        };
-        planName = pData.name;
-      }
-    }
-
-    // Credits source-of-truth:
-    // - profiles.credits is the authoritative remaining balance (deducted on usage, reset on renewal)
-    // - plans.credits_per_month is the monthly total
-    // - credits_used is derived for display (and also tracked in user_plans for analytics)
-    const creditsTotal = activePlan ? (activePlan.credits_per_month ?? 0) : 0;
-    // Re-read remaining credits from local computed values; if we initialized above,
-    // ensure we return the plan total immediately (no "0 remaining" flicker).
-    const creditsRemaining = maybeProfileCredits;
+    const creditsRemaining = Math.max(profile?.credits ?? 0, 0);
+    const creditsTotal = planDetails && (access === "active" || access === "trial")
+      ? planDetails.credits_per_month
+      : 0;
     const creditsUsed = Math.max(creditsTotal - creditsRemaining, 0);
-    const isSubscribed = hasActiveSub || Boolean(activePlan && activePlan.name !== "free");
+    const isSubscribed = access === "active";
+
+    const trialInfo = planDetails?.is_trial
+      ? {
+          is_trial: true,
+          trial_end: userPlan?.trial_end ?? null,
+          trial_expired: access === "trial_expired",
+        }
+      : null;
 
     return new Response(
       JSON.stringify({
         subscribed: isSubscribed,
-        plan_name: planName,
-        plan: activePlan,
-        limits: activePlan
+        plan_name: access === "none" ? "none" : planDetails?.name ?? "none",
+        plan: planDetails
           ? {
-              credits_per_month: activePlan.credits_per_month,
-              max_listings: activePlan.max_listings,
-              max_auto_orders: activePlan.max_auto_orders,
+              id: planDetails.id,
+              name: planDetails.name,
+              display_name: planDetails.display_name,
+              credits_per_month: planDetails.credits_per_month,
+              max_listings: planDetails.max_listings,
+              max_auto_orders: planDetails.max_auto_orders,
+              is_trial: planDetails.is_trial,
+              feature_flags: planDetails.feature_flags,
             }
           : null,
+        limits:
+          planDetails && access !== "none"
+            ? {
+                credits_per_month: planDetails.credits_per_month,
+                max_listings: planDetails.max_listings,
+                max_auto_orders: planDetails.max_auto_orders,
+              }
+            : null,
         usage: {
           credits_total: creditsTotal,
           credits_remaining: creditsRemaining,
@@ -372,8 +324,12 @@ serve(async (req) => {
           orders_used: userPlan?.orders_used ?? 0,
           credits_used: creditsUsed,
           current_period_end: userPlan?.current_period_end ?? subscriptionEnd,
-          status: userPlan?.status ?? (isSubscribed ? 'active' : 'free'),
+          status: userPlan?.status ?? (isSubscribed ? "active" : "none"),
         },
+        trial: trialInfo,
+        access,
+        billing_interval: billingInterval,
+        cancel_at_period_end: cancelAtPeriodEnd,
         product_id: productId,
         subscription_end: subscriptionEnd,
         stripe_subscription_id: stripeSubscriptionId,

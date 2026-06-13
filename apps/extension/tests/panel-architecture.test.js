@@ -15,6 +15,20 @@ const EXT_ROOT = join(__dirname, '..');
 
 const read = (rel) => readFileSync(join(EXT_ROOT, rel), 'utf8');
 
+function findCssBlockEnd(src, startIndex) {
+  const openIndex = src.indexOf('{', startIndex);
+  assert.notEqual(openIndex, -1, 'CSS block must contain an opening brace');
+  let depth = 0;
+  for (let i = openIndex; i < src.length; i += 1) {
+    if (src[i] === '{') depth += 1;
+    if (src[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
 describe('no supplier-specific panels', () => {
   test('ui/ and sidepanel/ contain no <supplier>-panel html files', () => {
     const supplierNames = [
@@ -110,6 +124,29 @@ describe('universal panels are supplier-neutral', () => {
   test('panel.html loads the suppliers bundle so the registry is available', () => {
     const src = read('ui/panel.html');
     assert.ok(src.includes('suppliers.bundle.js'), 'panel.html must load suppliers.bundle.js');
+  });
+
+  test('manifest exposes panel stylesheet for injected panel.html', () => {
+    for (const name of ['manifest.json', 'manifest.dev.json', 'manifest.prod.json']) {
+      const manifest = JSON.parse(read(name));
+      const resources = manifest.web_accessible_resources.flatMap((entry) => entry.resources);
+      assert.ok(resources.includes('ui/panel.html'), `${name} must expose panel.html`);
+      assert.ok(resources.includes('ui/panel.css'), `${name} must expose panel.css`);
+    }
+  });
+
+  test('panel.css keeps extended editor styles outside mobile container blocks', () => {
+    const css = read('ui/panel.css');
+    const mobileContainerStart = css.indexOf('@container (max-width: 420px)');
+    const extendedEditorStart = css.indexOf('EXTENDED EDITOR (.ssx)');
+    assert.notEqual(mobileContainerStart, -1, 'mobile container block must exist');
+    assert.notEqual(extendedEditorStart, -1, 'extended editor CSS block must exist');
+    const mobileContainerEnd = findCssBlockEnd(css, mobileContainerStart);
+    assert.ok(mobileContainerEnd > mobileContainerStart, 'mobile container block must close');
+    assert.ok(
+      mobileContainerEnd < extendedEditorStart,
+      'extended editor CSS must not be nested inside the 420px container block'
+    );
   });
 
   test('standalone panel.html renders the shared extended workspace', () => {

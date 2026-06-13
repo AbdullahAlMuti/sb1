@@ -1662,6 +1662,10 @@ body.ss-dark-mode .ss-panel-wrapper .ss-scrape-overlay {
 
 @container (max-width: 420px) {
   .ss-panel-wrapper .gallery-scroll {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ════════════════════════════════════════════════════════════
    EXTENDED EDITOR (.ssx) — reference layout, self-contained light theme
    ════════════════════════════════════════════════════════════ */
@@ -1772,21 +1776,48 @@ body.ss-dark-mode .ss-panel-wrapper .ss-scrape-overlay {
 }
 
 .ssx-topbar-thumb {
+  position: relative;
+  display: grid;
+  place-items: center;
   width: 48px;
   height: 48px;
   border: 1px solid var(--x-border);
   border-radius: 10px;
   overflow: hidden;
   flex-shrink: 0;
-  background: #ffffff;
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 58%, #fff7ed 100%);
   padding: 2px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
+.ssx-topbar-thumb::before {
+  content: 'SS';
+  position: absolute;
+  inset: 7px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--x-primary);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
 .ssx-topbar-thumb img {
+  position: relative;
+  z-index: 1;
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.ssx-topbar-thumb img:not([src]),
+.ssx-topbar-thumb img[src=""] {
+  opacity: 0;
 }
 
 .ssx-topbar-info {
@@ -2203,6 +2234,7 @@ body.ss-dark-mode .ss-panel-wrapper .ss-scrape-overlay {
 
 .ssx .ss-desc-body {
   height: 66px;
+  min-height: 66px;
   max-height: 66px;
   border: 1px solid rgba(226, 232, 240, 1);
   background: #ffffff;
@@ -2215,6 +2247,34 @@ body.ss-dark-mode .ss-panel-wrapper .ss-scrape-overlay {
   width: 100%;
   overflow-y: auto;
   transition: all 0.2s ease;
+}
+
+.ssx .ss-desc-empty {
+  min-height: 44px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  text-align: left;
+}
+
+.ssx .ss-empty-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--x-green-text);
+}
+
+.ssx .ss-empty-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ssx .ss-empty-subtitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .ssx .ss-desc-body:focus-within {
@@ -2567,6 +2627,27 @@ input.ssx-readout-input:focus {
   scrollbar-width: thin;
   max-height: none;
   min-height: auto;
+}
+
+.ssx .gallery-empty {
+  flex: 0 0 150px;
+  width: 150px;
+  min-height: 110px;
+  height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  border: 1px dashed rgba(203, 213, 225, 1);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 /* Gallery item card */

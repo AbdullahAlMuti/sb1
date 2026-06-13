@@ -7,6 +7,7 @@ import {
   requireAllowedOrigin,
   resolveCorsHeaders,
 } from "../_shared/cors.ts";
+import { isTrialEligible } from "../_shared/billing.ts";
 
 type BillingInterval = "monthly" | "yearly";
 
@@ -165,7 +166,9 @@ serve(async (req) => {
 
     const { data: plan, error: planError } = await supabaseAdmin
       .from("plans")
-      .select("id, name, display_name, stripe_price_id_monthly, stripe_price_id_yearly, is_active")
+      .select(
+        "id, name, display_name, stripe_price_id_monthly, stripe_price_id_yearly, stripe_price_id_one_time, is_trial, trial_duration_days, is_active",
+      )
       .eq("id", planId)
       .eq("is_active", true)
       .maybeSingle();
@@ -174,8 +177,12 @@ serve(async (req) => {
       throw new Error("Selected plan is unavailable");
     }
 
-    const stripePriceId =
-      billingInterval === "yearly" ? plan.stripe_price_id_yearly : plan.stripe_price_id_monthly;
+    const isTrialPlan = Boolean(plan.is_trial);
+    const stripePriceId = isTrialPlan
+      ? plan.stripe_price_id_one_time
+      : billingInterval === "yearly"
+        ? plan.stripe_price_id_yearly
+        : plan.stripe_price_id_monthly;
 
     if (!stripePriceId || !PRICE_ID_RE.test(stripePriceId)) {
       throw new Error("Selected plan is not configured for checkout");
@@ -187,7 +194,7 @@ serve(async (req) => {
 
     const { data: profile } = await supabaseAdmin
       .from("profiles")
-      .select("stripe_customer_id")
+      .select("stripe_customer_id, trial_used_at")
       .eq("id", userId)
       .maybeSingle();
 
@@ -200,10 +207,40 @@ serve(async (req) => {
       typeof profile?.stripe_customer_id === "string" ? profile.stripe_customer_id : null,
     );
 
+    if (isTrialPlan) {
+      // One trial per account: profile marker, plan history, and the Stripe
+      // customer metadata (covers re-registered emails reusing a customer).
+      const { data: trialHistory } = await supabaseAdmin
+        .from("user_plans")
+        .select("id, plans!inner(is_trial)")
+        .eq("user_id", userId)
+        .eq("plans.is_trial", true)
+        .limit(1);
+
+      const customer = await stripe.customers.retrieve(customerId);
+      const customerTrialUsed =
+        !customer.deleted && (customer as Stripe.Customer).metadata?.trial_used === "true";
+
+      const eligibility = isTrialEligible({
+        trialUsedAt: typeof profile?.trial_used_at === "string" ? profile.trial_used_at : null,
+        hadTrialPlanBefore: Boolean(trialHistory?.length),
+        customerTrialUsed,
+      });
+
+      if (!eligibility.eligible) {
+        logStep("Trial rejected", { userId, reason: eligibility.reason });
+        return new Response(JSON.stringify({ error: eligibility.reason }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 403,
+        });
+      }
+    }
+
     let stripeCouponId: string | null = null;
     let couponData: Record<string, any> | null = null;
 
-    if (couponCode) {
+    // Coupons apply to recurring plans only — the $1 trial is already nominal.
+    if (couponCode && !isTrialPlan) {
       const { data: coupon, error: couponError } = await supabaseAdmin
         .from("coupons")
         .select("*")
@@ -267,13 +304,15 @@ serve(async (req) => {
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       customer: customerId,
       line_items: [{ price: stripePriceId, quantity: 1 }],
-      mode: "subscription",
-      success_url: `${returnOrigin}/checkout/success?plan=${encodeURIComponent(planId)}`,
+      // The $1 trial is a one-time payment; activation happens in the webhook
+      // (checkout.session.completed with mode === "payment").
+      mode: isTrialPlan ? "payment" : "subscription",
+      success_url: `${returnOrigin}/checkout/success?plan=${encodeURIComponent(planId)}${isTrialPlan ? "&mode=payment" : ""}`,
       cancel_url: `${returnOrigin}/#pricing`,
       metadata: {
         user_id: userId,
         plan_id: planId,
-        billing_interval: billingInterval,
+        billing_interval: isTrialPlan ? "one_time" : billingInterval,
         coupon_id: couponData?.id || null,
         coupon_code: couponData?.code || null,
       },
@@ -305,6 +344,21 @@ serve(async (req) => {
         discount_applied: couponData.discount_type === "percentage" ? 0 : couponData.discount_value,
       });
     }
+
+    // Track checkout session for audit (fire-and-forget — never block the response)
+    supabaseAdmin.from("checkout_sessions").insert({
+      user_id: userId,
+      email: userEmail,
+      selected_plan_id: planId,
+      stripe_checkout_session_id: session.id,
+      status: "pending",
+      metadata: {
+        billing_interval: isTrialPlan ? "one_time" : billingInterval,
+        is_trial: isTrialPlan,
+      },
+    }).then(({ error: csErr }) => {
+      if (csErr) console.warn("[CREATE-CHECKOUT] checkout_sessions insert failed", csErr.message);
+    });
 
     return new Response(JSON.stringify({ url: session.url }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

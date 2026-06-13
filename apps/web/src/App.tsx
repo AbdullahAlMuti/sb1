@@ -19,6 +19,7 @@ import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
 import TermsOfService from "./pages/legal/TermsOfService";
 import RefundPolicy from "./pages/legal/RefundPolicy";
 
+import Pricing from "./pages/Pricing";
 import Auth from "./pages/auth/Auth";
 import Register from "./pages/auth/Register";
 import VerifyEmail from "./pages/auth/VerifyEmail";
@@ -37,6 +38,10 @@ import BestSellingItems from "./pages/dashboard/BestSellingItems";
 import MustSellItems from "./pages/dashboard/MustSellItems";
 import ProductResearch from "./pages/dashboard/ProductResearch";
 import ExtensionViewer from "./pages/extension/ExtensionViewer";
+import CheckoutSuccess from "./pages/billing/CheckoutSuccess";
+import ChoosePlan from "./pages/billing/PaymentRequired";
+import Onboarding from "./pages/onboarding/Onboarding";
+import Subscription from "./pages/dashboard/Subscription";
 
 import ShopifyLayout from "./pages/integrations/shopify/ShopifyLayout";
 import ShopifyDashboard from "./pages/integrations/shopify/ShopifyDashboard";
@@ -144,10 +149,14 @@ const App = () => (
                 <Route path="/about" element={<About />} />
                 <Route path="/contact" element={<Contact />} />
                 <Route path="/documentation" element={<Documentation />} />
+                <Route path="/pricing" element={<Pricing />} />
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/checkout/success" element={<CheckoutSuccess />} />
                 <Route path="/checkout/*" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/payment-required" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/onboarding" element={<Onboarding />} />
+                <Route path="/choose-plan" element={<ChoosePlan />} />
+                <Route path="/payment-required" element={<Navigate to="/choose-plan" replace />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
 
                 <Route path="/privacy" element={<PrivacyPolicy />} />
@@ -171,8 +180,8 @@ const App = () => (
                   <Route path="ebay-orders" element={<EbayOrders />} />
                   <Route path="orders" element={<Orders />} />
                   <Route path="alerts" element={<Alerts />} />
-                  <Route path="subscription" element={<Navigate to="/dashboard/settings" replace />} />
-                  <Route path="billing" element={<Navigate to="/dashboard/settings" replace />} />
+                  <Route path="subscription" element={<Subscription />} />
+                  <Route path="billing" element={<Subscription />} />
                   <Route path="extension" element={<ExtensionConnect />} />
                   <Route path="calculator" element={<CalculatorSettings />} />
                   <Route path="best-selling" element={<BestSellingItems />} />

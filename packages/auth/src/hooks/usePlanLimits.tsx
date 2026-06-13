@@ -62,26 +62,15 @@ export function usePlanLimits() {
         planData = data;
       }
 
-      // If no plan, use free plan defaults
-      if (!planData) {
-        const { data: freePlan } = await supabase
-          .from('plans')
-          .select('name, display_name, credits_per_month, max_listings, max_auto_orders')
-          .eq('name', 'free')
-          .maybeSingle();
-        planData = freePlan;
-      }
-
       setLimits({
         credits_per_month: planData?.credits_per_month ?? 0,
-        max_listings: planData?.max_listings ?? 10,
+        max_listings: planData?.max_listings ?? 0,
         max_auto_orders: planData?.max_auto_orders ?? 0,
-        // Derive remaining from plan total - used to avoid misleading defaults for new users.
         current_credits: Math.max((planData?.credits_per_month ?? 0) - (userPlanData?.credits_used ?? 0), 0),
         orders_used: userPlanData?.orders_used ?? 0,
         listings_count: listingsCount ?? 0,
-        plan_name: planData?.name ?? 'free',
-        plan_display_name: planData?.display_name ?? 'Free',
+        plan_name: planData?.name ?? 'none',
+        plan_display_name: planData?.display_name ?? 'No Plan',
         current_period_end: userPlanData?.current_period_end ?? null,
       });
       setError(null);

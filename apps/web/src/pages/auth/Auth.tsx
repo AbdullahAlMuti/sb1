@@ -728,7 +728,7 @@ export default function Auth() {
                   type="button"
                   onClick={() => {
                     if (mode === 'login') {
-                      navigate('/register');
+                      navigate('/pricing');
                     } else {
                       switchMode('login');
                     }

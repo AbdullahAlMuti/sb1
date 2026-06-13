@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
     const requiredActions: string[] = [];
     const warnings: string[] = [];
 
-    if (!["active", "trialing", "free"].includes(subscriptionStatus)) {
+    if (!["active", "trialing"].includes(subscriptionStatus)) {
       requiredActions.push("resolve_subscription");
     }
     if (!ebayConnection || ebayConnection.status !== "active") {

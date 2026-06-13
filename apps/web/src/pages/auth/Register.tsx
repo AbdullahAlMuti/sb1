@@ -61,6 +61,15 @@ export default function Register() {
     }
   }, [stateSelectedPlan]);
 
+  // Plan-first signup: redirect to /pricing if no plan context
+  useEffect(() => {
+    if (plansLoading) return;
+    const hasPlanContext = Boolean(urlPlan || stateSelectedPlan || storedPlan);
+    if (!hasPlanContext) {
+      navigate('/pricing', { replace: true });
+    }
+  }, [plansLoading, urlPlan, stateSelectedPlan, storedPlan, navigate]);
+
   useEffect(() => {
     if (user && user.email_confirmed_at) {
       localStorage.removeItem('selectedPlan');

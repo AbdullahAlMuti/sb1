@@ -55,7 +55,7 @@ export function LimitExhaustedDialog({
   const Icon = config.icon;
 
   // Find next tier plan
-  const currentPlanName = limits?.plan_name || 'free';
+  const currentPlanName = limits?.plan_name || 'none';
   const sortedPlans = [...plans].sort((a, b) => a.price_monthly - b.price_monthly);
   const currentPlanIndex = sortedPlans.findIndex((p) => p.name === currentPlanName);
   const nextPlan = sortedPlans[currentPlanIndex + 1];

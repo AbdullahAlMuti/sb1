@@ -3,9 +3,12 @@ import { supabase } from '@repo/api-client/supabase/client';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 
+export type AccessState = 'none' | 'trial' | 'trial_expired' | 'active' | 'past_due';
+
 interface SubscriptionState {
   subscribed: boolean;
   planName: string;
+  access: AccessState;
   plan?: {
     id: string;
     name: string;
@@ -13,6 +16,8 @@ interface SubscriptionState {
     credits_per_month: number;
     max_listings: number;
     max_auto_orders: number;
+    is_trial: boolean;
+    feature_flags: Record<string, unknown>;
   } | null;
   limits?: {
     credits_per_month: number;
@@ -28,6 +33,13 @@ interface SubscriptionState {
     current_period_end: string | null;
     status: string;
   } | null;
+  trial: {
+    is_trial: boolean;
+    trial_end: string | null;
+    trial_expired: boolean;
+  } | null;
+  billingInterval: 'monthly' | 'yearly' | 'one_time' | null;
+  cancelAtPeriodEnd: boolean;
   productId: string | null;
   subscriptionEnd: string | null;
   stripeSubscriptionId: string | null;
@@ -71,7 +83,7 @@ export function useSubscription() {
     if (!session?.access_token) {
       _cachedState = _cachedState
         ? { ..._cachedState, isLoading: false }
-        : { subscribed: false, planName: 'free', plan: null, limits: null, usage: null, productId: null, subscriptionEnd: null, stripeSubscriptionId: null, isLoading: false };
+        : { subscribed: false, planName: 'none', access: 'none', plan: null, limits: null, usage: null, trial: null, billingInterval: null, cancelAtPeriodEnd: false, productId: null, subscriptionEnd: null, stripeSubscriptionId: null, isLoading: false };
       notifyListeners();
       return;
     }
@@ -110,10 +122,14 @@ export function useSubscription() {
 
         _cachedState = {
           subscribed: data?.subscribed ?? false,
-          planName: data?.plan_name || 'free',
+          planName: data?.plan_name || 'none',
+          access: data?.access ?? 'none',
           plan: data?.plan ?? null,
           limits: data?.limits ?? null,
           usage: data?.usage ?? null,
+          trial: data?.trial ?? null,
+          billingInterval: data?.billing_interval ?? null,
+          cancelAtPeriodEnd: data?.cancel_at_period_end ?? false,
           productId: data?.product_id ?? null,
           subscriptionEnd: data?.subscription_end ?? null,
           stripeSubscriptionId: data?.stripe_subscription_id ?? null,
@@ -147,7 +163,7 @@ export function useSubscription() {
     if (user) {
       checkSubscription();
     } else {
-      _cachedState = { subscribed: false, planName: 'free', plan: null, limits: null, usage: null, productId: null, subscriptionEnd: null, stripeSubscriptionId: null, isLoading: false };
+      _cachedState = { subscribed: false, planName: 'none', access: 'none', plan: null, limits: null, usage: null, trial: null, billingInterval: null, cancelAtPeriodEnd: false, productId: null, subscriptionEnd: null, stripeSubscriptionId: null, isLoading: false };
       _lastFetch = 0;
       notifyListeners();
     }
@@ -165,7 +181,8 @@ export function useSubscription() {
   }, [user, checkSubscription]);
 
   const subscription: SubscriptionState = _cachedState ?? {
-    subscribed: false, planName: 'free', plan: null, limits: null, usage: null,
+    subscribed: false, planName: 'none', access: 'none', plan: null, limits: null, usage: null,
+    trial: null, billingInterval: null, cancelAtPeriodEnd: false,
     productId: null, subscriptionEnd: null, stripeSubscriptionId: null, isLoading: !!user,
   };
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { FeatureGate } from '@/components/FeatureGate';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Bell, 
@@ -198,6 +199,7 @@ export default function Alerts() {
   }
 
   return (
+    <FeatureGate flag="price_monitoring">
     <div className="space-y-6">
       {/* Header */}
       <motion.div
@@ -409,5 +411,6 @@ export default function Alerts() {
         </TabsContent>
       </Tabs>
     </div>
+    </FeatureGate>
   );
 }

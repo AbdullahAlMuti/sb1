@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FeatureGate } from '@/components/FeatureGate';
 import { supabase } from '@repo/api-client/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@repo/ui/components/ui/card';
 import { Input } from '@repo/ui/components/ui/input';
@@ -131,6 +132,7 @@ export default function ProductResearch() {
   };
 
   return (
+    <FeatureGate flag="ai_product_research">
     <div className="space-y-6">
       {/* Header */}
         <div className="flex flex-col gap-2">
@@ -384,5 +386,6 @@ export default function ProductResearch() {
           </Card>
         )}
     </div>
+    </FeatureGate>
   );
 }

@@ -301,6 +301,14 @@ serve(async (req) => {
         const userId = session.metadata?.user_id;
         const stripeCustomerId = typeof session.customer === "string" ? session.customer : null;
 
+        // Mark checkout_sessions row as completed (fire-and-forget)
+        supabase.from("checkout_sessions")
+          .update({ status: "completed", updated_at: new Date().toISOString() })
+          .eq("stripe_checkout_session_id", session.id)
+          .then(({ error: csErr }) => {
+            if (csErr) console.warn("[WEBHOOK] checkout_sessions update failed", csErr.message);
+          });
+
         if (session.mode === "payment") {
           await activateTrialFromSession(session);
           break;
