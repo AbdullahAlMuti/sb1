@@ -257,10 +257,11 @@ export default function Dashboard() {
         const d = parseISO(o.created_at);
         return d >= intervalStart && d < intervalEnd;
       });
-      // Revenue mirrors the headline "Confirmed by eBay" figure: sum total_amount
-      // (mapped to item_price) across ALL orders in the interval, not just COMPLETED.
-      // Filtering to COMPLETED here flattened the line to zero whenever orders were
-      // still Paid/Shipped, making the graph appear blank.
+      // Revenue mirrors the headline "Confirmed by eBay" figure: item_price is the
+      // per-order revenue from de-duplicated eBay rows (see groupOrders), summed
+      // over every order in the interval regardless of status. (Filtering to
+      // COMPLETED previously flattened the line to zero, since no order ever
+      // carries that status.)
       const revenue = inInterval.reduce((acc, o) => acc + (Number(o.item_price) || 0), 0);
       const profit = inInterval
         .filter((o: any) => o.realProfit != null)
@@ -289,17 +290,20 @@ export default function Dashboard() {
         supabase.from('inventory_alerts').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'UNREAD'),
         supabase.from('listings').select('id, title, sku, amazon_asin, ebay_price, amazon_price, status, amazon_data').eq('user_id', user.id).order('ebay_price', { ascending: false }).limit(5),
         supabase.from('listings').select('ebay_price, amazon_price, status').eq('user_id', user.id),
-        (supabase.from('ebay_orders' as any).select('order_status, total_amount, order_date, add_fee, synced_at').eq('user_id', user.id).gte('order_date', dateRange.from.toISOString()).lte('order_date', dateRange.to.toISOString())) as any,
-        (supabase.from('ebay_orders' as any).select('order_status, total_amount, order_date').eq('user_id', user.id).gte('order_date', previousRange.from.toISOString()).lte('order_date', previousRange.to.toISOString())) as any,
+        (supabase.from('ebay_orders' as any).select('id, ebay_order_id, order_status, total_amount, order_date, net_profit, add_fee, synced_at').eq('user_id', user.id).gte('order_date', dateRange.from.toISOString()).lte('order_date', dateRange.to.toISOString())) as any,
+        (supabase.from('ebay_orders' as any).select('id, ebay_order_id, order_status, total_amount, order_date').eq('user_id', user.id).gte('order_date', previousRange.from.toISOString()).lte('order_date', previousRange.to.toISOString())) as any,
       ]);
 
       const listings = topListingsResult.data || [];
       const allListings = allListingsResult.data || [];
 
       interface EbayOrderRow {
+        id?: string;
+        ebay_order_id?: string;
         order_status?: string;
         total_amount?: number;
         order_date?: string;
+        net_profit?: number | null;
         add_fee?: number | null;
         synced_at?: string | null;
         created_at?: string;
@@ -307,24 +311,74 @@ export default function Dashboard() {
       const currentEbayOrders: EbayOrderRow[] = (currentEbayOrdersResult as any)?.data || [];
       const previousEbayOrders: EbayOrderRow[] = (previousEbayOrdersResult as any)?.data || [];
 
-      const ebayOrdersRevenue = currentEbayOrders.reduce((acc, o) => acc + (Number(o.total_amount) || 0), 0);
+      /* ── de-duplicate eBay rows ────────────────────────────────────────
+         eBay sales-record CSVs get re-imported, leaving multiple identical
+         line rows per order (same ebay_order_id + total_amount). Summing
+         every row inflates revenue ~3x. Collapse to distinct
+         (ebay_order_id, total_amount) lines, then treat each ebay_order_id
+         as one order. Revenue is the sum of the "revenue" column
+         (total_amount) over those distinct lines. */
+      interface EbayOrderAgg {
+        ebay_order_id: string;
+        order_status: string;
+        order_date?: string;
+        synced_at?: string | null;
+        revenue: number;
+        profit: number | null;
+      }
+      const groupOrders = (rows: EbayOrderRow[]): EbayOrderAgg[] => {
+        const seenLine = new Set<string>();
+        const map = new Map<string, EbayOrderAgg>();
+        for (const o of rows) {
+          const oid = String(o.ebay_order_id ?? o.id ?? '');
+          const lineKey = `${oid}|${o.total_amount ?? ''}`;
+          if (seenLine.has(lineKey)) continue; // drop duplicate import rows
+          seenLine.add(lineKey);
 
-      const ordersWithProfit = currentEbayOrders.filter(o => typeof o.add_fee === 'number' && o.add_fee !== null);
+          let g = map.get(oid);
+          if (!g) {
+            g = {
+              ebay_order_id: oid,
+              order_status: (o.order_status || '').toLowerCase(),
+              order_date: o.order_date,
+              synced_at: o.synced_at ?? null,
+              revenue: 0,
+              profit: null,
+            };
+            map.set(oid, g);
+          }
+          g.revenue += Number(o.total_amount) || 0;
+          const lineProfit = (typeof o.net_profit === 'number' && o.net_profit !== null)
+            ? Number(o.net_profit)
+            : (typeof o.add_fee === 'number' && o.add_fee !== null) ? Number(o.add_fee) : null;
+          if (lineProfit !== null) g.profit = (g.profit ?? 0) + lineProfit;
+          if (o.synced_at && (!g.synced_at || new Date(o.synced_at) > new Date(g.synced_at))) g.synced_at = o.synced_at;
+          if (o.order_date && (!g.order_date || new Date(o.order_date) < new Date(g.order_date))) g.order_date = o.order_date;
+        }
+        return [...map.values()];
+      };
+
+      const currentOrders = groupOrders(currentEbayOrders);
+      const previousOrders = groupOrders(previousEbayOrders);
+
+      const ebayOrdersRevenue = currentOrders.reduce((acc, o) => acc + o.revenue, 0);
+
+      const ordersWithProfit = currentOrders.filter(o => o.profit !== null);
       const realNetProfit: number | null = ordersWithProfit.length > 0
-        ? ordersWithProfit.reduce((acc, o) => acc + (Number(o.add_fee) || 0), 0)
+        ? ordersWithProfit.reduce((acc, o) => acc + (o.profit || 0), 0)
         : null;
 
-      const completedEbayOrders = currentEbayOrders.filter(o => (o.order_status || '').toLowerCase() === 'completed');
-      const pendingEbayOrders = currentEbayOrders.filter(o =>
-        ['pending', 'awaiting payment', 'processing', 'paid', 'shipped'].includes((o.order_status || '').toLowerCase())
+      const completedEbayOrders = currentOrders.filter(o => o.order_status === 'completed');
+      const pendingEbayOrders = currentOrders.filter(o =>
+        ['pending', 'awaiting payment', 'processing', 'paid', 'shipped'].includes(o.order_status)
       );
 
       const inventoryValue = allListings.reduce((acc, l) => acc + (Number(l.ebay_price) || 0), 0);
       const totalCost = allListings.reduce((acc, l) => acc + (Number(l.amazon_price) || 0), 0);
 
-      const previousOrderRevenue = previousEbayOrders.reduce((acc, o) => acc + (Number(o.total_amount) || 0), 0);
-      const previousTotalOrders = previousEbayOrders.length;
-      const currentTotalOrders = currentEbayOrders.length;
+      const previousOrderRevenue = previousOrders.reduce((acc, o) => acc + o.revenue, 0);
+      const previousTotalOrders = previousOrders.length;
+      const currentTotalOrders = currentOrders.length;
 
       const revenueChange = previousOrderRevenue > 0
         ? Math.round(((ebayOrdersRevenue - previousOrderRevenue) / previousOrderRevenue) * 1000) / 10
@@ -333,19 +387,20 @@ export default function Dashboard() {
         ? Math.round(((currentTotalOrders - previousTotalOrders) / previousTotalOrders) * 1000) / 10
         : currentTotalOrders > 0 ? 100 : 0;
 
-      const syncedDates = currentEbayOrders
+      const syncedDates = currentOrders
         .map(o => o.synced_at ? new Date(o.synced_at) : null)
         .filter(Boolean) as Date[];
       const lastSyncAt = syncedDates.length > 0
         ? new Date(Math.max(...syncedDates.map(d => d.getTime())))
         : null;
 
-      const ordersForTrend = currentEbayOrders.map(o => ({
-        ...o,
-        created_at: o.order_date || o.created_at,
-        status: (o.order_status || '').toLowerCase() === 'completed' ? 'COMPLETED' : 'PENDING',
-        realProfit: typeof o.add_fee === 'number' && o.add_fee !== null ? Number(o.add_fee) : null,
-        item_price: Number(o.total_amount) || 0,
+      const ordersForTrend = currentOrders.map(o => ({
+        created_at: o.order_date,
+        order_date: o.order_date,
+        order_status: o.order_status,
+        status: o.order_status === 'completed' ? 'COMPLETED' : 'PENDING',
+        realProfit: o.profit,
+        item_price: o.revenue,
       }));
 
       const topProductsData: TopProduct[] = listings.map((l: any) => ({
