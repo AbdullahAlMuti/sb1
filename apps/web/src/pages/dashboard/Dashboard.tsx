@@ -257,9 +257,12 @@ export default function Dashboard() {
         const d = parseISO(o.created_at);
         return d >= intervalStart && d < intervalEnd;
       });
-      const completed = inInterval.filter(o => o.status === 'COMPLETED');
-      const revenue = completed.reduce((acc, o) => acc + (Number(o.item_price) || 0), 0);
-      const profit = completed
+      // Revenue mirrors the headline "Confirmed by eBay" figure: sum total_amount
+      // (mapped to item_price) across ALL orders in the interval, not just COMPLETED.
+      // Filtering to COMPLETED here flattened the line to zero whenever orders were
+      // still Paid/Shipped, making the graph appear blank.
+      const revenue = inInterval.reduce((acc, o) => acc + (Number(o.item_price) || 0), 0);
+      const profit = inInterval
         .filter((o: any) => o.realProfit != null)
         .reduce((acc: number, o: any) => acc + Number(o.realProfit), 0);
       return {
