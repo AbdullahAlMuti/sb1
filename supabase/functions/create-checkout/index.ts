@@ -75,12 +75,13 @@ async function resolveStripeCustomerId(
 
 serve(async (req) => {
   const corsHeaders = resolveCorsHeaders(req);
-  const originError = requireAllowedOrigin(req);
-  if (originError) return originError;
 
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const originError = requireAllowedOrigin(req);
+  if (originError) return originError;
 
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {

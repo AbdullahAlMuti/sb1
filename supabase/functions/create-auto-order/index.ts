@@ -37,12 +37,13 @@ function parseNumber(val: unknown): number | null {
 
 Deno.serve(async (req) => {
   const corsHeaders = resolveCorsHeaders(req, { extension: true });
-  const originError = requireAllowedOrigin(req, { extension: true });
-  if (originError) return originError;
 
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const originError = requireAllowedOrigin(req, { extension: true });
+  if (originError) return originError;
 
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ success: false, error: "Method not allowed" }), {

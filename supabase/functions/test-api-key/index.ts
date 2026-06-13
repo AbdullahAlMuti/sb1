@@ -37,12 +37,13 @@ async function readProviderError(response: Response, fallback: string): Promise<
 
 serve(async (req) => {
   const corsHeaders = resolveCorsHeaders(req);
-  const originError = requireAllowedOrigin(req);
-  if (originError) return originError;
 
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const originError = requireAllowedOrigin(req);
+  if (originError) return originError;
 
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ success: false, error: "Method not allowed" }), {
