@@ -39,6 +39,11 @@ STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 SUPABASE_URL=https://ojxzssooylmydystjvdo.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=...
+
+# Transactional email (Resend)
+RESEND_API_KEY=re_...               # required — emails silently skip if absent
+FROM_EMAIL=billing@sellersuit.com   # must be a verified Resend domain
+APP_URL=https://sellersuit.com      # used for CTA links in emails
 ```
 
 Sync script (local only):
@@ -188,6 +193,42 @@ Stripe prices are **immutable** after creation. The sync script (`stripe-sync-pl
 - Add new plans
 
 After editing `feature_flags` or prices in the admin, no deployment is needed — changes take effect immediately via realtime subscriptions.
+
+---
+
+## Transactional Emails
+
+Branded emails are sent automatically by `stripe-webhook` via Resend. All sends are **fire-and-forget** — a Resend failure never causes the webhook to return an error to Stripe.
+
+### Email events
+
+| Trigger | Template | What it contains |
+|---|---|---|
+| `checkout.session.completed` (mode=payment) | `trial_started` | $1 charge confirmed, trial end date, dashboard CTA |
+| `checkout.session.completed` (mode=subscription) | `subscription_activated` | Plan name, listing/credit limits, dashboard CTA |
+| `invoice.payment_succeeded` (subscription_cycle) | `payment_receipt` | Amount, plan, next billing date, invoice PDF link |
+| `invoice.paid` (subscription_cycle, alias) | `payment_receipt` | Same as above |
+| `invoice.payment_failed` | `payment_failed` | Amount, urgent CTA to update payment method |
+| `customer.subscription.deleted` | `subscription_cancelled` | Plan name, data-preserved notice, resubscribe CTA |
+
+### Setup checklist
+
+1. Create a **Resend** account at [resend.com](https://resend.com) and verify your sending domain (`sellersuit.com`).
+2. Generate an API key and set `RESEND_API_KEY` in Supabase Edge Function secrets.
+3. Set `FROM_EMAIL` (e.g. `billing@sellersuit.com`) and `APP_URL` (`https://sellersuit.com`).
+4. **Disable Stripe's built-in receipt emails** to avoid duplicate sends:
+   - Stripe Dashboard → Settings → Emails → uncheck "Successful payments" and "Failed payments".
+   - Leave "Subscription renewals" unchecked too — the webhook covers it.
+
+### Templates
+
+All templates live in [`supabase/functions/_shared/email.ts`](../supabase/functions/_shared/email.ts). `buildEmailContent()` is a pure function — testable with Node, no Deno dependency. To preview a template locally:
+
+```ts
+import { buildEmailContent } from "./supabase/functions/_shared/email.ts";
+const { subject, html } = buildEmailContent({ to: "you@example.com", type: "trial_started", userName: "You", trialEndDate: "2026-06-20T00:00:00Z" });
+// write html to a file and open in a browser
+```
 
 ---
 
