@@ -1,80 +1,67 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Bell, 
-  TrendingUp, 
+  Bell,
+  TrendingUp,
   TrendingDown,
   CheckCircle2,
-  Clock,
   ArrowUpRight,
-  CalendarIcon,
   Package,
   Activity,
-  Layers,
   Plus,
-  Sparkles,
   BarChart3,
-  PieChartIcon,
   Target,
   Minus,
+  DollarSign,
+  Truck,
+  ShoppingCart,
+  Gem,
 } from 'lucide-react';
 import { useAuth } from '@repo/auth/hooks/useAuth';
 import { supabase } from '@repo/api-client/supabase/client';
-import { Button } from '@repo/ui/components/ui/button';
-import { Badge } from '@repo/ui/components/ui/badge';
 import { Skeleton } from '@repo/ui/components/ui/skeleton';
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@repo/ui/components/ui/popover';
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@repo/ui/components/ui/select';
-import { cn } from '@repo/ui/lib/utils';
-import { format, startOfDay, startOfWeek, startOfMonth, startOfYear, differenceInDays, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, subDays, subWeeks, subMonths, subYears, isWithinInterval, parseISO } from 'date-fns';
+  format,
+  startOfDay, startOfWeek, startOfMonth, startOfYear,
+  differenceInDays, eachDayOfInterval, eachWeekOfInterval,
+  eachMonthOfInterval, subDays, subWeeks, subMonths, subYears,
+  parseISO, formatDistanceToNow,
+} from 'date-fns';
 import {
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Area,
-  AreaChart,
-  PieChart,
-  Pie,
-  Cell,
-  RadialBarChart,
-  RadialBar,
+  XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Area, AreaChart,
 } from 'recharts';
-import { motion } from 'framer-motion';
 import { WhatsAppButton } from '@repo/ui/contact/WhatsAppButton';
 import { useWhatsAppConfig } from '@repo/api-client/hooks/useWhatsAppConfig';
 import { applyWhatsAppTemplate } from '@repo/utils/whatsapp';
+import './dashboard-design.css';
+
+/* ─────────────────────────── types ────────────────────────────────────── */
 
 type DateRangePreset = 'today' | 'week' | 'month' | 'year';
 
-interface DateRangeValue {
-  from: Date;
-  to: Date;
-}
+interface DateRangeValue { from: Date; to: Date; }
 
 interface DashboardStats {
-  totalProfit: number;
+  /** SUM(total_amount) from ebay_orders — confirmed by eBay */
+  orderRevenue: number;
+  /** SUM(ebay_price) from listings — potential, not actual */
+  inventoryValue: number;
+  /** SUM(amazon_price) from listings — sourcing cost estimate */
+  totalCost: number;
+  /** SUM(add_fee) where synced — null when no orders have been individually synced */
+  netProfit: number | null;
+  profitOrderCount: number;
   completedOrders: number;
   pendingOrders: number;
   unreadAlerts: number;
   activeListings: number;
-  profitChange: number;
+  /** % change vs previous period, based on confirmed order revenue */
+  revenueChange: number;
   ordersChange: number;
-  totalRevenue: number;
-  totalCost: number;
-  previousProfit: number;
-  previousRevenue: number;
+  previousOrderRevenue: number;
+  /** max(synced_at) across fetched orders */
+  lastSyncAt: Date | null;
 }
 
 interface TrendData {
@@ -95,208 +82,269 @@ interface TopProduct {
   image_url?: string;
 }
 
-// Animation variants for staggered animations
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.08,
-    },
-  },
-} as const;
+/* ─────────────────────── sub-components ───────────────────────────────── */
 
-const itemVariants = {
-  hidden: { opacity: 0, y: 16 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.4,
-      ease: "easeOut",
-    },
-  },
-} as const;
+function useCountUp(target: number, duration = 1100) {
+  const [val, setVal] = useState(0);
+  const fromRef = useRef(0);
+  useEffect(() => {
+    const start = performance.now();
+    const from = fromRef.current;
+    let raf: number;
+    const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / duration);
+      setVal(from + (target - from) * ease(p));
+      if (p < 1) raf = requestAnimationFrame(tick);
+      else fromRef.current = target;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return val;
+}
+
+function CountMoney({ value }: { value: number }) {
+  const v = useCountUp(value);
+  return <span className="db-num">{v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+}
+
+function Sparkline({ data, color = '#0e9f6e', id }: { data: number[]; color?: string; id: string }) {
+  const W = 200, H = 44, pad = 3;
+  if (data.length < 2) return null;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const rng = max - min || 1;
+  const pts = data.map((d, i) => [
+    pad + (i / (data.length - 1)) * (W - pad * 2),
+    H - pad - ((d - min) / rng) * (H - pad * 2),
+  ]);
+  const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const area = `${line} L ${W - pad} ${H} L ${pad} ${H} Z`;
+  const gid = 'sg-' + id;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={0.22} />
+          <stop offset="100%" stopColor={color} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#${gid})`} />
+      <path d={line} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="db-spark-line" />
+    </svg>
+  );
+}
+
+function SvgDonut({ value, size = 160 }: { value: number; size?: number }) {
+  const stroke = 15;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.min(100, Math.max(0, value));
+  const [offset, setOffset] = useState(c);
+  const displayVal = useCountUp(clamped);
+
+  useEffect(() => {
+    let raf1: number, raf2: number;
+    setOffset(c);
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setOffset(c - (clamped / 100) * c));
+    });
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+  }, [clamped, c]);
+
+  return (
+    <div className="db-donut-wrap" style={{ width: size, height: size }}>
+      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--db-surface-3)" strokeWidth={stroke} />
+        <circle
+          cx={size / 2} cy={size / 2} r={r}
+          fill="none" stroke="var(--db-success)" strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+          style={{ transition: 'stroke-dashoffset 1.2s cubic-bezier(0.3, 0.8, 0.3, 1)' }}
+        />
+      </svg>
+      <div className="db-donut-center">
+        <span className="db-donut-pct db-num">{Math.round(displayVal)}%</span>
+        <span className="db-donut-lab">completed</span>
+      </div>
+    </div>
+  );
+}
+
+function Delta({ v }: { v: number }) {
+  const cls = v > 0 ? 'up' : v < 0 ? 'down' : 'flat';
+  return (
+    <span className={`db-delta ${cls}`}>
+      {v > 0 ? <TrendingUp size={11} /> : v < 0 ? <TrendingDown size={11} /> : <Minus size={11} />}
+      <span className="db-num">{Math.abs(v).toFixed(1)}%</span>
+    </span>
+  );
+}
+
+/* ─────────────────────── main component ───────────────────────────────── */
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { profile, user } = useAuth();
   const { data: whatsappConfig } = useWhatsAppConfig();
-  
+
   const [datePreset, setDatePreset] = useState<DateRangePreset>('month');
   const [stats, setStats] = useState<DashboardStats>({
-    totalProfit: 0,
-    completedOrders: 0,
-    pendingOrders: 0,
-    unreadAlerts: 0,
-    activeListings: 0,
-    profitChange: 0,
-    ordersChange: 0,
-    totalRevenue: 0,
-    totalCost: 0,
-    previousProfit: 0,
-    previousRevenue: 0,
+    orderRevenue: 0, inventoryValue: 0, totalCost: 0,
+    netProfit: null, profitOrderCount: 0,
+    completedOrders: 0, pendingOrders: 0,
+    unreadAlerts: 0, activeListings: 0,
+    revenueChange: 0, ordersChange: 0, previousOrderRevenue: 0,
+    lastSyncAt: null,
   });
   const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [trendData, setTrendData] = useState<TrendData[]>([]);
   const [allOrders, setAllOrders] = useState<any[]>([]);
 
-  // Get the effective date range based on preset
+  /* ── date range helpers ─────────────────────────────────────────────── */
+
   const getEffectiveDateRange = useCallback((): DateRangeValue => {
     const now = new Date();
     switch (datePreset) {
-      case 'today': 
-        return { from: startOfDay(now), to: now };
-      case 'week': 
-        return { from: startOfWeek(now, { weekStartsOn: 1 }), to: now };
-      case 'month': 
-        return { from: startOfMonth(now), to: now };
-      case 'year': 
-        return { from: startOfYear(now), to: now };
-      default: 
-        return { from: startOfMonth(now), to: now };
+      case 'today':  return { from: startOfDay(now), to: now };
+      case 'week':   return { from: startOfWeek(now, { weekStartsOn: 1 }), to: now };
+      case 'month':  return { from: startOfMonth(now), to: now };
+      case 'year':   return { from: startOfYear(now), to: now };
+      default:       return { from: startOfMonth(now), to: now };
     }
   }, [datePreset]);
 
-  // Get previous period date range for comparison
   const getPreviousDateRange = useCallback((): DateRangeValue => {
-    const currentRange = getEffectiveDateRange();
-    const daysDiff = differenceInDays(currentRange.to, currentRange.from);
-    
+    const cur = getEffectiveDateRange();
     switch (datePreset) {
-      case 'today':
-        return { from: subDays(currentRange.from, 1), to: subDays(currentRange.to, 1) };
-      case 'week':
-        return { from: subWeeks(currentRange.from, 1), to: subWeeks(currentRange.to, 1) };
-      case 'month':
-        return { from: subMonths(currentRange.from, 1), to: subMonths(currentRange.to, 1) };
-      case 'year':
-        return { from: subYears(currentRange.from, 1), to: subYears(currentRange.to, 1) };
-      default:
-        return { from: subMonths(currentRange.from, 1), to: subMonths(currentRange.to, 1) };
+      case 'today':  return { from: subDays(cur.from, 1), to: subDays(cur.to, 1) };
+      case 'week':   return { from: subWeeks(cur.from, 1), to: subWeeks(cur.to, 1) };
+      case 'month':  return { from: subMonths(cur.from, 1), to: subMonths(cur.to, 1) };
+      case 'year':   return { from: subYears(cur.from, 1), to: subYears(cur.to, 1) };
+      default:       return { from: subMonths(cur.from, 1), to: subMonths(cur.to, 1) };
     }
   }, [datePreset, getEffectiveDateRange]);
 
-  const handlePresetChange = (preset: DateRangePreset) => {
-    setDatePreset(preset);
+  /* ── data fetching ──────────────────────────────────────────────────── */
+
+  const generateRealTrendData = (orders: any[], range: DateRangeValue): TrendData[] => {
+    const daysDiff = differenceInDays(range.to, range.from);
+    let intervals: Date[];
+    let formatStr: string;
+
+    if (daysDiff <= 1) {
+      intervals = [0, 6, 12, 18].map(h =>
+        new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate(), h));
+      formatStr = 'ha';
+    } else if (daysDiff <= 7) {
+      intervals = eachDayOfInterval({ start: range.from, end: range.to });
+      formatStr = 'EEE';
+    } else if (daysDiff <= 31) {
+      intervals = eachWeekOfInterval({ start: range.from, end: range.to });
+      formatStr = "'Wk' w";
+    } else {
+      intervals = eachMonthOfInterval({ start: range.from, end: range.to });
+      formatStr = 'MMM';
+    }
+
+    return intervals.map((intervalStart, index) => {
+      const intervalEnd = intervals[index + 1] || range.to;
+      const inInterval = orders.filter(o => {
+        const d = parseISO(o.created_at);
+        return d >= intervalStart && d < intervalEnd;
+      });
+      const completed = inInterval.filter(o => o.status === 'COMPLETED');
+      const revenue = completed.reduce((acc, o) => acc + (Number(o.item_price) || 0), 0);
+      const profit = completed
+        .filter((o: any) => o.realProfit != null)
+        .reduce((acc: number, o: any) => acc + Number(o.realProfit), 0);
+      return {
+        name: format(intervalStart, formatStr),
+        profit: Math.round(profit * 100) / 100,
+        orders: inInterval.length,
+        revenue: Math.round(revenue * 100) / 100,
+      };
+    });
   };
 
   const fetchDashboardData = useCallback(async () => {
     if (!user) return;
-
     try {
       setIsLoading(true);
       const dateRange = getEffectiveDateRange();
       const previousRange = getPreviousDateRange();
 
       const [
-        listingsResult,
-        alertsResult,
-        topListingsResult,
-        allListingsResult,
-        // eBay Orders from extension sync
-        currentEbayOrdersResult,
-        previousEbayOrdersResult,
+        listingsResult, alertsResult, topListingsResult, allListingsResult,
+        currentEbayOrdersResult, previousEbayOrdersResult,
       ] = await Promise.all([
-        // Active listings count
-        supabase
-          .from('listings')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('status', 'active'),
-        // Unread alerts count
-        supabase
-          .from('inventory_alerts')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('status', 'UNREAD'),
-        // Top listings
-        supabase
-          .from('listings')
-          .select('id, title, sku, amazon_asin, ebay_price, amazon_price, status, amazon_data')
-          .eq('user_id', user.id)
-          .order('ebay_price', { ascending: false })
-          .limit(5),
-        // All listings for revenue calculation
-        supabase
-          .from('listings')
-          .select('ebay_price, amazon_price, status')
-          .eq('user_id', user.id),
-        // Current period eBay orders (synced from extension) - use explicit cast
-        supabase
-          .from('ebay_orders' as any)
-          .select('order_status, total_amount, order_date')
-          .eq('user_id', user.id)
-          .gte('order_date', dateRange.from.toISOString())
-          .lte('order_date', dateRange.to.toISOString()) as any,
-        // Previous period eBay orders for comparison
-        supabase
-          .from('ebay_orders' as any)
-          .select('order_status, total_amount, order_date')
-          .eq('user_id', user.id)
-          .gte('order_date', previousRange.from.toISOString())
-          .lte('order_date', previousRange.to.toISOString()) as any,
+        supabase.from('listings').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'active'),
+        supabase.from('inventory_alerts').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'UNREAD'),
+        supabase.from('listings').select('id, title, sku, amazon_asin, ebay_price, amazon_price, status, amazon_data').eq('user_id', user.id).order('ebay_price', { ascending: false }).limit(5),
+        supabase.from('listings').select('ebay_price, amazon_price, status').eq('user_id', user.id),
+        (supabase.from('ebay_orders' as any).select('order_status, total_amount, order_date, add_fee, synced_at').eq('user_id', user.id).gte('order_date', dateRange.from.toISOString()).lte('order_date', dateRange.to.toISOString())) as any,
+        (supabase.from('ebay_orders' as any).select('order_status, total_amount, order_date').eq('user_id', user.id).gte('order_date', previousRange.from.toISOString()).lte('order_date', previousRange.to.toISOString())) as any,
       ]);
 
       const listings = topListingsResult.data || [];
       const allListings = allListingsResult.data || [];
-      
-      // eBay orders from extension sync (typed locally)
+
       interface EbayOrderRow {
         order_status?: string;
         total_amount?: number;
         order_date?: string;
+        add_fee?: number | null;
+        synced_at?: string | null;
         created_at?: string;
       }
       const currentEbayOrders: EbayOrderRow[] = (currentEbayOrdersResult as any)?.data || [];
       const previousEbayOrders: EbayOrderRow[] = (previousEbayOrdersResult as any)?.data || [];
-      
-      // Calculate eBay orders stats (from extension sync)
-      const completedEbayOrders = currentEbayOrders.filter(o => 
-        ['completed', 'shipped', 'paid'].includes((o.order_status || '').toLowerCase())
-      );
-      const pendingEbayOrders = currentEbayOrders.filter(o => 
-        ['pending', 'awaiting payment', 'processing'].includes((o.order_status || '').toLowerCase())
-      );
+
       const ebayOrdersRevenue = currentEbayOrders.reduce((acc, o) => acc + (Number(o.total_amount) || 0), 0);
-      
-      // Combine stats: use eBay orders
-      const totalCompletedOrders = completedEbayOrders.length;
-      const totalPendingOrders = pendingEbayOrders.length;
-      const totalProfit = ebayOrdersRevenue * 0.15; // Estimate 15% margin
-      
-      // Calculate revenue from all listings
-      const totalRevenue = allListings.reduce((acc, l) => acc + (Number(l.ebay_price) || 0), 0);
+
+      const ordersWithProfit = currentEbayOrders.filter(o => typeof o.add_fee === 'number' && o.add_fee !== null);
+      const realNetProfit: number | null = ordersWithProfit.length > 0
+        ? ordersWithProfit.reduce((acc, o) => acc + (Number(o.add_fee) || 0), 0)
+        : null;
+
+      const completedEbayOrders = currentEbayOrders.filter(o => (o.order_status || '').toLowerCase() === 'completed');
+      const pendingEbayOrders = currentEbayOrders.filter(o =>
+        ['pending', 'awaiting payment', 'processing', 'paid', 'shipped'].includes((o.order_status || '').toLowerCase())
+      );
+
+      const inventoryValue = allListings.reduce((acc, l) => acc + (Number(l.ebay_price) || 0), 0);
       const totalCost = allListings.reduce((acc, l) => acc + (Number(l.amazon_price) || 0), 0);
 
-      // Calculate previous period stats for comparison
-      const previousEbayRevenue = previousEbayOrders.reduce((acc, o) => acc + (Number(o.total_amount) || 0), 0);
-      const previousProfit = previousEbayRevenue * 0.15;
+      const previousOrderRevenue = previousEbayOrders.reduce((acc, o) => acc + (Number(o.total_amount) || 0), 0);
       const previousTotalOrders = previousEbayOrders.length;
-
-      // Calculate percentage changes
-      const profitChange = previousProfit > 0 
-        ? Math.round(((totalProfit - previousProfit) / previousProfit) * 100 * 10) / 10
-        : totalProfit > 0 ? 100 : 0;
-      
       const currentTotalOrders = currentEbayOrders.length;
+
+      const revenueChange = previousOrderRevenue > 0
+        ? Math.round(((ebayOrdersRevenue - previousOrderRevenue) / previousOrderRevenue) * 1000) / 10
+        : ebayOrdersRevenue > 0 ? 100 : 0;
       const ordersChange = previousTotalOrders > 0
-        ? Math.round(((currentTotalOrders - previousTotalOrders) / previousTotalOrders) * 100 * 10) / 10
+        ? Math.round(((currentTotalOrders - previousTotalOrders) / previousTotalOrders) * 1000) / 10
         : currentTotalOrders > 0 ? 100 : 0;
 
-      // Generate real trend data based on eBay orders
-      const ordersForTrend = currentEbayOrders.map(o => ({
-            ...o,
-            created_at: o.order_date || o.created_at,
-            status: (o.order_status || '').toLowerCase().includes('completed') || 
-                    (o.order_status || '').toLowerCase().includes('shipped') ? 'COMPLETED' : 'PENDING',
-            profit: (Number(o.total_amount) || 0) * 0.15,
-            item_price: Number(o.total_amount) || 0,
-          }));
-      const trendDataGenerated = generateRealTrendData(ordersForTrend, dateRange);
+      const syncedDates = currentEbayOrders
+        .map(o => o.synced_at ? new Date(o.synced_at) : null)
+        .filter(Boolean) as Date[];
+      const lastSyncAt = syncedDates.length > 0
+        ? new Date(Math.max(...syncedDates.map(d => d.getTime())))
+        : null;
 
-      // Transform top listings
+      const ordersForTrend = currentEbayOrders.map(o => ({
+        ...o,
+        created_at: o.order_date || o.created_at,
+        status: (o.order_status || '').toLowerCase() === 'completed' ? 'COMPLETED' : 'PENDING',
+        realProfit: typeof o.add_fee === 'number' && o.add_fee !== null ? Number(o.add_fee) : null,
+        item_price: Number(o.total_amount) || 0,
+      }));
+
       const topProductsData: TopProduct[] = listings.map((l: any) => ({
         id: l.id,
         title: l.title || 'Untitled Product',
@@ -309,23 +357,16 @@ export default function Dashboard() {
       }));
 
       setStats({
-        totalProfit,
-        completedOrders: totalCompletedOrders,
-        pendingOrders: totalPendingOrders,
-        unreadAlerts: alertsResult.count || 0,
-        activeListings: listingsResult.count || 0,
-        profitChange,
-        ordersChange,
-        totalRevenue: ebayOrdersRevenue > 0 ? ebayOrdersRevenue : totalRevenue,
-        totalCost,
-        previousProfit,
-        previousRevenue: previousEbayRevenue,
+        orderRevenue: ebayOrdersRevenue, inventoryValue, totalCost,
+        netProfit: realNetProfit, profitOrderCount: ordersWithProfit.length,
+        completedOrders: completedEbayOrders.length, pendingOrders: pendingEbayOrders.length,
+        unreadAlerts: alertsResult.count || 0, activeListings: listingsResult.count || 0,
+        revenueChange, ordersChange, previousOrderRevenue, lastSyncAt,
       });
 
-      // Store combined orders for charts (eBay orders preferred if available)
       setAllOrders(ordersForTrend);
       setTopProducts(topProductsData);
-      setTrendData(trendDataGenerated);
+      setTrendData(generateRealTrendData(ordersForTrend, dateRange));
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -334,202 +375,99 @@ export default function Dashboard() {
   }, [user, getEffectiveDateRange, getPreviousDateRange]);
 
   useEffect(() => {
-    if (user) {
-      fetchDashboardData();
-    }
+    if (user) fetchDashboardData();
   }, [user, fetchDashboardData]);
 
-  // Generate real trend data from actual orders
-  const generateRealTrendData = (orders: any[], range: DateRangeValue): TrendData[] => {
-    const daysDiff = differenceInDays(range.to, range.from);
-    
-    let intervals: Date[];
-    let formatStr: string;
-    
-    if (daysDiff <= 1) {
-      // For today, show hourly data (6 hour buckets)
-      intervals = [
-        new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate(), 0),
-        new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate(), 6),
-        new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate(), 12),
-        new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate(), 18),
-      ];
-      formatStr = 'ha';
-    } else if (daysDiff <= 7) {
-      intervals = eachDayOfInterval({ start: range.from, end: range.to });
-      formatStr = 'EEE';
-    } else if (daysDiff <= 31) {
-      intervals = eachWeekOfInterval({ start: range.from, end: range.to });
-      formatStr = "'Week' w";
-    } else {
-      intervals = eachMonthOfInterval({ start: range.from, end: range.to });
-      formatStr = 'MMM';
-    }
+  /* ── derived values ─────────────────────────────────────────────────── */
 
-    return intervals.map((intervalStart, index) => {
-      const intervalEnd = intervals[index + 1] || range.to;
-      
-      // Filter orders within this interval
-      const intervalOrders = orders.filter(order => {
-        const orderDate = parseISO(order.created_at);
-        return orderDate >= intervalStart && orderDate < intervalEnd;
-      });
+  const totalOrders = stats.completedOrders + stats.pendingOrders;
 
-      const completedInInterval = intervalOrders.filter(o => o.status === 'COMPLETED');
-      const profit = completedInInterval.reduce((acc, o) => acc + (Number(o.profit) || 0), 0);
-      const revenue = completedInInterval.reduce((acc, o) => acc + (Number(o.item_price) || 0), 0);
+  const successRate = useMemo(() => {
+    return totalOrders > 0 ? Math.round((stats.completedOrders / totalOrders) * 100) : 0;
+  }, [stats.completedOrders, totalOrders]);
 
+  const marginPct = stats.inventoryValue > 0
+    ? ((stats.inventoryValue - stats.totalCost) / stats.inventoryValue) * 100
+    : 0;
+
+  const sparklineData = useMemo(() =>
+    trendData.map(t => t.revenue || 0),
+    [trendData]
+  );
+
+  const maxListingPrice = useMemo(() =>
+    Math.max(...topProducts.map(p => p.ebay_price), 1),
+    [topProducts]
+  );
+
+  const feedItems = useMemo(() => {
+    return allOrders.slice(0, 6).map((o: any) => {
+      const status = (o.order_status || '').toLowerCase();
+      const isCompleted = status === 'completed';
+      const isShipped = ['shipped', 'paid'].includes(status);
+      const amount = Number(o.item_price) || 0;
+      const dateStr = o.created_at || o.order_date;
       return {
-        name: format(intervalStart, formatStr),
-        profit: Math.round(profit * 100) / 100,
-        orders: intervalOrders.length,
-        revenue: Math.round(revenue * 100) / 100,
+        color: isCompleted ? 'green' : isShipped ? 'violet' : 'amber',
+        icon: isCompleted
+          ? <DollarSign size={16} />
+          : isShipped
+            ? <Truck size={16} />
+            : <ShoppingCart size={16} />,
+        title: isCompleted ? 'Payment received' : isShipped ? 'Order in transit' : 'Order placed',
+        desc: `eBay · ${status || 'processing'}`,
+        amount: amount > 0 ? `+$${amount.toFixed(2)}` : '',
+        time: dateStr ? formatDistanceToNow(parseISO(dateStr), { addSuffix: true }) : '',
       };
     });
-  };
+  }, [allOrders]);
 
-  // Calculate performance percentage from real data
-  const performanceData = useMemo(() => {
-    const total = stats.completedOrders + stats.pendingOrders;
-    const successRate = total > 0 ? Math.round((stats.completedOrders / total) * 100) : 0;
-    return [
-      { name: 'Performance', value: successRate, fill: 'hsl(var(--primary))' },
-    ];
-  }, [stats]);
+  const rangeLabel = datePreset === 'today' ? 'today'
+    : datePreset === 'year' ? 'the last 12 months'
+    : `this ${datePreset}`;
 
-  // Calculate change in performance vs previous period
-  const performanceChange = useMemo(() => {
-    // If we have orders, compare completion rate
-    const currentRate = stats.completedOrders + stats.pendingOrders > 0
-      ? (stats.completedOrders / (stats.completedOrders + stats.pendingOrders)) * 100
-      : 0;
-    return stats.ordersChange;
-  }, [stats]);
-
-  // Donut chart data for revenue breakdown - only show if we have data
-  const revenueBreakdown = useMemo(() => {
-    if (stats.totalRevenue === 0 && stats.totalCost === 0) {
-      return [
-        { name: 'No Data', value: 1, fill: 'hsl(var(--muted))' },
-      ];
-    }
-    return [
-      { name: 'Revenue', value: stats.totalRevenue, fill: 'hsl(var(--primary))' },
-      { name: 'Cost', value: stats.totalCost, fill: 'hsl(var(--muted))' },
-    ];
-  }, [stats]);
-
-  // Calculate net profit change
-  const netProfitChange = useMemo(() => {
-    const currentNet = stats.totalRevenue - stats.totalCost;
-    const previousNet = stats.previousRevenue || 0;
-    if (previousNet === 0) return currentNet > 0 ? 100 : 0;
-    return Math.round(((currentNet - previousNet) / previousNet) * 100 * 10) / 10;
-  }, [stats]);
-
-  // Generate mini bar chart data from recent trend
-  const miniBarData = useMemo(() => {
-    if (trendData.length === 0) {
-      return [0, 0, 0, 0, 0, 0, 0];
-    }
-    const recentTrend = trendData.slice(-7);
-    const maxProfit = Math.max(...recentTrend.map(t => t.profit), 1);
-    return recentTrend.map(t => Math.round((t.profit / maxProfit) * 100) || 5);
-  }, [trendData]);
-
-  const getProductStatusBadge = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'active':
-        return (
-          <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-[10px] font-medium shadow-none">
-            Active
-          </Badge>
-        );
-      case 'out_of_stock':
-        return (
-          <Badge className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 text-[10px] font-medium shadow-none">
-            Out of Stock
-          </Badge>
-        );
-      case 'draft':
-        return (
-          <Badge className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 text-[10px] font-medium shadow-none">
-            Draft
-          </Badge>
-        );
-      default:
-        return <Badge variant="secondary" className="text-[10px] shadow-none">{status || 'Unknown'}</Badge>;
-    }
-  };
-
-  // Render change badge
-  const renderChangeBadge = (change: number, showWhenZero = false) => {
-    if (change === 0 && !showWhenZero) {
-      return (
-        <span className="text-xs text-muted-foreground flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted/50">
-          <Minus className="h-3 w-3" />
-          No change
-        </span>
-      );
-    }
-    
-    const isPositive = change >= 0;
-    return (
-      <span className={cn(
-        "text-xs font-semibold flex items-center gap-1 px-2 py-0.5 rounded-full",
-        isPositive 
-          ? "text-emerald-600 bg-emerald-500/10" 
-          : "text-destructive bg-destructive/10"
-      )}>
-        {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-        {isPositive ? '+' : ''}{change}%
-      </span>
-    );
-  };
+  /* ── loading skeleton ───────────────────────────────────────────────── */
 
   if (isLoading) {
     return (
-      <div className="space-y-8 max-w-7xl mx-auto pb-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-48" />
-            <Skeleton className="h-4 w-64" />
-          </div>
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-9 w-24 rounded-xl" />
-            <Skeleton className="h-9 w-32 rounded-xl" />
-          </div>
+      <div className="db-dash space-y-5 pb-8">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2"><Skeleton className="h-7 w-36" /><Skeleton className="h-4 w-52" /></div>
+          <div className="flex gap-3"><Skeleton className="h-9 w-48 rounded-xl" /><Skeleton className="h-9 w-28 rounded-xl" /></div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          <Skeleton className="h-32 rounded-2xl" />
-          <Skeleton className="h-32 rounded-2xl" />
-          <Skeleton className="h-32 rounded-2xl" />
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <Skeleton className="h-80 rounded-2xl" />
-          <Skeleton className="h-80 rounded-2xl" />
-        </div>
+        <div className="db-grid"><Skeleton className="db-col-4 h-36 rounded-2xl" /><Skeleton className="db-col-4 h-36 rounded-2xl" /><Skeleton className="db-col-4 h-36 rounded-2xl" /></div>
+        <div className="db-grid"><Skeleton className="db-col-8 h-80 rounded-2xl" /><Skeleton className="db-col-4 h-80 rounded-2xl" /></div>
+        <div className="db-grid"><Skeleton className="db-col-3 h-24 rounded-2xl" /><Skeleton className="db-col-3 h-24 rounded-2xl" /><Skeleton className="db-col-3 h-24 rounded-2xl" /><Skeleton className="db-col-3 h-24 rounded-2xl" /></div>
       </div>
     );
   }
 
+  /* ── render ─────────────────────────────────────────────────────────── */
+
   return (
-    <motion.div 
-      className="space-y-8 max-w-7xl mx-auto pb-8"
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-    >
-      {/* Page Header */}
-      <motion.div 
-        variants={itemVariants}
-        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
-      >
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Track your sales and performance metrics</p>
+    <div className="db-dash pb-8">
+
+      {/* ── page header ─────────────────────────────────────────────── */}
+      <div className="db-page-head db-fade-up">
+        <div className="db-page-title">
+          <h1>Dashboard</h1>
+          <p>Welcome back{profile?.full_name ? `, ${profile.full_name.split(' ')[0]}` : ''} — here's how your store is performing.</p>
+          <div className="db-synced">
+            {stats.lastSyncAt ? (
+              <>
+                <span className="db-pulse" />
+                Live · synced {formatDistanceToNow(stats.lastSyncAt)} ago
+              </>
+            ) : (
+              <>
+                <span className="db-pulse" style={{ background: 'var(--db-ink-4)', animationName: 'none' }} />
+                Sync pending — open orders in eBay extension
+              </>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-3">
+
+        <div className="db-head-actions">
           {whatsappConfig?.whatsapp_dashboard_enabled && whatsappConfig?.support_whatsapp_number && (
             <WhatsAppButton
               phone_number={whatsappConfig.support_whatsapp_number}
@@ -539,550 +477,371 @@ export default function Dashboard() {
               )}
             />
           )}
-          {/* Date Filter */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-9 gap-2 px-4 rounded-xl border-border/60 bg-card/50 hover:bg-card shadow-sm"
+          <div className="db-seg">
+            {(['today', 'week', 'month', 'year'] as const).map(p => (
+              <button
+                key={p}
+                className={datePreset === p ? 'on' : ''}
+                onClick={() => setDatePreset(p)}
               >
-                <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">{datePreset.charAt(0).toUpperCase() + datePreset.slice(1)}</span>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-56 p-3 rounded-xl" align="end">
-              <div className="space-y-3">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date Range</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['today', 'week', 'month', 'year'] as const).map((preset) => (
-                    <Button
-                      key={preset}
-                      variant={datePreset === preset ? 'default' : 'ghost'}
-                      size="sm"
-                      className={cn(
-                        "h-9 text-xs rounded-lg transition-all",
-                        datePreset === preset && "shadow-md"
-                      )}
-                      onClick={() => handlePresetChange(preset)}
-                    >
-                      {preset.charAt(0).toUpperCase() + preset.slice(1)}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
-
-          {/* Add Listing Button */}
-          <Button 
-            size="sm" 
-            className="h-9 gap-2 px-4 rounded-xl shadow-md hover:shadow-lg transition-all bg-primary hover:bg-primary/90"
-            onClick={() => navigate('/dashboard/listings')}
-          >
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Add Listing</span>
-          </Button>
+                {p === 'today' ? 'Day' : p.charAt(0).toUpperCase() + p.slice(1)}
+              </button>
+            ))}
+          </div>
+          <button className="db-btn-primary" onClick={() => navigate('/dashboard/listings')}>
+            <Plus size={15} /> Add Listing
+          </button>
         </div>
-      </motion.div>
+      </div>
 
-      {/* Top Stats Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {/* Product Overview Card */}
-        <motion.div 
-          variants={itemVariants}
-          className="group bg-gradient-to-br from-card to-card/80 border border-border/50 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300"
-        >
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-primary/10">
-                <BarChart3 className="h-4 w-4 text-primary" />
-              </div>
-              <span className="text-sm font-semibold text-foreground">Product Overview</span>
+      {/* ── row 1: KPI cards ────────────────────────────────────────── */}
+      <div className="db-grid">
+
+        {/* Inventory Value */}
+        <div className="db-card lift db-col-4 db-fade-up" style={{ animationDelay: '0.04s' }}>
+          <div className="db-card-head">
+            <div className="db-card-ico blue"><Package size={20} /></div>
+            <div className="db-card-title-wrap">
+              <div className="db-card-title">Inventory Value</div>
+              <div className="db-card-sub">Potential revenue · listing prices</div>
             </div>
           </div>
-          
-          <div className="space-y-5">
-            <div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold tracking-tight text-foreground">
-                  ${stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">Total inventory value</p>
-            </div>
-
-            <div className="flex items-center justify-between pt-2 border-t border-border/50">
-              <span className="text-xs text-muted-foreground">Active products</span>
-              <span className="text-sm font-semibold text-foreground">{stats.activeListings}</span>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Badge className="bg-primary/10 text-primary border-primary/20 gap-1.5 rounded-lg px-2.5 py-1 shadow-none">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                {stats.activeListings} Listings
-              </Badge>
-              <Badge className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 gap-1.5 rounded-lg px-2.5 py-1 shadow-none">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                {stats.completedOrders + stats.pendingOrders} Orders
-              </Badge>
-            </div>
+          <div className="db-kpi-value">
+            <span className="cur">$</span>
+            <CountMoney value={stats.inventoryValue} />
           </div>
-        </motion.div>
-
-        {/* Active Sales Card */}
-        <motion.div 
-          variants={itemVariants}
-          className="group bg-gradient-to-br from-card to-card/80 border border-border/50 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300"
-        >
-          <div className="flex items-center gap-2.5 mb-5">
-            <div className="p-2 rounded-xl bg-emerald-500/10">
-              <TrendingUp className="h-4 w-4 text-emerald-600" />
-            </div>
-            <span className="text-sm font-semibold text-foreground">Total Profit</span>
+          <div className="db-chips">
+            <span className="db-chip">
+              <span className="dot" style={{ background: 'var(--db-accent)' }} />
+              {stats.activeListings} Active listings
+            </span>
+            <span className="db-chip">
+              <span className="dot" style={{ background: 'var(--db-warning)' }} />
+              {totalOrders} Orders
+            </span>
           </div>
-          
-          <div className="flex items-center justify-between">
-            <div className="space-y-2">
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold tracking-tight text-foreground">
-                  ${stats.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">vs previous period</span>
-                {renderChangeBadge(stats.profitChange)}
-              </div>
+        </div>
+
+        {/* Revenue — confirmed by eBay */}
+        <div className="db-card lift db-col-4 db-fade-up" style={{ animationDelay: '0.10s' }}>
+          <div className="db-card-head">
+            <div className="db-card-ico green"><TrendingUp size={20} /></div>
+            <div className="db-card-title-wrap">
+              <div className="db-card-title">Revenue</div>
+              <div className="db-card-sub">Paid orders · {rangeLabel}</div>
             </div>
-            
-            {/* Mini bar chart from real data */}
-            {miniBarData.some(v => v > 5) ? (
-              <div className="flex items-end gap-1.5 h-16">
-                {miniBarData.map((h, i) => (
-                  <motion.div 
-                    key={i}
-                    initial={{ height: 0 }}
-                    animate={{ height: `${h}%` }}
-                    transition={{ delay: i * 0.05, duration: 0.4, ease: "easeOut" }}
-                    className="w-2.5 bg-gradient-to-t from-primary to-primary/70 rounded-sm min-h-[4px]"
-                  />
-                ))}
-              </div>
+            <span className="db-tag green">
+              <CheckCircle2 size={11} /> Confirmed by eBay
+            </span>
+          </div>
+          <div className="db-kpi-value">
+            <span className="cur">$</span>
+            <CountMoney value={stats.orderRevenue} />
+          </div>
+          {sparklineData.some(v => v > 0) && (
+            <div className="db-spark">
+              <Sparkline data={sparklineData} color="#0e9f6e" id="rev" />
+            </div>
+          )}
+          <div className="db-kpi-foot">
+            <Delta v={stats.revenueChange} />
+            <button className="db-link-row" onClick={() => navigate('/dashboard/orders')}>
+              View orders <ArrowUpRight size={13} />
+            </button>
+          </div>
+          {stats.netProfit !== null && (
+            <div style={{ fontSize: 12, color: 'var(--db-ink-3)', marginTop: 10 }}>
+              Net earnings: <span style={{ color: 'var(--db-success)', fontWeight: 700 }}>${stats.netProfit.toFixed(2)}</span>
+              {' '}({stats.profitOrderCount} order{stats.profitOrderCount !== 1 ? 's' : ''} synced)
+            </div>
+          )}
+          {stats.netProfit === null && stats.orderRevenue > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--db-warning)', marginTop: 10 }}>
+              Net profit pending — sync orders via extension
+            </div>
+          )}
+        </div>
+
+        {/* Potential Margin — estimated */}
+        <div className="db-card lift db-col-4 db-fade-up" style={{ animationDelay: '0.16s' }}>
+          <div className="db-card-head">
+            <div className="db-card-ico amber"><Gem size={20} /></div>
+            <div className="db-card-title-wrap">
+              <div className="db-card-title">Potential Margin</div>
+              <div className="db-card-sub">If all listings sell · {marginPct.toFixed(0)}% spread</div>
+            </div>
+            <span className="db-tag amber">Estimated</span>
+          </div>
+          <div className="db-kpi-value">
+            <span className="cur">$</span>
+            <CountMoney value={Math.max(0, stats.inventoryValue - stats.totalCost)} />
+          </div>
+          <div className="db-kpi-foot">
+            <span className="db-chip">
+              <span className="db-num" style={{ color: 'var(--db-success)', fontWeight: 700 }}>{marginPct.toFixed(0)}%</span>
+              &nbsp;blended margin
+            </span>
+            <button className="db-link-row" onClick={() => navigate('/dashboard/listings')}>
+              View listings <ArrowUpRight size={13} />
+            </button>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--db-ink-4)', marginTop: 10 }}>
+            Excludes eBay fees &amp; shipping
+          </div>
+        </div>
+      </div>
+
+      {/* ── row 2: Revenue Trend + Donut ────────────────────────────── */}
+      <div className="db-grid">
+
+        {/* Revenue Trend chart */}
+        <div className="db-card db-col-8 db-fade-up" style={{ animationDelay: '0.20s' }}>
+          <div className="db-chart-top">
+            <div className="db-card-ico blue"><Activity size={19} /></div>
+            <div className="db-card-title-wrap">
+              <div className="db-card-title">Revenue Trend</div>
+              <div className="db-card-sub">Confirmed order revenue over {rangeLabel}</div>
+            </div>
+            {stats.lastSyncAt ? (
+              <span className="db-tag green" style={{ marginLeft: 'auto' }}>
+                <span className="db-pulse" style={{ width: 6, height: 6, flexShrink: 0 }} />
+                Live
+              </span>
             ) : (
-              <div className="flex items-center justify-center w-16 h-16 rounded-xl bg-muted/30">
-                <BarChart3 className="h-6 w-6 text-muted-foreground/40" />
+              <span className="db-tag blue" style={{ marginLeft: 'auto' }}>eBay</span>
+            )}
+          </div>
+
+          <div className="db-chart-stats">
+            <div>
+              <div className="db-stat-lab">
+                <span className="db-stat-dot" style={{ background: 'var(--db-accent)' }} />
+                Order revenue
+              </div>
+              <div className="db-stat-val">
+                ${stats.orderRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+            </div>
+            <div>
+              <div className="db-stat-lab">
+                <span className="db-stat-dot" style={{ background: 'var(--db-ink-4)' }} />
+                Total orders
+              </div>
+              <div className="db-stat-val">{totalOrders}</div>
+            </div>
+            {stats.lastSyncAt && (
+              <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                <div className="db-stat-lab" style={{ justifyContent: 'flex-end' }}>Last sync</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--db-ink-2)' }}>
+                  {format(stats.lastSyncAt, 'MMM d, h:mm a')}
+                </div>
               </div>
             )}
           </div>
-          
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="w-full mt-5 text-xs text-muted-foreground hover:text-foreground rounded-xl group-hover:bg-muted/50 transition-colors"
-            onClick={() => navigate('/dashboard/orders')}
-          >
-            View Orders 
-            <ArrowUpRight className="h-3.5 w-3.5 ml-1.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-          </Button>
-        </motion.div>
 
-        {/* Net Profit Card with Donut */}
-        <motion.div 
-          variants={itemVariants}
-          className="group bg-gradient-to-br from-card to-card/80 border border-border/50 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all duration-300"
-        >
-          <div className="flex items-center gap-2.5 mb-5">
-            <div className="p-2 rounded-xl bg-violet-500/10">
-              <PieChartIcon className="h-4 w-4 text-violet-600" />
-            </div>
-            <span className="text-sm font-semibold text-foreground">Net Margin</span>
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <div className="space-y-2">
-              <div className="flex items-baseline gap-2">
-                <span className={cn(
-                  "text-3xl font-bold tracking-tight",
-                  (stats.totalRevenue - stats.totalCost) >= 0 ? "text-foreground" : "text-destructive"
-                )}>
-                  ${(stats.totalRevenue - stats.totalCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Potential profit</span>
-                {stats.totalRevenue > 0 && (
-                  <span className="text-xs font-medium text-muted-foreground">
-                    ({Math.round(((stats.totalRevenue - stats.totalCost) / stats.totalRevenue) * 100)}% margin)
-                  </span>
-                )}
-              </div>
-            </div>
-            
-            {/* Mini donut chart */}
-            <div className="w-16 h-16">
+          <div style={{ height: 240 }}>
+            {trendData.length > 0 && trendData.some(t => t.revenue > 0 || t.orders > 0) ? (
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={revenueBreakdown}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={18}
-                    outerRadius={28}
-                    paddingAngle={3}
-                    dataKey="value"
-                    strokeWidth={0}
-                  >
-                    {revenueBreakdown.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="w-full mt-5 text-xs text-muted-foreground hover:text-foreground rounded-xl group-hover:bg-muted/50 transition-colors"
-            onClick={() => navigate('/dashboard/listings')}
-          >
-            View Listings 
-            <ArrowUpRight className="h-3.5 w-3.5 ml-1.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-          </Button>
-        </motion.div>
-      </div>
-
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Analytics Chart - Takes 2 columns */}
-        <motion.div 
-          variants={itemVariants}
-          className="lg:col-span-2 bg-gradient-to-br from-card to-card/80 border border-border/50 rounded-2xl p-6 shadow-sm"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-blue-500/10">
-                <Activity className="h-4 w-4 text-blue-600" />
-              </div>
-              <span className="text-base font-semibold text-foreground">Profit Trend</span>
-            </div>
-            <span className="text-xs text-muted-foreground">
-              {datePreset === 'today' ? 'Today' : 
-               datePreset === 'week' ? 'This Week' :
-               datePreset === 'month' ? 'This Month' : 'This Year'}
-            </span>
-          </div>
-
-          {/* Stats above chart */}
-          <div className="flex items-center gap-8 mb-6 pb-6 border-b border-border/50">
-            <div className="space-y-1">
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold tracking-tight text-foreground">
-                  ${stats.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-                {renderChangeBadge(stats.profitChange)}
-              </div>
-              <span className="text-xs text-muted-foreground">Total Profit</span>
-            </div>
-            <div className="w-px h-10 bg-border/50" />
-            <div className="space-y-1">
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold tracking-tight text-foreground">
-                  {stats.completedOrders + stats.pendingOrders}
-                </span>
-                {renderChangeBadge(stats.ordersChange)}
-              </div>
-              <span className="text-xs text-muted-foreground">Total Orders</span>
-            </div>
-          </div>
-          
-          <div className="h-[280px]">
-            {trendData.length > 0 && trendData.some(t => t.profit > 0 || t.orders > 0) ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trendData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                <AreaChart data={trendData} margin={{ top: 10, right: 4, left: -16, bottom: 0 }} key={datePreset}>
                   <defs>
-                    <linearGradient id="colorProfitGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.35}/>
-                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.02}/>
+                    <linearGradient id="dbAreaFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#2455f6" stopOpacity={0.28} />
+                      <stop offset="70%" stopColor="#2455f6" stopOpacity={0.04} />
+                      <stop offset="100%" stopColor="#2455f6" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.5} />
-                  <XAxis 
-                    dataKey="name" 
-                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                    axisLine={false}
-                    tickLine={false}
-                    dy={10}
+                  <CartesianGrid strokeDasharray="4 6" stroke="var(--db-border)" vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 11, fill: 'var(--db-ink-4)', fontFamily: 'Hanken Grotesk, system-ui', fontWeight: 600 }}
+                    axisLine={false} tickLine={false} dy={8}
+                    interval="preserveStartEnd"
                   />
-                  <YAxis 
-                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                    axisLine={false}
-                    tickLine={false}
-                    tickFormatter={(value) => `$${value}`}
-                    dx={-5}
+                  <YAxis
+                    tick={{ fontSize: 11, fill: 'var(--db-ink-4)', fontFamily: 'Hanken Grotesk, system-ui' }}
+                    axisLine={false} tickLine={false}
+                    tickFormatter={(v: number) => `$${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`}
                   />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'hsl(var(--card))', 
-                      border: '1px solid hsl(var(--border))',
-                      borderRadius: '12px',
-                      boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-                      padding: '12px 16px',
+                  <Tooltip
+                    contentStyle={{
+                      background: 'var(--db-surface)', border: '1px solid var(--db-border)',
+                      borderRadius: 10, boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
+                      padding: '8px 14px', fontFamily: 'Hanken Grotesk, system-ui',
                     }}
-                    labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 600, marginBottom: '4px' }}
-                    formatter={(value: number) => [`$${value.toFixed(2)}`, 'Profit']}
+                    labelStyle={{ color: 'var(--db-ink-3)', fontSize: 11.5, marginBottom: 3 }}
+                    formatter={(v: number) => [`$${v.toFixed(2)}`, 'Revenue']}
+                    cursor={{ stroke: '#2455f6', strokeWidth: 1, strokeDasharray: '3 4', opacity: 0.5 }}
                   />
-                  <Area 
-                    type="monotone" 
-                    dataKey="profit" 
-                    stroke="hsl(var(--primary))" 
+                  <Area
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="#2455f6"
                     strokeWidth={2.5}
-                    fillOpacity={1} 
-                    fill="url(#colorProfitGradient)" 
+                    fillOpacity={1}
+                    fill="url(#dbAreaFill)"
+                    dot={false}
+                    activeDot={{ r: 5, fill: 'var(--db-surface)', stroke: '#2455f6', strokeWidth: 2.5 }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center">
-                <div className="p-4 rounded-2xl bg-muted/30 mb-4">
-                  <Activity className="h-10 w-10 text-muted-foreground/40" />
-                </div>
-                <p className="text-sm font-medium text-muted-foreground">No order data yet</p>
-                <p className="text-xs text-muted-foreground/70 mt-1">Complete some orders to see your profit trend</p>
+              <div className="db-empty" style={{ height: '100%' }}>
+                <div className="db-empty-icon"><Activity size={24} /></div>
+                <p>No order data yet</p>
+                <small>Complete orders to see your revenue trend</small>
               </div>
             )}
           </div>
-        </motion.div>
+        </div>
 
-        {/* Sales Performance Radial */}
-        <motion.div 
-          variants={itemVariants}
-          className="bg-gradient-to-br from-card to-card/80 border border-border/50 rounded-2xl p-6 shadow-sm"
-        >
-          <div className="flex items-center gap-2.5 mb-6">
-            <div className="p-2 rounded-xl bg-orange-500/10">
-              <Target className="h-4 w-4 text-orange-600" />
+        {/* Order Success Rate donut */}
+        <div className="db-card db-col-4 db-fade-up" style={{ animationDelay: '0.24s', display: 'flex', flexDirection: 'column' }}>
+          <div className="db-card-head">
+            <div className="db-card-ico violet"><Target size={20} /></div>
+            <div className="db-card-title-wrap">
+              <div className="db-card-title">Order Success Rate</div>
             </div>
-            <span className="text-base font-semibold text-foreground">Order Success Rate</span>
           </div>
-          
-          <div className="flex flex-col items-center">
-            <div className="relative w-44 h-44">
-              <ResponsiveContainer width="100%" height="100%">
-                <RadialBarChart 
-                  cx="50%" 
-                  cy="50%" 
-                  innerRadius="65%" 
-                  outerRadius="100%" 
-                  data={performanceData}
-                  startAngle={180}
-                  endAngle={-180}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 0 4px' }}>
+            {totalOrders === 0 ? (
+              <div className="db-empty">
+                <div className="db-empty-icon"><Target size={22} /></div>
+                <p>No orders yet</p>
+                <small>Sync your eBay orders</small>
+              </div>
+            ) : (
+              <SvgDonut value={successRate} size={160} />
+            )}
+          </div>
+          <div className="db-chips" style={{ justifyContent: 'center' }}>
+            <span className="db-chip">
+              <span className="dot" style={{ background: 'var(--db-success)' }} />
+              Completed {stats.completedOrders}
+            </span>
+            <span className="db-chip">
+              <span className="dot" style={{ background: 'var(--db-ink-4)' }} />
+              Pending {stats.pendingOrders}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── row 3: mini stats ────────────────────────────────────────── */}
+      <div className="db-grid">
+        {[
+          { icon: <Package size={19} />, cl: 'blue',   val: stats.activeListings.toString(),                                           label: 'Active listings' },
+          { icon: <CheckCircle2 size={19} />, cl: 'green',  val: stats.completedOrders.toString(),                                        label: 'Completed orders' },
+          { icon: <DollarSign size={19} />, cl: 'amber',  val: totalOrders > 0 ? `$${(stats.orderRevenue / totalOrders).toFixed(2)}` : '—', label: 'Avg. order value' },
+          { icon: <Bell size={19} />, cl: 'violet', val: stats.unreadAlerts.toString(),                                              label: 'Unread alerts' },
+        ].map((s, i) => (
+          <div key={i} className="db-card lift db-col-3 db-fade-up" style={{ animationDelay: `${0.28 + i * 0.04}s` }}>
+            <div className="db-ministat">
+              <div className={`db-card-ico ${s.cl}`}>{s.icon}</div>
+              <div>
+                <div className="db-mi-val">{s.val}</div>
+                <div className="db-mi-lab">{s.label}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── row 4: activity feed + top listings ─────────────────────── */}
+      <div className="db-grid" style={{ paddingBottom: 8 }}>
+
+        {/* Activity feed */}
+        <div className="db-card db-col-7 db-fade-up" style={{ animationDelay: '0.44s' }}>
+          <div className="db-card-head">
+            <div className="db-card-ico blue"><Activity size={18} /></div>
+            <div className="db-card-title-wrap">
+              <div className="db-card-title">Recent Activity</div>
+              <div className="db-card-sub">Latest orders · {rangeLabel}</div>
+            </div>
+            <button className="db-link-row" style={{ marginLeft: 'auto' }} onClick={() => navigate('/dashboard/orders')}>
+              View all <ArrowUpRight size={13} />
+            </button>
+          </div>
+
+          <div className="db-feed">
+            {feedItems.length === 0 ? (
+              <div className="db-empty">
+                <div className="db-empty-icon"><Activity size={22} /></div>
+                <p>No recent activity</p>
+                <small>Orders will appear here once synced from eBay</small>
+              </div>
+            ) : (
+              feedItems.map((f, i) => (
+                <div key={i} className="db-feed-item" style={{ animationDelay: `${0.5 + i * 0.07}s` }}>
+                  <div className={`db-feed-ico db-card-ico ${f.color}`}>{f.icon}</div>
+                  <div className="db-feed-main">
+                    <b>{f.title}</b>
+                    <p>{f.desc}</p>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    {f.amount && (
+                      <div className="db-feed-amt" style={{ color: 'var(--db-success)' }}>{f.amount}</div>
+                    )}
+                    <div className="db-feed-time">{f.time}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Top listings */}
+        <div className="db-card db-col-5 db-fade-up" style={{ animationDelay: '0.48s' }}>
+          <div className="db-card-head">
+            <div className="db-card-ico green"><TrendingUp size={18} /></div>
+            <div className="db-card-title-wrap">
+              <div className="db-card-title">Top Performing Listings</div>
+              <div className="db-card-sub">By price · active listings</div>
+            </div>
+          </div>
+
+          {topProducts.length === 0 ? (
+            <div className="db-empty">
+              <div className="db-empty-icon"><Package size={22} /></div>
+              <p>No listings yet</p>
+              <small>Add listings to see top performers</small>
+              <button className="db-btn-primary" style={{ marginTop: 12, fontSize: 12, padding: '6px 14px' }} onClick={() => navigate('/dashboard/listings')}>
+                <Plus size={14} /> Add Listing
+              </button>
+            </div>
+          ) : (
+            <>
+              {topProducts.map((p, i) => (
+                <div
+                  key={p.id}
+                  className="db-tl-item"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => navigate('/dashboard/listings')}
                 >
-                  <RadialBar
-                    background={{ fill: 'hsl(var(--muted))' }}
-                    dataKey="value"
-                    cornerRadius={12}
-                  />
-                </RadialBarChart>
-              </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-4xl font-bold tracking-tight text-foreground">
-                  {performanceData[0]?.value || 0}%
-                </span>
-                {(stats.completedOrders + stats.pendingOrders) > 0 && (
-                  <span className="text-xs text-muted-foreground mt-1">
-                    {stats.completedOrders} / {stats.completedOrders + stats.pendingOrders}
-                  </span>
-                )}
-              </div>
-            </div>
-            
-            <p className="text-xs text-muted-foreground mt-4">
-              {(stats.completedOrders + stats.pendingOrders) === 0 
-                ? 'No orders in this period'
-                : 'Completed vs Total Orders'}
-            </p>
-            
-            <div className="flex items-center gap-5 mt-5 pt-5 border-t border-border/50 w-full justify-center">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-primary" />
-                <span className="text-xs text-muted-foreground">Completed ({stats.completedOrders})</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-muted-foreground/30" />
-                <span className="text-xs text-muted-foreground">Pending ({stats.pendingOrders})</span>
-              </div>
-            </div>
-          </div>
-        </motion.div>
+                  <div className="db-tl-rank">{i + 1}</div>
+                  <div className="db-tl-main">
+                    <b>{p.title}</b>
+                    <div className="db-tl-bar">
+                      <i style={{
+                        width: `${Math.round((p.ebay_price / maxListingPrice) * 100)}%`,
+                        animationDelay: `${0.55 + i * 0.08}s`,
+                      }} />
+                    </div>
+                  </div>
+                  <div className="db-tl-meta">
+                    <b>${p.ebay_price.toFixed(2)}</b>
+                    <small style={{ color: p.profit >= 0 ? 'var(--db-success)' : 'var(--db-danger)' }}>
+                      {p.profit >= 0 ? '+' : ''}${p.profit.toFixed(2)} spread
+                    </small>
+                  </div>
+                </div>
+              ))}
+              <p style={{ fontSize: 11, color: 'var(--db-ink-4)', marginTop: 14, paddingTop: 10, borderTop: '1px solid var(--db-border-2)' }}>
+                * Spread = eBay listing price minus source cost. Excludes eBay selling fees and shipping.
+              </p>
+            </>
+          )}
+        </div>
       </div>
-
-      {/* Bottom Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Stats Cards */}
-        <motion.div 
-          variants={itemVariants}
-          className="space-y-5"
-        >
-          {/* Quick Stats */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-gradient-to-br from-card to-card/80 border border-border/50 rounded-xl p-4 shadow-sm hover:shadow-md transition-all group">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="p-2 rounded-lg bg-primary/10 group-hover:bg-primary/15 transition-colors">
-                  <Package className="h-4 w-4 text-primary" />
-                </div>
-              </div>
-              <p className="text-2xl font-bold tracking-tight text-foreground">{stats.activeListings}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Active Listings</p>
-            </div>
-            <div className="bg-gradient-to-br from-card to-card/80 border border-border/50 rounded-xl p-4 shadow-sm hover:shadow-md transition-all group">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="p-2 rounded-lg bg-amber-500/10 group-hover:bg-amber-500/15 transition-colors">
-                  <Bell className="h-4 w-4 text-amber-500" />
-                </div>
-              </div>
-              <p className="text-2xl font-bold tracking-tight text-foreground">{stats.unreadAlerts}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Pending Alerts</p>
-            </div>
-          </div>
-
-          {/* Orders Overview */}
-          <div className="bg-gradient-to-br from-card to-card/80 border border-border/50 rounded-xl p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-semibold text-foreground">Orders Overview</span>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-7 text-xs text-muted-foreground hover:text-foreground rounded-lg" 
-                onClick={() => navigate('/dashboard/orders')}
-              >
-                View All
-              </Button>
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-                <div className="flex items-center gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  <span className="text-sm text-muted-foreground">Completed</span>
-                </div>
-                <span className="text-sm font-semibold text-foreground">{stats.completedOrders}</span>
-              </div>
-              <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-                <div className="flex items-center gap-2.5">
-                  <Clock className="w-4 h-4 text-amber-500" />
-                  <span className="text-sm text-muted-foreground">Pending</span>
-                </div>
-                <span className="text-sm font-semibold text-foreground">{stats.pendingOrders}</span>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Top Products Table */}
-        <motion.div 
-          variants={itemVariants}
-          className="lg:col-span-2 bg-gradient-to-br from-card to-card/80 border border-border/50 rounded-2xl shadow-sm overflow-hidden"
-        >
-          <div className="flex items-center justify-between p-5 border-b border-border/50">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-indigo-500/10">
-                <Layers className="h-4 w-4 text-indigo-600" />
-              </div>
-              <span className="text-base font-semibold text-foreground">Top Products</span>
-            </div>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-8 text-xs text-muted-foreground hover:text-foreground rounded-lg"
-              onClick={() => navigate('/dashboard/listings')}
-            >
-              View All <ArrowUpRight className="h-3.5 w-3.5 ml-1" />
-            </Button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border/50 bg-muted/20">
-                  <th className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider px-5 py-3">Product</th>
-                  <th className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 py-3">SKU</th>
-                  <th className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 py-3">Price</th>
-                  <th className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 py-3">Profit</th>
-                  <th className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 py-3">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topProducts.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="text-center py-12">
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="p-4 rounded-2xl bg-muted/50">
-                          <Package className="h-8 w-8 text-muted-foreground/50" />
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm font-medium text-muted-foreground">No products yet</p>
-                          <p className="text-xs text-muted-foreground/70">Start by adding your first listing</p>
-                        </div>
-                        <Button 
-                          size="sm" 
-                          className="mt-2 rounded-xl shadow-md"
-                          onClick={() => navigate('/dashboard/listings')}
-                        >
-                          <Plus className="h-4 w-4 mr-1.5" />
-                          Add Listings
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  topProducts.map((product) => (
-                    <tr 
-                      key={product.id} 
-                      className="border-b border-border/30 hover:bg-muted/30 transition-colors cursor-pointer"
-                      onClick={() => navigate('/dashboard/listings')}
-                    >
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-11 h-11 rounded-xl bg-muted/50 border border-border/50 flex items-center justify-center overflow-hidden flex-shrink-0">
-                            {product.image_url ? (
-                              <img src={product.image_url} alt={product.title} className="w-full h-full object-cover" />
-                            ) : (
-                              <Package className="h-4 w-4 text-muted-foreground/50" />
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-foreground line-clamp-1 max-w-[180px]">{product.title}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-4">
-                        <span className="text-xs text-muted-foreground font-mono bg-muted/50 px-2 py-1 rounded">
-                          {product.sku.slice(0, 10)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-4">
-                        <span className="text-sm font-semibold text-foreground">${product.ebay_price.toFixed(2)}</span>
-                      </td>
-                      <td className="px-3 py-4">
-                        <span className={cn(
-                          "text-sm font-semibold",
-                          product.profit >= 0 ? "text-emerald-600" : "text-destructive"
-                        )}>
-                          {product.profit >= 0 ? '+' : ''}${product.profit.toFixed(2)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-4">
-                        {getProductStatusBadge(product.status)}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </motion.div>
-      </div>
-    </motion.div>
+    </div>
   );
 }

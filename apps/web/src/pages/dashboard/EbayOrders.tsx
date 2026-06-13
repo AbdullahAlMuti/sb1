@@ -308,7 +308,8 @@ export default function EbayOrders() {
 
 
 
-      setOrders((data?.orders as EbayOrder[]) || []);
+      const orders = (data?.orders as EbayOrder[]) || [];
+      setOrders(orders);
       setTotalOrders(Number(data?.total || 0));
       setTotalRevenue(Number(data?.totalRevenue || 0));
       if (data?.counts) {
@@ -323,6 +324,14 @@ export default function EbayOrders() {
         });
       }
       setLastRefresh(new Date());
+      // Derive last sync time from the most recently synced order in this batch
+      const syncDates = orders
+        .map(o => o.synced_at ? new Date(o.synced_at) : null)
+        .filter(Boolean) as Date[];
+      if (syncDates.length > 0) {
+        const latestSync = new Date(Math.max(...syncDates.map(d => d.getTime())));
+        setSyncStatus(prev => ({ ...prev, lastSync: latestSync }));
+      }
     } catch (error: any) {
       console.error("Error fetching eBay orders:", error);
       if (!silent) {
@@ -738,9 +747,17 @@ export default function EbayOrders() {
                     <div className="text-3xl font-bold tracking-tight">{stats.total.toLocaleString()}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs text-muted-foreground">Total Revenue</div>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <div className="text-xs text-muted-foreground">Total Revenue</div>
+                      <span className="text-[10px] font-medium text-emerald-700 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">
+                        Confirmed
+                      </span>
+                    </div>
                     <div className="text-3xl font-bold tracking-tight text-green-600">
                       ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground/70 mt-0.5">
+                      Sum of buyer payments (before fees)
                     </div>
                   </div>
                 </div>
@@ -1118,7 +1135,7 @@ export default function EbayOrders() {
                     <TableHead className="min-w-[140px] h-10 px-3 text-xs">SKU</TableHead>
                     <TableHead className="min-w-[220px] h-10 px-3 text-xs">Shipping</TableHead>
                     <TableHead className="w-[120px] h-10 px-3 text-xs">Revenue</TableHead>
-                    <TableHead className="w-[110px] h-10 px-3 text-xs">Net Profit</TableHead>
+                    <TableHead className="w-[110px] h-10 px-3 text-xs" title="Net earnings after eBay fees — synced per order by the extension">Net Earnings ↗</TableHead>
                     <TableHead className="w-[140px] h-10 px-3 text-xs">Order Status</TableHead>
                     <TableHead className="w-[60px] h-10 px-3 text-xs text-right">Actions</TableHead>
                   </TableRow>
