@@ -5,12 +5,14 @@
 // NO hardcoded limits - everything comes from the database.
 
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isWithinLimit } from "./billing.ts";
+export { isWithinLimit } from "./billing.ts";
 
-export type LimitAction = 
-  | 'credit' 
-  | 'listing' 
-  | 'order' 
-  | 'seo_title' 
+export type LimitAction =
+  | 'credit'
+  | 'listing'
+  | 'order'
+  | 'seo_title'
   | 'seo_description';
 
 export interface PlanLimits {
@@ -191,8 +193,8 @@ export async function getFullPlanStatus(
       isExpired,
       isTrial: limits.is_trial,
       trialEndsAt: userPlan?.trial_end ?? undefined,
-      planName: planData?.name ?? 'free',
-      planDisplayName: planData?.display_name ?? 'Free',
+      planName: planData?.name ?? 'none',
+      planDisplayName: planData?.display_name ?? 'No Plan',
       limits,
       usage: {
         credits: profile.credits ?? 0,
@@ -232,8 +234,8 @@ export async function validateUserPlan(
       isBlocked: false,
       isExpired: false,
       isTrial: false,
-      planName: 'free',
-      planDisplayName: 'Free',
+      planName: 'none',
+      planDisplayName: 'No Plan',
     };
   }
 
@@ -294,9 +296,8 @@ export async function validateUserPlan(
     case 'listing':
       current = status.usage.listings_count;
       limit = getEffectiveLimit('max_listings', status.limits.max_listings);
-      allowed = current + amount <= limit;
+      allowed = isWithinLimit(current, amount, limit);
       if (!allowed) {
-        // Trial-specific message for the default trial cap (admin override may exceed)
         if (status.isTrial && limit === 10) {
           reason = 'Trial plan listing limit reached (10 max)';
         } else {
@@ -322,7 +323,7 @@ export async function validateUserPlan(
       }
       current = status.usage.orders_used;
       limit = getEffectiveLimit('max_auto_orders', status.limits.max_auto_orders);
-      allowed = current + amount <= limit;
+      allowed = isWithinLimit(current, amount, limit);
       if (!allowed) {
         reason = `Order limit reached (${current}/${limit}). Upgrade your plan.`;
       }

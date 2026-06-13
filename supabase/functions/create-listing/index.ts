@@ -214,7 +214,7 @@ async function validateListingAllowed(supabase: SupabaseClient, userId: string):
   if (up?.current_period_end && new Date(up.current_period_end) < now) return { allowed: false, reason: 'Subscription expired' };
   const { count } = await supabase.from('listings').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'active');
   const current = count ?? 0;
-  if (current >= maxListings) return { allowed: false, reason: `Listing limit reached (${current}/${maxListings})`, current, limit: maxListings };
+  if (maxListings !== -1 && current >= maxListings) return { allowed: false, reason: `Listing limit reached (${current}/${maxListings})`, current, limit: maxListings };
   const credits = profile.credits ?? 0;
   if (credits < 1) return { allowed: false, reason: `Insufficient credits (have ${credits})`, current: credits, limit: 1 };
   return { allowed: true, current, limit: maxListings };
@@ -314,8 +314,7 @@ Deno.serve(async (req) => {
     // Ensure profile exists
     const { data: profile } = await supabase.from('profiles').select('id').eq('id', userId).maybeSingle();
     if (!profile) {
-      const { data: fp } = await supabase.from('plans').select('id').eq('name','free').maybeSingle();
-      const { error: ce } = await supabase.from('profiles').insert({ id: userId, email: auth.profile?.email || '', full_name: auth.profile?.full_name || '', credits: 20, is_active: true, plan_id: fp?.id ?? null }).select('id').single();
+      const { error: ce } = await supabase.from('profiles').insert({ id: userId, email: auth.profile?.email || '', full_name: auth.profile?.full_name || '', credits: 0, is_active: true, plan_id: null }).select('id').single();
       if (ce) return json({ success: false, error: 'Failed to initialize profile' }, 500);
     }
 
