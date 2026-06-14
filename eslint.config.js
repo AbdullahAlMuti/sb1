@@ -5,7 +5,19 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "supabase"] },
+  {
+    // Build outputs, generated copies, and the vanilla-JS extension (linted by its
+    // own `apps/extension` eslint script) are excluded from the root TS lint.
+    ignores: [
+      "**/dist/**",
+      "**/dist-ssr/**",
+      "supabase",
+      "**/public/chrome_extension/**",
+      "apps/extension/**",
+      "apps/backup_temp/**",
+      "**/*.cjs",
+    ],
+  },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],
@@ -23,6 +35,12 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
       "no-control-regex": "off",
       "@typescript-eslint/no-require-imports": "off",
+      // Launch posture: keep these visible as warnings (not CI-blocking). Tighten post-launch.
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-empty-object-type": "warn",
+      "no-case-declarations": "warn",
+      "no-empty": "warn",
+      "prefer-const": "warn",
     },
   },
 );

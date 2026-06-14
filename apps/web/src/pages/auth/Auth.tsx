@@ -180,24 +180,14 @@ export default function Auth() {
       }
       setErrors({});
       setIsSubmitting(true);
-      
-      try {
-        const { data, error } = await (supabase as any).rpc('get_user_goal', {
-          lookup_email: email,
-        });
-        
-        if (error) throw error;
-        
-        setDetectedGoal(data || 'ebay');
-        setLoginStep('password');
-      } catch (error: any) {
-        console.error('Error fetching user goal:', error);
-        // Fallback to ebay and proceed to password step
-        setDetectedGoal('ebay');
-        setLoginStep('password');
-      } finally {
-        setIsSubmitting(false);
-      }
+
+      // eBay-only product: proceed straight to the password step. We previously
+      // called get_user_goal(email) here, but that RPC leaked account existence
+      // (and the user's goal) to anonymous callers — its grants are now revoked
+      // (see migration: revoke anon PII function grants). Goal defaults to 'ebay'.
+      setDetectedGoal('ebay');
+      setLoginStep('password');
+      setIsSubmitting(false);
       return;
     }
 
@@ -229,20 +219,9 @@ export default function Auth() {
         }
         // Redirect will be handled by useEffect
       } else {
-        // Pre-check if email is already registered using get_user_goal
-        try {
-          const { data: existingGoal } = await (supabase as any).rpc('get_user_goal', {
-            lookup_email: email,
-          });
-          if (existingGoal) {
-            setErrors({ email: 'This email is already registered. Please sign in instead.' });
-            toast.error('This email is already registered.');
-            return;
-          }
-        } catch (err) {
-          console.error('Error pre-checking registered email:', err);
-        }
-
+        // Duplicate emails are rejected by signUp() below. We removed an anon
+        // get_user_goal(email) pre-check that leaked account existence to
+        // anonymous callers (grants now revoked).
         const { error } = await signUp(email, password, fullName);
         if (error) {
           throw error;
