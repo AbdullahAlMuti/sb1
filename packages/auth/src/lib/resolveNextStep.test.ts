@@ -33,12 +33,12 @@ test('active + onboarding complete → dashboard', () => {
   assert.equal(resolveNextStep({ ...base, access: 'active', onboardingCompleted: true }), '/dashboard/ebay');
 });
 
-test('active + onboarding incomplete → /onboarding', () => {
-  assert.equal(resolveNextStep({ ...base, access: 'active', onboardingCompleted: false }), '/onboarding');
+test('active + onboarding incomplete → dashboard', () => {
+  assert.equal(resolveNextStep({ ...base, access: 'active', onboardingCompleted: false }), '/dashboard/ebay');
 });
 
-test('trial + onboarding incomplete → /onboarding', () => {
-  assert.equal(resolveNextStep({ ...base, access: 'trial', onboardingCompleted: false }), '/onboarding');
+test('trial + onboarding incomplete → dashboard', () => {
+  assert.equal(resolveNextStep({ ...base, access: 'trial', onboardingCompleted: false }), '/dashboard/ebay');
 });
 
 test('trial + onboarding complete → dashboard', () => {

@@ -143,7 +143,7 @@ export default function CheckoutSuccess() {
             </p>
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>{profile?.onboarding_completed ? "Redirecting to dashboard..." : "Setting up your workspace..."}</span>
+              <span>Redirecting to dashboard...</span>
             </div>
           </>
         )}

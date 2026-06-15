@@ -289,7 +289,7 @@ export default function DashboardSettings() {
               </div>
 
               {/* Status Section */}
-              <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 pt-2">
+              <div className="grid gap-4 grid-cols-2 pt-2">
                 <div className="p-4 rounded-xl border border-border/50 bg-muted/20">
                   <span className="text-xs text-muted-foreground block">Plan Tier</span>
                   <span className="font-semibold text-foreground text-sm flex items-center gap-1.5 mt-1">
@@ -302,12 +302,6 @@ export default function DashboardSettings() {
                   <Badge className="mt-1" variant={profile?.account_status === 'Active' ? 'default' : 'secondary'}>
                     {profile?.account_status || 'Active'}
                   </Badge>
-                </div>
-                <div className="p-4 rounded-xl border border-border/50 bg-muted/20 col-span-2 sm:col-span-1">
-                  <span className="text-xs text-muted-foreground block">Onboarding</span>
-                  <span className="font-medium text-foreground text-sm block mt-1.5">
-                    {profile?.onboarding_completed ? 'Completed ✓' : 'Pending'}
-                  </span>
                 </div>
               </div>
 

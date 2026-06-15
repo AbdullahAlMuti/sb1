@@ -60,7 +60,7 @@ export function resolveNextStep(input: NextStepInput): string {
   if (input.access === 'past_due') return ROUTE_BILLING;
 
   if (input.access === 'active' || input.access === 'trial') {
-    return input.onboardingCompleted ? input.dashboardPath : ROUTE_ONBOARDING;
+    return input.dashboardPath;
   }
 
   if (input.access === 'trial_expired') return ROUTE_CHOOSE_PLAN;

@@ -42,7 +42,6 @@ import CheckoutSuccess from "./pages/billing/CheckoutSuccess";
 import Checkout from "./pages/billing/Checkout";
 import PaymentCancelled from "./pages/billing/PaymentCancelled";
 import ChoosePlan from "./pages/billing/PaymentRequired";
-import Onboarding from "./pages/onboarding/Onboarding";
 import Subscription from "./pages/dashboard/Subscription";
 
 import ShopifyLayout from "./pages/integrations/shopify/ShopifyLayout";
@@ -182,7 +181,7 @@ const App = () => (
                 <Route path="/checkout/success" element={<RedirectPreserve to="/payment-success" />} />
                 <Route path="/checkout/*" element={<Navigate to="/dashboard" replace />} />
 
-                <Route path="/onboarding" element={<Onboarding />} />
+                <Route path="/onboarding" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/choose-plan" element={<ChoosePlan />} />
                 <Route path="/payment-required" element={<Navigate to="/choose-plan" replace />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
