@@ -1,8 +1,8 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-import { trialEndFor } from "../_shared/billing.ts";
 import { sendBillingEmail } from "../_shared/email.ts";
+import { activateTrial } from "../_shared/trial-activation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -106,8 +106,10 @@ serve(async (req) => {
   };
 
   // $1 trial purchase (checkout.session.completed with mode === "payment").
-  // The trial_used_at claim is atomic, so replayed events and double
-  // purchases activate at most once.
+  // Activation is delegated to the shared, idempotent helper (also used by
+  // check-subscription-v2 reconciliation) so the two paths can never diverge.
+  // The trial_used_at claim is atomic, so replayed events and double purchases
+  // activate at most once.
   const activateTrialFromSession = async (session: Stripe.Checkout.Session) => {
     const userId = session.metadata?.user_id;
     const planId = session.metadata?.plan_id;
@@ -118,94 +120,19 @@ serve(async (req) => {
       return;
     }
 
-    const { data: plan } = await supabase
-      .from("plans")
-      .select("id, name, is_trial, trial_duration_days, credits_per_month, max_auto_orders")
-      .eq("id", planId)
-      .maybeSingle();
-
-    if (!plan?.is_trial) {
-      logStep("Payment-mode session for non-trial plan, ignoring", { sessionId: session.id, planId });
-      return;
-    }
-
-    const { data: claimed } = await supabase
-      .from("profiles")
-      .update({ trial_used_at: new Date().toISOString() })
-      .eq("id", userId)
-      .is("trial_used_at", null)
-      .select("id");
-
-    if (!claimed?.length) {
-      logStep("Trial already claimed, skipping activation", { userId, sessionId: session.id });
-      return;
-    }
-
-    const now = new Date();
-    const trialEnd = trialEndFor(now, plan.trial_duration_days ?? 7);
-
-    const planPayload = {
-      user_id: userId,
-      plan_id: plan.id,
-      status: "trialing",
-      stripe_subscription_id: null,
-      current_period_start: now.toISOString(),
-      current_period_end: trialEnd.toISOString(),
-      trial_end: trialEnd.toISOString(),
-      orders_used: 0,
-      credits_used: 0,
-      updated_at: now.toISOString(),
-    };
-
-    const { data: existingPlan } = await supabase
-      .from("user_plans")
-      .select("id")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (existingPlan) {
-      await supabase.from("user_plans").update(planPayload).eq("user_id", userId);
-    } else {
-      await supabase.from("user_plans").insert(planPayload);
-    }
-
-    const profileUpdate: Record<string, unknown> = {
-      plan_id: plan.id,
-      credits: plan.credits_per_month,
-      selected_plan_id: plan.id,
-      pending_plan_id: null,
-      payment_status: "paid",
-      subscription_status: "active",
-      customer_id: stripeCustomerId,
-      subscription_id: session.payment_intent || session.id,
-      current_period_start: now.toISOString(),
-      current_period_end: trialEnd.toISOString(),
-      subscription_provider: "stripe",
-      updated_at: now.toISOString(),
-    };
-    if (stripeCustomerId) profileUpdate.stripe_customer_id = stripeCustomerId;
-    await supabase.from("profiles").update(profileUpdate).eq("id", userId);
-
-    await supabase.from("credit_transactions").insert({
-      user_id: userId,
-      amount: plan.credits_per_month,
-      transaction_type: "plan_grant",
-      balance_after: plan.credits_per_month,
-      description: "Trial activated",
-      metadata: { plan_id: plan.id, session_id: session.id, trial_end: trialEnd.toISOString() },
+    const result = await activateTrial(supabase, stripe, {
+      userId,
+      planId,
+      stripeCustomerId,
+      sourceId: (typeof session.payment_intent === "string" ? session.payment_intent : null) || session.id,
     });
 
-    // Belt-and-braces: mark the Stripe customer so a wiped/re-created account
-    // reusing the same customer cannot start a second trial.
-    if (stripeCustomerId) {
-      try {
-        await stripe.customers.update(stripeCustomerId, { metadata: { trial_used: "true" } });
-      } catch (err) {
-        logStep("Failed to set customer trial metadata (non-fatal)", { error: String(err) });
-      }
+    if (!result.activated) {
+      logStep("Trial not activated", { userId, sessionId: session.id, reason: result.reason });
+      return;
     }
 
-    logStep("Trial activated", { userId, trialEnd: trialEnd.toISOString() });
+    logStep("Trial activated", { userId, trialEnd: result.trialEnd });
 
     // Fire-and-forget — never let email failure fail the webhook
     getUserEmailAndName(userId).then((u) => {
@@ -214,7 +141,7 @@ serve(async (req) => {
           to: u.email,
           type: "trial_started",
           userName: u.name,
-          trialEndDate: trialEnd.toISOString(),
+          trialEndDate: result.trialEnd,
         }).catch((e) => logStep("trial_started email error (non-fatal)", { error: String(e) }));
       }
     }).catch(() => {});

@@ -8,8 +8,8 @@ import { Label } from '@repo/ui/components/ui/label';
 import { useAuth } from '@repo/auth/hooks/useAuth';
 import { usePlans } from '@repo/api-client/hooks/usePlans';
 import { getPlanIntent, setPlanIntent, clearPlanIntent, resolvePlanToken } from '@repo/auth/lib/planIntent';
-import { routeAfterAuth } from '@repo/auth/lib/routeAfterAuth';
-import { canAccessDashboard } from '@repo/auth/ProtectedRoute';
+import { resolveNextStep } from '@repo/auth/lib/resolveNextStep';
+import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { cn } from '@repo/ui/lib/utils';
@@ -45,6 +45,7 @@ export default function Register() {
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   const { signUp, verifyOtp, resendVerificationEmail, signIn, user, profile, isAdmin } = useAuth();
+  const { access, isLoading: subscriptionLoading } = useSubscription();
   const navigate = useNavigate();
   const location = useLocation();
   const { plans, isLoading: plansLoading } = usePlans();
@@ -69,21 +70,28 @@ export default function Register() {
   // before signup, and no duplicate plan/checkout prompts.
   useEffect(() => {
     if (!user || !user.email_confirmed_at || !profile) return;
+    // Wait for the authoritative subscription state so routing is onboarding-
+    // aware and consistent with the dashboard guard (admins skip the wait).
+    if (subscriptionLoading && !isAdmin) return;
     const goal =
       selectedGoal || (profile.settings as Record<string, unknown> | null)?.goal as string | undefined ||
       localStorage.getItem('selectedGoal') || undefined;
-    const canAccess = canAccessDashboard(user, profile, isAdmin);
-    const next = routeAfterAuth({
-      canAccess,
+    const hasAccess = access === 'active' || access === 'trial' || isAdmin;
+    const next = resolveNextStep({
+      hasUser: true,
+      isEmailVerified: true,
+      isAdmin,
+      access,
+      onboardingCompleted: profile.onboarding_completed === true,
       planToken,
       dashboardPath: getDashboardPathForGoal(goal),
     });
-    if (canAccess) {
+    if (hasAccess) {
       clearPlanIntent();
       localStorage.removeItem('selectedGoal');
     }
     navigate(next, { replace: true });
-  }, [user, profile, isAdmin, planToken, selectedGoal, navigate]);
+  }, [user, profile, isAdmin, access, subscriptionLoading, planToken, selectedGoal, navigate]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string; fullName?: string } = {};

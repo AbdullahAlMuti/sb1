@@ -8,8 +8,8 @@ import { Label } from '@repo/ui/components/ui/label';
 import { useAuth } from '@repo/auth/hooks/useAuth';
 import { supabase } from '@repo/api-client/supabase/client';
 import { clearPlanIntent, getPlanIntent } from '@repo/auth/lib/planIntent';
-import { routeAfterAuth } from '@repo/auth/lib/routeAfterAuth';
-import { canAccessDashboard } from '@repo/auth/ProtectedRoute';
+import { resolveNextStep } from '@repo/auth/lib/resolveNextStep';
+import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { getDashboardPathForGoal } from '@repo/config/navigation';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -60,6 +60,7 @@ export default function Auth() {
   };
 
   const { signIn, signUp, verifyOtp, resendVerificationEmail, user, profile: authProfile, isAdmin, isEmailVerified, isLoading: authLoading } = useAuth();
+  const { access, isLoading: subscriptionLoading } = useSubscription();
 
   // Legacy: /auth reached with signup intent → canonical /signup page.
   useEffect(() => {
@@ -84,21 +85,27 @@ export default function Auth() {
     // Wait for profile so the access check is meaningful (avoids a dashboard
     // bounce on a stale/empty profile).
     if (!authProfile) return;
+    // Wait for the authoritative subscription state (admins skip the wait).
+    if (subscriptionLoading && !isAdmin) return;
 
     const userGoal = (authProfile.settings as Record<string, unknown> | null)?.goal as string | undefined;
-    const canAccess = canAccessDashboard(user, authProfile, isAdmin);
     const planToken = getPlanIntent() || authProfile.pending_plan_id || null;
-    const next = routeAfterAuth({
-      canAccess,
+    const hasAccess = access === 'active' || access === 'trial' || isAdmin;
+    const next = resolveNextStep({
+      hasUser: true,
+      isEmailVerified: true,
+      isAdmin,
+      access,
+      onboardingCompleted: authProfile.onboarding_completed === true,
       planToken,
       dashboardPath: getDashboardPathForGoal(userGoal),
     });
-    if (canAccess) {
+    if (hasAccess) {
       clearPlanIntent();
       localStorage.removeItem('selectedGoal');
     }
     navigate(next, { replace: true });
-  }, [user, authProfile, isEmailVerified, authLoading, isAdmin, navigate]);
+  }, [user, authProfile, isEmailVerified, authLoading, isAdmin, access, subscriptionLoading, navigate]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -670,9 +677,7 @@ export default function Auth() {
               size="sm"
               className="text-xs text-muted-foreground hover:text-foreground h-8"
               onClick={() => {
-                localStorage.removeItem('selectedPlanId');
-                localStorage.removeItem('selectedPlanName');
-                localStorage.removeItem('appliedCouponCode');
+                clearPlanIntent();
                 navigate('/#pricing');
               }}
             >

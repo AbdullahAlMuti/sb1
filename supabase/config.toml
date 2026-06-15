@@ -81,6 +81,9 @@ verify_jwt = false # Internal service-to-service call guarded by X-Internal-Func
 [functions.queue-worker]
 verify_jwt = false # Internal worker endpoint guarded by X-Internal-Function-Secret.
 
+[functions.reconcile-subscriptions]
+verify_jwt = false # Cron-invoked; handler requires CRON_SECRET or the service-role bearer token.
+
 # Extension/custom-token endpoints. Platform JWT verification would reject extension session tokens.
 [functions.sync-ebay-orders]
 verify_jwt = false

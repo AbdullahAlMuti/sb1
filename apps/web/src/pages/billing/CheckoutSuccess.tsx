@@ -5,8 +5,9 @@ import { CheckCircle, Clock, Loader2 } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
 import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { useAuth } from '@repo/auth/hooks/useAuth';
-import { canAccessDashboard } from '@repo/auth/ProtectedRoute';
+import { resolveNextStep } from '@repo/auth/lib/resolveNextStep';
 import { clearPlanIntent } from '@repo/auth/lib/planIntent';
+import { getDashboardPathForGoal } from '@repo/config/navigation';
 
 export default function CheckoutSuccess() {
   const navigate = useNavigate();
@@ -19,7 +20,9 @@ export default function CheckoutSuccess() {
   const [retryCount, setRetryCount] = useState(0);
   const maxRetries = 6;
 
-  const isSuccess = canAccessDashboard(user, profile, isAdmin);
+  // Authoritative success: trust the server access state (live Stripe + reconciled
+  // trial), never profile flags or the mere fact that Stripe redirected back here.
+  const isSuccess = isAdmin || access === 'active' || access === 'trial';
 
   useEffect(() => {
     if (authLoading) return;
@@ -33,7 +36,16 @@ export default function CheckoutSuccess() {
       setStatus('success');
       clearPlanIntent();
 
-      const dest = profile?.onboarding_completed ? '/dashboard' : '/onboarding';
+      const goal = (profile?.settings as Record<string, unknown> | null)?.goal as string | undefined;
+      const dest = resolveNextStep({
+        hasUser: true,
+        isEmailVerified: true,
+        isAdmin,
+        access,
+        onboardingCompleted: profile?.onboarding_completed === true,
+        planToken: null,
+        dashboardPath: getDashboardPathForGoal(goal),
+      });
       const redirectTimer = setTimeout(() => {
         setStatus('redirecting');
         navigate(dest, { replace: true });
@@ -58,7 +70,7 @@ export default function CheckoutSuccess() {
     const delay = retryCount === 0 ? 2500 : 2000;
     const timer = setTimeout(verifySubscription, delay);
     return () => clearTimeout(timer);
-  }, [user, authLoading, retryCount, isSuccess, profile?.onboarding_completed, checkSubscription, refreshProfile, navigate]);
+  }, [user, authLoading, retryCount, isSuccess, access, isAdmin, profile?.onboarding_completed, checkSubscription, refreshProfile, navigate]);
 
   const headingText = isPaymentMode ? 'Trial Activated!' : 'Payment Successful!';
   const bodyText = isPaymentMode

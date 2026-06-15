@@ -7,6 +7,7 @@ import {
   billingIntervalForPrice,
   type AccessState,
 } from "../_shared/billing.ts";
+import { activateTrial } from "../_shared/trial-activation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -160,6 +161,52 @@ serve(async (req) => {
       subscription && (subscription.status === "active" || subscription.status === "trialing"),
     );
 
+    // Reconciliation / self-heal: a $1 trial is a one-time payment with no Stripe
+    // subscription, so it only exists in our DB once activated by the webhook. If
+    // the webhook was delayed or dropped, detect a paid one-time trial checkout
+    // here and activate it idempotently — dashboard access never depends on a
+    // single webhook delivery. Cheap: only runs when there is no live sub and no
+    // local active/trialing plan, and only when a Stripe customer id is known.
+    if (!subscription && typeof profile?.stripe_customer_id === "string" && profile.stripe_customer_id) {
+      try {
+        const { data: localPlan } = await supabaseServiceClient
+          .from("user_plans")
+          .select("status")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        const alreadyActive =
+          localPlan?.status === "active" ||
+          localPlan?.status === "trialing" ||
+          localPlan?.status === "past_due";
+
+        if (!alreadyActive) {
+          const sessions = await stripe.checkout.sessions.list({
+            customer: profile.stripe_customer_id,
+            limit: 10,
+          });
+          const paidTrialSession = sessions.data.find(
+            (s) => s.mode === "payment" && s.payment_status === "paid" && s.metadata?.plan_id,
+          );
+          if (paidTrialSession?.metadata?.plan_id) {
+            const result = await activateTrial(supabaseServiceClient, stripe, {
+              userId: user.id,
+              planId: paidTrialSession.metadata.plan_id,
+              stripeCustomerId: profile.stripe_customer_id,
+              sourceId:
+                (typeof paidTrialSession.payment_intent === "string"
+                  ? paidTrialSession.payment_intent
+                  : null) || paidTrialSession.id,
+            });
+            if (result.activated) {
+              logStep("Trial reconciled from Stripe (webhook self-heal)", { userId: user.id });
+            }
+          }
+        }
+      } catch (e) {
+        logStep("Trial reconciliation skipped (non-fatal)", { error: String(e) });
+      }
+    }
+
     let productId: string | null = null;
     let subscriptionEnd: string | null = null;
     let stripeSubscriptionId: string | null = null;
@@ -258,6 +305,18 @@ serve(async (req) => {
         .from("user_plans")
         .update({ status: "expired", updated_at: new Date().toISOString() })
         .eq("user_id", user.id);
+
+      // Keep public.profiles flags in lockstep so client fast-path can preemptively
+      // block dashboard access without a bounce loop.
+      await supabaseServiceClient
+        .from("profiles")
+        .update({
+          payment_status: "unpaid",
+          subscription_status: "inactive",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user.id);
+
       if (userPlan) userPlan.status = "expired";
       logStep("Trial expired (lazy flip)", { userId: user.id });
     }

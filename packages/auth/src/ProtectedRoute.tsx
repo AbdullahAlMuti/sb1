@@ -3,6 +3,7 @@ import { useAuth } from '@repo/auth/hooks/useAuth';
 import { useSubscription } from './hooks/useSubscription';
 import { getPlanIntent } from './lib/planIntent';
 import { canAccessDashboard, isDashboardAllowed } from './lib/dashboardAccess';
+import { resolveNextStep } from './lib/resolveNextStep';
 import { getDashboardPathForGoal } from '@repo/config/navigation';
 import { SHOPIFY_ENABLED } from '@repo/config/marketplaceScope';
 import { Loader2, Mail, RefreshCw, ArrowLeft } from 'lucide-react';
@@ -166,13 +167,25 @@ export function ProtectedRoute({
   });
 
   if (!allowed) {
+    // past_due users keep limited access to the billing/subscription page so they
+    // can recover payment — without this the redirect to billing would loop.
+    const isBillingRoute =
+      location.pathname === '/dashboard/billing' || location.pathname === '/dashboard/subscription';
+    if (access === 'past_due' && isBillingRoute) {
+      return <>{children}</>;
+    }
+
     const planToken = getPlanIntent() || profile?.pending_plan_id || null;
-    return (
-      <Navigate
-        to={planToken ? `/checkout?plan=${encodeURIComponent(planToken)}` : '/pricing'}
-        replace
-      />
-    );
+    const next = resolveNextStep({
+      hasUser: true,
+      isEmailVerified: true,
+      isAdmin,
+      access,
+      onboardingCompleted: profile?.onboarding_completed === true,
+      planToken,
+      dashboardPath: getDashboardPathForGoal((profile?.settings as any)?.goal),
+    });
+    return <Navigate to={next} replace />;
   }
 
   // Check admin/super_admin requirements first
