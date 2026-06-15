@@ -6,8 +6,10 @@ import { Button } from '@repo/ui/components/ui/button';
 import { Input } from '@repo/ui/components/ui/input';
 import { Label } from '@repo/ui/components/ui/label';
 import { useAuth } from '@repo/auth/hooks/useAuth';
-import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { supabase } from '@repo/api-client/supabase/client';
+import { clearPlanIntent, getPlanIntent } from '@repo/auth/lib/planIntent';
+import { routeAfterAuth } from '@repo/auth/lib/routeAfterAuth';
+import { canAccessDashboard } from '@repo/auth/ProtectedRoute';
 import { getDashboardPathForGoal } from '@repo/config/navigation';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -22,31 +24,21 @@ const passwordSchema = z.string()
 
 type AuthMode = 'login' | 'signup' | 'forgot-password' | 'verify-email';
 
-interface SelectedPlan {
-  id: string;
-  name: string;
-  display_name: string;
-  price_monthly: number;
-  stripe_price_id_monthly: string | null;
-}
-
 export default function Auth() {
   const location = useLocation();
   const navigate = useNavigate();
   
-  // Get mode and selected plan from navigation state
+  // Get mode from navigation state
   const initialMode = (location.state as { mode?: AuthMode })?.mode || 'login';
-  const selectedPlanFromState = (location.state as { selectedPlan?: SelectedPlan })?.selectedPlan;
-  
+
   const [mode, setMode] = useState<AuthMode>(initialMode);
-  const [email, setEmail] = useState('admin@gmail.com');
-  const [password, setPassword] = useState('XxAa205203@1');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [resetEmailSent, setResetEmailSent] = useState(false);
-  const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
   const [loginStep, setLoginStep] = useState<'email' | 'password'>('email');
   const [detectedGoal, setDetectedGoal] = useState<string | null>(null);
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(
@@ -67,87 +59,46 @@ export default function Auth() {
     return `${firstLetter}${middlePart}${lastLetter}@${domain}`;
   };
 
-  const { signIn, signUp, verifyOtp, resendVerificationEmail, user, profile: authProfile, isEmailVerified, isLoading: authLoading } = useAuth();
-  const { createCheckout, subscribed, planName, isLoading: subscriptionLoading } = useSubscription();
+  const { signIn, signUp, verifyOtp, resendVerificationEmail, user, profile: authProfile, isAdmin, isEmailVerified, isLoading: authLoading } = useAuth();
 
-  // Redirect signup mode to register page
+  // Legacy: /auth reached with signup intent → canonical /signup page.
   useEffect(() => {
     if (mode === 'signup') {
-      navigate('/register', { 
-        state: { 
-          selectedPlan: selectedPlanFromState?.name 
-        } 
-      });
+      navigate('/signup', { replace: true });
     }
-  }, [mode, navigate, selectedPlanFromState]);
+  }, [mode, navigate]);
 
-  // Handle redirect after login/signup
+  // Single post-login redirect (Flow C/D/E): verified + profile loaded →
+  // access ? dashboard : checkout(plan)/pricing. Plan intent is preserved for
+  // unpaid users (only cleared once they actually reach the dashboard).
   useEffect(() => {
-    if (authLoading || subscriptionLoading) return;
-    
-    if (user) {
-      // If the user exists but hasn't verified their email yet, don't redirect away.
-      // Keep them on the verification UI.
-      if (!isEmailVerified) {
-        setPendingVerificationEmail(user.email ?? null);
-        setMode('verify-email');
-        return;
-      }
+    if (authLoading || !user) return;
 
-      // Wait for profile to load before redirecting — prevents race condition
-      // where user is set but profile fetch hasn't completed yet
-      if (!authProfile) return;
+    // Not verified yet — keep them on the verification UI.
+    if (!isEmailVerified) {
+      setPendingVerificationEmail(user.email ?? null);
+      setMode('verify-email');
+      return;
+    }
 
-      // Check user's goal from profile settings to route to correct dashboard
-      // Database stores: settings.goal (string), e.g. { "goal": "shopify" }
-      const userGoal = (authProfile.settings as any)?.goal as string | undefined;
+    // Wait for profile so the access check is meaningful (avoids a dashboard
+    // bounce on a stale/empty profile).
+    if (!authProfile) return;
 
-      // Clean up localStorage
-      localStorage.removeItem('selectedPlanId');
-      localStorage.removeItem('selectedPlanName');
-      localStorage.removeItem('appliedCouponCode');
+    const userGoal = (authProfile.settings as Record<string, unknown> | null)?.goal as string | undefined;
+    const canAccess = canAccessDashboard(user, authProfile, isAdmin);
+    const planToken = getPlanIntent() || authProfile.pending_plan_id || null;
+    const next = routeAfterAuth({
+      canAccess,
+      planToken,
+      dashboardPath: getDashboardPathForGoal(userGoal),
+    });
+    if (canAccess) {
+      clearPlanIntent();
       localStorage.removeItem('selectedGoal');
-
-      navigate(getDashboardPathForGoal(userGoal), { replace: true });
     }
-  }, [user, authProfile, isEmailVerified, authLoading, subscriptionLoading, subscribed, planName, navigate]);
-
-  const processCheckoutForNewUser = async (planId: string, couponCode: string | null) => {
-    if (isProcessingCheckout) return;
-    setIsProcessingCheckout(true);
-    
-    try {
-      const { url, error } = await createCheckout(
-        planId,
-        'monthly',
-        couponCode || undefined
-      );
-
-      if (error) {
-        toast.error(error);
-        // Clear stored plan and redirect to pricing
-        localStorage.removeItem('selectedPlanId');
-        localStorage.removeItem('selectedPlanName');
-        localStorage.removeItem('appliedCouponCode');
-        navigate('/#pricing', { replace: true });
-        return;
-      }
-
-      if (url) {
-        // Clear stored plan before redirecting to Stripe
-        localStorage.removeItem('selectedPlanId');
-        localStorage.removeItem('selectedPlanName');
-        localStorage.removeItem('appliedCouponCode');
-        window.location.href = url;
-      }
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to process checkout');
-      localStorage.removeItem('selectedPlanId');
-      localStorage.removeItem('selectedPlanName');
-      localStorage.removeItem('appliedCouponCode');
-      navigate('/#pricing', { replace: true });
-    }
-  };
+    navigate(next, { replace: true });
+  }, [user, authProfile, isEmailVerified, authLoading, isAdmin, navigate]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -322,9 +273,6 @@ export default function Auth() {
     if (mode === 'verify-email') {
       return `We've sent a 6-digit verification code to ${pendingVerificationEmail}`;
     }
-    if (mode === 'signup' && selectedPlanFromState) {
-      return `Complete your signup to start with the ${selectedPlanFromState.display_name} plan`;
-    }
     if (mode === 'login' && loginStep === 'password') {
       if (detectedGoal === 'shopify') return 'Access your winning products, spy tools, and ad library';
       if (detectedGoal === 'ebay') return 'Access your listings, orders, and dashboard';
@@ -338,18 +286,6 @@ export default function Auth() {
       default: return '';
     }
   };
-
-  // Show loading while processing checkout
-  if (isProcessingCheckout) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Setting up your subscription...</p>
-        </div>
-      </div>
-    );
-  }
 
   if (mode === 'verify-email') {
     return (
@@ -480,18 +416,6 @@ export default function Auth() {
             </span>
           </a>
         </div>
-
-        {/* Selected Plan Badge */}
-        {mode === 'signup' && selectedPlanFromState && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-4 p-3 rounded-lg bg-primary/10 border border-primary/20 text-center"
-          >
-            <p className="text-xs text-muted-foreground">Selected plan:</p>
-            <p className="font-semibold text-primary">{selectedPlanFromState.display_name} - ${selectedPlanFromState.price_monthly}/month</p>
-          </motion.div>
-        )}
 
         {/* Auth Card */}
         <div className="bg-card border border-border/80 p-6 sm:p-8 rounded-[20px] shadow-md flex flex-col space-y-6">
@@ -707,7 +631,7 @@ export default function Auth() {
                   type="button"
                   onClick={() => {
                     if (mode === 'login') {
-                      navigate('/pricing');
+                      navigate('/signup');
                     } else {
                       switchMode('login');
                     }

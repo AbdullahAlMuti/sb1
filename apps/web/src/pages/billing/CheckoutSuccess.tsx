@@ -1,25 +1,25 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CheckCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, Clock, Loader2 } from 'lucide-react';
+import { Button } from '@repo/ui/components/ui/button';
 import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { useAuth } from '@repo/auth/hooks/useAuth';
+import { canAccessDashboard } from '@repo/auth/ProtectedRoute';
+import { clearPlanIntent } from '@repo/auth/lib/planIntent';
 
 export default function CheckoutSuccess() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isPaymentMode = searchParams.get('mode') === 'payment';
 
-  const { user, profile, isLoading: authLoading } = useAuth();
-  const { checkSubscription, planName, access, isLoading: subscriptionLoading } = useSubscription();
-  const [status, setStatus] = useState<'verifying' | 'success' | 'redirecting'>('verifying');
+  const { user, profile, isAdmin, isLoading: authLoading, refreshProfile } = useAuth();
+  const { checkSubscription, planName, access } = useSubscription();
+  const [status, setStatus] = useState<'verifying' | 'success' | 'redirecting' | 'pending'>('verifying');
   const [retryCount, setRetryCount] = useState(0);
   const maxRetries = 6;
 
-  // Success condition depends on payment mode:
-  // - payment mode ($1 trial): access === 'trial'
-  // - subscription mode: access === 'active'
-  const isSuccess = isPaymentMode ? access === 'trial' : access === 'active';
+  const isSuccess = canAccessDashboard(user, profile, isAdmin);
 
   useEffect(() => {
     if (authLoading) return;
@@ -29,42 +29,36 @@ export default function CheckoutSuccess() {
       return;
     }
 
+    if (isSuccess) {
+      setStatus('success');
+      clearPlanIntent();
+
+      const dest = profile?.onboarding_completed ? '/dashboard' : '/onboarding';
+      const redirectTimer = setTimeout(() => {
+        setStatus('redirecting');
+        navigate(dest, { replace: true });
+      }, 2500);
+      return () => clearTimeout(redirectTimer);
+    }
+
+    // Not confirmed after exhausting retries. Do NOT fake success or push to the
+    // dashboard (the guard would bounce them anyway). Show a pending state and
+    // keep the plan intent so they can retry or revisit checkout.
+    if (retryCount >= maxRetries) {
+      setStatus('pending');
+      return;
+    }
+
     const verifySubscription = async () => {
       await checkSubscription(true);
-
-      setTimeout(() => {
-        if (isSuccess) {
-          setStatus('success');
-          localStorage.removeItem('selectedPlanId');
-          localStorage.removeItem('selectedPlanName');
-          localStorage.removeItem('selectedPlan');
-          localStorage.removeItem('appliedCouponCode');
-
-          const dest = profile?.onboarding_completed ? '/dashboard' : '/onboarding';
-          setTimeout(() => {
-            setStatus('redirecting');
-            navigate(dest, { replace: true });
-          }, 2500);
-        } else if (retryCount < maxRetries) {
-          setRetryCount((prev) => prev + 1);
-        } else {
-          // Max retries — the webhook is still processing; redirect anyway.
-          setStatus('success');
-          localStorage.removeItem('selectedPlanId');
-          localStorage.removeItem('selectedPlanName');
-          localStorage.removeItem('selectedPlan');
-          localStorage.removeItem('appliedCouponCode');
-          const dest = profile?.onboarding_completed ? '/dashboard' : '/onboarding';
-          setTimeout(() => navigate(dest, { replace: true }), 2500);
-        }
-      }, 500);
+      await refreshProfile();
+      setRetryCount((prev) => prev + 1);
     };
 
     const delay = retryCount === 0 ? 2500 : 2000;
     const timer = setTimeout(verifySubscription, delay);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, authLoading, retryCount]);
+  }, [user, authLoading, retryCount, isSuccess, profile?.onboarding_completed, checkSubscription, refreshProfile, navigate]);
 
   const headingText = isPaymentMode ? 'Trial Activated!' : 'Payment Successful!';
   const bodyText = isPaymentMode
@@ -79,7 +73,33 @@ export default function CheckoutSuccess() {
         transition={{ duration: 0.5 }}
         className="bg-card border border-border rounded-2xl p-12 text-center max-w-md w-full shadow-lg"
       >
-        {status === 'verifying' ? (
+        {status === 'pending' ? (
+          <>
+            <Clock className="h-16 w-16 text-amber-500 mx-auto mb-6" />
+            <h1 className="font-display text-2xl font-bold text-foreground mb-3">
+              Still confirming your payment
+            </h1>
+            <p className="text-muted-foreground mb-6">
+              If you completed payment, it may still be processing — this can take
+              a minute. You can check again, or revisit your plan.
+            </p>
+            <div className="flex flex-col gap-3">
+              <Button
+                className="h-11 w-full rounded-lg"
+                onClick={() => { setRetryCount(0); setStatus('verifying'); }}
+              >
+                Check again
+              </Button>
+              <Button
+                variant="outline"
+                className="h-11 w-full rounded-lg"
+                onClick={() => navigate('/choose-plan')}
+              >
+                Back to plans
+              </Button>
+            </div>
+          </>
+        ) : status === 'verifying' ? (
           <>
             <Loader2 className="h-16 w-16 text-primary mx-auto mb-6 animate-spin" />
             <h1 className="font-display text-2xl font-bold text-foreground mb-3">

@@ -7,6 +7,9 @@ import { Input } from '@repo/ui/components/ui/input';
 import { Label } from '@repo/ui/components/ui/label';
 import { useAuth } from '@repo/auth/hooks/useAuth';
 import { usePlans } from '@repo/api-client/hooks/usePlans';
+import { getPlanIntent, setPlanIntent, clearPlanIntent, resolvePlanToken } from '@repo/auth/lib/planIntent';
+import { routeAfterAuth } from '@repo/auth/lib/routeAfterAuth';
+import { canAccessDashboard } from '@repo/auth/ProtectedRoute';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { cn } from '@repo/ui/lib/utils';
@@ -41,42 +44,46 @@ export default function Register() {
   const [errors, setErrors] = useState<{ email?: string; password?: string; fullName?: string }>({});
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
-  const { signUp, verifyOtp, resendVerificationEmail, signIn, user } = useAuth();
+  const { signUp, verifyOtp, resendVerificationEmail, signIn, user, profile, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { plans, isLoading: plansLoading, getPlanByName } = usePlans();
+  const { plans, isLoading: plansLoading } = usePlans();
 
-  // Get selected plan from URL query param, location state, or localStorage
+  // Selected-plan token: URL ?plan → router state → stored intent → server pending.
+  // No default — absence means "no plan yet" (Flow A: choose one after signup).
   const query = new URLSearchParams(location.search);
   const urlPlan = query.get('plan');
   const stateSelectedPlan = (location.state as { selectedPlan?: string })?.selectedPlan;
-  const storedPlan = localStorage.getItem('selectedPlan');
-  const selectedPlanKey = urlPlan || stateSelectedPlan || storedPlan || 'starter';
-  const selectedPlan = getPlanByName(selectedPlanKey) || plans.find(p => p.price_monthly > 0);
+  const storedPlan = getPlanIntent();
+  const planToken = urlPlan || stateSelectedPlan || storedPlan || profile?.pending_plan_id || null;
+  const selectedPlan = resolvePlanToken(planToken, plans);
 
-  // Store selected plan in localStorage for persistence
+  // Persist any incoming plan token so it survives navigation (e.g. closing the tab).
   useEffect(() => {
-    if (stateSelectedPlan) {
-      localStorage.setItem('selectedPlan', stateSelectedPlan);
-    }
-  }, [stateSelectedPlan]);
+    const incoming = urlPlan || stateSelectedPlan;
+    if (incoming) setPlanIntent(incoming);
+  }, [urlPlan, stateSelectedPlan]);
 
-  // Plan-first signup: redirect to /pricing if no plan context
+  // Single post-auth redirect (Flow A/B): once the user is verified and the
+  // profile is loaded, route by access → plan → pricing. No /pricing bounce
+  // before signup, and no duplicate plan/checkout prompts.
   useEffect(() => {
-    if (plansLoading) return;
-    const hasPlanContext = Boolean(urlPlan || stateSelectedPlan || storedPlan);
-    if (!hasPlanContext) {
-      navigate('/pricing', { replace: true });
+    if (!user || !user.email_confirmed_at || !profile) return;
+    const goal =
+      selectedGoal || (profile.settings as Record<string, unknown> | null)?.goal as string | undefined ||
+      localStorage.getItem('selectedGoal') || undefined;
+    const canAccess = canAccessDashboard(user, profile, isAdmin);
+    const next = routeAfterAuth({
+      canAccess,
+      planToken,
+      dashboardPath: getDashboardPathForGoal(goal),
+    });
+    if (canAccess) {
+      clearPlanIntent();
+      localStorage.removeItem('selectedGoal');
     }
-  }, [plansLoading, urlPlan, stateSelectedPlan, storedPlan, navigate]);
-
-  useEffect(() => {
-    if (user && user.email_confirmed_at) {
-      localStorage.removeItem('selectedPlan');
-      const goal = selectedGoal || localStorage.getItem('selectedGoal');
-      navigate(getDashboardPathForGoal(goal), { replace: true });
-    }
-  }, [user, navigate, selectedGoal]);
+    navigate(next, { replace: true });
+  }, [user, profile, isAdmin, planToken, selectedGoal, navigate]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string; fullName?: string } = {};
@@ -112,11 +119,11 @@ export default function Register() {
     setIsSubmitting(true);
 
     try {
-      const res = await signUp(email, password, fullName, selectedGoal || undefined);
+      const res = await signUp(email, password, fullName, selectedGoal || undefined, selectedPlan?.id);
       if (!res.error) {
         toast.success('Account created! Please check your email for the verification code.');
         if (selectedPlan) {
-          localStorage.setItem('selectedPlanId', selectedPlan.id);
+          setPlanIntent(selectedPlan.id);
         }
         // Persist selected goal for post-verification redirect
         if (selectedGoal) {
@@ -152,10 +159,8 @@ export default function Register() {
         }
 
         toast.success('Email verified successfully!');
-        localStorage.removeItem('selectedPlan');
-        const goal = selectedGoal || localStorage.getItem('selectedGoal');
-        localStorage.removeItem('selectedGoal');
-        navigate(getDashboardPathForGoal(goal), { replace: true });
+        // Redirect is handled by the single post-auth effect once the session
+        // and profile have loaded (routeAfterAuth: access → plan → pricing).
       }
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, 'Verification failed'));

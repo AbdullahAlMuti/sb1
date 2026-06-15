@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Check, Clock, Crown, Loader2, Rocket, Zap } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
 import { useAuth } from '@repo/auth/hooks/useAuth';
 import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { usePlans, type Plan } from '@repo/api-client/hooks/usePlans';
 import { cn } from '@repo/ui/lib/utils';
+import { canAccessDashboard } from '@repo/auth/ProtectedRoute';
 
 const planIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   trial: Clock,
@@ -18,11 +19,15 @@ type BillingInterval = 'monthly' | 'yearly';
 
 export default function ChoosePlan() {
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
+  const location = useLocation();
+  const { user, profile, isAdmin, signOut } = useAuth();
   const { createCheckout, access, isLoading: subscriptionLoading } = useSubscription();
   const { plans, isLoading: plansLoading } = usePlans();
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
   const [billingInterval, setBillingInterval] = useState<BillingInterval>('monthly');
+  // Guards the auto-checkout effect so it can never fire a second Stripe session
+  // (e.g. if deps change mid-request before isProcessing has updated).
+  const autoFiredRef = useRef(false);
 
   const isTrialExpired = access === 'trial_expired';
 
@@ -32,10 +37,26 @@ export default function ChoosePlan() {
       return;
     }
     // Already has an active plan — go to dashboard
-    if (!subscriptionLoading && (access === 'active' || access === 'trial')) {
+    if (!subscriptionLoading && profile && canAccessDashboard(user, profile, isAdmin)) {
       navigate('/dashboard', { replace: true });
     }
-  }, [user, access, subscriptionLoading, navigate]);
+  }, [user, profile, isAdmin, subscriptionLoading, navigate]);
+
+  useEffect(() => {
+    if (autoFiredRef.current) return;
+    if (subscriptionLoading || plansLoading || !profile?.pending_plan_id || isProcessing) return;
+
+    const query = new URLSearchParams(location.search);
+    const auto = query.get('auto') === 'true';
+
+    if (auto) {
+      const plan = plans.find(p => p.id === profile.pending_plan_id);
+      if (plan) {
+        autoFiredRef.current = true;
+        handleSelectPlan(plan);
+      }
+    }
+  }, [subscriptionLoading, plansLoading, profile, location.search, plans, isProcessing]);
 
   const handleSelectPlan = async (plan: Plan) => {
     if (!plan) return;

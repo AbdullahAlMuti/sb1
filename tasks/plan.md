@@ -1,383 +1,174 @@
-# Billing v2 — Dynamic Plan/Pricing/Onboarding System
+# Plan — Auth → Plan → Checkout → Dashboard Flow Hardening
 
-> Phases A–F extend the existing billing system. Phases 0–6 (original billing foundation) are complete.
-
----
-
-## Phase A — Schema
-
-### A1 — Migration: new columns + tables
-**Files:** `supabase/migrations/20260614000000_billing_v2_schema.sql`
-
-Add to `plans`:
-- `slug text UNIQUE`, `short_description`, `long_description`, `best_for`, `badge_text`, `cta_text`
-- `is_recommended boolean DEFAULT false`, `is_public boolean DEFAULT true`
-- `trial_requires_card boolean DEFAULT true`, `stripe_product_id text`
-- `metadata jsonb DEFAULT '{}'`, `archived_at timestamptz`
-
-Add to `profiles`: `onboarding_completed boolean DEFAULT false`
-
-New tables: `plan_features`, `plan_prices`, `checkout_sessions` (see SPEC.md §3.A for full DDL).
-
-RLS: SELECT open on plan_features/plan_prices; checkout_sessions owner+service.
-
-**Acceptance:** Migration applies cleanly; all new columns/tables exist; typecheck green.
+> Status: **Awaiting approval** · Branch: `launch-fixes-phase1` · Date: 2026-06-15
+> Decisions locked: (1) adopt spec URLs `/signup`, `/checkout`, `/payment-success`, `/payment-cancelled` with redirects from old paths; (2) allow no-plan signup (account first → `/pricing`); (3) consolidate the dashboard guard onto `check-subscription-v2` (server) with profile flags as fast fallback.
+> _Prior contents of this file (marketing homepage redesign plan) are preserved in git: `git show HEAD:tasks/plan.md`._
 
 ---
 
-### A2 — Seed migration: backfill slugs + features + prices
-**Files:** `supabase/migrations/20260614000001_billing_v2_seed.sql`
+## 1. Current architecture (as-built)
 
-- Backfill `plans.slug` from name (lowercase, spaces→hyphens)
-- Backfill `plans.badge_text` from `is_popular`, `is_recommended` from `is_popular`
-- Backfill `plans.cta_text` per plan name
-- Seed `plan_features` rows (5+ highlighted per plan) for Trial/Starter/Pro
-- Seed `plan_prices` rows from existing price_monthly/price_yearly columns
+### Routes (`apps/web/src/App.tsx`)
+- Public: `/`, `/pricing`, `/auth` (login + legacy signup shell), `/register` (real signup), `/verify-email`.
+- Billing: `/choose-plan` (plan picker + auto-checkout), `/checkout/success` (verification poller), `/checkout/*` → redirect `/dashboard`, `/payment-required` → `/choose-plan`.
+- Protected: `/dashboard` + `/dashboard/ebay/*` (all wrapped in `ProtectedRoute` → `DashboardLayout`/`EbayLayout`). Shopify routes redirect to eBay (eBay-only scope).
+- `/onboarding`, `/admin/*` (external redirect).
 
-**Depends on:** A1
+### Guard (`packages/auth/src/ProtectedRoute.tsx`)
+- `canAccessDashboard(user, profile, isAdmin)` = `selected_plan_id && payment_status∈{paid,succeeded} && subscription_status==='active'`.
+- Reads **profile flags only**. Order: loading → unauth→`/auth` → goal routing → email-verify gate → billing gate (`/choose-plan` or `/choose-plan?auto=true` if `pending_plan_id`) → admin routing.
+
+### State / hooks
+- `useAuth` (`packages/auth/src/hooks/useAuth.tsx`): session + `profile` (from `profiles`). `signIn/signUp/verifyOtp/refreshProfile`.
+- `useSubscription` (`packages/auth/src/hooks/useSubscription.tsx`): calls `check-subscription-v2`, returns `access ∈ none|trial|trial_expired|active|past_due`; module-level 5-min cache; `createCheckout()`/`openCustomerPortal()`.
+- `usePlans` (`packages/api-client`): live plans, `getPlanByName`/`getPlanById`.
+
+### Backend (Supabase Edge Functions) — already production-grade
+- `auth-otp`: OTP email signup/verify/resend, rate-limited; on verify sets `pending_plan_id` from metadata, seeds `payment_status='unpaid'`, `subscription_status='inactive'`.
+- `create-checkout`: validates `planId` (UUID), price **from DB**, resolves/creates Stripe customer, one-trial-per-account, coupon validation. Success → `/checkout/success?plan=<id>[&mode=payment]`, cancel → `/#pricing`.
+- `stripe-webhook`: **signature-verified, idempotent** (`stripe_events`); handles checkout/subscription/invoice events; sets profile `payment_status/subscription_status/selected_plan_id/current_period_*`.
+- `check-subscription-v2`: authoritative live compute (Stripe + `user_plans`), lazy trial-expiry flip.
+
+**Conclusion:** the backend (payment creation, webhook verification, subscription truth) is solid. Breakage is concentrated in **frontend redirect orchestration** plus a few security/UX defects.
 
 ---
 
-### A3 — TypeScript types regen
-**Files:** `packages/types/src/supabase.ts`
+## 2. What is actually broken
 
-```bash
-npx supabase@latest gen types typescript --project-id ojxzssooylmydystjvdo > packages/types/src/supabase.ts
-npm run typecheck
+| # | Severity | Issue | Location |
+|---|----------|-------|----------|
+| B1 | 🔴 Security | Login form pre-filled with hardcoded admin creds. | `pages/auth/Auth.tsx:42-43` |
+| B2 | 🔴 UX | Login clears `selectedPlan*` from localStorage every login → **plan intent lost**; login always routes to dashboard then bounces to `/choose-plan` (no direct→checkout). | `Auth.tsx:106-113` |
+| B3 | 🟠 UX | Two signup paths: `Auth.tsx` legacy `mode='signup'` shell + dead `processCheckoutForNewUser` vs real `Register.tsx`. Confusing, duplicate plan handling. | `Auth.tsx:74-150,484-759` |
+| B4 | 🟠 UX | `Register.tsx` bounces to `/pricing` *before* signup when no plan (contradicts Flow A). Competing redirect effects + verify handler race. | `Register.tsx:64-85,160-169` |
+| B5 | 🟠 Spec | Requested URLs missing: no `/signup`, `/checkout?plan=`, `/payment-success`, `/payment-cancelled`. `/checkout/*`→`/dashboard`. | `App.tsx:155-160` |
+| B6 | 🟠 Correctness | `CheckoutSuccess` after 6 retries **fakes success → dashboard** even when never activated (then bounces). Failed/delayed payments mishandled. | `CheckoutSuccess.tsx:45-54` |
+| B7 | 🟡 Correctness | Plan identity inconsistent: name / id / slug all used; `?plan=` undefined. | PricingSection, Register, Auth |
+| B8 | 🟡 Correctness | Two truth sources; guard uses profile flags only → expired trial can linger "active" until webhook/poll. | ProtectedRoute vs useSubscription |
+| B9 | 🟡 Robustness | `create-checkout` doesn't short-circuit when user already has an active subscription (duplicate checkout). | `create-checkout/index.ts` |
+| B10 | 🟢 Polish | `/choose-plan?auto=true` auto-checkout effect can double-fire. | `PaymentRequired.tsx:42-54` |
+
+---
+
+## 3. Target flows
+
+```
+Flow A (no plan):   /signup → create acct → verify → /pricing → pick → /checkout?plan=ID → Stripe → /payment-success → dashboard
+Flow B (plan-first):/pricing → pick → /signup?plan=ID → create acct → verify → /checkout?plan=ID → Stripe → /payment-success → dashboard
+Flow C (logged-in, unpaid): guard → has intent? /checkout?plan=ID : /pricing
+Flow D (logged-in, active): dashboard allowed; /pricing viewable; /signup,/checkout?active → dashboard
+Flow E (manual /dashboard): logged-out→/signup ; unpaid→checkout/pricing ; active→allow
+Cancel: Stripe cancel_url → /payment-cancelled (retry / back to pricing)
 ```
 
-**Depends on:** A1, A2
+- **Canonical plan id:** URLs carry `?plan=<slug|name|id>`; client resolves via `usePlans` and always sends UUID `plan.id` to `create-checkout` (re-validated server-side). Intent fallback chain: **URL `?plan` → `sessionStorage('selectedPlan')` → `profile.pending_plan_id`**. Use `sessionStorage` (not `localStorage`) for plan intent.
+- **Single source of truth for access:** `check-subscription-v2.access`; guard grants when `access ∈ {active, trial}`. Profile flags = fast pre-check only, never sole authority. Server (RLS / gating RPCs / webhook) remains the real boundary.
 
 ---
 
-**Checkpoint A: migrations applied, types regenerated, typecheck green.**
+## 4. Work slices (vertical, each independently shippable)
+
+### Phase 0 — Security hotfix (ship first)
+- **T0.1** Remove hardcoded creds in `Auth.tsx` (default `email`/`password` to `''`).
+
+**◇ CHECKPOINT 0:** typecheck + login form renders empty. ✋
+
+### Phase 1 — Plan-intent module (foundation)
+- **T1.1** New `packages/auth/src/lib/planIntent.ts`: `setPlanIntent`, `getPlanIntent`, `clearPlanIntent` (over `sessionStorage`, key `selectedPlan`), + `resolvePlanToken(token, plans)` → `Plan|null` (id → slug → name order).
+- **T1.2** Swap ad-hoc `localStorage.selectedPlan*` reads/writes in PricingSection, Register, Auth, CheckoutSuccess, PaymentRequired to the module; one-time migrate+clear legacy localStorage keys.
+
+**◇ CHECKPOINT 1:** unit tests for resolver/intent; typecheck. ✋
+
+### Phase 2 — Routing skeleton (spec URLs + redirects)
+- **T2.1** `App.tsx`: `/signup`→`Register` (preserve `?plan`); `/register`→`Navigate /signup` (preserve query/state); `/checkout`→new `Checkout` (P4); `/payment-success`→`CheckoutSuccess`; `/checkout/success`→`Navigate /payment-success` (preserve query); `/payment-cancelled` & `/payment-failed`→new `PaymentCancelled` (P4). Keep `/choose-plan` for trial-expired/no-plan gate; `/pricing` is the canonical picker.
+- **T2.2** `create-checkout`: success_url → `/payment-success?...`; cancel_url → `/payment-cancelled`.
+
+**◇ CHECKPOINT 2:** new paths resolve; old paths redirect with query preserved. ✋
+
+### Phase 3 — Auth pages cleanup (Flows A & B)
+- **T3.1** `Register.tsx`: read plan via `getPlanIntent()`/`?plan`; **don't** bounce to `/pricing` when absent (Flow A); persist intent on mount if `?plan`. Single post-auth helper `routeAfterAuth(profile)`: active→dashboard; else intent→`/checkout?plan=ID`; else `/pricing`. Remove duplicate effects + `/choose-plan?auto=true` jump.
+- **T3.2** `Auth.tsx`: delete legacy signup shell, `processCheckoutForNewUser`, selected-plan badge. Login success → `routeAfterAuth(profile)` (no dashboard bounce, no plan-intent wipe).
+- **T3.3** "Sign up" links (web + marketing navbars, pricing) → `/signup` carrying `?plan` where known.
+
+**◇ CHECKPOINT 3:** Flow A & B walked manually in dev. ✋
+
+### Phase 4 — Checkout + result pages (page-based, no modals)
+- **T4.1** New `pages/billing/Checkout.tsx` at `/checkout`: require auth (else `/signup?plan=…`); resolve `?plan`; invalid/missing→`/pricing`; if active→`/dashboard`; else `createCheckout(plan.id, interval)` → `window.location=url`; inline loading; error→toast+`/pricing`. No modal.
+- **T4.2** New `pages/billing/PaymentCancelled.tsx`: "Try again" (`/checkout?plan=lastIntent`) + "Choose another plan" (`/pricing`).
+- **T4.3** `CheckoutSuccess.tsx` (`/payment-success`): on retry-exhaustion **don't fake success** — route to `/checkout?plan=…` or `/choose-plan` with "payment not confirmed yet" message; proceed to dashboard only when `access` is active/trial. Keep webhook-delay retry/loading.
+
+**◇ CHECKPOINT 4:** success / cancel / delayed-webhook paths each verified. ✋
+
+### Phase 5 — Guard consolidation + duplicate-checkout guard (Flows C/D/E + security)
+- **T5.1** `ProtectedRoute.tsx`: consume `useSubscription` (`access`, loading). Grant when `isAdmin || access∈{active,trial} || canAccessDashboard(profile)`. While access loading & profile inconclusive → spinner (no premature bounce). Unpaid redirect: intent/`pending_plan_id`→`/checkout?plan=ID` else `/pricing`. Keep email-verify + goal routing.
+- **T5.2** `create-checkout`: before session create, detect active/trialing sub (query `user_plans`/profile flags or reuse resolution); if active & not a plan *change* → `{error, redirect:'/dashboard'}` (B9).
+- **T5.3** `PaymentRequired.tsx`: ref-guard auto-checkout against double-fire (B10).
+
+**◇ CHECKPOINT 5:** Flows C/D/E verified; duplicate-checkout blocked; no `/dashboard`↔`/checkout` loop. ✋
+
+### Phase 6 — Verification & polish
+- **T6.1** Tests: unit (resolver, `routeAfterAuth`, `canAccessDashboard`) + guard/routing matrix for the 12 edge cases.
+- **T6.2** Manual matrix + `npm run build` + `typecheck` + `lint`.
+- **T6.3** Update memory + plan "results"; note residual risks.
+
+**◇ CHECKPOINT 6:** green build + matrix → ready to merge. ✋
 
 ---
 
-## Phase B — Pricing page v2
+## 5. Files to change
+- `apps/web/src/App.tsx` — routes/redirects.
+- `apps/web/src/pages/auth/Auth.tsx` — strip legacy signup, fix login redirect, remove creds.
+- `apps/web/src/pages/auth/Register.tsx` — Flow A/B, single redirect.
+- `apps/web/src/pages/billing/Checkout.tsx` — **new**.
+- `apps/web/src/pages/billing/PaymentCancelled.tsx` — **new**.
+- `apps/web/src/pages/billing/CheckoutSuccess.tsx` — no fake success.
+- `apps/web/src/pages/billing/PaymentRequired.tsx` — auto-checkout guard.
+- `apps/web/src/components/PricingSection.tsx` (+ web/marketing navbars) — `/signup?plan=`.
+- `packages/auth/src/ProtectedRoute.tsx` — guard consolidation.
+- `packages/auth/src/lib/planIntent.ts` — **new**.
+- `supabase/functions/create-checkout/index.ts` — success/cancel URLs + active-sub guard.
+- Tests under `packages/auth` / `apps/web`.
 
-### B1 — usePlans hook: fetch plan_features + new fields
-**Files:** `packages/api-client/src/hooks/usePlans.tsx`
+## 6. Backend / DB
+- No schema migration expected — `profiles` already has `selected_plan_id, pending_plan_id, payment_status, subscription_status, current_period_*, subscription_id, stripe_customer_id`; `user_plans` carries period/trial; `stripe_events` for idempotency. Verify columns with `list_tables` before Phase 5; add migration only if something is missing.
+- Edge redeploys: `create-checkout` only.
 
-- Add `PlanFeature` interface (id, group_name, title, display_value, included, is_highlighted, sort_order, tooltip)
-- Extend `Plan` with: `slug`, `short_description`, `best_for`, `badge_text`, `cta_text`, `is_recommended`, `plan_features: PlanFeature[]`
-- Query: `.select('*, plan_features(*)')`, filter `is_public = true`, order by `sort_order`
+## 7. Edge cases → handling
+1. Signup no plan → account → `/pricing` (T3.1). 2. Plan-first → intent preserved → `/checkout` (T1,T3). 3. Closes signup → intent in sessionStorage (T1). 4. Login after select → `routeAfterAuth`→`/checkout` (T3.2). 5. Change plan pre-pay → new `?plan` overrides intent + `pending_plan_id` (create-checkout). 6. Checkout w/o plan → `/pricing` (T4.1). 7. Manual `/dashboard` unpaid → checkout/pricing (T5.1). 8. Payment fails → webhook past_due/none; no fake success; guard blocks (T4.3,T5). 9. Cancel → `/payment-cancelled` (T2,T4.2). 10. Webhook delay → retry/loading; proceed only on real active (T4.3). 11. Active user hits signup/pricing/checkout → dashboard (T3,T4,T5.2). 12. Expired/cancelled → access≠active → blocked (T5.1 + lazy flip).
 
-**Acceptance:** `usePlans()` returns `plan_features[]` per plan; all new fields available; typecheck green.
-**Depends on:** A3
+## 8. Security guarantees
+- Dashboard authority = server (`check-subscription-v2` + RLS + gating RPCs), never client state (T5.1).
+- Price/amount always from DB in `create-checkout`; client `priceId` only cross-checked (existing).
+- Webhook signature verified + idempotent (existing).
+- No bypass via URL/query/localStorage: guard re-validates server-side; intent only decides *where to send*, never *grants access* (T1,T5).
+- Remove leaked admin creds (T0.1). Block duplicate checkout for active subs (T5.2).
 
----
+## 9. Testing checklist (Phase 6)
+Signup w/o plan · signup w/ plan · login no sub · login active · checkout valid · checkout no plan · payment success · payment fail · payment cancel · webhook success · webhook fail/delay · dashboard guard · redirect-loop check · mobile/responsive · `npm run build` + `typecheck` + `lint`.
 
-### B2 — PricingSection: hero + upgraded plan cards + skeleton
-**Files:** `apps/web/src/components/PricingSection.tsx`
+## 10. Residual risks / TODO
+- Stripe **test-mode** keys needed to exercise real success/cancel/webhook locally; otherwise simulate via profile-flag toggles.
+- `check-subscription-v2` hits Stripe on cold cache → first-dashboard latency; mitigated by 5-min cache + profile fast-path.
+- Plan token collisions if a `name` equals another's `slug`; resolver order (id→slug→name) documented — verify plans have unique slugs.
 
-- Add Hero: headline "Choose the plan that fits your selling workflow" + subheadline + "No free account" note
-- Plan cards: use `badge_text` (chip), `short_description`, `best_for`, `cta_text` from DB
-- Feature list: `plan.plan_features.filter(f => f.is_highlighted).slice(0, 5)` (replaces string `plan.features`)
-- Skeleton: 3 card-sized placeholders while `isLoading`
-- Keep existing `handlePlanSelect` / checkout flow 100% intact
+## 12. Deliverables / results (completed 2026-06-15)
 
-**Acceptance:** Hero visible; cards show DB badge/cta/features; skeleton shows on load; checkout unchanged.
-**Depends on:** B1
+**What was broken → fixed:** B1 hardcoded admin creds (removed) · B2 login wiped plan intent + dashboard-bounce (routeAfterAuth, intent preserved) · B3 dual signup paths (legacy Auth signup shell deleted) · B4 pre-signup /pricing bounce + racing effects (single effect, Flow A) · B5 missing spec URLs (added + redirects) · B6 fake checkout success (pending state) · B7 inconsistent plan id (planIntent + resolvePlanToken) · B8 stale expired-trial access (server-authoritative guard) · B9 duplicate checkout (409 guard) · B10 auto-checkout double-fire (ref guard).
 
----
+**Files changed (web):** `App.tsx`, `pages/auth/Auth.tsx`, `pages/auth/Register.tsx`, `pages/billing/{Checkout,PaymentCancelled,CheckoutSuccess,PaymentRequired}.tsx`, `components/{PricingSection,Navbar,CTASection,HeroSection}.tsx`, `.claude/launch.json`.
+**Files changed (packages/auth):** `ProtectedRoute.tsx`; new `lib/{planIntent,routeAfterAuth,dashboardAccess}.ts` (+ `.test.ts` each).
+**Files changed (edge):** `supabase/functions/create-checkout/index.ts` (URLs + active-sub 409) — **not redeployed**.
 
-### B3 — Pricing page: comparison table + FAQ + trust
-**Files:**
-- `apps/web/src/components/pricing/ComparisonTable.tsx` (NEW)
-- `apps/web/src/components/pricing/PricingFAQ.tsx` (NEW)
-- `apps/web/src/components/pricing/TrustSection.tsx` (NEW)
-- `apps/web/src/components/PricingSection.tsx` (compose them in)
+**Verification:** 20/20 unit tests · typecheck (3 apps) green · lint 0 errors · full build green · live route checks for Flows A/B/E + cancel/retry + unauth guard (Phases 2–5).
 
-**ComparisonTable:** groups by group_name; columns = plans; cells = display_value or ✓/✗.
-**FAQ:** 6 items, accordion. **TrustSection:** Stripe badge, security bullets.
+**Route flow:** `/signup[?plan] → verify → (plan? /checkout?plan : /pricing) → Stripe → /payment-success → dashboard`; cancel → `/payment-cancelled`; guard: unauth→/auth, unpaid→/checkout|/pricing, active→dashboard, expired-trial/past_due→blocked.
 
-**Acceptance:** Table shows all group sections; FAQ accordion works; trust section visible.
-**Depends on:** B1
-
----
-
-**Checkpoint B: pricing page renders hero, feature cards (DB), comparison table, FAQ, trust.**
-
----
-
-## Phase C — Onboarding wizard
-
-### C2 — Onboarding page (/onboarding)
-**Files:**
-- `apps/web/src/pages/onboarding/Onboarding.tsx` (NEW)
-- `apps/web/src/App.tsx` — add `/onboarding` route (ProtectedRoute, active/trial required)
-
-5-step wizard: workspace name → use case → marketplace → supplier → done.
-Saves to `profiles.onboarding_data jsonb` each step. Final step: `onboarding_completed = true` → navigate `/dashboard`.
-Guard: if `onboarding_completed`, redirect to `/dashboard` on mount.
-
-**Acceptance:** Route exists; steps render; completion sets DB flag; already-completed users skip to dashboard.
-**Depends on:** A3
+**Remaining risks / TODO:** (1) **deploy ordering** — ship web to prod, THEN redeploy `create-checkout`, else live payments 404. (2) Authed + Stripe-test-mode paths (real checkout→Stripe, active→dashboard, invalid-plan→pricing, success pending-state, 409 dup-guard) not E2E'd in sandbox — deterministic, exercise with test keys. (3) On a `check-subscription-v2` transient error, an expired-trial user with stale profile flags can briefly pass the guard (data still RLS-protected) — accepted trade-off favoring paying customers. (4) All phase work is uncommitted (branch already had ~104 uncommitted files); only the sentry CI fix `eb25e1f` is committed/pushed.
 
 ---
 
-### C3 — CheckoutSuccess: redirect to /onboarding
-**Files:** `apps/web/src/pages/billing/CheckoutSuccess.tsx`
-
-After `isSuccess`, fetch `profiles.onboarding_completed`:
-- `false` → `navigate('/onboarding', { replace: true })`
-- `true` → `navigate('/dashboard', { replace: true })` (existing)
-
-**Acceptance:** New checkout → /onboarding; returning user → /dashboard.
-**Depends on:** C2
-
----
-
-**Checkpoint C: checkout → /onboarding → /dashboard flow works end-to-end.**
-
----
-
-## Phase D — Plan-first signup
-
-### D1 — Register.tsx: redirect to /pricing if no plan
-**Files:** `apps/web/src/pages/auth/Register.tsx`
-
-Register already reads `plan` from query. Add guard:
-```tsx
-const hasSelectedPlan = query.get('plan') || location.state?.selectedPlan || localStorage.getItem('selectedPlan');
-useEffect(() => {
-  if (!hasSelectedPlan) navigate('/pricing', { replace: true });
-}, []);
-```
-
-**Acceptance:** `GET /register` → redirects to /pricing; `GET /register?plan=starter` → renders normally.
-**Depends on:** — (standalone)
-
----
-
-### D2 — Auth.tsx: forward plan param on signup links
-**Files:** `apps/web/src/pages/auth/Auth.tsx`
-
-Audit "Sign up" CTAs on login page — ensure they carry `?plan=` param if one exists in localStorage or URL.
-
-**Acceptance:** "Sign up" link on login page preserves plan selection.
-**Depends on:** D1
-
----
-
-**Checkpoint D: /register without plan param redirects to /pricing.**
-
----
-
-## Phase E — checkout_sessions tracking
-
-### E1 — create-checkout: INSERT checkout_session
-**Files:** `supabase/functions/create-checkout/index.ts`
-
-After `stripe.checkout.sessions.create(...)`, insert:
-```ts
-await supabase.from('checkout_sessions').insert({
-  user_id: userId, email: userEmail,
-  selected_plan_id: planId,
-  stripe_checkout_session_id: stripeSession.id,
-  status: 'pending',
-  metadata: { plan_name: plan.name, interval: billingInterval ?? null },
-});
-```
-
-**Acceptance:** Starting checkout creates a pending checkout_sessions row.
-**Depends on:** A3
-
----
-
-### E2 — stripe-webhook: UPDATE checkout_session to completed
-**Files:** `supabase/functions/stripe-webhook/index.ts`
-
-In `checkout.session.completed` handler, after activation:
-```ts
-await supabase.from('checkout_sessions')
-  .update({ status: 'completed', updated_at: new Date().toISOString() })
-  .eq('stripe_checkout_session_id', session.id);
-```
-
-**Acceptance:** After webhook fires, checkout_sessions row status → 'completed'.
-**Depends on:** E1
-
----
-
-**Checkpoint E: checkout_sessions rows created (pending) and updated (completed).**
-
----
-
-## Phase F — Admin upgrades
-
-### F1 — AdminPlans: new fields + archive
-**Files:** `apps/admin/src/pages/AdminPlans.tsx`
-
-Add to create/edit form: `slug`, `short_description`, `long_description`, `best_for`, `badge_text`, `cta_text`, `is_public`, `trial_requires_card`, `stripe_product_id`. Replace "Delete" with "Archive" (sets `archived_at`).
-
-**Acceptance:** All new fields save correctly; Archive sets archived_at without deleting row.
-**Depends on:** A3
-
----
-
-### F2 — AdminPlanFeatures page
-**Files:**
-- `apps/admin/src/pages/AdminPlanFeatures.tsx` (NEW)
-- `apps/admin/src/App.tsx` — route `/plans/:id/features`
-- `apps/admin/src/pages/AdminPlans.tsx` — "Edit Features" link
-
-Inline CRUD: add/edit/delete plan_features rows grouped by group_name. Toggle `included`, `is_highlighted`, edit `sort_order`.
-
-**Acceptance:** Admin can add, edit, delete features per plan; changes appear on pricing page.
-**Depends on:** A3
-
----
-
-### F3 — AdminPlanPrices page
-**Files:**
-- `apps/admin/src/pages/AdminPlanPrices.tsx` (NEW)
-- `apps/admin/src/App.tsx` — route `/plans/:id/prices`
-
-CRUD for plan_prices: interval, amount, currency, stripe_price_id, is_active toggle.
-
-**Acceptance:** Admin can manage plan prices; is_active toggle works.
-**Depends on:** A3
-
----
-
-### F4 — AdminSubscriptions page
-**Files:**
-- `apps/admin/src/pages/AdminSubscriptions.tsx` (NEW)
-- `apps/admin/src/App.tsx` — route `/subscriptions`
-
-Table of user_plans joined with profiles+plans. Filter by status. Search by email.
-
-**Acceptance:** Admin can view all subscriptions with status filter and email search.
-**Depends on:** A3
-
----
-
-### F5 — AdminCheckoutSessions page
-**Files:**
-- `apps/admin/src/pages/AdminCheckoutSessions.tsx` (NEW)
-- `apps/admin/src/App.tsx` — route `/checkout-sessions`
-
-Table of checkout_sessions with status filter (pending/abandoned/completed).
-
-**Acceptance:** Admin can identify abandoned checkouts.
-**Depends on:** E1
-
----
-
-**Checkpoint F: all admin pages render and data flows correctly.**
-
----
-
-## Final verification
-
-1. `npm run typecheck` green
-2. `npm run build` green
-3. Pricing page: hero, plan cards with DB features, comparison table, FAQ, trust section
-4. `/register` without plan → `/pricing`
-5. Checkout → `/onboarding` → complete → `/dashboard`
-6. Admin `/plans/:id/features` → add feature → pricing page updates
-7. DB: `checkout_sessions` shows pending then completed rows
-
----
-
-# Dynamic Pricing & Subscription System — SellerSuit (ORIGINAL, COMPLETE)
-
-## Context
-
-SellerSuit needs a production-ready, DB-driven pricing system replacing the current half-wired billing (legacy hardcoded `check-subscription`, no plan seeds, free-plan fallbacks, unrouted admin CRUD). Final approved pricing: **Trial $1 one-time via Stripe Checkout for 7 days** (10 listings / 10 auto-orders / 10 AI credits, bulk lister only), **Starter $15/mo · $144/yr**, **Pro $49/mo · $470.40/yr** (is_popular). No free plan. Monthly/yearly toggle, Stripe Customer Portal, webhook-driven status sync with idempotency, feature gating for product-research features, admin plans CRUD, tests + docs.
-
-Most infrastructure already exists and must be REUSED: `stripe-webhook` (idempotent via `stripe_events`), `create-checkout` (coupons, rate limits, customer reuse), `customer-portal`, `check-subscription-v2` (dynamic plan lookup), DB gating RPCs `create_listing_with_usage` / `create_auto_order_with_usage` (already enforce `trial_end`), DB-driven `PricingSection`, `useSubscription`/`usePlanLimits` hooks, and an **existing 884-line `AdminPlans.tsx`** that is merely unrouted.
-
-Validated findings that shape the plan:
-- `plans` RLS has SELECT-only policy → AdminPlans writes fail; need admin write policy via `has_role()`.
-- `supabase/functions/create-stripe-price/` is a security hole (any authed user can create Stripe prices + write to plans) → delete, superseded by sync script.
-- `coupon_usages` has no CREATE TABLE migration (fresh `db reset` is broken) → backfill.
-- `plans.name` not unique; `user_plans.user_id` not unique → harden.
-- `handle_new_user()` trigger (name='free', 20 credits) and `ensure-profile` (name='Trial', 20 credits) race and must change together → new users get NO plan.
-- Webhook "downgrade to free" blocks and frontend `'free'` fallbacks (useSubscription, usePlanLimits, check-subscription-v2) must become an explicit `'none'` state.
-- `PaymentRequired.tsx` exists but route disabled (`App.tsx:150`) → revive as `/choose-plan` gate.
-- No pg_cron → trial expiry is reactive (gating RPCs already block; check-subscription-v2 adds lazy `status='expired'` flip).
-- `profiles.plan_id` is text holding uuid — keep as-is this pass.
-- Stripe API version `2025-08-27.basil` pinned — keep consistent.
-
-## Key design decisions
-
-**D1 — $1 trial:** new column `plans.stripe_price_id_one_time`. `create-checkout`: if `plan.is_trial` → `mode:'payment'` session with that price; eligibility = `profiles.trial_used_at IS NULL` + no historical trial `user_plans` + Stripe `customer.metadata.trial_used !== 'true'`; coupons skipped for trial. Webhook `checkout.session.completed` with `mode==='payment'`: atomic claim `UPDATE profiles SET trial_used_at=now() WHERE id=:uid AND trial_used_at IS NULL RETURNING id` (skip if no row → replay/double-purchase safe), then upsert `user_plans {status:'trialing', trial_end: now()+trial_duration_days(7), period bounds, usage zeroed}`, `profiles {plan_id, credits:10}`, `credit_transactions` plan_grant, set Stripe customer metadata `trial_used=true`.
-
-**D2 — Trial expiry: reactive.** check-subscription-v2 returns `access: 'none'|'trial'|'trial_expired'|'active'|'past_due'` and lazily flips `status='expired'` when `trialing && trial_end < now()`. Frontend gates `none`/`trial_expired` to `/choose-plan`. DB RPCs already enforce server-side.
-
-**D3 — Feature flags:** new `plans.feature_flags jsonb NOT NULL DEFAULT '{}'` with machine keys `{bulk_lister, price_monitoring, top_selling_products, ai_product_research, profitable_products, priority_support, max_ebay_accounts:int}`. `features` jsonb stays as display strings. New `useFeatureAccess()` hook + `<FeatureGate>` component; server-side flag check in `ai-product-research` edge function.
-
-**D4 — Signup:** `handle_new_user()` + `ensure-profile` create profile with `plan_id: null, credits: 0`. Deploy together.
-
-**D5 — Seed (idempotent migration):** dedupe → `UNIQUE(name)` → upsert `trial`/`starter`/`pro` (values table below) → `is_active=false` for all other plans (never delete).
-
-| | trial | starter | pro |
-|---|---|---|---|
-| price_monthly / yearly | 1.00 / 0 | 15.00 / 144.00 | 49.00 / 470.40 |
-| max_listings | 10 | 200 | 5000 |
-| max_auto_orders | 10 | 50 | 500 |
-| credits_per_month | 10 | 200 | 1500 |
-| is_trial / days | true / 7 | — | — |
-| is_popular / sort | — / 0 | — / 1 | true / 2 |
-| feature_flags | bulk_lister; 1 acct | +price_monitoring, top_selling_products; 1 acct | all true; 5 accts |
-
-**D6 — Stripe sync:** `scripts/stripe-sync-plans.mjs` (node, `STRIPE_SECRET_KEY` + `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, `--dry-run`). Idempotent: products by `metadata.sellersuit_plan`, reuse matching active prices, write ids back to `plans`. Prices are immutable — changes create new price, deactivate old.
-
-**D7 — check-subscription-v2:** additive response: `plan.feature_flags`, `trial {is_trial, trial_end, trial_expired}`, `access`, `billing_interval`, `cancel_at_period_end`; `'free'`→`'none'`; prefer `profiles.stripe_customer_id` over email scan.
-
-**D11 — Webhook:** branch on `session.mode`; add `invoice.payment_failed` → `status='past_due'`; replace both `name='free'` downgrade blocks with explicit no-plan (`plan_id:null, status:'canceled'`, credits 0). Idempotency/signature untouched.
-
-## Tasks
-
-### Phase 0 — Schema foundation
-- **T0.0 (XS)** Copy this plan to `tasks/plan.md` + task checklist to `tasks/todo.md` (skill requirement).
-- **T0.1 (M)** Migration `billing_foundation.sql`: coupon_usages CREATE TABLE IF NOT EXISTS + RLS; `plans.feature_flags`, `plans.stripe_price_id_one_time`; `profiles.trial_used_at`; dedupe + `UNIQUE(plans.name)`; unique index `user_plans.user_id`; "Admins can manage plans" RLS policy.
-- **T0.2 (M)** Migration `seed_plans_v2.sql`: D5 seed + `handle_new_user()` rework (D4).
-- **T0.3 (S)** Regenerate `packages/types/src/supabase.ts`; typecheck green.
-- **Checkpoint A:** migrations apply clean; pricing page renders 3 plans.
-
-### Phase 1 — Stripe products/prices
-- **T1.1 (M)** `scripts/stripe-sync-plans.mjs` + `scripts/stripe-sync-plans.test.mjs` (node:test, fake Stripe client for dry-run planner). Run it: price ids populated, second run no-op.
-- **T1.2 (S)** DELETE `supabase/functions/create-stripe-price/` (grep callers first); config.toml explicit entries for billing functions.
-
-### Phase 2 — Backend billing core
-- **T2.1 (M)** `supabase/functions/_shared/billing.ts` (resolveAccessState, isTrialEligible, price→plan resolution) + `billing.test.ts` (Deno tests).
-- **T2.2 (M)** `create-checkout/index.ts`: trial branch per D1, 403s for ineligible, skip coupons for trial.
-- **T2.3 (M)** `stripe-webhook/index.ts`: D11 (payment-mode activation, payment_failed, no-plan downgrade).
-- **T2.4 (M)** `check-subscription-v2/index.ts` per D7 + lazy expiry; `ensure-profile/index.ts` per D4 (deploy together).
-- **T2.5 (S)** DELETE legacy `supabase/functions/check-subscription/` after grep.
-- **Checkpoint B:** Stripe test-mode: $1 trial activates exactly once (replay-safe), starter subscribe works, payment_failed → past_due, cancel → no-plan.
-
-### Phase 3 — Pricing UI & plan gate
-- **T3.1 (S)** `usePlans.tsx` (+feature_flags, one_time id), `useSubscription.tsx` (+trial/access/interval/cancel; `'none'` default).
-- **T3.2 (M)** `PricingSection.tsx` monthly/yearly toggle + trial card ("$1 for 7 days"); `CheckoutDialog.tsx` interval pass-through, hide coupon for trial; `PaymentRequired.tsx` refresh.
-- **T3.3 (M)** `App.tsx` revive `/choose-plan` + gate `none|trial_expired`; `usePlanLimits.tsx` remove free fallback (zero-limit locked state); `CheckoutSuccess.tsx` payment-mode copy + `checkSubscription(true)`.
-
-### Phase 4 — Feature gating
-- **T4.1 (S)** `packages/auth/src/hooks/useFeatureAccess.tsx` + `apps/web/src/components/FeatureGate.tsx`.
-- **T4.2 (M)** Apply gates: ProductResearch (ai_product_research), ProfitableProducts, BestSellingItems (top_selling_products), Alerts (price_monitoring); server-side check in `ai-product-research` function (403).
-
-### Phase 5 — Billing page & admin
-- **T5.1 (M)** `Subscription.tsx` billing overhaul: plan, access/trial badge + countdown, interval, renewal, cancel-at-period-end, portal, upgrade cards.
-- **T5.2 (M)** Admin: route `plans` → AdminPlans in `apps/admin/src/App.tsx`; AdminPlans feature_flags editor + one_time field + deactivate-instead-of-delete.
-
-### Phase 6 — Tests, docs, cleanup
-- **T6.1 (S)** Playwright pricing spec (3 plans render, toggle switches prices, trial $1, checkout redirect URL).
-- **T6.2 (S)** `docs/BILLING.md`: env vars, runbook (migrate→seed→sync→webhook setup), webhook events list (incl. payment_failed), Portal config, test-mode walkthrough, gating guide, known behaviors (interval-switch usage reset, reactive expiry).
-- **T6.3 (S)** Sweep `'free'` remnants across apps/packages/functions.
-
-## Verification
-- Per task: `npm run typecheck`, `npm run build`; `deno test supabase/functions/_shared/` (T2.1); `node --test scripts/` (T1.1).
-- Checkpoint B via Stripe test mode (stripe listen or dashboard test events) + SQL row assertions.
-- Final: Playwright spec, manual walkthrough from docs/BILLING.md, RLS negative test (non-admin plans UPDATE rejected).
-- Migrations + function deploys via Supabase MCP (`apply_migration`, `deploy_edge_function`) against project `ojxzssooylmydystjvdo`; verify with `get_advisors` + `execute_sql` row checks.
-
-## Risks
-1. Legacy-plan production subscribers keep working (webhook resolves by price id); Stripe-side migration is a documented follow-up.
-2. `handle_new_user` + `ensure-profile` must deploy together.
-3. 5-min `useSubscription` cache → gates and CheckoutSuccess must force-refresh.
-4. Admin price edits go live in realtime but require sync-script run for Stripe price — documented.
-5. Interval switch resets usage counters (existing isNewPeriod branch) — accepted, documented.
+## 11. Human review — confirm before build
+- Approve slicing + checkpoints above.
+- Confirm OK to add canonical `/signup`, `/checkout`, `/payment-success`, `/payment-cancelled` and redirect legacy paths.
+- Confirm OK to redeploy `create-checkout` (changes success/cancel URLs + adds active-sub guard).
+- Confirm whether to implement straight through (auto) or pause at each ◇ checkpoint for review.

@@ -39,6 +39,8 @@ import MustSellItems from "./pages/dashboard/MustSellItems";
 import ProductResearch from "./pages/dashboard/ProductResearch";
 import ExtensionViewer from "./pages/extension/ExtensionViewer";
 import CheckoutSuccess from "./pages/billing/CheckoutSuccess";
+import Checkout from "./pages/billing/Checkout";
+import PaymentCancelled from "./pages/billing/PaymentCancelled";
 import ChoosePlan from "./pages/billing/PaymentRequired";
 import Onboarding from "./pages/onboarding/Onboarding";
 import Subscription from "./pages/dashboard/Subscription";
@@ -66,6 +68,20 @@ function ExternalRedirect({ to }: { to: string }) {
   }, [to]);
 
   return null;
+}
+
+// Internal redirect that preserves the query string, hash, and router state —
+// used for legacy → canonical path aliases (e.g. /register → /signup) so a
+// plan token like ?plan=pro and any nav state survive the redirect.
+function RedirectPreserve({ to }: { to: string }) {
+  const location = useLocation();
+  return (
+    <Navigate
+      to={{ pathname: to, search: location.search, hash: location.hash }}
+      state={location.state}
+      replace
+    />
+  );
 }
 
 function AdminRedirect() {
@@ -151,9 +167,21 @@ const App = () => (
                 <Route path="/documentation" element={<Documentation />} />
                 <Route path="/pricing" element={<Pricing />} />
                 <Route path="/auth" element={<Auth />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="/checkout/success" element={<CheckoutSuccess />} />
+                <Route path="/signup" element={<Register />} />
+                {/* Legacy alias → canonical /signup (preserves ?plan + nav state) */}
+                <Route path="/register" element={<RedirectPreserve to="/signup" />} />
+
+                {/* Canonical checkout entry: validates ?plan and starts a Stripe session */}
+                <Route path="/checkout" element={<Checkout />} />
+                {/* Canonical payment-result pages */}
+                <Route path="/payment-success" element={<CheckoutSuccess />} />
+                <Route path="/payment-cancelled" element={<PaymentCancelled />} />
+                <Route path="/payment-failed" element={<Navigate to="/payment-cancelled" replace />} />
+
+                {/* Legacy aliases → canonical payment pages (preserve query) */}
+                <Route path="/checkout/success" element={<RedirectPreserve to="/payment-success" />} />
                 <Route path="/checkout/*" element={<Navigate to="/dashboard" replace />} />
+
                 <Route path="/onboarding" element={<Onboarding />} />
                 <Route path="/choose-plan" element={<ChoosePlan />} />
                 <Route path="/payment-required" element={<Navigate to="/choose-plan" replace />} />

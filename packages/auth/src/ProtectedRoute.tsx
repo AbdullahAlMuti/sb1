@@ -1,10 +1,16 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@repo/auth/hooks/useAuth';
+import { useSubscription } from './hooks/useSubscription';
+import { getPlanIntent } from './lib/planIntent';
+import { canAccessDashboard, isDashboardAllowed } from './lib/dashboardAccess';
 import { getDashboardPathForGoal } from '@repo/config/navigation';
 import { SHOPIFY_ENABLED } from '@repo/config/marketplaceScope';
 import { Loader2, Mail, RefreshCw, ArrowLeft } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
 import { useState } from 'react';
+
+// Re-export for existing importers (e.g. '@repo/auth/ProtectedRoute').
+export { canAccessDashboard } from './lib/dashboardAccess';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -18,6 +24,7 @@ export function ProtectedRoute({
   requireSuperAdmin = false,
 }: ProtectedRouteProps) {
   const { user, profile, isAdmin, isSuperAdmin, isLoading, isEmailVerified, resendVerificationEmail, signOut } = useAuth();
+  const { access, isLoading: subscriptionLoading } = useSubscription();
   const location = useLocation();
   const [isResending, setIsResending] = useState(false);
 
@@ -134,6 +141,37 @@ export function ProtectedRoute({
           </div>
         </div>
       </div>
+    );
+  }
+
+  // Authoritative subscription gate. Profile flags alone can't detect an expired
+  // $1 trial (a one-time payment has no Stripe subscription to cancel), so we
+  // wait for check-subscription-v2 and trust its verdict. Profile flags are only
+  // a fallback when the server check errors to 'none'. Admins skip the wait.
+  if (subscriptionLoading && !isAdmin) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const allowed = isDashboardAllowed({
+    isAdmin,
+    access,
+    profileAllows: canAccessDashboard(user, profile, isAdmin),
+  });
+
+  if (!allowed) {
+    const planToken = getPlanIntent() || profile?.pending_plan_id || null;
+    return (
+      <Navigate
+        to={planToken ? `/checkout?plan=${encodeURIComponent(planToken)}` : '/pricing'}
+        replace
+      />
     );
   }
 

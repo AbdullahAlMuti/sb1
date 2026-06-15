@@ -108,7 +108,7 @@ serve(async (req) => {
     if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
 
     const requestBody = await readLimitedJson(req);
-    const planId = typeof requestBody.planId === "string" ? requestBody.planId.trim() : "";
+    const planIdParam = typeof requestBody.planId === "string" ? requestBody.planId.trim() : "";
     const billingInterval: BillingInterval = requestBody.billingInterval === "yearly" ? "yearly" : "monthly";
     const expectedPriceId = typeof requestBody.priceId === "string" ? requestBody.priceId.trim() : null;
     const couponCode =
@@ -116,8 +116,8 @@ serve(async (req) => {
         ? requestBody.couponCode.slice(0, 50).toUpperCase().trim()
         : null;
 
-    if (!UUID_RE.test(planId)) {
-      throw new Error("Valid planId is required");
+    if (planIdParam && !UUID_RE.test(planIdParam)) {
+      throw new Error("Valid planId format is required");
     }
 
     if (expectedPriceId && !PRICE_ID_RE.test(expectedPriceId)) {
@@ -165,6 +165,50 @@ serve(async (req) => {
       });
     }
 
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("stripe_customer_id, trial_used_at, pending_plan_id")
+      .eq("id", userId)
+      .maybeSingle();
+
+    let planId = profile?.pending_plan_id;
+    if (planIdParam && planIdParam !== planId) {
+      if (!UUID_RE.test(planIdParam)) {
+        throw new Error("Valid planId is required");
+      }
+      await supabaseAdmin
+        .from("profiles")
+        .update({ pending_plan_id: planIdParam })
+        .eq("id", userId);
+      planId = planIdParam;
+    }
+
+    if (!planId) {
+      throw new Error("No plan selected. Please select a plan first.");
+    }
+
+    // Block duplicate checkout when the user already has an active PAID
+    // subscription (a live Stripe subscription). Trials (status "trialing", no
+    // stripe_subscription_id) are intentionally allowed so a trialing user can
+    // convert to a paid plan. Plan changes for paid subscribers go through the
+    // customer portal, not a second Checkout session.
+    const { data: existingUserPlan } = await supabaseAdmin
+      .from("user_plans")
+      .select("status, stripe_subscription_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (existingUserPlan?.status === "active" && existingUserPlan?.stripe_subscription_id) {
+      logStep("Active subscription exists — blocking duplicate checkout", { userId });
+      return new Response(
+        JSON.stringify({
+          error: "You already have an active subscription.",
+          redirect: "/dashboard",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 409 },
+      );
+    }
+
     const { data: plan, error: planError } = await supabaseAdmin
       .from("plans")
       .select(
@@ -193,11 +237,7 @@ serve(async (req) => {
       throw new Error("Submitted priceId does not match the selected plan");
     }
 
-    const { data: profile } = await supabaseAdmin
-      .from("profiles")
-      .select("stripe_customer_id, trial_used_at")
-      .eq("id", userId)
-      .maybeSingle();
+    // profile already loaded above
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     const customerId = await resolveStripeCustomerId(
@@ -308,8 +348,8 @@ serve(async (req) => {
       // The $1 trial is a one-time payment; activation happens in the webhook
       // (checkout.session.completed with mode === "payment").
       mode: isTrialPlan ? "payment" : "subscription",
-      success_url: `${returnOrigin}/checkout/success?plan=${encodeURIComponent(planId)}${isTrialPlan ? "&mode=payment" : ""}`,
-      cancel_url: `${returnOrigin}/#pricing`,
+      success_url: `${returnOrigin}/payment-success?plan=${encodeURIComponent(planId)}${isTrialPlan ? "&mode=payment" : ""}`,
+      cancel_url: `${returnOrigin}/payment-cancelled`,
       metadata: {
         user_id: userId,
         plan_id: planId,
@@ -321,6 +361,8 @@ serve(async (req) => {
 
     if (stripeCouponId) {
       sessionParams.discounts = [{ coupon: stripeCouponId }];
+    } else if (!isTrialPlan) {
+      sessionParams.allow_promotion_codes = true;
     }
 
     const session = await stripe.checkout.sessions.create(sessionParams);
