@@ -348,8 +348,14 @@ serve(async (req) => {
       // The $1 trial is a one-time payment; activation happens in the webhook
       // (checkout.session.completed with mode === "payment").
       mode: isTrialPlan ? "payment" : "subscription",
-      success_url: `${returnOrigin}/payment-success?plan=${encodeURIComponent(planId)}${isTrialPlan ? "&mode=payment" : ""}`,
-      cancel_url: `${returnOrigin}/payment-cancelled`,
+      // Use the legacy return paths so this function is safe to (re)deploy in ANY
+      // order relative to the web app — no Supabase/Vercel deploy-ordering hazard.
+      // The current production web build serves /checkout/success directly; the
+      // new build aliases /checkout/success → /payment-success and /#pricing still
+      // works everywhere. (Switch these to /payment-success and /payment-cancelled
+      // only after the new web build is the live production deploy.)
+      success_url: `${returnOrigin}/checkout/success?plan=${encodeURIComponent(planId)}${isTrialPlan ? "&mode=payment" : ""}`,
+      cancel_url: `${returnOrigin}/#pricing`,
       metadata: {
         user_id: userId,
         plan_id: planId,
