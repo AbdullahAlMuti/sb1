@@ -1,20 +1,12 @@
 import { Bell, Command, Moon, Search, Sun, Zap } from 'lucide-react';
-import { Avatar, AvatarFallback, AvatarImage } from '@repo/ui/components/ui/avatar';
 import { Button } from '@repo/ui/components/ui/button';
-import { useAuth } from '@repo/auth/hooks/useAuth';
 import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { useTheme } from '@repo/ui/theme/useTheme';
 
 export function EbayHeader() {
-  const { user, profile } = useAuth();
   const { usage, subscribed } = useSubscription();
   const { theme, toggleTheme } = useTheme();
   const creditsRemaining = subscribed ? (usage?.credits_remaining ?? 0) : 0;
-
-  const getInitials = (name: string | null) => {
-    if (!name) return user?.email?.charAt(0).toUpperCase() || 'U';
-    return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
-  };
 
   return (
     <div className="flex items-center justify-between w-full">
@@ -50,23 +42,6 @@ export function EbayHeader() {
           <Bell className="h-4 w-4 text-slate-500 dark:text-slate-400" />
           <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
         </Button>
-
-        <div className="flex items-center gap-2 pl-3 border-l border-slate-200 dark:border-slate-700">
-          <div className="text-right hidden sm:block">
-            <p className="text-sm font-medium text-slate-900 dark:text-white truncate max-w-[100px]">
-              {profile?.full_name || 'User'}
-            </p>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400">
-              {subscribed ? 'Active Plan' : 'Free Plan'}
-            </p>
-          </div>
-          <Avatar className="h-9 w-9 border-2 border-blue-200 dark:border-blue-800">
-            <AvatarImage src={profile?.avatar_url || undefined} />
-            <AvatarFallback className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-medium">
-              {getInitials(profile?.full_name)}
-            </AvatarFallback>
-          </Avatar>
-        </div>
       </div>
     </div>
   );

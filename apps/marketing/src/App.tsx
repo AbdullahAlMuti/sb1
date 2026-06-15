@@ -12,9 +12,17 @@ import Index from "./pages/Index";
 import About from "./pages/About";
 import Contact from "./pages/Contact";
 import Documentation from "./pages/Documentation";
+import BlogIndex from "./pages/blog/BlogIndex";
+import BlogCategory from "./pages/blog/BlogCategory";
+import BlogPost from "./pages/blog/BlogPost";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
 import TermsOfService from "./pages/legal/TermsOfService";
 import RefundPolicy from "./pages/legal/RefundPolicy";
+import HowItWorks from "./pages/HowItWorks";
+import Features from "./pages/Features";
+import Calculator from "./pages/Calculator";
+import Pricing from "./pages/Pricing";
+import FAQPage from "./pages/FAQ";
 
 const queryClient = new QueryClient();
 const APP_ORIGIN = import.meta.env.VITE_APP_URL ?? "https://app.sellersuit.com";
@@ -51,6 +59,14 @@ const App = () => (
           <ErrorBoundary>
             <Routes>
               <Route path="/" element={<Index />} />
+              <Route path="/how-it-works" element={<HowItWorks />} />
+              <Route path="/features" element={<Features />} />
+              <Route path="/calculator" element={<Calculator />} />
+              <Route path="/pricing" element={<Pricing />} />
+              <Route path="/faq" element={<FAQPage />} />
+              <Route path="/blog" element={<BlogIndex />} />
+              <Route path="/blog/category/:slug" element={<BlogCategory />} />
+              <Route path="/blog/:slug" element={<BlogPost />} />
               <Route path="/documentation" element={<Documentation />} />
               <Route path="/about" element={<About />} />
               <Route path="/contact" element={<Contact />} />

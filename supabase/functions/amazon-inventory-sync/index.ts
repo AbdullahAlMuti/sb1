@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
+import { enforceActiveSubscription } from "../_shared/plan-middleware.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -335,7 +336,45 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !user) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { action, listingId } = await req.json().catch(() => ({}));
+
+    // Enforce active paid subscription
+    const { data: roleRows } = await supabase.from('user_roles').select('role').eq('user_id', user.id);
+    const isAdmin = (roleRows || []).some(
+      (r: any) => r.role === 'admin' || r.role === 'super_admin' || r.role === 'moderator'
+    );
+
+    if (!isAdmin) {
+      const blockResponse = await enforceActiveSubscription(supabase, user.id);
+      if (blockResponse) return blockResponse;
+
+      if (action === 'sync' && listingId) {
+        const { data: listing } = await supabase.from('listings').select('user_id').eq('id', listingId).maybeSingle();
+        if (!listing || listing.user_id !== user.id) {
+          return new Response(JSON.stringify({ error: 'Forbidden' }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      }
+    }
 
     let result;
 

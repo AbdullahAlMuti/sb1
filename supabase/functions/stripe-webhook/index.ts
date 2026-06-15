@@ -68,7 +68,20 @@ serve(async (req) => {
     }
 
     await supabase.from("user_plans").update(planPatch).eq("user_id", userId);
-    await supabase.from("profiles").update({ plan_id: null, credits: 0 }).eq("id", userId);
+    
+    const profilePatch: Record<string, unknown> = {
+      plan_id: null,
+      credits: 0,
+      selected_plan_id: null,
+      payment_status: "unpaid",
+      subscription_status: "inactive",
+      updated_at: new Date().toISOString()
+    };
+    if (clearSubscriptionId) {
+      profilePatch.subscription_id = null;
+      profilePatch.current_period_end = null;
+    }
+    await supabase.from("profiles").update(profilePatch).eq("id", userId);
 
     await supabase.from("credit_transactions").insert({
       user_id: userId,
@@ -159,6 +172,16 @@ serve(async (req) => {
     const profileUpdate: Record<string, unknown> = {
       plan_id: plan.id,
       credits: plan.credits_per_month,
+      selected_plan_id: plan.id,
+      pending_plan_id: null,
+      payment_status: "paid",
+      subscription_status: "active",
+      customer_id: stripeCustomerId,
+      subscription_id: session.payment_intent || session.id,
+      current_period_start: now.toISOString(),
+      current_period_end: trialEnd.toISOString(),
+      subscription_provider: "stripe",
+      updated_at: now.toISOString(),
     };
     if (stripeCustomerId) profileUpdate.stripe_customer_id = stripeCustomerId;
     await supabase.from("profiles").update(profileUpdate).eq("id", userId);
@@ -236,7 +259,20 @@ serve(async (req) => {
 
     await supabase
       .from("profiles")
-      .update({ plan_id: planData.id, credits: planData.credits_per_month })
+      .update({
+        plan_id: planData.id,
+        credits: planData.credits_per_month,
+        selected_plan_id: planData.id,
+        pending_plan_id: null,
+        payment_status: "paid",
+        subscription_status: "active",
+        customer_id: subscription.customer as string,
+        subscription_id: subscription.id,
+        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+        subscription_provider: "stripe",
+        updated_at: new Date().toISOString()
+      })
       .eq("id", userId);
 
     logStep("User plan updated", { userId, planName: planData.name });
@@ -359,6 +395,16 @@ serve(async (req) => {
             const profileUpdate: Record<string, unknown> = {
               plan_id: planData.id,
               credits: planData.credits_per_month,
+              selected_plan_id: planData.id,
+              pending_plan_id: null,
+              payment_status: "paid",
+              subscription_status: "active",
+              customer_id: stripeCustomerId,
+              subscription_id: subscription.id,
+              current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+              current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+              subscription_provider: "stripe",
+              updated_at: new Date().toISOString()
             };
             if (stripeCustomerId) profileUpdate.stripe_customer_id = stripeCustomerId;
 
@@ -503,7 +549,16 @@ serve(async (req) => {
 
             await supabase
               .from("profiles")
-              .update({ plan_id: planData.id })
+              .update({
+                plan_id: planData.id,
+                selected_plan_id: planData.id,
+                pending_plan_id: null,
+                payment_status: "paid",
+                subscription_status: "active",
+                current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+                current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+                updated_at: new Date().toISOString()
+              })
               .eq("id", userPlan.user_id);
 
           } else if (subscription.status === "canceled" || subscription.status === "unpaid") {
@@ -513,6 +568,15 @@ serve(async (req) => {
               .from("user_plans")
               .update({ status: "past_due", updated_at: new Date().toISOString() })
               .eq("user_id", userPlan.user_id);
+
+            await supabase
+              .from("profiles")
+              .update({
+                payment_status: "unpaid",
+                subscription_status: "past_due",
+                updated_at: new Date().toISOString()
+              })
+              .eq("id", userPlan.user_id);
             logStep("Subscription past_due", { userId: userPlan.user_id });
           }
 

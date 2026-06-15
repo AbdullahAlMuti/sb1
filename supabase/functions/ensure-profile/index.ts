@@ -86,6 +86,9 @@ Deno.serve(async (req) => {
         is_active: true,
         plan_id: null,
         settings: goal ? { goal } : {},
+        pending_plan_id: user.user_metadata?.pending_plan_id || null,
+        payment_status: 'unpaid',
+        subscription_status: 'inactive'
       })
       .select('*')
       .single();

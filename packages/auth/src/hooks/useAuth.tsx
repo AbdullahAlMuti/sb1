@@ -12,6 +12,17 @@ interface Profile {
   plan_id: string | null;
   settings: Record<string, unknown> | null;
   onboarding_completed: boolean | null;
+  platform_access: string[] | null;
+  onboarding_status: string | null;
+  account_status: string | null;
+  ebay_connected: boolean | null;
+  mfa_enabled: boolean | null;
+  active_sessions_count: number | null;
+  api_key_enabled: boolean | null;
+  pending_plan_id: string | null;
+  selected_plan_id: string | null;
+  payment_status: string | null;
+  subscription_status: string | null;
 }
 
 interface UserRole {
@@ -40,7 +51,7 @@ interface AuthContextType {
   isLoading: boolean;
   isEmailVerified: boolean;
   signIn: (email: string, password: string, loginContext?: 'user' | 'admin') => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, fullName?: string, goal?: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, fullName?: string, goal?: string, planId?: string) => Promise<{ error: Error | null }>;
   verifyOtp: (email: string, token: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -99,6 +110,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 ? (ensuredProfile.settings as Record<string, unknown>)
                 : null,
             onboarding_completed: (ensuredProfile as any).onboarding_completed ?? null,
+            platform_access: (ensuredProfile as any).platform_access ?? null,
+            onboarding_status: (ensuredProfile as any).onboarding_status ?? null,
+            account_status: (ensuredProfile as any).account_status ?? null,
+            ebay_connected: (ensuredProfile as any).ebay_connected ?? null,
+            mfa_enabled: (ensuredProfile as any).mfa_enabled ?? null,
+            active_sessions_count: (ensuredProfile as any).active_sessions_count ?? null,
+            api_key_enabled: (ensuredProfile as any).api_key_enabled ?? null,
+            pending_plan_id: (ensuredProfile as any).pending_plan_id ?? null,
+            selected_plan_id: (ensuredProfile as any).selected_plan_id ?? null,
+            payment_status: (ensuredProfile as any).payment_status ?? null,
+            subscription_status: (ensuredProfile as any).subscription_status ?? null,
           };
           setProfile(profileData);
         }
@@ -118,6 +140,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ? data.settings as Record<string, unknown>
           : null,
         onboarding_completed: (data as any).onboarding_completed ?? null,
+        platform_access: (data as any).platform_access ?? null,
+        onboarding_status: (data as any).onboarding_status ?? null,
+        account_status: (data as any).account_status ?? null,
+        ebay_connected: (data as any).ebay_connected ?? null,
+        mfa_enabled: (data as any).mfa_enabled ?? null,
+        active_sessions_count: (data as any).active_sessions_count ?? null,
+        api_key_enabled: (data as any).api_key_enabled ?? null,
+        pending_plan_id: (data as any).pending_plan_id ?? null,
+        selected_plan_id: (data as any).selected_plan_id ?? null,
+        payment_status: (data as any).payment_status ?? null,
+        subscription_status: (data as any).subscription_status ?? null,
       };
       setProfile(profileData);
     } catch (err) {
@@ -297,7 +330,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   };
 
-  const signUp = async (email: string, password: string, fullName?: string, goal?: string) => {
+  const signUp = async (email: string, password: string, fullName?: string, goal?: string, planId?: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('auth-otp', {
         body: {
@@ -305,7 +338,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email,
           password,
           fullName,
-          goal
+          goal,
+          planId
         }
       });
 

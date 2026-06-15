@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { enforceActiveSubscription } from "../_shared/plan-middleware.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,6 +28,7 @@ Deno.serve(async (req) => {
     // Create Supabase client with the user's token
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
@@ -44,6 +46,10 @@ Deno.serve(async (req) => {
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+    const blockResponse = await enforceActiveSubscription(supabaseAdmin, user.id);
+    if (blockResponse) return blockResponse;
 
     console.log("get-calculator-settings: Fetching settings for user", user.id);
 

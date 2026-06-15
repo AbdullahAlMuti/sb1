@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { enforceActiveSubscription } from "../_shared/plan-middleware.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -153,6 +154,12 @@ serve(async (req) => {
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+
+    const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
+
+    const blockResponse = await enforceActiveSubscription(supabaseAdmin, userData.user.id);
+    if (blockResponse) return blockResponse;
 
     const { scriptUrl, action, sheetName, rows, uniqueColumn } = await req.json();
     if (!scriptUrl) {

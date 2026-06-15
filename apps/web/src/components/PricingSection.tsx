@@ -1,10 +1,10 @@
 import { forwardRef, useState } from "react";
-import { Check, X, Clock, Crown, Rocket, Zap, Sparkles } from "lucide-react";
+import { Check, X, Clock, Crown, Rocket, Zap, Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@repo/ui/components/ui/button";
-import { CheckoutDialog } from "./checkout/CheckoutDialog";
 import { useAuth } from "@repo/auth/hooks/useAuth";
 import { usePlans, type Plan } from "@repo/api-client/hooks/usePlans";
 import { useSubscription } from "@repo/auth/hooks/useSubscription";
+import { setPlanIntent } from "@repo/auth/lib/planIntent";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@repo/ui/lib/utils";
 import ComparisonTable from "./ComparisonTable";
@@ -55,9 +55,10 @@ interface PlanCardProps {
   isCurrentPlan: boolean;
   trialUsed: boolean;
   onSelect: (plan: Plan) => void;
+  isLoading: boolean;
 }
 
-function PlanCard({ plan, billingInterval, isCurrentPlan, trialUsed, onSelect }: PlanCardProps) {
+function PlanCard({ plan, billingInterval, isCurrentPlan, trialUsed, onSelect, isLoading }: PlanCardProps) {
   const Icon = PLAN_ICONS[plan.slug ?? plan.name.toLowerCase()] ?? Zap;
   const isFeatured = plan.is_recommended || plan.is_popular;
   const isTrialPlan = Boolean(plan.is_trial);
@@ -174,10 +175,17 @@ function PlanCard({ plan, billingInterval, isCurrentPlan, trialUsed, onSelect }:
             isTrialPlan && !isCurrentPlan && !trialUsed &&
               "border-amber-500/50 text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/20",
           )}
-          disabled={isCurrentPlan || trialUsed}
+          disabled={isCurrentPlan || trialUsed || isLoading}
           onClick={() => onSelect(plan)}
         >
-          {ctaLabel}
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Redirecting...
+            </>
+          ) : (
+            ctaLabel
+          )}
         </Button>
       </div>
     </article>
@@ -191,19 +199,17 @@ const PricingSection = forwardRef<HTMLElement>((_, ref) => {
   const { user } = useAuth();
   const { createCheckout, planName: currentPlanName, access } = useSubscription();
   const { plans, isLoading } = usePlans();
-  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [isProcessing, setIsProcessing] = useState<string | null>(null);
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly");
 
   const hasYearlyPlans = plans.some(p => !p.is_trial && p.price_yearly > 0);
   const publicPlans = plans.filter(p => !p.is_trial || p.is_active);
 
-  const handlePlanSelect = (plan: Plan) => {
+  const handlePlanSelect = async (plan: Plan) => {
     if (!user) {
-      localStorage.setItem("selectedPlanId", plan.id);
-      localStorage.setItem("selectedPlanName", plan.name);
-      localStorage.setItem("selectedPlan", plan.name);
-      navigate("/register", { state: { selectedPlan: plan.name } });
+      const planToken = plan.slug ?? plan.name;
+      setPlanIntent(planToken);
+      navigate(`/signup?plan=${encodeURIComponent(planToken)}`, { state: { selectedPlan: plan.name } });
       return;
     }
 
@@ -212,32 +218,30 @@ const PricingSection = forwardRef<HTMLElement>((_, ref) => {
       : Boolean(plan.stripe_price_id_monthly);
 
     if (hasPriceConfigured) {
-      setSelectedPlan(plan);
-      setCheckoutDialogOpen(true);
+      setIsProcessing(plan.id);
+      try {
+        const priceId = plan.is_trial
+          ? (plan.stripe_price_id_one_time ?? undefined)
+          : billingInterval === "yearly"
+            ? (plan.stripe_price_id_yearly ?? undefined)
+            : (plan.stripe_price_id_monthly ?? undefined);
+
+        if (!priceId) return;
+
+        const { url } = await createCheckout(
+          plan.id,
+          plan.is_trial ? "monthly" : billingInterval,
+          undefined,
+          priceId,
+        );
+        if (url) window.location.href = url;
+      } finally {
+        setIsProcessing(null);
+      }
       return;
     }
 
     navigate("/dashboard/settings");
-  };
-
-  const handleCheckout = async (couponCode?: string) => {
-    if (!selectedPlan) return;
-
-    const priceId = selectedPlan.is_trial
-      ? (selectedPlan.stripe_price_id_one_time ?? undefined)
-      : billingInterval === "yearly"
-        ? (selectedPlan.stripe_price_id_yearly ?? undefined)
-        : (selectedPlan.stripe_price_id_monthly ?? undefined);
-
-    if (!priceId) return;
-
-    const { url } = await createCheckout(
-      selectedPlan.id,
-      selectedPlan.is_trial ? "monthly" : billingInterval,
-      selectedPlan.is_trial ? undefined : couponCode,
-      priceId,
-    );
-    if (url) window.location.href = url;
   };
 
   const gridCols = cn(
@@ -315,6 +319,7 @@ const PricingSection = forwardRef<HTMLElement>((_, ref) => {
                   (access === "trial" || access === "trial_expired")
                 }
                 onSelect={handlePlanSelect}
+                isLoading={isProcessing === plan.id}
               />
             ))}
           </div>
@@ -334,14 +339,6 @@ const PricingSection = forwardRef<HTMLElement>((_, ref) => {
         <TrustSection />
 
       </div>
-
-      <CheckoutDialog
-        open={checkoutDialogOpen}
-        onOpenChange={setCheckoutDialogOpen}
-        plan={selectedPlan}
-        billingInterval={selectedPlan?.is_trial ? "monthly" : billingInterval}
-        onCheckout={handleCheckout}
-      />
     </section>
   );
 });

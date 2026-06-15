@@ -28,3 +28,32 @@ Integrity mode: development
 - [ ] Product details links and category navigation links on Amazon remain clickable.
 - [ ] The SellerSuit panel itself remains fully interactive (inputs, buttons, select menus work).
 - [ ] The automated Playwright test script executes and passes successfully.
+
+## Follow-up — 2026-06-13T23:24:25Z
+
+Perform a comprehensive production-readiness audit of the SellerSuit project to evaluate if it is ready to publish for real users, assessing security, robustness, payment integrations, and code completeness.
+
+Working directory: d:/eBay Software/2026sellersuit/sb1
+Integrity mode: benchmark
+
+## Requirements
+
+### R1. Security & Credentials Audit
+Audit the Row-Level Security (RLS) policies in the database migrations, API key management (identifying any leaked credentials or hardcoded keys), JWT verification in Supabase Edge Functions, and overall data privacy/access controls.
+
+### R2. Stripe Billing & Subscriptions Audit
+Audit the Stripe webhook handler, customer checkout session creation, plan feature gating, and database state updates for subscription management. Check for signature verification, idempotency, and error handling robustness.
+
+### R3. eBay & Scraping Workflows Audit
+Audit the Amazon and Walmart scrapers in the Chrome Extension, the listing creation logic, the token synchronization bridge between the extension and web app, and handling of variation/SKU mapping.
+
+### R4. Production Readiness Report
+Generate a comprehensive report named `AUDIT_REPORT_LAUNCH.md` in the workspace root. Categorize all issues by severity (High, Medium, Low), suggest precise remediation steps, and provide a clear final recommendation on whether the project is ready to publish.
+
+## Acceptance Criteria
+
+### Audit Scope & Completion
+- [ ] The report `AUDIT_REPORT_LAUNCH.md` exists in the workspace root.
+- [ ] The report covers all three target domains (Security, Stripe Billing, eBay/Scraping).
+- [ ] Every identified issue has a clearly stated severity, location or file reference, and action plan.
+- [ ] The report includes a clear, binary conclusion on whether the codebase is ready to be published for real users.

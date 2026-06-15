@@ -237,6 +237,7 @@ export default function EbayOrders() {
   // Get display label for period preset
   const getPeriodLabel = (preset: PeriodPreset): string => {
     switch (preset) {
+      case "all": return "All time";
       case "last90days": return "Last 90 days";
       case "today": return "Today";
       case "yesterday": return "Yesterday";
@@ -589,9 +590,7 @@ export default function EbayOrders() {
   // Removed handleOrderFulfillment (Amazon Fulfillment)
 
   const getStatusBadge = (order: EbayOrder) => {
-    const statusLower = (order.total_amount === 0 || order.total_amount === null)
-      ? "cancelled"
-      : (order.order_status?.toLowerCase() || "pending");
+    const statusLower = order.order_status?.toLowerCase() || "pending";
 
     if (processingOrderIds.has(order.id) || order.order_status?.toLowerCase() === 'processing') {
       return (

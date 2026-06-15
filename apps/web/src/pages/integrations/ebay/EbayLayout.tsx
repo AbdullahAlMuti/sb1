@@ -1,18 +1,34 @@
 import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
 import { Sheet, SheetContent } from '@repo/ui/components/ui/sheet';
 import { cn } from '@repo/ui/lib/utils';
 import { EbayHeader } from '@/components/ebay/EbayHeader';
 import { EbaySidebar } from '@/components/ebay/EbaySidebar';
+import { SettingsDialog } from '@/components/dashboard/SettingsDialog';
 
 export default function EbayLayout() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const isSettingsOpen = location.pathname === '/dashboard/ebay/settings';
+  const handleCloseSettings = () => {
+    navigate('/dashboard/ebay');
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      {/* Settings Dialog Modal */}
+      <SettingsDialog 
+        open={isSettingsOpen} 
+        onOpenChange={(open) => {
+          if (!open) handleCloseSettings();
+        }}
+      />
+
       <div className="hidden lg:block">
         <EbaySidebar isCollapsed={isCollapsed} onToggleCollapse={() => setIsCollapsed(!isCollapsed)} />
       </div>

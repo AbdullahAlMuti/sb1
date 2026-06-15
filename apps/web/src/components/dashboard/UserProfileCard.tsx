@@ -30,24 +30,24 @@ export function UserProfileCard() {
   };
 
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
+    <div className="bg-card/50 backdrop-blur-md border border-border/50 rounded-2xl shadow-xl overflow-hidden transition-all duration-300 hover:shadow-2xl hover:border-border">
       {/* Header with gradient */}
-      <div className="h-16 bg-gradient-to-r from-primary/20 via-primary/10 to-transparent" />
+      <div className="h-20 bg-gradient-to-r from-primary/30 via-accent/20 to-transparent" />
       
       {/* Profile Info */}
-      <div className="px-5 pb-5 -mt-8">
-        <div className="flex items-end gap-4 mb-4">
-          <Avatar className="h-16 w-16 border-4 border-card shadow-lg">
+      <div className="px-6 pb-6 -mt-10">
+        <div className="flex items-end gap-4 mb-5">
+          <Avatar className="h-20 w-20 border-4 border-card shadow-2xl transition-all duration-300 hover:scale-105">
             <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || 'User'} />
-            <AvatarFallback className="bg-primary text-primary-foreground text-lg font-semibold">
+            <AvatarFallback className="bg-primary text-primary-foreground text-xl font-bold">
               {getInitials(profile?.full_name)}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0 pb-1">
-            <h3 className="text-lg font-semibold text-foreground truncate">
+            <h3 className="text-xl font-display font-bold text-foreground truncate leading-tight">
               {profile?.full_name || 'User'}
             </h3>
-            <p className="text-sm text-muted-foreground truncate flex items-center gap-1.5">
+            <p className="text-sm text-muted-foreground truncate flex items-center gap-1.5 mt-0.5">
               <Mail className="h-3.5 w-3.5 flex-shrink-0" />
               {user?.email}
             </p>
@@ -55,14 +55,14 @@ export function UserProfileCard() {
         </div>
 
         {/* Plan & Status */}
-        <div className="space-y-3 mb-4">
+        <div className="space-y-3.5 mb-5 bg-muted/20 p-4 rounded-xl border border-border/30">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Current Plan</span>
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Current Plan</span>
             <Badge 
               variant={subscribed ? 'default' : 'secondary'}
               className={cn(
-                "font-medium",
-                subscribed && "bg-primary/10 text-primary border-primary/20"
+                "font-semibold px-2.5 py-0.5",
+                subscribed && "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
               )}
             >
               <Shield className="h-3 w-3 mr-1" />
@@ -72,8 +72,8 @@ export function UserProfileCard() {
 
           {subscribed && subscriptionEnd && (
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Renews</span>
-              <span className="text-sm text-foreground flex items-center gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Renews</span>
+              <span className="text-xs text-foreground flex items-center gap-1.5 font-medium">
                 <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
                 {format(new Date(subscriptionEnd), 'MMM d, yyyy')}
               </span>
@@ -81,55 +81,55 @@ export function UserProfileCard() {
           )}
 
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Credits</span>
-            <span className="text-sm font-medium text-foreground">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Credits</span>
+            <span className="text-xs font-bold text-foreground">
               {profile?.credits ?? 0} remaining
             </span>
           </div>
 
           {isAdmin && (
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Role</span>
-              <Badge variant="outline" className="text-xs border-amber-500/30 text-amber-500">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Role</span>
+              <Badge variant="outline" className="text-[10px] uppercase font-bold tracking-wide border-amber-500/30 text-amber-500 bg-amber-500/5">
                 Admin
               </Badge>
             </div>
           )}
 
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Member Since</span>
-            <span className="text-sm text-foreground">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Member Since</span>
+            <span className="text-xs font-medium text-foreground">
               {user?.created_at ? format(new Date(user.created_at), 'MMM yyyy') : 'N/A'}
             </span>
           </div>
         </div>
 
-        <Separator className="my-4" />
+        <Separator className="my-5 bg-border/50" />
 
         {/* Quick Actions */}
-        <div className="space-y-2">
+        <div className="grid gap-2">
           <Button 
             variant="outline" 
             size="sm" 
-            className="w-full justify-start"
+            className="w-full justify-start text-xs font-medium border-border/60 hover:bg-muted"
             onClick={() => navigate('/dashboard/subscription')}
           >
-            <CreditCard className="h-4 w-4 mr-2" />
+            <CreditCard className="h-4 w-4 mr-2 text-muted-foreground" />
             {subscribed ? 'Manage Subscription' : 'Upgrade Plan'}
           </Button>
           <Button 
             variant="outline" 
             size="sm" 
-            className="w-full justify-start"
+            className="w-full justify-start text-xs font-medium border-border/60 hover:bg-muted"
             onClick={() => navigate('/dashboard/settings')}
           >
-            <Settings className="h-4 w-4 mr-2" />
+            <Settings className="h-4 w-4 mr-2 text-muted-foreground" />
             Account Settings
           </Button>
           <Button 
             variant="ghost" 
             size="sm" 
-            className="w-full justify-start text-muted-foreground hover:text-destructive"
+            className="w-full justify-start text-xs font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/5"
             onClick={handleSignOut}
           >
             <LogOut className="h-4 w-4 mr-2" />

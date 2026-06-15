@@ -1,32 +1,40 @@
+import SeasonalBanner from "@/components/SeasonalBanner";
 import Navbar from "@/components/Navbar";
 import HeroSection from "@/components/HeroSection";
-import FeaturesSection from "@/components/FeaturesSection";
+import TrustBar from "@/components/TrustBar";
+import ResearchSimulator from "@/components/ResearchSimulator";
 import WorkflowSection from "@/components/WorkflowSection";
+import ProblemComparison from "@/components/ProblemComparison";
+import VisualPipeline from "@/components/VisualPipeline";
+import FeaturesSection from "@/components/FeaturesSection";
+import ProfitCalculator from "@/components/ProfitCalculator";
 import PricingSection from "@/components/PricingSection";
 import TestimonialsSection from "@/components/TestimonialsSection";
+import FAQ from "@/components/FAQ";
 import CTASection from "@/components/CTASection";
 import Footer from "@/components/Footer";
 
 const Index = () => {
   return (
-    <main className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background">
+      <SeasonalBanner />
       <Navbar />
-      <HeroSection />
-      <section id="features">
-        <FeaturesSection />
-      </section>
-      <section id="workflow">
+      <main>
+        <HeroSection />
+        <TrustBar />
+        <ResearchSimulator />
         <WorkflowSection />
-      </section>
-      <section id="pricing">
+        <ProblemComparison />
+        <VisualPipeline />
+        <FeaturesSection />
+        <ProfitCalculator />
         <PricingSection />
-      </section>
-      <section id="testimonials">
         <TestimonialsSection />
-      </section>
-      <CTASection />
+        <FAQ />
+        <CTASection />
+      </main>
       <Footer />
-    </main>
+    </div>
   );
 };
 

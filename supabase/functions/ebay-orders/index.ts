@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
+import { enforceActiveSubscription } from "../_shared/plan-middleware.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -110,6 +111,9 @@ Deno.serve(async (req) => {
     const userId = !claimsError && claimsData?.claims?.sub ? (claimsData.claims.sub as string) : null;
     if (!userId) return json(401, { error: "Unauthorized" });
 
+    const blockResponse = await enforceActiveSubscription(supabaseAdmin, userId);
+    if (blockResponse) return blockResponse;
+
     const userLimit = await checkRateLimit(supabaseAdmin, {
       bucket: "ebay-orders:user",
       key: userId,
@@ -138,30 +142,20 @@ Deno.serve(async (req) => {
       const applyFilters = (baseQuery: any, statuses: string[] | string | null) => {
         let q = baseQuery.eq("user_id", userId).is("deleted_at", null);
 
-        // Logic for 0.00 revenue = Cancelled
+        // Filter by status if provided
         if (statuses) {
           if (statuses === "all") {
             // No specific filter
           } else {
-            const statusList = Array.isArray(statuses) ? statuses.map(s => s.toLowerCase()) : [statuses.toLowerCase()];
-            const isCancelledFilter = statusList.includes("cancelled");
-
-            if (isCancelledFilter) {
-              const sArr = Array.isArray(statuses) ? statuses : [statuses];
-              const inValues = sArr.map(s => s.replace(/"/g, '')).join(',');
-              q = q.or(`order_status.in.(${inValues}),total_amount.eq.0`);
+            if (Array.isArray(statuses)) {
+              q = q.in("order_status", statuses);
             } else {
-              if (Array.isArray(statuses)) {
-                q = q.in("order_status", statuses);
-              } else {
-                q = q.in("order_status", [
-                  statuses,
-                  statuses.toLowerCase(),
-                  statuses.toUpperCase(),
-                  statuses[0]?.toUpperCase() + statuses.slice(1),
-                ]);
-              }
-              q = q.neq("total_amount", 0);
+              q = q.in("order_status", [
+                statuses,
+                statuses.toLowerCase(),
+                statuses.toUpperCase(),
+                statuses[0]?.toUpperCase() + statuses.slice(1),
+              ]);
             }
           }
         }
@@ -231,16 +225,7 @@ Deno.serve(async (req) => {
         let base = q.eq("user_id", userId).is("deleted_at", null);
 
         if (statuses && statuses.length > 0) {
-          const sList = statuses.map(s => s.toLowerCase());
-          const isCancelled = sList.includes("cancelled");
-
-          if (isCancelled) {
-            const inTuple = `(${statuses.join(',')})`;
-            base = base.or(`order_status.in.${inTuple},total_amount.eq.0`);
-          } else {
-            base = base.in("order_status", statuses);
-            base = base.neq("total_amount", 0);
-          }
+          base = base.in("order_status", statuses);
         } else {
           // 'All' tab
         }

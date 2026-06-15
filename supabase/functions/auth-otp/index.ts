@@ -174,7 +174,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { action, email: rawEmail, password, fullName, goal, code, loginContext } = await req.json();
+    const { action, email: rawEmail, password, fullName, goal, code, loginContext, planId } = await req.json();
     const email = normalizeEmail(rawEmail);
 
     if (!email) {
@@ -250,7 +250,7 @@ serve(async (req) => {
           existingUser.id,
           {
             password,
-            user_metadata: { full_name: fullName, goal },
+            user_metadata: { full_name: fullName, goal, pending_plan_id: planId },
           },
         );
         if (updateError) throw updateError;
@@ -261,7 +261,7 @@ serve(async (req) => {
           email,
           password,
           email_confirm: false,
-          user_metadata: { full_name: fullName, goal },
+          user_metadata: { full_name: fullName, goal, pending_plan_id: planId },
         });
         if (createError) throw createError;
         userId = newUser.user.id;
@@ -368,9 +368,12 @@ serve(async (req) => {
           id: user.id,
           email,
           full_name: fullName,
-          credits: 5,
+          credits: 0,
           is_active: true,
           settings: signupGoal ? { goal: signupGoal } : {},
+          pending_plan_id: user.user_metadata?.pending_plan_id || null,
+          payment_status: 'unpaid',
+          subscription_status: 'inactive'
         });
       } else {
         const currentSettings = existingProfile.settings || {};
@@ -381,6 +384,7 @@ serve(async (req) => {
           .update({
             settings: newSettings,
             is_active: true,
+            pending_plan_id: user.user_metadata?.pending_plan_id || null,
           })
           .eq("id", user.id);
       }

@@ -56,7 +56,7 @@ async function resolveAuth(supabase: SupabaseClient, req: Request) {
     if (isExpired(session.access_token_expires_at)) throw new Error('Extension access token expired');
     const { data: device } = await supabase.from('extension_devices').select('*').eq('id', session.device_id).maybeSingle();
     if (!device || device.status !== 'active') throw new Error('Extension device not approved');
-    const { data: profile } = await supabase.from('profiles').select('id,email,full_name,is_active,account_status,plan_id,credits,default_workspace_id').eq('id', session.user_id).maybeSingle();
+    const { data: profile } = await supabase.from('profiles').select('id,email,full_name,is_active,account_status,plan_id,credits,default_workspace_id,selected_plan_id,payment_status,subscription_status').eq('id', session.user_id).maybeSingle();
     if (!profile) throw new Error('User profile not found');
     if (profile.is_active === false || ['Suspended','Banned'].includes(profile.account_status)) throw new Error('User account not active');
     
@@ -105,6 +105,20 @@ async function resolveAuth(supabase: SupabaseClient, req: Request) {
     }
     
     await supabase.from('extension_sessions').update({ last_seen_at: new Date().toISOString() }).eq('id', session.id);
+
+    // Enforce subscription check for extension sessions
+    const { data: roleRows } = await supabase.from('user_roles').select('role').eq('user_id', profile.id);
+    const isAdmin = (roleRows || []).some(
+      (r: any) => r.role === 'admin' || r.role === 'super_admin' || r.role === 'moderator'
+    );
+    if (!isAdmin) {
+      const isPaid = profile.payment_status === 'paid' || profile.payment_status === 'succeeded';
+      const isSubscriptionActive = profile.subscription_status === 'active';
+      if (!profile.selected_plan_id || !isPaid || !isSubscriptionActive) {
+        throw new Error('Active paid subscription required');
+      }
+    }
+
     return { userId: profile.id as string, workspaceId: ws.id as string, profile, workspace: ws, authMode: 'extension_session' };
   }
 
@@ -112,7 +126,22 @@ async function resolveAuth(supabase: SupabaseClient, req: Request) {
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user) throw new Error('Invalid legacy auth token');
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', data.user.id).maybeSingle();
+  if (!profile) throw new Error('User profile not found');
   if (profile?.is_active === false || ['Suspended','Banned'].includes(profile?.account_status)) throw new Error('User account not active');
+
+  // Enforce subscription check for legacy JWT
+  const { data: roleRows } = await supabase.from('user_roles').select('role').eq('user_id', data.user.id);
+  const isAdmin = (roleRows || []).some(
+    (r: any) => r.role === 'admin' || r.role === 'super_admin' || r.role === 'moderator'
+  );
+  if (!isAdmin) {
+    const isPaid = profile.payment_status === 'paid' || profile.payment_status === 'succeeded';
+    const isSubscriptionActive = profile.subscription_status === 'active';
+    if (!profile.selected_plan_id || !isPaid || !isSubscriptionActive) {
+      throw new Error('Active paid subscription required');
+    }
+  }
+
   let workspaceId: string | null = profile?.default_workspace_id || null;
   if (!workspaceId) {
     const { data: ws } = await supabase.from('workspaces').select('id').eq('owner_user_id', data.user.id).is('slug', null).maybeSingle();

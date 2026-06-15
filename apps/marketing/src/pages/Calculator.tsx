@@ -1,0 +1,24 @@
+import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
+import ProfitCalculator from "@/components/ProfitCalculator";
+import CTASection from "@/components/CTASection";
+import { useSeo, SITE_URL } from "@/lib/useSeo";
+
+export default function Calculator() {
+  useSeo({
+    title: "Profit Calculator | SellerSuit",
+    description: "Use our eBay dropshipping profit calculator to estimate your margins, fees, ROI, and final pricing before you list.",
+    canonical: `${SITE_URL}/calculator`,
+  });
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Navbar />
+      <main className="pt-24">
+        <ProfitCalculator />
+        <CTASection />
+      </main>
+      <Footer />
+    </div>
+  );
+}

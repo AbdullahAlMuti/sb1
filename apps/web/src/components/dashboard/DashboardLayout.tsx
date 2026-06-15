@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { DashboardSidebar } from './DashboardSidebar';
 import { DashboardHeader } from './DashboardHeader';
+import { SettingsDialog } from './SettingsDialog';
 import { NoticesBanner } from './NoticesBanner';
 import { cn } from '@repo/ui/lib/utils';
 import { Menu, Bell, Moon, Sun } from 'lucide-react';
@@ -19,6 +20,12 @@ export function DashboardLayout() {
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const isSettingsOpen = location.pathname === '/dashboard/settings';
+  const handleCloseSettings = () => {
+    navigate('/dashboard');
+  };
 
   // Sidebar collapse state is managed via props from DashboardSidebar
 
@@ -47,6 +54,14 @@ export function DashboardLayout() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Settings Dialog Modal */}
+      <SettingsDialog 
+        open={isSettingsOpen} 
+        onOpenChange={(open) => {
+          if (!open) handleCloseSettings();
+        }}
+      />
+
       {/* Mobile sidebar */}
       <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
         <SheetContent side="left" className="p-0 w-[280px]">

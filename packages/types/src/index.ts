@@ -19,3 +19,12 @@ export {
   ACCESS_LEVEL_LABELS,
   PLAN_HIERARCHY,
 } from "./store-design.types";
+export type {
+  MarketingPostStatus,
+  MarketingFaqItem,
+  MarketingAuthor,
+  MarketingCategory,
+  MarketingPost,
+  MarketingPostWithRelations,
+  MarketingPostFormValues,
+} from "./marketing-blog.types";

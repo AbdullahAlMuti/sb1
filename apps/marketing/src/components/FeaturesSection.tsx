@@ -1,78 +1,39 @@
-import { BarChart3, Bot, FileText, Image, PlugZap, ShoppingCart, type LucideIcon } from "lucide-react";
+import { siteConfig } from "@/config/siteConfig";
+import { Reveal } from "@/components/primitives/Reveal";
 
-interface Feature {
-  icon: LucideIcon;
-  title: string;
-  description: string;
-}
-
-const features: Feature[] = [
-  {
-    icon: PlugZap,
-    title: "Extension-connected capture",
-    description: "Pull product data, images, titles, and supplier details into SellerSuit with a repeatable browser workflow.",
-  },
-  {
-    icon: Bot,
-    title: "AI listing workspace",
-    description: "Generate titles and descriptions, keep source metadata, and prepare marketplace-ready drafts from one record.",
-  },
-  {
-    icon: BarChart3,
-    title: "Profit visibility",
-    description: "Track listing cost, channel price, expected margin, order revenue, and operational changes in the dashboard.",
-  },
-  {
-    icon: ShoppingCart,
-    title: "Order operations",
-    description: "Sync eBay orders, enrich supplier details, monitor fulfillment status, and export operational reports.",
-  },
-  {
-    icon: Image,
-    title: "Image handling",
-    description: "Use the extension image tools for extraction, editing, watermarking, and listing asset preparation.",
-  },
-  {
-    icon: FileText,
-    title: "Admin controls",
-    description: "Manage plans, notices, prompts, users, coupons, and usage from the same SaaS control plane.",
-  },
-];
-
+/** Feature grid — the six core features, icons + scroll-reveal. */
 const FeaturesSection = () => {
-  return (
-    <section className="border-b border-border bg-secondary/35 py-20 sm:py-24">
-      <div className="container px-4">
-        <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
-          <div className="max-w-xl">
-            <p className="text-sm font-semibold uppercase tracking-wide text-primary">Platform</p>
-            <h2 className="mt-3 font-display text-3xl font-bold text-foreground sm:text-4xl">
-              A cleaner operating system for marketplace sellers.
-            </h2>
-            <p className="mt-4 text-base leading-7 text-muted-foreground">
-              The product already has the right building blocks: dashboard modules, Supabase
-              functions, plan limits, order sync, and a Chrome extension. The SaaS UI should
-              make those systems feel connected and easy to scan.
-            </p>
-          </div>
+  const { features } = siteConfig;
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            {features.map((feature) => {
-              const Icon = feature.icon;
-              return (
-                <article
-                  key={feature.title}
-                  className="rounded-lg border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/35"
-                >
-                  <div className="mb-4 grid h-10 w-10 place-items-center rounded-md bg-primary/10 text-primary">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <h3 className="font-display text-lg font-semibold text-foreground">{feature.title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{feature.description}</p>
-                </article>
-              );
-            })}
-          </div>
+  return (
+    <section id="features" className="scroll-mt-24 border-b border-border bg-background py-20 sm:py-24">
+      <div className="container px-4">
+        <Reveal className="mx-auto mb-14 max-w-2xl text-center">
+          <p className="text-sm font-semibold uppercase tracking-wide text-primary">{features.eyebrow}</p>
+          <h2 className="mt-3 font-display text-3xl font-bold text-foreground sm:text-4xl text-balance">
+            {features.heading}
+          </h2>
+          <p className="mt-4 text-base leading-7 text-muted-foreground">{features.subheading}</p>
+        </Reveal>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {features.items.map((feature, index) => {
+            const Icon = feature.icon;
+            return (
+              <Reveal
+                key={feature.title}
+                as="article"
+                delay={(index % 3) * 0.08}
+                className="group rounded-2xl border border-border bg-card p-6 shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-soft-lg"
+              >
+                <div className="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <h3 className="font-display text-lg font-semibold text-foreground">{feature.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{feature.description}</p>
+              </Reveal>
+            );
+          })}
         </div>
       </div>
     </section>

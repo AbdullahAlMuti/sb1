@@ -21,6 +21,9 @@ declare global {
     };
     SSAmazonAdapter: any;
     SSWalmartAdapter: any;
+    SSVariationNormalizer: {
+      normalizeProduct(product: object, options?: object): object;
+    };
 
     // Legacy scraper globals the adapters delegate to (defined in content_scripts/)
     SsAmazonVariantScraper: any;

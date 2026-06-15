@@ -105,6 +105,10 @@ Deno.serve(async (req) => {
 
     console.log(`[sync-listing] User authenticated: ${user.id} (${user.email})`);
 
+    // Enforce active subscription check
+    const blockResponse = await enforceActiveSubscription(supabase, user.id);
+    if (blockResponse) return blockResponse;
+
     const userLimit = await checkRateLimit(supabase, {
       bucket: 'sync-listing:user',
       key: user.id,

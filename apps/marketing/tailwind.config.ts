@@ -7,6 +7,9 @@ const config: Config = {
     "./src/**/*.{ts,tsx}",
     "../../packages/**/*.{ts,tsx}",
   ],
+  // Marketing needs the typography plugin for blog article (`prose`) styling,
+  // on top of the shared `tailwindcss-animate` plugin.
+  plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
 };
 
 export default config;

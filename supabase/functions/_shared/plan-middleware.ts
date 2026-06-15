@@ -66,6 +66,71 @@ export interface FullPlanStatus {
   subscriptionEnd?: string;
 }
 
+export async function verifySaaSAccess(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<{ allowed: boolean; reason?: string }> {
+  // Check if the user is an admin or super admin first
+  const { data: roleRows } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId);
+  
+  const isAdmin = (roleRows || []).some(
+    (row: any) => row.role === 'admin' || row.role === 'super_admin' || row.role === 'moderator'
+  );
+  if (isAdmin) {
+    return { allowed: true };
+  }
+
+  const { data: profile, error } = await supabase
+    .from("profiles")
+    .select("selected_plan_id, payment_status, subscription_status")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error || !profile) {
+    return { allowed: false, reason: "Profile not found" };
+  }
+
+  if (!profile.selected_plan_id) {
+    return { allowed: false, reason: "No active paid plan selected" };
+  }
+
+  const isPaid = profile.payment_status === 'paid' || profile.payment_status === 'succeeded';
+  if (!isPaid) {
+    return { allowed: false, reason: "Payment required" };
+  }
+
+  if (profile.subscription_status !== 'active') {
+    return { allowed: false, reason: "Subscription is inactive" };
+  }
+
+  return { allowed: true };
+}
+
+export async function enforceActiveSubscription(
+  supabaseAdmin: SupabaseClient,
+  userId: string
+): Promise<Response | null> {
+  const access = await verifySaaSAccess(supabaseAdmin, userId);
+  if (!access.allowed) {
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-api-key",
+      "Content-Type": "application/json",
+    };
+    return new Response(
+      JSON.stringify({ success: false, error: access.reason, code: "PAYMENT_REQUIRED" }),
+      {
+        status: 402,
+        headers: corsHeaders,
+      }
+    );
+  }
+  return null;
+}
+
 /**
  * Fetches complete plan status for a user - use for dashboard/status checks
  */
@@ -77,7 +142,7 @@ export async function getFullPlanStatus(
     // Fetch profile with credits
     const { data: profile } = await supabase
       .from('profiles')
-      .select('credits, plan_id')
+      .select('credits, plan_id, selected_plan_id, payment_status, subscription_status')
       .eq('id', userId)
       .single();
 
@@ -187,9 +252,31 @@ export async function getFullPlanStatus(
       trial_duration_days: planData.trial_duration_days ?? 0,
     } : defaultLimits;
 
+    // Check roles for admin bypass
+    const { data: roleRows } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId);
+  
+    const isAdmin = (roleRows || []).some(
+      (row: any) => row.role === 'admin' || row.role === 'super_admin' || row.role === 'moderator'
+    );
+
+    let isBlocked = userPlan?.is_blocked ?? false;
+    let blockedReason = userPlan?.blocked_reason ?? undefined;
+
+    if (!isAdmin) {
+      const isPaid = profile.payment_status === 'paid' || profile.payment_status === 'succeeded';
+      const isSubscriptionActive = profile.subscription_status === 'active';
+      if (!profile.selected_plan_id || !isPaid || !isSubscriptionActive) {
+        isBlocked = true;
+        blockedReason = 'Active paid subscription required.';
+      }
+    }
+
     return {
-      isBlocked: userPlan?.is_blocked ?? false,
-      blockedReason: userPlan?.blocked_reason ?? undefined,
+      isBlocked,
+      blockedReason,
       isExpired,
       isTrial: limits.is_trial,
       trialEndsAt: userPlan?.trial_end ?? undefined,

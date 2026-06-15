@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { enforceActiveSubscription } from '../_shared/plan-middleware.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -48,6 +49,11 @@ Deno.serve(async (req) => {
 
     console.log(`[dashboard-overview] Fetching overview for user: ${user.id}`);
 
+    // Enforce active subscription check
+    const supabaseAdmin = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+    const blockResponse = await enforceActiveSubscription(supabaseAdmin, user.id);
+    if (blockResponse) return blockResponse;
+
     // Get today's date for filtering
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -75,22 +81,27 @@ Deno.serve(async (req) => {
         .eq('status', 'active'),
       // Pending orders
       supabase
-        .from('auto_orders')
+        .from('ebay_orders')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
-        .eq('status', 'PENDING'),
+        .in('order_status', ['pending', 'awaiting payment', 'processing', 'paid', 'shipped', 'Pending', 'Awaiting Payment', 'Processing', 'Paid', 'Shipped'])
+        .neq('total_amount', 0)
+        .is('deleted_at', null),
       // Completed orders with profit
       supabase
-        .from('auto_orders')
-        .select('profit, total_cost, item_price')
+        .from('ebay_orders')
+        .select('net_profit, add_fee')
         .eq('user_id', user.id)
-        .eq('status', 'COMPLETED'),
+        .in('order_status', ['completed', 'Completed'])
+        .neq('total_amount', 0)
+        .is('deleted_at', null),
       // Today's orders
       supabase
-        .from('auto_orders')
+        .from('ebay_orders')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
-        .gte('created_at', today.toISOString()),
+        .gte('order_date', today.toISOString())
+        .is('deleted_at', null),
       // Unread alerts
       supabase
         .from('inventory_alerts')
@@ -119,7 +130,7 @@ Deno.serve(async (req) => {
 
     // Calculate total profit from completed orders
     const totalProfit = (completedOrdersResult.data || []).reduce(
-      (sum, order) => sum + (Number(order.profit) || 0), 0
+      (sum, order) => sum + (Number((order as any).net_profit ?? (order as any).add_fee) || 0), 0
     );
 
     // Get status breakdown

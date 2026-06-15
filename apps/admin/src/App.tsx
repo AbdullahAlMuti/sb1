@@ -33,6 +33,8 @@ import AdminLogin from "./pages/AdminLogin";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminUsers from "./pages/AdminUsers";
 import AdminNotices from "./pages/AdminNotices";
+import AdminBlog from "./pages/AdminBlog";
+import AdminBlogEditor from "./pages/AdminBlogEditor";
 import AdminAudit from "./pages/AdminAudit";
 import AdminSettings from "./pages/AdminSettings";
 import AdminUsage from "./pages/AdminUsage";
@@ -105,6 +107,9 @@ const AdminRouteChildren = () => (
     <Route path="extension-control" element={<AdminExtensionControl />} />
     <Route path="notifications" element={<AdminNotices />} />
     <Route path="notices" element={<AdminNotices />} />
+    <Route path="blog" element={<AdminBlog />} />
+    <Route path="blog/new" element={<AdminBlogEditor />} />
+    <Route path="blog/:id/edit" element={<AdminBlogEditor />} />
     <Route path="support" element={<AdminModulePage title="Support / Tickets" description="Prioritize customer tickets, failed workflows, support notes, and escalation paths." icon={Bell} primaryAction="Create ticket" moduleType="general" />} />
     <Route path="reports" element={<AdminModulePage title="Reports / Analytics" description="Analyze growth, revenue, sync health, provider performance, usage, and operational trends." icon={Receipt} primaryAction="Export report" moduleType="general" />} />
     <Route path="audit" element={<AdminAudit />} />

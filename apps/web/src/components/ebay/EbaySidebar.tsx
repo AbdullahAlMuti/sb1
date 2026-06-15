@@ -1,6 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  BarChart3,
   Calculator,
   ChevronLeft,
   Flame,
@@ -11,18 +10,31 @@ import {
   LogOut,
   Package,
   Puzzle,
-  Rocket,
   Search,
   Settings,
   ShoppingCart,
   TrendingUp,
   Truck,
   Layers,
+  ChevronsUpDown,
+  Globe,
+  ArrowUpCircle,
+  Download,
+  Gift,
+  Info
 } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
 import { useAuth } from '@repo/auth/hooks/useAuth';
+import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { cn } from '@repo/ui/lib/utils';
 import SellerSuitLogo from '@repo/ui/brand/SellerSuitLogo';
+import { Avatar, AvatarFallback, AvatarImage } from '@repo/ui/components/ui/avatar';
+import { Separator } from '@repo/ui/components/ui/separator';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@repo/ui/components/ui/popover';
 
 const EBAY_NAV_ITEMS = [
   { key: 'overview', path: '/dashboard/ebay', icon: LayoutDashboard, label: 'Overview' },
@@ -40,7 +52,6 @@ const EBAY_NAV_ITEMS = [
 ];
 
 const EBAY_FOOTER_ITEMS = [
-  { key: 'settings', path: '/dashboard/ebay/settings', icon: Settings, label: 'Settings' },
   { key: 'help', path: '/documentation', icon: HelpCircle, label: 'Help' },
 ];
 
@@ -54,7 +65,8 @@ interface EbaySidebarProps {
 export function EbaySidebar({ isMobile, onMobileClose, isCollapsed = false, onToggleCollapse }: EbaySidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { signOut } = useAuth();
+  const { user, profile, signOut } = useAuth();
+  const { subscribed } = useSubscription();
   const effectiveCollapsed = isMobile ? false : isCollapsed;
 
   const isActive = (path: string) => {
@@ -86,6 +98,14 @@ export function EbaySidebar({ isMobile, onMobileClose, isCollapsed = false, onTo
     );
   };
 
+  const getInitials = (name: string | null) => {
+    if (!name) return user?.email?.charAt(0).toUpperCase() || 'U';
+    return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+  };
+
+  const isEbay = location.pathname.startsWith('/dashboard/ebay');
+  const settingsPath = isEbay ? '/dashboard/ebay/settings' : '/dashboard/settings';
+
   return (
     <aside
       data-collapsed={effectiveCollapsed}
@@ -114,40 +134,159 @@ export function EbaySidebar({ isMobile, onMobileClose, isCollapsed = false, onTo
         {EBAY_FOOTER_ITEMS.map(renderItem)}
       </nav>
 
-      {!effectiveCollapsed && (
-        <div className="px-3 pb-3">
-          <div
-            className="rounded-lg p-3 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
-            onClick={() => {
-              onMobileClose?.();
-              navigate('/dashboard/subscription');
-            }}
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <Rocket className="h-4 w-4 text-slate-700 dark:text-slate-300" />
-              <h3 className="font-semibold text-slate-900 dark:text-white text-sm">Grow eBay Sales</h3>
-            </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-3">
-              Upgrade for higher limits and automation tools.
-            </p>
-            <Button size="sm" variant="outline" className="w-full text-xs h-8 font-medium">
-              View Plans
-            </Button>
-          </div>
-        </div>
-      )}
 
+
+      {/* Footer - Profile Popover */}
       <div className="p-3 border-t border-slate-200 dark:border-slate-800">
-        <button
-          onClick={() => {
-            onMobileClose?.();
-            signOut();
-          }}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
-        >
-          <LogOut className="h-5 w-5" />
-          {!effectiveCollapsed && <span className="text-sm font-medium">Log out</span>}
-        </button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button className={cn(
+              "flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left w-full cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              effectiveCollapsed && "justify-center px-1"
+            )}>
+              <Avatar className="h-9 w-9 border border-slate-200 dark:border-slate-800 select-none pointer-events-none">
+                <AvatarImage src={profile?.avatar_url || undefined} />
+                <AvatarFallback className="bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-xs font-semibold">
+                  {getInitials(profile?.full_name)}
+                </AvatarFallback>
+              </Avatar>
+              
+              {!effectiveCollapsed && (
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                    {profile?.full_name || 'User'}
+                  </p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                    {subscribed ? 'Pro Active' : 'Free Trial'}
+                  </p>
+                </div>
+              )}
+              
+              {!effectiveCollapsed && (
+                <ChevronsUpDown className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+              )}
+            </button>
+          </PopoverTrigger>
+          
+          <PopoverContent 
+            side={isMobile ? "top" : "right"} 
+            align="end" 
+            sideOffset={12} 
+            className="w-56 p-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg"
+          >
+            <div className="px-2.5 py-2 text-left">
+              <p className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                {profile?.full_name || 'User'}
+              </p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                {user?.email}
+              </p>
+              <div className="mt-1.5">
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                  {subscribed ? 'Pro Plan' : 'Free Trial'}
+                </span>
+              </div>
+            </div>
+            
+            <Separator className="bg-slate-200 dark:bg-slate-800 my-1" />
+            
+            <div className="space-y-0.5">
+              <button 
+                onClick={() => {
+                  onMobileClose?.();
+                  navigate(settingsPath);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Settings className="h-3.5 w-3.5 text-slate-500" />
+                Settings
+              </button>
+
+              <button 
+                onClick={() => {
+                  onMobileClose?.();
+                  navigate('/documentation');
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Globe className="h-3.5 w-3.5 text-slate-500" />
+                Language
+              </button>
+
+              <button 
+                onClick={() => {
+                  onMobileClose?.();
+                  navigate('/documentation');
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <HelpCircle className="h-3.5 w-3.5 text-slate-500" />
+                Get help
+              </button>
+            </div>
+
+            <Separator className="bg-slate-200 dark:bg-slate-800 my-1" />
+
+            <div className="space-y-0.5">
+              <button 
+                onClick={() => {
+                  onMobileClose?.();
+                  navigate('/dashboard/subscription');
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <ArrowUpCircle className="h-3.5 w-3.5 text-slate-500" />
+                Upgrade plan
+              </button>
+
+              <button 
+                onClick={() => {
+                  onMobileClose?.();
+                  navigate('/dashboard/extension');
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Download className="h-3.5 w-3.5 text-slate-500" />
+                Get apps and extensions
+              </button>
+
+              <button 
+                onClick={() => {
+                  onMobileClose?.();
+                  navigate('/dashboard/subscription');
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Gift className="h-3.5 w-3.5 text-slate-500" />
+                Gift SellerSuit
+              </button>
+
+              <button 
+                onClick={() => {
+                  onMobileClose?.();
+                  navigate('/documentation');
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Info className="h-3.5 w-3.5 text-slate-500" />
+                Learn more
+              </button>
+            </div>
+
+            <Separator className="bg-slate-200 dark:bg-slate-800 my-1" />
+
+            <button 
+              onClick={() => {
+                onMobileClose?.();
+                signOut();
+              }}
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Log out
+            </button>
+          </PopoverContent>
+        </Popover>
       </div>
     </aside>
   );

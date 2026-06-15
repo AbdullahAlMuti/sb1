@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, createServiceClient } from '../_shared/extension-session.ts';
 import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
+import { enforceActiveSubscription } from '../_shared/plan-middleware.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -25,6 +26,9 @@ serve(async (req) => {
 
     const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
     const userId = authContext.userId;
+
+    const blockResponse = await enforceActiveSubscription(supabase, userId);
+    if (blockResponse) return blockResponse;
 
     const userLimit = await checkRateLimit(supabase, {
       bucket: 'ai-product-research:user',

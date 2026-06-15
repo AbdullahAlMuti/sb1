@@ -652,7 +652,7 @@ export async function requireFeatureEntitlement(
     userPlanRes,
     subRes
   ] = await Promise.all([
-    supabase.from("profiles").select("plan_id, is_active, account_status").eq("id", userId).maybeSingle(),
+    supabase.from("profiles").select("plan_id, is_active, account_status, selected_plan_id, payment_status, subscription_status").eq("id", userId).maybeSingle(),
     supabase.from("user_plans").select("plan_id, status").eq("user_id", userId).maybeSingle(),
     workspaceId
       ? supabase
@@ -672,6 +672,19 @@ export async function requireFeatureEntitlement(
   // Block suspended/banned/inactive profiles
   if (profile?.is_active === false || ["Suspended", "Banned"].includes(profile?.account_status || "")) {
     return false;
+  }
+
+  // Enforce active paid subscription for non-admins
+  const { data: roleRows } = await supabase.from("user_roles").select("role").eq("user_id", userId);
+  const isAdminUser = (roleRows || []).some(
+    (r: any) => r.role === "admin" || r.role === "super_admin" || r.role === "moderator"
+  );
+  if (!isAdminUser) {
+    const isPaid = profile?.payment_status === "paid" || profile?.payment_status === "succeeded";
+    const isSubscriptionActive = profile?.subscription_status === "active";
+    if (!profile?.selected_plan_id || !isPaid || !isSubscriptionActive) {
+      return false;
+    }
   }
 
   let planId: string | null = null;

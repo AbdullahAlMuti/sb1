@@ -27,7 +27,7 @@ const CTASection = forwardRef<HTMLElement>((_, ref) => {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
-            <Button className="h-12 rounded-lg px-6" onClick={() => navigate(user ? "/dashboard" : "/register")}>
+            <Button className="h-12 rounded-lg px-6" onClick={() => navigate(user ? "/dashboard" : "/signup")}>
               {user ? "Open dashboard" : "Create account"}
               <ArrowRight className="h-4 w-4" />
             </Button>

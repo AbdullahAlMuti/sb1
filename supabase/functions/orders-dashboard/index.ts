@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { enforceActiveSubscription } from "../_shared/plan-middleware.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,14 +55,19 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
     const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
     const userId = !claimsError && claimsData?.claims?.sub ? (claimsData.claims.sub as string) : null;
     if (!userId) return json(401, { error: "Unauthorized" });
+
+    const blockResponse = await enforceActiveSubscription(supabaseAdmin, userId);
+    if (blockResponse) return blockResponse;
 
     if (req.method !== "POST") return json(405, { error: "Method not allowed" });
     const body = (await req.json()) as Partial<RequestBody>;
@@ -84,14 +90,10 @@ Deno.serve(async (req) => {
       .eq("user_id", userId)
       .is("deleted_at", null);
 
-    // status filter (match ebay-orders behavior: total_amount=0 treated as cancelled)
+    // status filter
     if (status && status !== "all") {
       const s = status.toLowerCase();
-      if (s === "cancelled") {
-        q = q.or("order_status.ilike.cancelled,total_amount.eq.0");
-      } else {
-        q = q.in("order_status", [status, s, s.toUpperCase(), s[0]?.toUpperCase() + s.slice(1)]).neq("total_amount", 0);
-      }
+      q = q.in("order_status", [status, s, s.toUpperCase(), s[0]?.toUpperCase() + s.slice(1)]);
     }
 
     if (search) {

@@ -16,29 +16,31 @@ import {
   Truck,
   ShoppingCart,
   Gem,
+  Sparkles,
+  Calendar as CalendarIcon,
 } from 'lucide-react';
 import { useAuth } from '@repo/auth/hooks/useAuth';
 import { supabase } from '@repo/api-client/supabase/client';
 import { Skeleton } from '@repo/ui/components/ui/skeleton';
+import { Popover, PopoverContent, PopoverTrigger } from '@repo/ui/components/ui/popover';
+import { Calendar } from '@repo/ui/components/ui/calendar';
+import { DateRange } from 'react-day-picker';
 import {
   format,
-  startOfDay, startOfWeek, startOfMonth, startOfYear,
+  startOfDay, endOfDay, startOfWeek, startOfMonth, startOfYear,
   differenceInDays, eachDayOfInterval, eachWeekOfInterval,
   eachMonthOfInterval, subDays, subWeeks, subMonths, subYears,
   parseISO, formatDistanceToNow,
 } from 'date-fns';
 import {
-  XAxis, YAxis, CartesianGrid, Tooltip,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, Area, AreaChart,
 } from 'recharts';
-import { WhatsAppButton } from '@repo/ui/contact/WhatsAppButton';
-import { useWhatsAppConfig } from '@repo/api-client/hooks/useWhatsAppConfig';
-import { applyWhatsAppTemplate } from '@repo/utils/whatsapp';
 import './dashboard-design.css';
 
 /* ─────────────────────────── types ────────────────────────────────────── */
 
-type DateRangePreset = 'today' | 'week' | 'month' | 'year';
+type DateRangePreset = 'today' | 'week' | 'month' | 'year' | 'all' | 'custom';
 
 interface DateRangeValue { from: Date; to: Date; }
 
@@ -54,6 +56,7 @@ interface DashboardStats {
   profitOrderCount: number;
   completedOrders: number;
   pendingOrders: number;
+  cancelledOrders: number;
   unreadAlerts: number;
   activeListings: number;
   /** % change vs previous period, based on confirmed order revenue */
@@ -136,13 +139,24 @@ function Sparkline({ data, color = '#0e9f6e', id }: { data: number[]; color?: st
   );
 }
 
-function SvgDonut({ value, size = 160 }: { value: number; size?: number }) {
+function SvgDonut({
+  value,
+  completed,
+  cancelled,
+  size = 160
+}: {
+  value: number;
+  completed: number;
+  cancelled: number;
+  size?: number;
+}) {
   const stroke = 15;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const clamped = Math.min(100, Math.max(0, value));
   const [offset, setOffset] = useState(c);
   const displayVal = useCountUp(clamped);
+  const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
     let raf1: number, raf2: number;
@@ -154,9 +168,22 @@ function SvgDonut({ value, size = 160 }: { value: number; size?: number }) {
   }, [clamped, c]);
 
   return (
-    <div className="db-donut-wrap" style={{ width: size, height: size }}>
+    <div
+      className="db-donut-wrap cursor-pointer"
+      style={{ width: size, height: size }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--db-surface-3)" strokeWidth={stroke} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={cancelled > 0 ? "var(--db-danger)" : "var(--db-surface-3)"}
+          strokeWidth={stroke}
+          opacity={cancelled > 0 ? 0.25 : 1}
+        />
         <circle
           cx={size / 2} cy={size / 2} r={r}
           fill="none" stroke="var(--db-success)" strokeWidth={stroke}
@@ -166,9 +193,18 @@ function SvgDonut({ value, size = 160 }: { value: number; size?: number }) {
           style={{ transition: 'stroke-dashoffset 1.2s cubic-bezier(0.3, 0.8, 0.3, 1)' }}
         />
       </svg>
-      <div className="db-donut-center">
-        <span className="db-donut-pct db-num">{Math.round(displayVal)}%</span>
-        <span className="db-donut-lab">completed</span>
+      <div className="db-donut-center" style={{ transition: 'opacity 0.15s ease-in-out' }}>
+        {isHovered ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--db-success)' }}>{completed} Done</span>
+            <span style={{ fontSize: '18px', fontWeight: 700, color: 'var(--db-danger)' }}>{cancelled} Cancel</span>
+          </div>
+        ) : (
+          <>
+            <span className="db-donut-pct db-num">{Math.round(displayVal)}%</span>
+            <span className="db-donut-lab">completed</span>
+          </>
+        )}
       </div>
     </div>
   );
@@ -178,24 +214,53 @@ function Delta({ v }: { v: number }) {
   const cls = v > 0 ? 'up' : v < 0 ? 'down' : 'flat';
   return (
     <span className={`db-delta ${cls}`}>
-      {v > 0 ? <TrendingUp size={11} /> : v < 0 ? <TrendingDown size={11} /> : <Minus size={11} />}
+      {v > 0 ? '↑ ' : v < 0 ? '↓ ' : ''}
       <span className="db-num">{Math.abs(v).toFixed(1)}%</span>
     </span>
   );
 }
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="db-tip-card p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl space-y-2">
+        <div className="text-xs font-semibold text-slate-400 dark:text-slate-500">{label}</div>
+        <div className="space-y-1.5 min-w-[140px]">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-[12px] text-slate-500 dark:text-slate-400">Revenue</span>
+            <span className="text-sm font-bold text-orange-500">${data.revenue.toFixed(2)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-[12px] text-slate-500 dark:text-slate-400">Net Profit</span>
+            <span className="text-sm font-bold text-green-500">${data.profit.toFixed(2)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-[12px] text-slate-500 dark:text-slate-400">Orders</span>
+            <span className="text-sm font-bold text-blue-500">{data.orders}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
 
 /* ─────────────────────── main component ───────────────────────────────── */
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { profile, user } = useAuth();
-  const { data: whatsappConfig } = useWhatsAppConfig();
 
   const [datePreset, setDatePreset] = useState<DateRangePreset>('month');
+  const [customRange, setCustomRange] = useState<DateRange | undefined>({
+    from: subDays(new Date(), 30),
+    to: new Date(),
+  });
   const [stats, setStats] = useState<DashboardStats>({
     orderRevenue: 0, inventoryValue: 0, totalCost: 0,
     netProfit: null, profitOrderCount: 0,
-    completedOrders: 0, pendingOrders: 0,
+    completedOrders: 0, pendingOrders: 0, cancelledOrders: 0,
     unreadAlerts: 0, activeListings: 0,
     revenueChange: 0, ordersChange: 0, previousOrderRevenue: 0,
     lastSyncAt: null,
@@ -214,9 +279,16 @@ export default function Dashboard() {
       case 'week':   return { from: startOfWeek(now, { weekStartsOn: 1 }), to: now };
       case 'month':  return { from: startOfMonth(now), to: now };
       case 'year':   return { from: startOfYear(now), to: now };
+      case 'all':    return { from: subYears(now, 5), to: now };
+      case 'custom': {
+        if (customRange?.from && customRange?.to) {
+          return { from: startOfDay(customRange.from), to: endOfDay(customRange.to) };
+        }
+        return { from: startOfMonth(now), to: now };
+      }
       default:       return { from: startOfMonth(now), to: now };
     }
-  }, [datePreset]);
+  }, [datePreset, customRange]);
 
   const getPreviousDateRange = useCallback((): DateRangeValue => {
     const cur = getEffectiveDateRange();
@@ -225,6 +297,14 @@ export default function Dashboard() {
       case 'week':   return { from: subWeeks(cur.from, 1), to: subWeeks(cur.to, 1) };
       case 'month':  return { from: subMonths(cur.from, 1), to: subMonths(cur.to, 1) };
       case 'year':   return { from: subYears(cur.from, 1), to: subYears(cur.to, 1) };
+      case 'all':    return cur; // 0% comparison change for all time
+      case 'custom': {
+        const diff = cur.to.getTime() - cur.from.getTime();
+        return {
+          from: new Date(cur.from.getTime() - diff),
+          to: new Date(cur.to.getTime() - diff),
+        };
+      }
       default:       return { from: subMonths(cur.from, 1), to: subMonths(cur.to, 1) };
     }
   }, [datePreset, getEffectiveDateRange]);
@@ -244,11 +324,25 @@ export default function Dashboard() {
       intervals = eachDayOfInterval({ start: range.from, end: range.to });
       formatStr = 'EEE';
     } else if (daysDiff <= 31) {
-      intervals = eachWeekOfInterval({ start: range.from, end: range.to });
-      formatStr = "'Wk' w";
-    } else {
+      intervals = eachDayOfInterval({ start: range.from, end: range.to });
+      formatStr = 'd';
+    } else if (daysDiff <= 365) {
       intervals = eachMonthOfInterval({ start: range.from, end: range.to });
       formatStr = 'MMM';
+    } else if (daysDiff <= 3 * 365) {
+      intervals = eachMonthOfInterval({ start: range.from, end: range.to });
+      formatStr = 'MMM yy';
+    } else {
+      intervals = [];
+      let curr = new Date(range.from.getFullYear(), 0, 1);
+      while (curr <= range.to) {
+        intervals.push(new Date(curr));
+        curr.setFullYear(curr.getFullYear() + 1);
+      }
+      if (intervals.length === 0) {
+        intervals = [range.from, range.to];
+      }
+      formatStr = 'yyyy';
     }
 
     return intervals.map((intervalStart, index) => {
@@ -282,21 +376,6 @@ export default function Dashboard() {
       const dateRange = getEffectiveDateRange();
       const previousRange = getPreviousDateRange();
 
-      const [
-        listingsResult, alertsResult, topListingsResult, allListingsResult,
-        currentEbayOrdersResult, previousEbayOrdersResult,
-      ] = await Promise.all([
-        supabase.from('listings').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'active'),
-        supabase.from('inventory_alerts').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'UNREAD'),
-        supabase.from('listings').select('id, title, sku, amazon_asin, ebay_price, amazon_price, status, amazon_data').eq('user_id', user.id).order('ebay_price', { ascending: false }).limit(5),
-        supabase.from('listings').select('ebay_price, amazon_price, status').eq('user_id', user.id),
-        (supabase.from('ebay_orders' as any).select('id, ebay_order_id, order_status, total_amount, order_date, net_profit, add_fee, synced_at').eq('user_id', user.id).gte('order_date', dateRange.from.toISOString()).lte('order_date', dateRange.to.toISOString())) as any,
-        (supabase.from('ebay_orders' as any).select('id, ebay_order_id, order_status, total_amount, order_date').eq('user_id', user.id).gte('order_date', previousRange.from.toISOString()).lte('order_date', previousRange.to.toISOString())) as any,
-      ]);
-
-      const listings = topListingsResult.data || [];
-      const allListings = allListingsResult.data || [];
-
       interface EbayOrderRow {
         id?: string;
         ebay_order_id?: string;
@@ -308,8 +387,47 @@ export default function Dashboard() {
         synced_at?: string | null;
         created_at?: string;
       }
-      const currentEbayOrders: EbayOrderRow[] = (currentEbayOrdersResult as any)?.data || [];
-      const previousEbayOrders: EbayOrderRow[] = (previousEbayOrdersResult as any)?.data || [];
+
+      const fetchAllOrdersInRange = async (
+        from: Date,
+        to: Date,
+        fields: string
+      ): Promise<EbayOrderRow[]> => {
+        let allRows: EbayOrderRow[] = [];
+        let page = 0;
+        const pageSize = 1000;
+        while (true) {
+          const { data, error } = await supabase
+            .from('ebay_orders' as any)
+            .select(fields)
+            .eq('user_id', user.id)
+            .gte('order_date', from.toISOString())
+            .lte('order_date', to.toISOString())
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+
+          if (error) throw error;
+          if (!data || data.length === 0) break;
+          allRows = allRows.concat(data as EbayOrderRow[]);
+          if (data.length < pageSize) break;
+          page++;
+        }
+        return allRows;
+      };
+
+      const [
+        listingsResult, alertsResult, topListingsResult, allListingsResult,
+        currentEbayOrders, previousEbayOrders,
+      ] = await Promise.all([
+        supabase.from('listings').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'active'),
+        supabase.from('inventory_alerts').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'UNREAD'),
+        supabase.from('listings').select('id, title, sku, amazon_asin, ebay_price, amazon_price, status, amazon_data').eq('user_id', user.id).order('ebay_price', { ascending: false }).limit(5),
+        supabase.from('listings').select('ebay_price, amazon_price, status').eq('user_id', user.id),
+        fetchAllOrdersInRange(dateRange.from, dateRange.to, 'id, ebay_order_id, order_status, total_amount, order_date, net_profit, add_fee, synced_at'),
+        fetchAllOrdersInRange(previousRange.from, previousRange.to, 'id, ebay_order_id, order_status, total_amount, order_date'),
+      ]);
+
+      const listings = topListingsResult.data || [];
+      const allListings = allListingsResult.data || [];
 
       /* ── de-duplicate eBay rows ────────────────────────────────────────
          eBay sales-record CSVs get re-imported, leaving multiple identical
@@ -368,10 +486,25 @@ export default function Dashboard() {
         ? ordersWithProfit.reduce((acc, o) => acc + (o.profit || 0), 0)
         : null;
 
-      const completedEbayOrders = currentOrders.filter(o => o.order_status === 'completed');
-      const pendingEbayOrders = currentOrders.filter(o =>
-        ['pending', 'awaiting payment', 'processing', 'paid', 'shipped'].includes(o.order_status)
-      );
+      const completedStatuses = ['completed', 'paid', 'shipped', 'vat paid'];
+      const pendingStatuses = ['pending', 'awaiting payment', 'processing'];
+
+      const completedEbayOrders = currentOrders.filter(o => {
+        const s = (o.order_status || '').toLowerCase();
+        const isCompleted = completedStatuses.includes(s) || s.includes('paid');
+        const isCancelled = s.includes('cancel') || s.includes('refund') || s.includes('return');
+        return isCompleted && !isCancelled;
+      });
+      const cancelledEbayOrders = currentOrders.filter(o => {
+        const s = (o.order_status || '').toLowerCase();
+        return s.includes('cancel') || s.includes('refund') || s.includes('return');
+      });
+      const pendingEbayOrders = currentOrders.filter(o => {
+        const s = (o.order_status || '').toLowerCase();
+        const isCompleted = completedStatuses.includes(s) || s.includes('paid');
+        const isCancelled = s.includes('cancel') || s.includes('refund') || s.includes('return');
+        return !isCompleted && !isCancelled;
+      });
 
       const inventoryValue = allListings.reduce((acc, l) => acc + (Number(l.ebay_price) || 0), 0);
       const totalCost = allListings.reduce((acc, l) => acc + (Number(l.amazon_price) || 0), 0);
@@ -417,7 +550,7 @@ export default function Dashboard() {
       setStats({
         orderRevenue: ebayOrdersRevenue, inventoryValue, totalCost,
         netProfit: realNetProfit, profitOrderCount: ordersWithProfit.length,
-        completedOrders: completedEbayOrders.length, pendingOrders: pendingEbayOrders.length,
+        completedOrders: completedEbayOrders.length, pendingOrders: pendingEbayOrders.length, cancelledOrders: cancelledEbayOrders.length,
         unreadAlerts: alertsResult.count || 0, activeListings: listingsResult.count || 0,
         revenueChange, ordersChange, previousOrderRevenue, lastSyncAt,
       });
@@ -438,11 +571,12 @@ export default function Dashboard() {
 
   /* ── derived values ─────────────────────────────────────────────────── */
 
-  const totalOrders = stats.completedOrders + stats.pendingOrders;
+  const totalOrders = stats.completedOrders + stats.pendingOrders + stats.cancelledOrders;
+  const successRateTotal = stats.completedOrders + stats.cancelledOrders;
 
   const successRate = useMemo(() => {
-    return totalOrders > 0 ? Math.round((stats.completedOrders / totalOrders) * 100) : 0;
-  }, [stats.completedOrders, totalOrders]);
+    return successRateTotal > 0 ? Math.round((stats.completedOrders / successRateTotal) * 100) : 0;
+  }, [stats.completedOrders, successRateTotal]);
 
   const marginPct = stats.inventoryValue > 0
     ? ((stats.inventoryValue - stats.totalCost) / stats.inventoryValue) * 100
@@ -482,7 +616,10 @@ export default function Dashboard() {
 
   const rangeLabel = datePreset === 'today' ? 'today'
     : datePreset === 'year' ? 'the last 12 months'
-    : `this ${datePreset}`;
+    : datePreset === 'all' ? 'all time'
+    : datePreset === 'custom' && customRange?.from && customRange?.to
+      ? `${format(customRange.from, 'MMM d, yyyy')} - ${format(customRange.to, 'MMM d, yyyy')}`
+      : `this ${datePreset}`;
 
   /* ── loading skeleton ───────────────────────────────────────────────── */
 
@@ -490,8 +627,8 @@ export default function Dashboard() {
     return (
       <div className="db-dash space-y-5 pb-8">
         <div className="flex items-center justify-between">
-          <div className="space-y-2"><Skeleton className="h-7 w-36" /><Skeleton className="h-4 w-52" /></div>
-          <div className="flex gap-3"><Skeleton className="h-9 w-48 rounded-xl" /><Skeleton className="h-9 w-28 rounded-xl" /></div>
+          <div><Skeleton className="h-4 w-32" /></div>
+          <div><Skeleton className="h-9 w-48 rounded-xl" /></div>
         </div>
         <div className="db-grid"><Skeleton className="db-col-4 h-36 rounded-2xl" /><Skeleton className="db-col-4 h-36 rounded-2xl" /><Skeleton className="db-col-4 h-36 rounded-2xl" /></div>
         <div className="db-grid"><Skeleton className="db-col-8 h-80 rounded-2xl" /><Skeleton className="db-col-4 h-80 rounded-2xl" /></div>
@@ -508,8 +645,6 @@ export default function Dashboard() {
       {/* ── page header ─────────────────────────────────────────────── */}
       <div className="db-page-head db-fade-up">
         <div className="db-page-title">
-          <h1>Dashboard</h1>
-          <p>Welcome back{profile?.full_name ? `, ${profile.full_name.split(' ')[0]}` : ''} — here's how your store is performing.</p>
           <div className="db-synced">
             {stats.lastSyncAt ? (
               <>
@@ -526,29 +661,53 @@ export default function Dashboard() {
         </div>
 
         <div className="db-head-actions">
-          {whatsappConfig?.whatsapp_dashboard_enabled && whatsappConfig?.support_whatsapp_number && (
-            <WhatsAppButton
-              phone_number={whatsappConfig.support_whatsapp_number}
-              message={applyWhatsAppTemplate(
-                whatsappConfig.whatsapp_dashboard_template || 'Hi, I need help.',
-                { customer_name: profile?.full_name }
-              )}
-            />
-          )}
           <div className="db-seg">
-            {(['today', 'week', 'month', 'year'] as const).map(p => (
+            {(['today', 'week', 'month', 'year', 'all'] as const).map(p => (
               <button
                 key={p}
                 className={datePreset === p ? 'on' : ''}
                 onClick={() => setDatePreset(p)}
               >
-                {p === 'today' ? 'Day' : p.charAt(0).toUpperCase() + p.slice(1)}
+                {p === 'today' ? 'Day'
+                 : p === 'week' ? 'Week'
+                 : p === 'month' ? 'Month'
+                 : p === 'year' ? 'Year'
+                 : 'All Time'}
               </button>
             ))}
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className={datePreset === 'custom' ? 'on' : ''}>
+                  <span className="flex items-center gap-1.5">
+                    <CalendarIcon className="h-3.5 w-3.5" />
+                    {datePreset === 'custom' && customRange?.from && customRange?.to ? (
+                      <>
+                        {format(customRange.from, 'MMM d')} - {format(customRange.to, 'MMM d')}
+                      </>
+                    ) : (
+                      'Custom'
+                    )}
+                  </span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg" align="end">
+                <Calendar
+                  initialFocus
+                  mode="range"
+                  defaultMonth={customRange?.from}
+                  selected={customRange}
+                  onSelect={(range) => {
+                    setCustomRange(range);
+                    if (range?.from && range?.to) {
+                      setDatePreset('custom');
+                    }
+                  }}
+                  numberOfMonths={2}
+                />
+              </PopoverContent>
+            </Popover>
           </div>
-          <button className="db-btn-primary" onClick={() => navigate('/dashboard/listings')}>
-            <Plus size={15} /> Add Listing
-          </button>
         </div>
       </div>
 
@@ -558,7 +717,7 @@ export default function Dashboard() {
         {/* Inventory Value */}
         <div className="db-card lift db-col-4 db-fade-up" style={{ animationDelay: '0.04s' }}>
           <div className="db-card-head">
-            <div className="db-card-ico blue"><Package size={20} /></div>
+            <div className="db-card-ico coral"><Package size={20} /></div>
             <div className="db-card-title-wrap">
               <div className="db-card-title">Inventory Value</div>
               <div className="db-card-sub">Potential revenue · listing prices</div>
@@ -570,11 +729,11 @@ export default function Dashboard() {
           </div>
           <div className="db-chips">
             <span className="db-chip">
-              <span className="dot" style={{ background: 'var(--db-accent)' }} />
+              <span className="dot" style={{ background: '#ef4444' }} />
               {stats.activeListings} Active listings
             </span>
             <span className="db-chip">
-              <span className="dot" style={{ background: 'var(--db-warning)' }} />
+              <span className="dot" style={{ background: '#f97316' }} />
               {totalOrders} Orders
             </span>
           </div>
@@ -598,12 +757,12 @@ export default function Dashboard() {
           </div>
           {sparklineData.some(v => v > 0) && (
             <div className="db-spark">
-              <Sparkline data={sparklineData} color="#0e9f6e" id="rev" />
+              <Sparkline data={sparklineData} color="#10b981" id="rev" />
             </div>
           )}
           <div className="db-kpi-foot">
             <Delta v={stats.revenueChange} />
-            <button className="db-link-row" onClick={() => navigate('/dashboard/orders')}>
+            <button className="db-link-row" onClick={() => navigate('/dashboard/ebay/orders')}>
               View orders <ArrowUpRight size={13} />
             </button>
           </div>
@@ -636,10 +795,11 @@ export default function Dashboard() {
           </div>
           <div className="db-kpi-foot">
             <span className="db-chip">
-              <span className="db-num" style={{ color: 'var(--db-success)', fontWeight: 700 }}>{marginPct.toFixed(0)}%</span>
+              <span className="dot" style={{ background: '#10b981' }} />
+              <span className="db-num" style={{ color: '#059669', fontWeight: 700 }}>{marginPct.toFixed(0)}%</span>
               &nbsp;blended margin
             </span>
-            <button className="db-link-row" onClick={() => navigate('/dashboard/listings')}>
+            <button className="db-link-row" onClick={() => navigate('/dashboard/ebay/listings')}>
               View listings <ArrowUpRight size={13} />
             </button>
           </div>
@@ -655,25 +815,21 @@ export default function Dashboard() {
         {/* Revenue Trend chart */}
         <div className="db-card db-col-8 db-fade-up" style={{ animationDelay: '0.20s' }}>
           <div className="db-chart-top">
-            <div className="db-card-ico blue"><Activity size={19} /></div>
+            <div className="db-card-ico coral"><Sparkles size={19} /></div>
             <div className="db-card-title-wrap">
               <div className="db-card-title">Revenue Trend</div>
               <div className="db-card-sub">Confirmed order revenue over {rangeLabel}</div>
             </div>
-            {stats.lastSyncAt ? (
-              <span className="db-tag green" style={{ marginLeft: 'auto' }}>
-                <span className="db-pulse" style={{ width: 6, height: 6, flexShrink: 0 }} />
-                Live
-              </span>
-            ) : (
-              <span className="db-tag blue" style={{ marginLeft: 'auto' }}>eBay</span>
-            )}
+            <span className="db-tag green" style={{ marginLeft: 'auto' }}>
+              <span className="db-pulse" style={{ width: 6, height: 6, flexShrink: 0 }} />
+              Live
+            </span>
           </div>
 
           <div className="db-chart-stats">
             <div>
               <div className="db-stat-lab">
-                <span className="db-stat-dot" style={{ background: 'var(--db-accent)' }} />
+                <span className="db-stat-dot" style={{ background: '#f97316' }} />
                 Order revenue
               </div>
               <div className="db-stat-val">
@@ -700,45 +856,49 @@ export default function Dashboard() {
           <div style={{ height: 240 }}>
             {trendData.length > 0 && trendData.some(t => t.revenue > 0 || t.orders > 0) ? (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={trendData} margin={{ top: 10, right: 4, left: -16, bottom: 0 }} key={datePreset}>
+                <AreaChart data={trendData} margin={{ top: 10, right: 5, left: -10, bottom: 5 }} key={datePreset}>
                   <defs>
                     <linearGradient id="dbAreaFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#2455f6" stopOpacity={0.28} />
-                      <stop offset="70%" stopColor="#2455f6" stopOpacity={0.04} />
-                      <stop offset="100%" stopColor="#2455f6" stopOpacity={0} />
+                      <stop offset="0%" stopColor="#f97316" stopOpacity={0.24} />
+                      <stop offset="100%" stopColor="#f97316" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="4 6" stroke="var(--db-border)" vertical={false} />
                   <XAxis
                     dataKey="name"
-                    tick={{ fontSize: 11, fill: 'var(--db-ink-4)', fontFamily: 'Hanken Grotesk, system-ui', fontWeight: 600 }}
+                    tick={{ fontSize: 11, fill: 'var(--db-ink-4)', fontFamily: 'Plus Jakarta Sans, Inter, system-ui', fontWeight: 600 }}
                     axisLine={false} tickLine={false} dy={8}
                     interval="preserveStartEnd"
+                    ticks={datePreset === 'month' ? ['1', '6', '11', '16', '21', '26', '30'] : undefined}
                   />
                   <YAxis
-                    tick={{ fontSize: 11, fill: 'var(--db-ink-4)', fontFamily: 'Hanken Grotesk, system-ui' }}
-                    axisLine={false} tickLine={false}
-                    tickFormatter={(v: number) => `$${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`}
+                    tickFormatter={(v) => `$${v}`}
+                    tick={{ fontSize: 10, fill: 'var(--db-ink-4)', fontFamily: 'Plus Jakarta Sans, Inter, system-ui', fontWeight: 600 }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={45}
                   />
                   <Tooltip
-                    contentStyle={{
-                      background: 'var(--db-surface)', border: '1px solid var(--db-border)',
-                      borderRadius: 10, boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
-                      padding: '8px 14px', fontFamily: 'Hanken Grotesk, system-ui',
-                    }}
-                    labelStyle={{ color: 'var(--db-ink-3)', fontSize: 11.5, marginBottom: 3 }}
-                    formatter={(v: number) => [`$${v.toFixed(2)}`, 'Revenue']}
-                    cursor={{ stroke: '#2455f6', strokeWidth: 1, strokeDasharray: '3 4', opacity: 0.5 }}
+                    content={<CustomTooltip />}
+                    cursor={{ stroke: '#f97316', strokeWidth: 1, strokeDasharray: '3 4', opacity: 0.5 }}
+                  />
+                  <Legend
+                    verticalAlign="bottom"
+                    height={36}
+                    iconType="circle"
+                    iconSize={8}
+                    formatter={(value) => <span className="text-[12px] font-semibold text-slate-500 capitalize">{value}</span>}
                   />
                   <Area
                     type="monotone"
                     dataKey="revenue"
-                    stroke="#2455f6"
+                    name="Revenue"
+                    stroke="#f97316"
                     strokeWidth={2.5}
                     fillOpacity={1}
                     fill="url(#dbAreaFill)"
                     dot={false}
-                    activeDot={{ r: 5, fill: 'var(--db-surface)', stroke: '#2455f6', strokeWidth: 2.5 }}
+                    activeDot={{ r: 5, fill: '#ffffff', stroke: '#f97316', strokeWidth: 2.5 }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -761,24 +921,24 @@ export default function Dashboard() {
             </div>
           </div>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 0 4px' }}>
-            {totalOrders === 0 ? (
+            {successRateTotal === 0 ? (
               <div className="db-empty">
                 <div className="db-empty-icon"><Target size={22} /></div>
                 <p>No orders yet</p>
                 <small>Sync your eBay orders</small>
               </div>
             ) : (
-              <SvgDonut value={successRate} size={160} />
+              <SvgDonut value={successRate} completed={stats.completedOrders} cancelled={stats.cancelledOrders} size={160} />
             )}
           </div>
           <div className="db-chips" style={{ justifyContent: 'center' }}>
             <span className="db-chip">
-              <span className="dot" style={{ background: 'var(--db-success)' }} />
+              <span className="dot" style={{ background: '#10b981' }} />
               Completed {stats.completedOrders}
             </span>
             <span className="db-chip">
-              <span className="dot" style={{ background: 'var(--db-ink-4)' }} />
-              Pending {stats.pendingOrders}
+              <span className="dot" style={{ background: '#ef4444' }} />
+              Cancelled {stats.cancelledOrders}
             </span>
           </div>
         </div>
@@ -815,7 +975,7 @@ export default function Dashboard() {
               <div className="db-card-title">Recent Activity</div>
               <div className="db-card-sub">Latest orders · {rangeLabel}</div>
             </div>
-            <button className="db-link-row" style={{ marginLeft: 'auto' }} onClick={() => navigate('/dashboard/orders')}>
+            <button className="db-link-row" style={{ marginLeft: 'auto' }} onClick={() => navigate('/dashboard/ebay/orders')}>
               View all <ArrowUpRight size={13} />
             </button>
           </div>
@@ -862,7 +1022,7 @@ export default function Dashboard() {
               <div className="db-empty-icon"><Package size={22} /></div>
               <p>No listings yet</p>
               <small>Add listings to see top performers</small>
-              <button className="db-btn-primary" style={{ marginTop: 12, fontSize: 12, padding: '6px 14px' }} onClick={() => navigate('/dashboard/listings')}>
+              <button className="db-btn-primary" style={{ marginTop: 12, fontSize: 12, padding: '6px 14px' }} onClick={() => navigate('/dashboard/ebay/listings')}>
                 <Plus size={14} /> Add Listing
               </button>
             </div>
@@ -873,7 +1033,7 @@ export default function Dashboard() {
                   key={p.id}
                   className="db-tl-item"
                   style={{ cursor: 'pointer' }}
-                  onClick={() => navigate('/dashboard/listings')}
+                  onClick={() => navigate('/dashboard/ebay/listings')}
                 >
                   <div className="db-tl-rank">{i + 1}</div>
                   <div className="db-tl-main">

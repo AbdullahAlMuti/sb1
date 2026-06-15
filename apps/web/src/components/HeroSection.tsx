@@ -28,7 +28,7 @@ const HeroSection = () => {
   const { user } = useAuth();
 
   const handlePrimary = () => {
-    navigate(user ? "/dashboard" : "/register");
+    navigate(user ? "/dashboard" : "/signup");
   };
 
   const handleSecondary = () => {
