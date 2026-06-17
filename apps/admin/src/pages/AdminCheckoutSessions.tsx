@@ -7,6 +7,7 @@ import { Button } from '@repo/ui/components/ui/button';
 import { Input } from '@repo/ui/components/ui/input';
 import { Card, CardContent } from '@repo/ui/components/ui/card';
 import { toast } from 'sonner';
+import { RevealValue } from '@/core/ui/RevealValue';
 
 type SessionStatus = 'pending' | 'completed' | 'expired' | 'abandoned';
 
@@ -203,7 +204,7 @@ export default function AdminCheckoutSessions() {
                     : '—';
                   return (
                     <tr key={session.id} className="border-t hover:bg-muted/30">
-                      <td className="px-4 py-3">{session.email ?? '—'}</td>
+                      <td className="px-4 py-3"><RevealValue value={session.email} kind="checkout_email" subjectId={session.id} /></td>
                       <td className="px-4 py-3">{session.plan_display_name ?? session.plan_name ?? '—'}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">

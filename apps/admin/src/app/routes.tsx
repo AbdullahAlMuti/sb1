@@ -33,7 +33,7 @@ import AdminCheckoutSessions from "@/pages/AdminCheckoutSessions";
 import AdminCoupons from "@/pages/AdminCoupons";
 import AdminAISettings from "@/pages/AdminAISettings";
 import AdminDescriptionConfig from "@/pages/AdminDescriptionConfig";
-import AdminPrompts from "@/pages/AdminPrompts";
+import AdminPrompts from "@/modules/content/prompts";
 import AdminExtension from "@/pages/AdminExtension";
 import AdminExtensionControl from "@/pages/AdminExtensionControl";
 import AdminBlog from "@/pages/AdminBlog";
