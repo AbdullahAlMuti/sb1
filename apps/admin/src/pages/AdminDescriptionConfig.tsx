@@ -10,11 +10,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@repo/ui/components/ui
 import { Badge } from "@repo/ui/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@repo/api-client/supabase/client";
-import { 
-  Save, 
-  Plus, 
-  Trash2, 
-  ArrowUp, 
+import { PageHeader } from "@/core/ui/PageHeader";
+import {
+  ClipboardList,
+  Save,
+  Plus,
+  Trash2,
+  ArrowUp,
   ArrowDown, 
   HelpCircle, 
   FileText, 
@@ -226,15 +228,11 @@ export default function AdminDescriptionConfig() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-5">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-orange-500 bg-clip-text text-transparent">
-            Description Config
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Centrally control the structure, prompt templates, and sanitization rules for all generated eBay descriptions.
-          </p>
-        </div>
+      <PageHeader
+        title="Description Config"
+        description="Centrally control the structure, prompt templates, and sanitization rules for all generated eBay descriptions."
+        icon={ClipboardList}
+        actions={
         <div className="flex items-center gap-3">
           <Badge variant="outline" className="px-3 py-1 font-semibold text-xs border-orange-200 text-orange-600 bg-orange-50 dark:bg-orange-950/20 dark:text-orange-400">
             Version {version}
@@ -252,7 +250,8 @@ export default function AdminDescriptionConfig() {
             Save Configuration
           </Button>
         </div>
-      </div>
+      }
+      />
 
       <Tabs defaultValue="sections" className="space-y-6">
         <TabsList className="bg-muted p-1 rounded-lg border border-border">

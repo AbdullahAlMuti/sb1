@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
 } from '@repo/ui/components/ui/alert-dialog';
 import { toast } from 'sonner';
+import { PageHeader } from '@/core/ui/PageHeader';
 
 type Interval = 'monthly' | 'yearly' | 'one_time';
 
@@ -163,18 +164,18 @@ export default function AdminPlanPrices() {
 
   return (
     <div className="space-y-6">
-      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Link to="/plans">
-            <Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button>
-          </Link>
-          <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">Plan Prices</h1>
-            <p className="text-muted-foreground mt-1">{planName} — normalized price rows per interval</p>
-          </div>
+      <div className="flex items-center gap-3">
+        <Link to="/plans">
+          <Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button>
+        </Link>
+        <div className="flex-1">
+          <PageHeader
+            title="Plan Prices"
+            description={`${planName} — normalized price rows per interval`}
+            actions={<Button onClick={openCreate}><Plus className="h-4 w-4 mr-2" />Add Price</Button>}
+          />
         </div>
-        <Button onClick={openCreate}><Plus className="h-4 w-4 mr-2" />Add Price</Button>
-      </motion.div>
+      </div>
 
       <Card>
         <CardHeader className="pb-2">
