@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAdminMutation } from "@/core/data/mutate";
-import { rpc, invokeFn, list, insert, logAdminAction } from "@/core/data/resource";
+import { rpc, invokeFn, list } from "@/core/data/resource";
 import { keys } from "@/core/data/keys";
 
 /**
@@ -99,16 +99,7 @@ export function useVerifyEmail(userId: string) {
  */
 export function useQueueResync(userId: string) {
   return useAdminMutation<void, unknown>(
-    async () => {
-      await insert("background_jobs", {
-        user_id: userId,
-        job_type: "ebay_order_sync",
-        status: "queued",
-        payload: { source: "admin_manual_resync" },
-        run_after: new Date().toISOString(),
-      });
-      await logAdminAction({ action: "order_resync_queued", entityType: "user", entityId: userId, targetUserId: userId });
-    },
+    () => rpc("queue_user_order_resync_admin", { p_user_id: userId }),
     { invalidate: userInvalidation(userId), successMessage: "Resync queued" },
   );
 }
