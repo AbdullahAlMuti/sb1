@@ -162,6 +162,18 @@ async function syncInventory(supabase: any, listingId?: string) {
 
   const typedSettings = settings as AmazonSettings;
 
+  // P4 (secrets hardening): prefer credentials from Supabase secrets / env over
+  // the amazon_settings DB row. Set AMAZON_CLIENT_ID / AMAZON_CLIENT_SECRET /
+  // AMAZON_REFRESH_TOKEN as function secrets; the DB row then only needs to hold
+  // non-secret config (is_active, marketplace, etc.). Falls back to the row when
+  // a secret is absent, so this is backwards-compatible.
+  const envClientId = Deno.env.get('AMAZON_CLIENT_ID');
+  const envClientSecret = Deno.env.get('AMAZON_CLIENT_SECRET');
+  const envRefreshToken = Deno.env.get('AMAZON_REFRESH_TOKEN');
+  if (envClientId) typedSettings.client_id = envClientId;
+  if (envClientSecret) typedSettings.client_secret = envClientSecret;
+  if (envRefreshToken) typedSettings.refresh_token = envRefreshToken;
+
   if (!typedSettings.is_active) {
     console.log('[Sync] Amazon sync is disabled');
     return { success: false, error: 'Amazon sync is disabled' };
