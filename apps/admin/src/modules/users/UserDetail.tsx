@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import { StatusBadge } from "@/core/ui/StatusBadge";
 import { StateLayout } from "@/core/ui/StateLayout";
 import { ConfirmDialog } from "@/core/ui/ConfirmDialog";
+import { AuditTrailList } from "@/core/ui/AuditTrailList";
 import { RequireRole } from "@/core/auth/RequireRole";
 import { EntityFormDialog } from "@/core/entity/EntityFormDialog";
 import { type FieldDef, type FormValues } from "@/core/entity/types";
@@ -173,6 +174,11 @@ export function UserDetail({ userId, open, onOpenChange }: { userId: string | nu
                     <UserCog className="mr-2 h-4 w-4" />
                     {u.is_active ? "Deactivate" : "Activate"}
                   </Button>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Recent activity</p>
+                  <AuditTrailList targetUserId={u.id} limit={10} />
                 </div>
               </div>
             )}

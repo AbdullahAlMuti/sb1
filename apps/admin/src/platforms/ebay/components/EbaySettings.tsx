@@ -1,5 +1,5 @@
 import React from "react";
-import { EbaySyncSettings } from "../../../components/dashboard/EbaySyncSettings";
+import { EbaySyncSettings } from "./EbaySyncSettings";
 
 export function EbaySettings() {
   return (

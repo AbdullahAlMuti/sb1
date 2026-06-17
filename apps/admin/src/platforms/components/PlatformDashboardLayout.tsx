@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { Download, Settings } from "lucide-react";
 import { Badge } from "@repo/ui/components/ui/badge";
 import { Button } from "@repo/ui/components/ui/button";
@@ -11,8 +12,15 @@ interface PlatformDashboardLayoutProps {
 }
 
 export function PlatformDashboardLayout({ platform }: PlatformDashboardLayoutProps) {
+  const navigate = useNavigate();
+  const params = useParams();
   const defaultTab = platform.tabs[0]?.id || "overview";
-  const [activeTab, setActiveTab] = useState(defaultTab);
+
+  // The tab lives in the URL splat (/<platform>-app/<tab>) so it is deep-linkable
+  // and survives refresh / back-forward.
+  const urlTab = (params["*"] || "").split("/")[0];
+  const activeTab = platform.tabs.some((t) => t.id === urlTab) ? urlTab : defaultTab;
+  const setActiveTab = (id: string) => navigate(`/${platform.id}-app/${id}`);
 
   const activeTabConfig = platform.tabs.find((t) => t.id === activeTab);
   const ActiveComponent = activeTabConfig?.component || (() => null);
