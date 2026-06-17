@@ -8,9 +8,9 @@ const base: NextStepInput = {
   isEmailVerified: true,
   isAdmin: false,
   access: 'none',
-  onboardingCompleted: true,
   planToken: null,
   dashboardPath: '/dashboard/ebay',
+  onboardingCompleted: true,
 };
 
 test('no user → /auth', () => {
@@ -29,20 +29,12 @@ test('past_due → /dashboard/billing', () => {
   assert.equal(resolveNextStep({ ...base, access: 'past_due' }), '/dashboard/billing');
 });
 
-test('active + onboarding complete → dashboard', () => {
-  assert.equal(resolveNextStep({ ...base, access: 'active', onboardingCompleted: true }), '/dashboard/ebay');
+test('active → dashboard', () => {
+  assert.equal(resolveNextStep({ ...base, access: 'active' }), '/dashboard/ebay');
 });
 
-test('active + onboarding incomplete → dashboard', () => {
-  assert.equal(resolveNextStep({ ...base, access: 'active', onboardingCompleted: false }), '/dashboard/ebay');
-});
-
-test('trial + onboarding incomplete → dashboard', () => {
-  assert.equal(resolveNextStep({ ...base, access: 'trial', onboardingCompleted: false }), '/dashboard/ebay');
-});
-
-test('trial + onboarding complete → dashboard', () => {
-  assert.equal(resolveNextStep({ ...base, access: 'trial', onboardingCompleted: true }), '/dashboard/ebay');
+test('trial → dashboard', () => {
+  assert.equal(resolveNextStep({ ...base, access: 'trial' }), '/dashboard/ebay');
 });
 
 test('trial_expired → /choose-plan', () => {
@@ -54,14 +46,21 @@ test('no access + plan token → /checkout?plan (encoded)', () => {
   assert.equal(resolveNextStep({ ...base, access: 'none', planToken: 'a b' }), '/checkout?plan=a%20b');
 });
 
-test('no access + no plan token → /pricing', () => {
-  assert.equal(resolveNextStep({ ...base, access: 'none', planToken: null }), '/pricing');
-  assert.equal(resolveNextStep({ ...base, access: 'none', planToken: '   ' }), '/pricing');
+test('no access + no plan token → /billing', () => {
+  assert.equal(resolveNextStep({ ...base, access: 'none', planToken: null }), '/billing');
+  assert.equal(resolveNextStep({ ...base, access: 'none', planToken: '   ' }), '/billing');
 });
 
 test('dashboardPath is honored (shopify goal)', () => {
   assert.equal(
-    resolveNextStep({ ...base, access: 'active', onboardingCompleted: true, dashboardPath: '/dashboard/shopify' }),
+    resolveNextStep({ ...base, access: 'active', dashboardPath: '/dashboard/shopify' }),
     '/dashboard/shopify',
+  );
+});
+
+test('onboardingCompleted: false → dashboardPath (bypasses subscription check)', () => {
+  assert.equal(
+    resolveNextStep({ ...base, onboardingCompleted: false, access: 'none', planToken: 'pro' }),
+    '/dashboard/ebay',
   );
 });

@@ -362,7 +362,7 @@ export default function ResearchSimulator() {
                             </div>
 
                             <a
-                              href="/register"
+                              href="/signup"
                               className="mt-4 w-full flex items-center justify-center gap-1.5 rounded-lg bg-secondary py-2 text-xs font-bold text-foreground hover:bg-primary hover:text-white transition-all"
                             >
                               List this item

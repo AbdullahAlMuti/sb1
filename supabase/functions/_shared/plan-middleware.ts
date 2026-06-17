@@ -131,6 +131,71 @@ export async function enforceActiveSubscription(
   return null;
 }
 
+export interface Entitlement {
+  isPaid: boolean;
+  tier: string;
+  status: string;
+  isTrialing: boolean;
+}
+
+export async function getEntitlement(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<Entitlement> {
+  const status = await getFullPlanStatus(supabase, userId);
+  if (!status) {
+    return { isPaid: false, tier: 'none', status: 'none', isTrialing: false };
+  }
+
+  // Admin bypass
+  const { data: roleRows } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId);
+  const isAdmin = (roleRows || []).some(
+    (row: any) => row.role === 'admin' || row.role === 'super_admin' || row.role === 'moderator'
+  );
+
+  if (isAdmin) {
+    return { isPaid: true, tier: 'pro', status: 'active', isTrialing: false };
+  }
+
+  const isTrial = status.limits.is_trial;
+  const isExpired = status.isExpired;
+
+  let accessState = 'none';
+  if (status.isBlocked) {
+    accessState = 'none';
+  } else if (isExpired) {
+    accessState = isTrial ? 'trial_expired' : 'none';
+  } else if (isTrial) {
+    accessState = 'trial';
+  } else {
+    // If not trial, blocked, or expired, check if they have active paid access
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("payment_status, subscription_status")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const isPaid = profile?.payment_status === 'paid' || profile?.payment_status === 'succeeded';
+    const isSubActive = profile?.subscription_status === 'active';
+
+    if (isPaid && isSubActive && status.planName !== 'none') {
+      accessState = 'active';
+    } else {
+      accessState = 'none';
+    }
+  }
+
+  return {
+    isPaid: accessState === 'active',
+    tier: status.planName,
+    status: accessState,
+    isTrialing: accessState === 'trial'
+  };
+}
+
 /**
  * Fetches complete plan status for a user - use for dashboard/status checks
  */

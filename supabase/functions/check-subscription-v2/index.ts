@@ -126,6 +126,10 @@ serve(async (req) => {
       .eq("id", user.id)
       .maybeSingle();
 
+    // Create a mutable copy of the profile data so we can update it in memory
+    // and return the fresh credits and plan ID to the client.
+    let profileObj = profile ? { ...profile } : null;
+
     // Resolve an active/trialing Stripe subscription. Prefer the stored
     // customer id; fall back to an email scan for legacy profiles.
     const findActiveSubscription = async (): Promise<Stripe.Subscription | null> => {
@@ -247,11 +251,14 @@ serve(async (req) => {
       if (planDetails && hasActiveSub) {
         const { data: existingPlan } = await supabaseServiceClient
           .from("user_plans")
-          .select("id")
+          .select("id, plan_id, current_period_end")
           .eq("user_id", user.id)
           .maybeSingle();
 
-        const payload = {
+        const periodChanged = existingPlan && existingPlan.current_period_end !== subscriptionEnd;
+        const planChanged = !existingPlan || existingPlan.plan_id !== planDetails.id;
+
+        const payload: Record<string, unknown> = {
           user_id: user.id,
           plan_id: planDetails.id,
           status: "active",
@@ -260,16 +267,91 @@ serve(async (req) => {
           updated_at: new Date().toISOString(),
         };
 
-        if (existingPlan) {
-          await supabaseServiceClient.from("user_plans").update(payload).eq("user_id", user.id);
-        } else {
-          await supabaseServiceClient.from("user_plans").insert({ ...payload, orders_used: 0 });
+        const profileUpdate: Record<string, unknown> = {
+          plan_id: planDetails.id,
+          selected_plan_id: planDetails.id,
+          payment_status: "paid",
+          subscription_status: "active",
+          current_period_end: subscriptionEnd,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (planChanged || periodChanged) {
+          payload.orders_used = 0;
+          payload.credits_used = 0;
+          profileUpdate.credits = planDetails.credits_per_month;
+
+          const description = planChanged 
+            ? `Plan updated to ${planDetails.name} (reconciliation)` 
+            : `Credits refreshed - ${planDetails.name} renewal (reconciliation)`;
+
+          // Log order reset
+          await supabaseServiceClient.from("order_transactions").insert({
+            user_id: user.id,
+            transaction_type: "period_reset",
+            orders_used_after: 0,
+            description: planChanged 
+              ? `Order limit reset - plan changed to ${planDetails.name} (reconciliation)` 
+              : "Order limit reset - subscription renewal (reconciliation)",
+            metadata: {
+              plan_id: planDetails.id,
+              max_orders: planDetails.max_auto_orders,
+              old_plan_id: existingPlan?.plan_id ?? null,
+              is_new_period: periodChanged,
+              is_plan_change: planChanged,
+            },
+          });
+
+          // Log credit transaction
+          await supabaseServiceClient.from("credit_transactions").insert({
+            user_id: user.id,
+            amount: planDetails.credits_per_month,
+            transaction_type: "plan_grant",
+            balance_after: planDetails.credits_per_month,
+            description: description,
+            metadata: {
+              old_plan_id: existingPlan?.plan_id ?? null,
+              new_plan_id: planDetails.id,
+              stripe_subscription_id: stripeSubscriptionId,
+              is_new_period: periodChanged,
+              is_plan_change: planChanged,
+            },
+          });
+
+          logStep(planChanged 
+            ? "Plan upgrade/downgrade detected in reconciliation, reset usage and granted credits"
+            : "Plan renewal detected in reconciliation, reset usage and refreshed credits", 
+            {
+              userId: user.id,
+              oldPlanId: existingPlan?.plan_id ?? null,
+              newPlanId: planDetails.id,
+            }
+          );
         }
+
+        // Atomic upsert: this self-heal runs concurrently with the Stripe webhook
+        // and previously raced on a SELECT-then-INSERT, violating
+        // user_plans_user_id_unique (23505). For a brand-new row orders_used
+        // defaults to 0; on the unchanged path orders_used is intentionally left
+        // out of the payload so an existing count is preserved on conflict.
+        await supabaseServiceClient
+          .from("user_plans")
+          .upsert(existingPlan ? payload : { ...payload, orders_used: 0 }, { onConflict: "user_id" });
 
         await supabaseServiceClient
           .from("profiles")
-          .update({ plan_id: planDetails.id })
+          .update(profileUpdate)
           .eq("id", user.id);
+
+        // Re-fetch profile to ensure in-memory state is fresh
+        const { data: freshProfile } = await supabaseServiceClient
+          .from("profiles")
+          .select("credits, plan_id, stripe_customer_id")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (freshProfile) {
+          profileObj = freshProfile;
+        }
       } else if (!planDetails) {
         logStep("No matching plan found for subscription price");
       }
@@ -286,7 +368,7 @@ serve(async (req) => {
       .maybeSingle();
 
     if (!planDetails) {
-      const localPlanId = userPlan?.plan_id || profile?.plan_id;
+      const localPlanId = userPlan?.plan_id || profileObj?.plan_id;
       if (localPlanId) {
         const { data: pData } = await supabaseServiceClient
           .from("plans")
@@ -337,7 +419,7 @@ serve(async (req) => {
         .eq("status", "active"),
     ]);
 
-    const creditsRemaining = Math.max(profile?.credits ?? 0, 0);
+    const creditsRemaining = Math.max(profileObj?.credits ?? 0, 0);
     const creditsTotal = planDetails && (access === "active" || access === "trial")
       ? planDetails.credits_per_month
       : 0;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FeatureGate } from '@/components/FeatureGate';
+import { FeatureGate, useFeatureGate, TeaserWrapper } from '@/components/FeatureGate';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@repo/api-client/supabase/client';
 import { Card, CardContent } from '@repo/ui/components/ui/card';
@@ -96,11 +96,21 @@ const getSoldColorClass = (count: number): string => {
 };
 
 export default function ProfitableProducts() {
+  return (
+    <FeatureGate flag="profitable_products">
+      <ProfitableProductsContent />
+    </FeatureGate>
+  );
+}
+
+function ProfitableProductsContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCountry, setSelectedCountry] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const queryClient = useQueryClient();
+  
+  const { gateAction } = useFeatureGate();
 
   // Fetch items
   const { data: items, isLoading } = useQuery({
@@ -182,28 +192,29 @@ export default function ProfitableProducts() {
   );
 
   const handleAddToEbay = (item: ProfitableProduct) => {
-    const listingData = {
-      title: item.title,
-      price: item.price,
-      image_url: item.image_url,
-      category: item.category,
-      description: item.description,
-      sku: item.sku,
-      shipping: item.shipping_cost,
-      source: 'profitable-products',
-      source_url: item.ebay_url,
-    };
+    gateAction(() => {
+      const listingData = {
+        title: item.title,
+        price: item.price,
+        image_url: item.image_url,
+        category: item.category,
+        description: item.description,
+        sku: item.sku,
+        shipping: item.shipping_cost,
+        source: 'profitable-products',
+        source_url: item.ebay_url,
+      };
 
-    localStorage.setItem('pending_ebay_listing', JSON.stringify(listingData));
-    window.open('https://www.ebay.com/sl/sell', '_blank');
+      localStorage.setItem('pending_ebay_listing', JSON.stringify(listingData));
+      window.open('https://www.ebay.com/sl/sell', '_blank');
 
-    toast.success('Product data ready!', {
-      description: 'Open eBay listing page and the extension will auto-fill the details.',
+      toast.success('Product data ready!', {
+        description: 'Open eBay listing page and the extension will auto-fill the details.',
+      });
     });
   };
 
   return (
-    <FeatureGate flag="profitable_products">
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -233,8 +244,10 @@ export default function ProfitableProducts() {
           <Tabs
             value={selectedCategory}
             onValueChange={(val) => {
-              setSelectedCategory(val);
-              setCurrentPage(1);
+              gateAction(() => {
+                setSelectedCategory(val);
+                setCurrentPage(1);
+              });
             }}
           >
             <TabsList className="w-full justify-start overflow-x-auto bg-background">
@@ -249,34 +262,41 @@ export default function ProfitableProducts() {
 
           {/* Search + Country */}
           <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search products by title..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search products by title..."
+                value={searchQuery}
+                onChange={(e) => {
+                  gateAction(() => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1);
+                  });
+                }}
+                className="pl-10 bg-background"
+              />
+            </div>
+            <Select 
+              value={selectedCountry} 
+              onValueChange={(value) => {
+                gateAction(() => {
+                  setSelectedCountry(value);
+                  setCurrentPage(1);
+                });
               }}
-              className="pl-10 bg-background"
-            />
-          </div>
-          <Select value={selectedCountry} onValueChange={(value) => {
-            setSelectedCountry(value);
-            setCurrentPage(1);
-          }}>
-            <SelectTrigger className="w-full sm:w-48 bg-background">
-              <SelectValue placeholder="All Countries" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">🌍 All Countries</SelectItem>
-              <SelectItem value="US">🇺🇸 United States</SelectItem>
-              <SelectItem value="UK">🇬🇧 United Kingdom</SelectItem>
-              <SelectItem value="DE">🇩🇪 Germany</SelectItem>
-              <SelectItem value="AU">🇦🇺 Australia</SelectItem>
-              <SelectItem value="CA">🇨🇦 Canada</SelectItem>
-            </SelectContent>
-          </Select>
+            >
+              <SelectTrigger className="w-full sm:w-48 bg-background">
+                <SelectValue placeholder="All Countries" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">🌍 All Countries</SelectItem>
+                <SelectItem value="US">🇺🇸 United States</SelectItem>
+                <SelectItem value="UK">🇬🇧 United Kingdom</SelectItem>
+                <SelectItem value="DE">🇩🇪 Germany</SelectItem>
+                <SelectItem value="AU">🇦🇺 Australia</SelectItem>
+                <SelectItem value="CA">🇨🇦 Canada</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </Card>
@@ -308,7 +328,11 @@ export default function ProfitableProducts() {
           <p className="text-muted-foreground mt-1">Try adjusting your search or filters</p>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
+        <TeaserWrapper
+          totalCount={filteredItems.length}
+          feature="profitable products"
+          containerClassName="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5"
+        >
           {paginatedItems?.map((item, index) => {
             const globalRank = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
             const estimatedRevenue = item.price * item.total_sold;
@@ -385,11 +409,9 @@ export default function ProfitableProducts() {
                           size="sm"
                           variant="secondary"
                           className="shadow-lg"
-                          asChild
+                          onClick={() => gateAction(() => window.open(item.ebay_url!, '_blank'))}
                         >
-                          <a href={item.ebay_url} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
+                          <ExternalLink className="h-4 w-4" />
                         </Button>
                       )}
                     </div>
@@ -493,7 +515,7 @@ export default function ProfitableProducts() {
               </Card>
             );
           })}
-        </div>
+        </TeaserWrapper>
       )}
 
       {/* Pagination */}
@@ -502,7 +524,7 @@ export default function ProfitableProducts() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            onClick={() => gateAction(() => setCurrentPage(p => Math.max(1, p - 1)))}
             disabled={currentPage === 1}
             className="hover:bg-primary hover:text-primary-foreground transition-colors"
           >
@@ -526,7 +548,7 @@ export default function ProfitableProducts() {
                   key={pageNum}
                   variant={currentPage === pageNum ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setCurrentPage(pageNum)}
+                  onClick={() => gateAction(() => setCurrentPage(pageNum))}
                   className={`w-9 h-9 p-0 ${currentPage === pageNum ? 'shadow-md' : ''}`}
                 >
                   {pageNum}
@@ -537,7 +559,7 @@ export default function ProfitableProducts() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            onClick={() => gateAction(() => setCurrentPage(p => Math.min(totalPages, p + 1)))}
             disabled={currentPage === totalPages}
             className="hover:bg-primary hover:text-primary-foreground transition-colors"
           >
@@ -546,6 +568,5 @@ export default function ProfitableProducts() {
         </div>
       )}
     </div>
-    </FeatureGate>
   );
 }

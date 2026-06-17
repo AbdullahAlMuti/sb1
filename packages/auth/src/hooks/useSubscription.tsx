@@ -52,7 +52,15 @@ type BillingInterval = 'monthly' | 'yearly';
 
 // Module-level cache shared across all hook instances so that mounting 13
 // components doesn't fire 13 simultaneous requests to check-subscription-v2.
-const CACHE_TTL = 300_000; // 5 minutes — matches the old polling interval
+const CACHE_TTL = 300_000; // 5 minutes — for confirmed (active/trial) subscribers
+// A just-paid user lands here with access === 'none' while the Stripe webhook is
+// still syncing. Caching that for 5 minutes would lock them out of the dashboard
+// until a hard refresh, so unpaid/none states get a short TTL and re-poll fast.
+const PENDING_TTL = 10_000; // 10 seconds — for none/unpaid, awaiting webhook
+
+function ttlFor(state: SubscriptionState | null): number {
+  return state && state.access !== 'none' ? CACHE_TTL : PENDING_TTL;
+}
 let _cachedState: SubscriptionState | null = null;
 let _cacheKey = ''; // userId — invalidate on user change
 let _lastFetch = 0;
@@ -89,7 +97,7 @@ export function useSubscription() {
     }
 
     const now = Date.now();
-    if (!force && _cachedState && now - _lastFetch < CACHE_TTL) {
+    if (!force && _cachedState && now - _lastFetch < ttlFor(_cachedState)) {
       // Already fresh — just rerender this instance if needed
       notifyListeners();
       return;
@@ -169,15 +177,52 @@ export function useSubscription() {
     }
   }, [user, checkSubscription]);
 
-  // Single global polling interval: only the first mounted instance owns it
+  // Real-time subscription for subscription/plan changes
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel('subscription-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` },
+        () => {
+          checkSubscription(true);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_plans', filter: `user_id=eq.${user.id}` },
+        () => {
+          checkSubscription(true);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, checkSubscription]);
+
+
+  // Single global poller: only the first mounted instance owns it. Self-reschedules
+  // so an unpaid user (access 'none', webhook pending) re-checks every PENDING_TTL
+  // while confirmed subscribers fall back to the cheap CACHE_TTL cadence.
   const isFirstRef = useRef(false);
   useEffect(() => {
     if (!user) return;
-    // Only set up the interval once across all instances in this tab
+    // Only set up the poller once across all instances in this tab
     if (_listeners.size > 1) return; // others already have it
     isFirstRef.current = true;
-    const id = setInterval(() => checkSubscription(), CACHE_TTL);
-    return () => { clearInterval(id); };
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      timer = setTimeout(async () => {
+        await checkSubscription();
+        schedule();
+      }, ttlFor(_cachedState));
+    };
+    schedule();
+    return () => { clearTimeout(timer); };
   }, [user, checkSubscription]);
 
   const subscription: SubscriptionState = _cachedState ?? {

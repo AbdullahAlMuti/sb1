@@ -57,3 +57,39 @@ Generate a comprehensive report named `AUDIT_REPORT_LAUNCH.md` in the workspace 
 - [ ] The report covers all three target domains (Security, Stripe Billing, eBay/Scraping).
 - [ ] Every identified issue has a clearly stated severity, location or file reference, and action plan.
 - [ ] The report includes a clear, binary conclusion on whether the codebase is ready to be published for real users.
+
+## Follow-up — 2026-06-16T03:01:14Z
+
+Deeply audit the SaaS authentication and billing flow for the eBay seller suite project to ensure it is ready for real users and production deployment.
+
+Working directory: D:/eBay Software/2026sellersuit/sb1
+Integrity mode: benchmark
+
+## Requirements
+
+### R1. Authentication Flow Audit
+Audit the signup, login, logout, session handling, protected routes, route guards/middleware, post-auth redirect logic, onboarding, password reset/email verification, and verify that users cannot access paid pages without an active subscription.
+
+### R2. Billing and Subscription Flow Audit
+Audit the plan selection logic, selection state persistence through signup/login, Stripe checkout integration, success/cancel URLs, webhook handling, subscription status updates, metadata saving (customer/subscription IDs), trial/free-plan logic, billing portal, and scan for any hardcoded plan/price IDs or test vs. live mode issues.
+
+### R3. Investigate Specific Billing/Auth Bugs
+Diagnose reported issues: users having to sign up again after selecting a plan, the selected plan not being remembered, users redirecting to pricing after checkout, dashboard accessibility post-checkout, and any conflicting or outdated login/onboarding logic.
+
+### R4. Security and Production Readiness Review
+Evaluate potential security risks (missing CSRF, RLS check, etc.), broken redirects, race conditions in webhooks/metadata sync, missing webhook verification, missing error handling or loading states, database synchronization issues, and general UX flows that could result in user access discrepancies.
+
+### R5. Complete Final Audit Report
+Generate a professional, detailed markdown report inside the working directory at `D:/eBay Software/2026sellersuit/sb1/auth_billing_audit_report.md` containing all required sections (Production Readiness/Auth/Billing Scores, issues classified by severity, exact file paths/functions/code lines, explanations, fixes, recommended architecture, test checklist, and final recommendation).
+
+## Acceptance Criteria
+
+### Comprehensive Final Audit Report
+- [ ] The final audit report is written to a markdown file (`auth_billing_audit_report.md`) directly in the root of the project workspace (`D:/eBay Software/2026sellersuit/sb1`).
+- [ ] Includes overall readiness, auth, and billing scores out of 10.
+- [ ] Group issues into Critical, High, Medium, and Low severity.
+- [ ] Lists exact file names, functions, and code locations for each identified bug or vulnerability.
+- [ ] Explains the root cause (why it happens) and how to fix it for every issue.
+- [ ] Proposes a world-class auth + billing flow architecture for the project.
+- [ ] Provides a launch-readiness checklist.
+- [ ] Provides a final publication decision (Ready / Not Ready / Ready after fixes).

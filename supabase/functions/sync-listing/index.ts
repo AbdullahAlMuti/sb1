@@ -135,71 +135,102 @@ Deno.serve(async (req) => {
         const amazonData = safeParseJson((listing as any).amazon_data) ?? {};
         const ebayData = safeParseJson((listing as any).ebay_data) ?? {};
 
+        // Check if listing already exists
+        let existingListing = null;
+        
+        if (listing.sku) {
+          const { data } = await supabase
+            .from('listings')
+            .select('id, title, amazon_data, ebay_data')
+            .eq('user_id', user.id)
+            .eq('sku', listing.sku)
+            .maybeSingle();
+          existingListing = data;
+        }
+        
+        if (!existingListing && listing.amazon_asin) {
+          const { data } = await supabase
+            .from('listings')
+            .select('id, title, amazon_data, ebay_data')
+            .eq('user_id', user.id)
+            .eq('amazon_asin', listing.amazon_asin)
+            .maybeSingle();
+          existingListing = data;
+        }
+
+        if (!existingListing && listing.amazon_url) {
+          const { data } = await supabase
+            .from('listings')
+            .select('id, title, amazon_data, ebay_data')
+            .eq('user_id', user.id)
+            .eq('amazon_url', listing.amazon_url)
+            .maybeSingle();
+          existingListing = data;
+        }
+
+        const draftId = (listing as any).draft_id || (listing as any).draftId || amazonData?.draftId || (listing as any).amazon_data?.draftId;
+        if (!existingListing && draftId) {
+          const { data } = await supabase
+            .from('listings')
+            .select('id, title, amazon_data, ebay_data')
+            .eq('user_id', user.id)
+            .eq('amazon_data->>draftId', draftId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          existingListing = data;
+        }
+
         const inferredTitle =
           (typeof listing.title === 'string' ? listing.title : '') ||
           ((ebayData as any)?.title as string) ||
           ((ebayData as any)?.ebayTitle as string) ||
           ((amazonData as any)?.title as string) ||
           ((amazonData as any)?.productTitle as string) ||
+          (existingListing ? (existingListing.title as string) : '') ||
           '';
 
-        const normalizedListing = {
-          title: inferredTitle,
-          sku: listing.sku || null,
-          ebay_price: listing.ebayPrice ?? listing.ebay_price ?? null,
-          amazon_price: listing.amazonPrice ?? listing.amazon_price ?? null,
-          amazon_url: listing.amazonUrl ?? listing.amazon_url ?? null,
-          amazon_asin:
-            listing.amazon_asin ||
-            extractAsinFromAmazonUrl(listing.amazonUrl ?? listing.amazon_url ?? null) ||
-            null,
-          ebay_item_id: listing.ebay_item_id || null,
-          status: listing.status || 'active',
-
-          // Persist blobs for backfill/debug
-          amazon_data: (listing as any).amazon_data ?? amazonData,
-          ebay_data: (listing as any).ebay_data ?? ebayData,
-        };
-
-        if (!normalizedListing.title) {
+        if (!existingListing && !inferredTitle) {
           results.push({ error: 'Title is required', listing });
           continue;
         }
 
-        // Check if listing already exists
-        let existingListing = null;
+        // Build partial or complete object
+        const updateFields: Record<string, any> = {};
+        if (inferredTitle) updateFields.title = inferredTitle;
+        if (listing.sku) updateFields.sku = listing.sku;
         
-        if (normalizedListing.sku) {
-          const { data } = await supabase
-            .from('listings')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('sku', normalizedListing.sku)
-            .maybeSingle();
-          existingListing = data;
-        }
+        const ebayPrice = listing.ebayPrice ?? listing.ebay_price;
+        if (ebayPrice !== undefined) updateFields.ebay_price = ebayPrice;
         
-        if (!existingListing && normalizedListing.amazon_asin) {
-          const { data } = await supabase
-            .from('listings')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('amazon_asin', normalizedListing.amazon_asin)
-            .maybeSingle();
-          existingListing = data;
+        const amazonPrice = listing.amazonPrice ?? listing.amazon_price;
+        if (amazonPrice !== undefined) updateFields.amazon_price = amazonPrice;
+        
+        const amazonUrl = listing.amazonUrl ?? listing.amazon_url;
+        if (amazonUrl !== undefined) updateFields.amazon_url = amazonUrl;
+        
+        const asinVal = listing.amazon_asin || extractAsinFromAmazonUrl(amazonUrl ?? null);
+        if (asinVal) updateFields.amazon_asin = asinVal;
+        
+        if (listing.ebay_item_id) updateFields.ebay_item_id = listing.ebay_item_id;
+        if (listing.status) updateFields.status = listing.status;
+
+        // Merge JSONB blobs
+        if ((listing as any).amazon_data || Object.keys(amazonData).length > 0) {
+          const existingAmazon = existingListing ? (existingListing.amazon_data as Record<string, any> || {}) : {};
+          updateFields.amazon_data = { ...existingAmazon, ...amazonData };
+        } else if (!existingListing) {
+          updateFields.amazon_data = amazonData;
         }
 
-        if (!existingListing && normalizedListing.amazon_url) {
-          const { data } = await supabase
-            .from('listings')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('amazon_url', normalizedListing.amazon_url)
-            .maybeSingle();
-          existingListing = data;
+        if ((listing as any).ebay_data || Object.keys(ebayData).length > 0) {
+          const existingEbay = existingListing ? (existingListing.ebay_data as Record<string, any> || {}) : {};
+          updateFields.ebay_data = { ...existingEbay, ...ebayData };
+        } else if (!existingListing) {
+          updateFields.ebay_data = ebayData;
         }
 
-        listingsToProcess.push({ normalizedListing, existingListing, original: listing });
+        listingsToProcess.push({ updateFields, existingListing, original: listing });
         
         if (!existingListing) {
           newListingsCount++;
@@ -305,8 +336,8 @@ Deno.serve(async (req) => {
       // Process all listings
       let creditsDeducted = 0;
       
-      for (const { normalizedListing, existingListing, original } of listingsToProcess) {
-        console.log(`[sync-listing] Processing: ${normalizedListing.title}`);
+      for (const { updateFields: normalizedListing, existingListing, original } of listingsToProcess) {
+        console.log(`[sync-listing] Processing: ${normalizedListing.title || 'unnamed'}`);
 
         if (existingListing) {
           // Update existing listing

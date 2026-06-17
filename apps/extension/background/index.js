@@ -91,6 +91,7 @@ importScripts(
   '../common/api-client.js',
   '../common/sync-utils.js',
   '../common/sku-engine.js',
+  '../common/ebay-image-helper.js',
   '../common/ebay-listing-api.js',
   'bulk-core.js',
   'listing-runner.js',

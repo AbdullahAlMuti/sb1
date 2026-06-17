@@ -78,6 +78,7 @@ const App = () => (
 
               <Route path="/auth" element={<AppRedirect />} />
               <Route path="/register" element={<AppRedirect />} />
+              <Route path="/signup" element={<AppRedirect />} />
               <Route path="/checkout/*" element={<AppRedirect />} />
               <Route path="/payment-required" element={<AppRedirect />} />
               <Route path="/verify-email" element={<AppRedirect />} />

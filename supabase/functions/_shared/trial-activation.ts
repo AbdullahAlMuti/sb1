@@ -86,17 +86,10 @@ export async function activateTrial(
     updated_at: now.toISOString(),
   };
 
-  const { data: existingPlan } = await supabase
-    .from("user_plans")
-    .select("id")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (existingPlan) {
-    await supabase.from("user_plans").update(planPayload).eq("user_id", userId);
-  } else {
-    await supabase.from("user_plans").insert(planPayload);
-  }
+  // Atomic upsert: trial activation can run concurrently with the Stripe webhook
+  // / subscription self-heal and previously raced on a SELECT-then-INSERT,
+  // violating user_plans_user_id_unique (23505).
+  await supabase.from("user_plans").upsert(planPayload, { onConflict: "user_id" });
 
   const profileUpdate: Record<string, unknown> = {
     plan_id: plan.id,

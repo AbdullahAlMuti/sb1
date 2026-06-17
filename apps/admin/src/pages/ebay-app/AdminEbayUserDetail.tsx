@@ -20,8 +20,8 @@ export default function AdminEbayUserDetail({ userId, onBack }: AdminEbayUserDet
   const { data: profile, isLoading } = useQuery({
     queryKey: ['ebay-admin-user-profile', userId],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc('get_ebay_user_admin_summary', {
-        target_user_id: userId
+      const { data, error } = await (supabase as any).rpc('get_ebay_user_dashboard_stats_admin', {
+        p_user_id: userId
       });
 
       if (error) throw error;
@@ -170,8 +170,8 @@ export default function AdminEbayUserDetail({ userId, onBack }: AdminEbayUserDet
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={profile?.account_status === 'active' ? 'default' : 'secondary'}>
-            {profile?.account_status || 'active'}
+          <Badge variant={profile?.is_active ? 'default' : 'secondary'}>
+            {profile?.is_active ? 'active' : 'suspended'}
           </Badge>
           <Button variant="outline" size="sm" className="gap-2 text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:text-blue-700">
              <Shield className="h-4 w-4" /> 
@@ -230,7 +230,7 @@ export default function AdminEbayUserDetail({ userId, onBack }: AdminEbayUserDet
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground flex items-center gap-2"><Activity className="h-3 w-3"/> Member Since</span>
-              <span className="font-medium">{new Date(profile?.created_at).toLocaleDateString()}</span>
+              <span className="font-medium">{profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : 'N/A'}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground flex items-center gap-2"><Box className="h-3 w-3"/> Modules</span>
@@ -249,20 +249,24 @@ export default function AdminEbayUserDetail({ userId, onBack }: AdminEbayUserDet
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground flex items-center gap-2">Total Orders</span>
-              <span className="font-bold">{profile?.total_orders?.toLocaleString()}</span>
+              <span className="text-muted-foreground">Total Orders</span>
+              <span className="font-bold">{profile?.total_orders?.toLocaleString() || 0}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground flex items-center gap-2">Last 24h Orders</span>
-              <span className="font-bold text-emerald-600">{profile?.orders_last_24h?.toLocaleString()}</span>
+              <span className="text-muted-foreground">Active Listings</span>
+              <span className="font-bold text-emerald-600">{profile?.active_listings?.toLocaleString() || 0}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground flex items-center gap-2">Sync Status</span>
-              <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200">Enabled</Badge>
+              <span className="text-muted-foreground">Sync Config</span>
+              <Badge variant={profile?.is_sync_enabled ? 'default' : 'secondary'}>
+                {profile?.is_sync_enabled ? 'Enabled' : 'Disabled'}
+              </Badge>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground flex items-center gap-2">Extension</span>
-              <span className="font-medium text-emerald-600 text-xs">Connected</span>
+              <span className="text-muted-foreground">Last Sync Status</span>
+              <span className={`font-medium text-xs capitalize ${profile?.sync_status === 'success' ? 'text-emerald-600' : profile?.sync_status === 'error' ? 'text-red-600' : 'text-yellow-600'}`}>
+                {profile?.sync_status || 'pending'}
+              </span>
             </div>
           </CardContent>
         </Card>

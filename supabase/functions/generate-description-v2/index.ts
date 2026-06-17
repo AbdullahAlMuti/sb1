@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from '../_shared/extension-session.ts';
 import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
+import { buildPrompt, renderSections, sanitize, DescriptionConfig } from '../_shared/description.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,23 +21,128 @@ interface DescriptionRequest {
   condition?: string;
 }
 
-const DEFAULT_DESCRIPTION_PROMPT = `Transform the following Amazon product data into a professional eBay listing description.
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
 
-REQUIREMENTS:
-- Remove all Amazon-specific terms (Prime, Subscribe & Save, Amazon's Choice, etc.)
-- Create a compelling, professional description
-- Use HTML formatting for eBay (allowed tags: <b>, <br>, <ul>, <li>, <p>)
-- Include all key product features and specifications
-- Add standard seller sections at the bottom
+  try {
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    const openaiApiKeyEnv = Deno.env.get('OPENAI_API_KEY');
 
-STRUCTURE YOUR RESPONSE AS:
-1. Opening hook (1-2 sentences)
-2. Key Features (bullet points)
-3. Product Specifications
-4. What's Included
-5. Shipping & Handling
-6. Returns Policy
-7. Contact Information
+    // Create service role client for database operations
+    const supabase = createServiceClient();
+    const ipLimit = await checkRateLimit(supabase, {
+      bucket: 'generate-description-v2:ip',
+      key: getClientIp(req),
+      limit: 30,
+      windowSeconds: 60,
+    });
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
+
+    // Authenticate user before processing using dual-auth
+    const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
+    const userId = authContext.userId;
+
+    console.log(`[generate-description-v2] User authenticated: ${userId} (${authContext.authMode})`);
+
+    const userLimit = await checkRateLimit(supabase, {
+      bucket: 'generate-description-v2:user',
+      key: userId,
+      limit: 60,
+      windowSeconds: 60,
+    });
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
+
+    // Verify feature entitlement
+    const hasAccess = await requireFeatureEntitlement(supabase, userId, authContext.workspaceId, "description_generation");
+    if (!hasAccess) {
+      console.warn(`[generate-description-v2] User ${userId} missing description_generation entitlement`);
+      return new Response(JSON.stringify({ success: false, error: 'Feature not entitled or subscription inactive' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // 1) Fetch database-driven description config (global)
+    const { data: configData, error: configError } = await supabase
+      .from('description_config')
+      .select('*')
+      .eq('scope', 'global')
+      .maybeSingle();
+
+    if (configError) {
+      console.error('[generate-description-v2] Database error reading config:', configError);
+    }
+
+    const requestData: DescriptionRequest = await req.json();
+    
+    // SECURITY: Input validation and sanitization
+    const title = String(requestData.title || '').slice(0, 1000);
+    const description = String(requestData.description || '').slice(0, 10000);
+    const bulletPoints = Array.isArray(requestData.bulletPoints) 
+      ? requestData.bulletPoints.slice(0, 20).map(bp => String(bp).slice(0, 1000))
+      : [];
+    const brand = String(requestData.brand || '').slice(0, 200);
+    const category = String(requestData.category || '').slice(0, 500);
+    const price = String(requestData.price || '').slice(0, 50);
+    const condition = String(requestData.condition || 'New').slice(0, 50);
+    const features = Array.isArray(requestData.features) 
+      ? requestData.features.slice(0, 20).map(f => String(f).slice(0, 1000))
+      : [];
+    const specifications = typeof requestData.specifications === 'object' && requestData.specifications !== null
+      ? Object.fromEntries(
+          Object.entries(requestData.specifications).slice(0, 30).map(([k, v]) => [String(k).slice(0, 100), String(v).slice(0, 500)])
+        )
+      : {};
+
+    if (!title) {
+      return new Response(JSON.stringify({ success: false, error: 'Missing title' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    console.log('Generating description-v2 for:', { title: title.slice(0, 50), brand });
+
+    // Fallback default config if DB config is missing
+    const defaultSections = [
+      { key: "title", type: "opening", order: 1, title: "Title", enabled: true, ai_guidance: "Format the title as a clean heading.", static_html: null },
+      { key: "opening", type: "opening", order: 2, title: "Introduction", enabled: true, ai_guidance: "1-2 compelling sentences describing the product.", static_html: null },
+      { key: "features", type: "features", order: 3, title: "✨ Key Features", enabled: true, ai_guidance: "List key features in short, punchy bullet points.", static_html: null },
+      { key: "specifications", type: "specifications", order: 4, title: "📋 Specifications", enabled: true, ai_guidance: "Create key/value pairs of technical specifications.", static_html: null },
+      { key: "shipping", type: "shipping", order: 5, title: "📦 Shipping & Handling", enabled: true, ai_guidance: null, static_html: "<p>• Fast & Free Shipping on all orders</p><p>• Tracking number provided within 24 hours</p><p>• Professionally packaged for safe delivery</p>" },
+      { key: "returns", type: "returns", order: 6, title: "✅ Returns Policy", enabled: true, ai_guidance: null, static_html: "<p>30-day hassle-free returns. If you're not satisfied, return for a full refund.</p>" },
+      { key: "contact", type: "contact", order: 7, title: "⭐ Thank you for shopping with us! ⭐", enabled: true, ai_guidance: null, static_html: "<p style=\"margin: 0; color: #e65100;\"><strong>⭐ Thank you for shopping with us! ⭐</strong></p><p style=\"margin: 5px 0 0 0; font-size: 12px;\">Questions? Message us anytime - we respond within 24 hours!</p>" }
+    ];
+
+    const defaultExclusions = {
+      strip_supplier_names: true,
+      supplier_names: ["Amazon", "Walmart", "AliExpress"],
+      strip_product_ids: true,
+      strip_prices: true,
+      strip_urls: true,
+      strip_images: true,
+      blocked_terms: ["Prime", "Subscribe & Save", "Amazon's Choice", "Sold by", "Fulfilled by", "Available at", "ASIN", "UPC", "ISBN", "Seller Rank", "Sales Rank"],
+      banned_claim_phrases: ["lifetime warranty", "100% satisfaction guaranteed", "100% guaranteed"],
+      vero_brands: ["Apple", "Nike", "Adidas", "Sony"]
+    };
+
+    const config: DescriptionConfig = configData || {
+      sections: defaultSections,
+      exclusion_rules: defaultExclusions,
+      prompt_skeleton: `You are a professional eBay listing description copywriter.
+Generate structured description data for the product: {title}.
+
+You MUST return ONLY a valid JSON object matching the requested structure.
+Do not wrap in markdown code blocks or return HTML. Return a JSON object with keys corresponding to the AI-generated sections.
+
+SECTION REQUIREMENTS:
+{sections_guidance}
+
+EXCLUSIONS & POLICY RULES:
+- DO NOT mention any of the following terms or brands: {blocked_terms}
+- DO NOT include unsupported claims or phrases: {banned_claim_phrases}
 
 PRODUCT DATA:
 Title: {title}
@@ -47,177 +153,115 @@ Bullet Points: {bulletPoints}
 Features: {features}
 Specifications: {specifications}
 Condition: {condition}
-Price: {price}
+Price: {price}`,
+      output_format: 'html_ebay_safe'
+    };
 
-Generate the eBay description in clean HTML format. Do not include any markdown code blocks, just raw HTML.`;
+    // Initialize model & provider variables
+    let model = 'gpt-4o-mini';
+    let adminApiKey = '';
+    let apiProvider = 'openai';
 
-const DEFAULT_TEMPLATE = `
-<div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
-  <h2 style="color: #333;">{title}</h2>
-  
-  <div style="margin: 15px 0;">
-    <p>{opening}</p>
-  </div>
-  
-  <div style="margin: 15px 0;">
-    <h3 style="color: #0066c0; border-bottom: 2px solid #0066c0; padding-bottom: 5px;">✨ Key Features</h3>
-    <ul style="line-height: 1.8;">
-      {features}
-    </ul>
-  </div>
-  
-  <div style="margin: 15px 0;">
-    <h3 style="color: #0066c0; border-bottom: 2px solid #0066c0; padding-bottom: 5px;">📋 Specifications</h3>
-    <table style="width: 100%; border-collapse: collapse;">
-      {specifications}
-    </table>
-  </div>
-  
-  <div style="background: #f5f5f5; padding: 15px; margin: 15px 0; border-radius: 5px;">
-    <h3 style="color: #333;">📦 Shipping & Handling</h3>
-    <p>• Fast & Free Shipping on all orders</p>
-    <p>• Tracking number provided within 24 hours</p>
-    <p>• Professionally packaged for safe delivery</p>
-  </div>
-  
-  <div style="background: #e8f5e9; padding: 15px; margin: 15px 0; border-radius: 5px;">
-    <h3 style="color: #2e7d32;">✅ Returns Policy</h3>
-    <p>30-day hassle-free returns. If you're not satisfied, return for a full refund.</p>
-  </div>
-  
-  <div style="text-align: center; margin-top: 20px; padding: 15px; background: #fff3e0; border-radius: 5px;">
-    <p style="margin: 0; color: #e65100;"><strong>⭐ Thank you for shopping with us! ⭐</strong></p>
-    <p style="margin: 5px 0 0 0; font-size: 12px;">Questions? Message us anytime - we respond within 24 hours!</p>
-  </div>
-</div>
-`;
+    // Fetch Admin AI credentials from admin_settings
+    try {
+      const { data: settingsData } = await supabase
+        .from('admin_settings')
+        .select('key, value')
+        .in('key', ['ext_ai_provider', 'ext_ai_api_key', 'ext_ai_model']);
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  try {
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    const supabase = createServiceClient();
-
-    const ipLimit = await checkRateLimit(supabase, {
-      bucket: 'generate-description-v2:ip',
-      key: getClientIp(req),
-      limit: 30,
-      windowSeconds: 60,
-    });
-    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
-
-    const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
-    const userId = authContext.userId;
-
-    const userLimit = await checkRateLimit(supabase, {
-      bucket: 'generate-description-v2:user',
-      key: userId,
-      limit: 60,
-      windowSeconds: 60,
-    });
-    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
-
-    const hasAccess = await requireFeatureEntitlement(supabase, userId, authContext.workspaceId, 'description_generation');
-    if (!hasAccess) {
-      console.warn(`[generate-description-v2] User ${userId} missing description_generation entitlement`);
-      return new Response(JSON.stringify({ success: false, error: 'Feature not entitled or subscription inactive' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      if (settingsData) {
+        settingsData.forEach((item) => {
+          if (item.key === 'ext_ai_provider' && item.value) apiProvider = item.value;
+          if (item.key === 'ext_ai_model' && item.value) model = item.value;
+          if (item.key === 'ext_ai_api_key' && item.value) adminApiKey = item.value;
+        });
+      }
+    } catch (dbError) {
+      console.log('Using default settings:', dbError);
+    }
+    
+    // Fallback to Env variable for OpenAI key if not in DB config
+    if (!adminApiKey && openaiApiKeyEnv) {
+      adminApiKey = openaiApiKeyEnv;
+      apiProvider = 'openai';
     }
 
-    const requestData: DescriptionRequest = await req.json();
-
-    // Input hardening
-    const title = String(requestData.title || '').slice(0, 500);
-    const description = String(requestData.description || '').slice(0, 5000);
-    const bulletPoints = Array.isArray(requestData.bulletPoints)
-      ? requestData.bulletPoints.slice(0, 20).map((bp) => String(bp).slice(0, 500))
-      : [];
-    const category = String(requestData.category || '').slice(0, 200);
-    const price = String(requestData.price || '').slice(0, 50);
-    const brand = String(requestData.brand || '').slice(0, 200);
-    const features = Array.isArray(requestData.features)
-      ? requestData.features.slice(0, 20).map((f) => String(f).slice(0, 500))
-      : [];
-    const specifications = typeof requestData.specifications === 'object' && requestData.specifications !== null
-      ? Object.fromEntries(
-          Object.entries(requestData.specifications)
-            .slice(0, 50)
-            .map(([k, v]) => [String(k).slice(0, 100), String(v).slice(0, 500)])
-        )
-      : {};
-    const condition = String(requestData.condition || 'New').slice(0, 50);
-
-    if (!title) {
-      return new Response(JSON.stringify({ success: false, error: 'Missing title' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (model === 'gpt-5-nano') {
+      model = 'gpt-4o-mini';
     }
 
-    const bulletPointsText = bulletPoints.length > 0 ? bulletPoints.join('\n- ') : 'Not provided';
-    const featuresText = features.length > 0 ? features.join('\n- ') : 'Not provided';
-    const specsText = Object.entries(specifications).length > 0
-      ? Object.entries(specifications).map(([k, v]) => `${k}: ${v}`).join('\n')
-      : 'Not provided';
+    // 2) Build description generation prompt via shared module
+    const normalizedProduct = {
+      title,
+      description,
+      bulletPoints,
+      brand,
+      category,
+      price,
+      condition,
+      features,
+      specifications
+    };
 
-    const prompt = DEFAULT_DESCRIPTION_PROMPT
-      .replace(/{title}/g, title)
-      .replace(/{description}/g, description)
-      .replace(/{bulletPoints}/g, bulletPointsText)
-      .replace(/{category}/g, category)
-      .replace(/{price}/g, price)
-      .replace(/{brand}/g, brand)
-      .replace(/{features}/g, featuresText)
-      .replace(/{specifications}/g, specsText)
-      .replace(/{condition}/g, condition);
+    const prompt = buildPrompt(config, normalizedProduct);
 
-    const systemMessage = 'You are an expert eBay listing copywriter. Generate professional, compelling product descriptions in clean HTML format. Do not wrap in markdown code blocks. Output raw HTML only.';
-
-    // Provider selection
-    const useOpenAI = !!openaiApiKey;
-    const model = useOpenAI ? 'gpt-4o-mini' : 'google/gemini-2.5-flash';
-
-    console.log(`[generate-description-v2] user=${userId} provider=${useOpenAI ? 'openai' : 'lovable'} model=${model}`);
+    const useDirectOpenAI = apiProvider === 'openai' && adminApiKey && adminApiKey.startsWith('sk-') && adminApiKey.length > 20;
+    console.log(`[generate-description-v2] Using ${useDirectOpenAI ? 'Direct OpenAI' : 'Lovable AI Gateway'} with model: ${model}`);
 
     let responseContent = '';
 
-    if (useOpenAI && openaiApiKey) {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: systemMessage },
-            { role: 'user', content: prompt },
-          ],
-        }),
-      });
+    if (useDirectOpenAI) {
+      console.log('[generate-description-v2] Calling OpenAI directly');
+      let response;
+      let retries = 2;
+      
+      while (retries >= 0) {
+        response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${adminApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: model.startsWith('openai/') ? model.replace('openai/', '') : model,
+            messages: [
+              { 
+                role: 'system', 
+                content: 'You are an expert product listing generator. You MUST follow ALL instructions in the user\'s prompt exactly. Always respond with valid JSON only, exactly matching the requested structure. NEVER output markdown code blocks or wrapper backticks.' 
+              },
+              { role: 'user', content: prompt }
+            ],
+            response_format: { type: "json_object" },
+            max_tokens: 1000
+          }),
+        });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[generate-description-v2] OpenAI error:', response.status, errorText);
-        throw new Error(`OpenAI error: ${response.status}`);
+        if (response.ok) break;
+
+        if (response.status >= 500 && retries > 0) {
+          await new Promise(r => setTimeout(r, 1000));
+          retries--;
+        } else {
+          break;
+        }
+      }
+
+      if (!response || !response.ok) {
+        const errorText = await (response ? response.text() : 'No response');
+        console.error('OpenAI API error:', response?.status, errorText);
+        throw new Error(`OpenAI API error: ${response?.status}`);
       }
 
       const data = await response.json();
       responseContent = data.choices?.[0]?.message?.content || '';
     } else {
+      // Lovable AI Gateway
       if (!lovableApiKey) {
-        return new Response(JSON.stringify({ success: false, error: 'AI service not configured' }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        throw new Error('AI gateway credentials not configured.');
       }
+
+      console.log('[generate-description-v2] Calling Lovable AI Gateway');
+      const gatewayModel = model.startsWith('gpt') ? `openai/${model}` : model;
 
       const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
@@ -226,31 +270,18 @@ serve(async (req) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model,
+          model: gatewayModel,
           messages: [
-            { role: 'system', content: systemMessage },
-            { role: 'user', content: prompt },
+            { role: 'user', content: prompt }
           ],
+          response_format: { type: "json_object" },
+          max_tokens: 1000
         }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[generate-description-v2] Lovable AI error:', response.status, errorText);
-
-        if (response.status === 429) {
-          return new Response(JSON.stringify({ success: false, error: 'Rate limit exceeded. Please try again.' }), {
-            status: 429,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
-        if (response.status === 402) {
-          return new Response(JSON.stringify({ success: false, error: 'AI credits exhausted. Please add funds.' }), {
-            status: 402,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
-
+        console.error('Lovable AI Gateway error:', response.status, errorText);
         throw new Error(`AI gateway error: ${response.status}`);
       }
 
@@ -258,57 +289,48 @@ serve(async (req) => {
       responseContent = data.choices?.[0]?.message?.content || '';
     }
 
-    // Cleanup
-    let cleanedDescription = String(responseContent)
-      .replace(/```html\n?/g, '')
-      .replace(/```\n?/g, '')
-      .trim();
-
-    if (cleanedDescription.length < 50) {
-      const featuresList = bulletPoints.length > 0
-        ? bulletPoints.map((bp) => `<li>${bp}</li>`).join('\n')
-        : features.map((f) => `<li>${f}</li>`).join('\n') || '<li>High quality product</li>';
-
-      const specsTable = Object.entries(specifications).length > 0
-        ? Object.entries(specifications)
-            .map(
-              ([k, v]) =>
-                `<tr><td style="padding: 8px; border: 1px solid #ddd;"><strong>${k}</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${v}</td></tr>`
-            )
-            .join('\n')
-        : '<tr><td colspan="2" style="padding: 8px;">See product details above</td></tr>';
-
-      cleanedDescription = DEFAULT_TEMPLATE
-        .replace(/{title}/g, title || 'Premium Product')
-        .replace(/{opening}/g, description?.slice(0, 200) || 'High quality product, brand new and ready to ship!')
-        .replace(/{features}/g, featuresList)
-        .replace(/{specifications}/g, specsTable);
+    // 3) Process and render sections
+    let aiJson: Record<string, any> = {};
+    try {
+      const cleanJsonStr = responseContent
+        .replace(/```json\n?/gi, '')
+        .replace(/```\n?/gi, '')
+        .trim();
+      aiJson = JSON.parse(cleanJsonStr);
+    } catch (e) {
+      console.warn('[generate-description-v2] JSON parsing failed, using safe fallback:', e);
+      aiJson = {
+        opening: description?.slice(0, 500) || 'Premium product, high quality.',
+        features: bulletPoints.length > 0 ? bulletPoints : features,
+        specifications: specifications
+      };
     }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        description: cleanedDescription,
-        provider: useOpenAI ? 'openai' : 'lovable',
-        model,
-        length: cleanedDescription.length,
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    // 4) Render sections via shared module (HTML or Plaintext)
+    const renderedDescription = renderSections(config, aiJson, normalizedProduct);
+
+    // 5) Post-generation sanitation via shared module
+    const finalDescription = sanitize(renderedDescription, config.exclusion_rules);
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      description: finalDescription,
+      provider: useDirectOpenAI ? 'openai' : 'lovable',
+      model,
+      length: finalDescription.length,
+      config_version: config.version
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
   } catch (error) {
-    console.error('[generate-description-v2] Error:', error);
-    const status = error instanceof Error && /(authorization|auth token|session)/i.test(error.message) ? 401 : 500;
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to generate description. Please try again.',
-      }),
-      {
-        status,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    console.error('Error in generate-description-v2 function:', error);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Failed to generate description.'
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

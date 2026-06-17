@@ -7,8 +7,11 @@ import { cn } from '@repo/ui/lib/utils';
 import { EbayHeader } from '@/components/ebay/EbayHeader';
 import { EbaySidebar } from '@/components/ebay/EbaySidebar';
 import { SettingsDialog } from '@/components/dashboard/SettingsDialog';
+import { OnboardingStepper } from '@/components/dashboard/OnboardingStepper';
+import { useAuth } from '@repo/auth/hooks/useAuth';
 
 export default function EbayLayout() {
+  const { profile } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const location = useLocation();
@@ -23,11 +26,13 @@ export default function EbayLayout() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       {/* Settings Dialog Modal */}
       <SettingsDialog 
-        open={isSettingsOpen} 
-        onOpenChange={(open) => {
-          if (!open) handleCloseSettings();
-        }}
+      open={isSettingsOpen} 
+      onOpenChange={(open) => {
+        if (!open) handleCloseSettings();
+      }}
       />
+
+      {profile?.onboarding_completed === false && <OnboardingStepper />}
 
       <div className="hidden lg:block">
         <EbaySidebar isCollapsed={isCollapsed} onToggleCollapse={() => setIsCollapsed(!isCollapsed)} />

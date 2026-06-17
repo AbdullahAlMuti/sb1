@@ -355,7 +355,7 @@ serve(async (req) => {
       // works everywhere. (Switch these to /payment-success and /payment-cancelled
       // only after the new web build is the live production deploy.)
       success_url: `${returnOrigin}/checkout/success?plan=${encodeURIComponent(planId)}${isTrialPlan ? "&mode=payment" : ""}`,
-      cancel_url: `${returnOrigin}/#pricing`,
+      cancel_url: `${returnOrigin}/payment-cancelled`,
       metadata: {
         user_id: userId,
         plan_id: planId,

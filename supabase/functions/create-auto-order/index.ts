@@ -68,6 +68,33 @@ Deno.serve(async (req) => {
     const userId = authContext.userId;
     console.log(`[create-auto-order] Authenticated user: ${userId} (${authContext.authMode})`);
 
+    // Check global auto-fulfillment kill switch
+    try {
+      const { data: killSwitchSetting, error: killSwitchError } = await supabase
+        .from("admin_settings")
+        .select("value")
+        .eq("key", "global_auto_fulfillment_enabled")
+        .maybeSingle();
+
+      if (killSwitchError) {
+        console.error("[create-auto-order] Error fetching global kill switch setting:", killSwitchError);
+      } else if (killSwitchSetting && killSwitchSetting.value === "false") {
+        console.warn(`[create-auto-order] Auto-fulfillment blocked for user ${userId} because global auto-fulfillment is disabled.`);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Auto-fulfillment is currently disabled globally by administration."
+          }),
+          {
+            status: 503,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          }
+        );
+      }
+    } catch (err) {
+      console.error("[create-auto-order] Failed to evaluate global kill switch setting:", err);
+    }
+
     const userLimit = await checkRateLimit(supabase, {
       bucket: "create-auto-order:user",
       key: userId,

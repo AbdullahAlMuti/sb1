@@ -157,6 +157,7 @@ export default function AdminUsers() {
   const [showPlanDialog, setShowPlanDialog] = useState(false);
   const [newRole, setNewRole] = useState<AppRole>('user');
   const [newPlanId, setNewPlanId] = useState<string>('');
+  const [planChangeReason, setPlanChangeReason] = useState('');
   const [plans, setPlans] = useState<Plan[]>([]);
   const [isUpdatingPlan, setIsUpdatingPlan] = useState(false);
   const [isVerifyingEmail, setIsVerifyingEmail] = useState<string | null>(null);
@@ -177,6 +178,7 @@ export default function AdminUsers() {
   // Limit override state
   const [showOverrideDialog, setShowOverrideDialog] = useState(false);
   const [overrideLimits, setOverrideLimits] = useState<OverrideLimits>({});
+  const [overrideReason, setOverrideReason] = useState('');
   const [isUpdatingOverride, setIsUpdatingOverride] = useState(false);
 
   const fetchUsersCallback = useCallback(() => {
@@ -308,10 +310,12 @@ export default function AdminUsers() {
 
   const toggleUserStatus = async (userId: string, isActive: boolean) => {
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ is_active: !isActive })
-        .eq('id', userId);
+      const reason = !isActive ? 'User status activated by admin' : 'User status deactivated by admin';
+      const { error } = await (supabase as any).rpc('toggle_user_status_admin', {
+        p_user_id: userId,
+        p_is_active: !isActive,
+        p_reason: reason
+      });
 
       if (error) throw error;
 
@@ -319,18 +323,10 @@ export default function AdminUsers() {
         u.id === userId ? { ...u, is_active: !isActive } : u
       ));
 
-      await supabase.from('audit_logs').insert({
-        user_id: userId,
-        action: !isActive ? 'USER_ACTIVATED' : 'USER_DEACTIVATED',
-        entity_type: 'user',
-        entity_id: userId,
-        new_values: { is_active: !isActive },
-      });
-
       toast.success(`User ${!isActive ? 'activated' : 'deactivated'} successfully`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating user:', error);
-      toast.error('Failed to update user');
+      toast.error(error.message || 'Failed to update user');
     }
   };
 
@@ -382,58 +378,22 @@ export default function AdminUsers() {
         return;
       }
 
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ 
-          plan_id: newPlanId,
-            credits: selectedPlan.credits_per_month ?? 0
-        })
-        .eq('id', selectedUser.id);
-
-      if (profileError) throw profileError;
-
-      const { data: existingUserPlan } = await supabase
-        .from('user_plans')
-        .select('id')
-        .eq('user_id', selectedUser.id)
-        .maybeSingle();
-
-      if (existingUserPlan) {
-        await supabase
-          .from('user_plans')
-          .update({ 
-            plan_id: newPlanId,
-            status: 'active',
-            current_period_start: new Date().toISOString(),
-            current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-          })
-          .eq('id', existingUserPlan.id);
-      } else {
-        await supabase
-          .from('user_plans')
-          .insert({
-            user_id: selectedUser.id,
-            plan_id: newPlanId,
-            status: 'active',
-            current_period_start: new Date().toISOString(),
-            current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-          });
-      }
-
-      await supabase.from('audit_logs').insert({
-        action: 'PLAN_CHANGED',
-        entity_type: 'user',
-        entity_id: selectedUser.id,
-        old_values: { plan_id: selectedUser.plan_id },
-        new_values: { plan_id: newPlanId, plan_name: selectedPlan.name },
+      const reason = planChangeReason.trim() || `Plan updated to ${selectedPlan.display_name} by admin`;
+      const { error } = await (supabase as any).rpc('update_user_plan_admin', {
+        p_user_id: selectedUser.id,
+        p_plan_id: newPlanId,
+        p_reason: reason
       });
 
+      if (error) throw error;
+
       setShowPlanDialog(false);
+      setPlanChangeReason('');
       fetchUsers();
       toast.success(`Plan updated to ${selectedPlan.display_name}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating plan:', error);
-      toast.error('Failed to update plan');
+      toast.error(error.message || 'Failed to update plan');
     } finally {
       setIsUpdatingPlan(false);
     }
@@ -474,62 +434,26 @@ export default function AdminUsers() {
 
     setIsAdjustingCredits(true);
     try {
-      const newBalance = selectedUser.credits + creditAdjustment;
-      
-      if (newBalance < 0) {
-        toast.error('Credits cannot go below 0');
-        return;
-      }
+      const determinedType = creditAdjustment > 0 ? 'grant' : 'revoke';
+      const reason = creditAdjustmentReason.trim() || `Manual credit adjustment: ${creditAdjustment > 0 ? '+' : ''}${creditAdjustment} credits`;
 
-      // Update the user's credits
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ credits: newBalance })
-        .eq('id', selectedUser.id);
-
-      if (updateError) throw updateError;
-
-      // Log to credit_transactions for audit trail (cast for extended schema)
-      const { error: txError } = await (supabase as any)
-        .from('credit_transactions')
-        .insert({
-          user_id: selectedUser.id,
-          amount: creditAdjustment,
-          balance_after: newBalance,
-          transaction_type: 'manual_adjustment',
-          description: creditAdjustmentReason || `Manual adjustment by admin`,
-          metadata: { 
-            previous_balance: selectedUser.credits,
-            adjustment_reason: creditAdjustmentReason 
-          }
-        });
-
-      if (txError) {
-        console.error('Failed to log credit transaction:', txError);
-      }
-
-      // Also log to audit_logs for admin visibility
-      await supabase.from('audit_logs').insert({
-        action: 'CREDITS_ADJUSTED',
-        entity_type: 'user',
-        entity_id: selectedUser.id,
-        old_values: { credits: selectedUser.credits },
-        new_values: { credits: newBalance, adjustment: creditAdjustment },
-        metadata: { reason: creditAdjustmentReason }
+      const { error } = await (supabase as any).rpc('adjust_user_credits_admin', {
+        p_user_id: selectedUser.id,
+        p_amount: creditAdjustment,
+        p_adjustment_type: determinedType,
+        p_reason: reason
       });
 
-      // Update local state
-      setUsers(users.map(u => 
-        u.id === selectedUser.id ? { ...u, credits: newBalance } : u
-      ));
+      if (error) throw error;
 
       setShowCreditsDialog(false);
       setCreditAdjustment(0);
       setCreditAdjustmentReason('');
-      toast.success(`Credits adjusted: ${creditAdjustment > 0 ? '+' : ''}${creditAdjustment}. New balance: ${newBalance}`);
-    } catch (error) {
+      fetchUsers();
+      toast.success(`Credits adjusted: ${creditAdjustment > 0 ? '+' : ''}${creditAdjustment}`);
+    } catch (error: any) {
       console.error('Error adjusting credits:', error);
-      toast.error('Failed to adjust credits');
+      toast.error(error.message || 'Failed to adjust credits');
     } finally {
       setIsAdjustingCredits(false);
     }
@@ -541,65 +465,23 @@ export default function AdminUsers() {
 
     setIsExtending(true);
     try {
-      // Calculate new end date
-      const currentEnd = selectedUser.user_plan?.current_period_end 
-        ? new Date(selectedUser.user_plan.current_period_end)
-        : new Date();
-      
-      // If current end is in the past, start from now
-      const baseDate = currentEnd > new Date() ? currentEnd : new Date();
-      const newEndDate = new Date(baseDate.getTime() + extensionDays * 24 * 60 * 60 * 1000);
-
-      if (selectedUser.user_plan?.id) {
-        // Update existing user_plan
-        const { error } = await supabase
-          .from('user_plans')
-          .update({ 
-            current_period_end: newEndDate.toISOString(),
-            status: 'active'
-          })
-          .eq('id', selectedUser.user_plan.id);
-
-        if (error) throw error;
-      } else {
-        // Create new user_plan if it doesn't exist
-        const { error } = await supabase
-          .from('user_plans')
-          .insert({
-            user_id: selectedUser.id,
-            plan_id: selectedUser.plan_id,
-            status: 'active',
-            current_period_start: new Date().toISOString(),
-            current_period_end: newEndDate.toISOString()
-          });
-
-        if (error) throw error;
-      }
-
-      // Also activate the user profile
-      await supabase
-        .from('profiles')
-        .update({ is_active: true })
-        .eq('id', selectedUser.id);
-
-      // Log to audit
-      await supabase.from('audit_logs').insert({
-        action: 'SUBSCRIPTION_EXTENDED',
-        entity_type: 'user',
-        entity_id: selectedUser.id,
-        old_values: { current_period_end: selectedUser.user_plan?.current_period_end },
-        new_values: { current_period_end: newEndDate.toISOString(), extension_days: extensionDays },
-        metadata: { reason: extensionReason }
+      const reason = extensionReason.trim() || `Subscription extended by ${extensionDays} days`;
+      const { error } = await (supabase as any).rpc('extend_user_subscription_admin', {
+        p_user_id: selectedUser.id,
+        p_days: extensionDays,
+        p_reason: reason
       });
+
+      if (error) throw error;
 
       setShowExtendDialog(false);
       setExtensionDays(30);
       setExtensionReason('');
       fetchUsers();
-      toast.success(`Subscription extended by ${extensionDays} days until ${format(newEndDate, 'PPP')}`);
-    } catch (error) {
+      toast.success(`Subscription extended by ${extensionDays} days successfully`);
+    } catch (error: any) {
       console.error('Error extending subscription:', error);
-      toast.error('Failed to extend subscription');
+      toast.error(error.message || 'Failed to extend subscription');
     } finally {
       setIsExtending(false);
     }
@@ -611,60 +493,28 @@ export default function AdminUsers() {
 
     setIsUpdatingOverride(true);
     try {
-      // Filter out empty/undefined values
-      const cleanedOverrides: OverrideLimits = {};
-      if (overrideLimits.max_listings !== undefined && overrideLimits.max_listings > 0) {
-        cleanedOverrides.max_listings = overrideLimits.max_listings;
-      }
+      const maxListings = overrideLimits.max_listings || 0;
+      const maxAutoOrders = overrideLimits.max_auto_orders || 0;
+      const creditsPerMonth = overrideLimits.credits_per_month || 0;
+      const reason = overrideReason.trim() || 'Manual limit overrides updated by admin';
 
-      if (overrideLimits.credits_per_month !== undefined && overrideLimits.credits_per_month > 0) {
-        cleanedOverrides.credits_per_month = overrideLimits.credits_per_month;
-      }
+      const { error } = await (supabase as any).rpc('update_user_limits_admin', {
+        p_user_id: selectedUser.id,
+        p_max_listings: maxListings,
+        p_max_auto_orders: maxAutoOrders,
+        p_credits_per_month: creditsPerMonth,
+        p_reason: reason
+      });
 
-      const hasOverrides = Object.keys(cleanedOverrides).length > 0;
-
-      if (selectedUser.user_plan?.id) {
-        // Update existing user_plan (cast for extended schema)
-        const { error } = await (supabase as any)
-          .from('user_plans')
-          .update({ 
-            admin_override_limits: hasOverrides ? cleanedOverrides : null
-          })
-          .eq('id', selectedUser.user_plan.id);
-
-        if (error) throw error;
-      } else if (hasOverrides) {
-        // Create new user_plan if it doesn't exist and has overrides
-        const { error } = await (supabase as any)
-          .from('user_plans')
-          .insert([{
-            user_id: selectedUser.id,
-            plan_id: selectedUser.plan_id!,
-            status: 'active',
-            current_period_start: new Date().toISOString(),
-            current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-            admin_override_limits: cleanedOverrides
-          }]);
-
-        if (error) throw error;
-      }
-
-      // Log to audit
-      await supabase.from('audit_logs').insert([{
-        action: 'LIMIT_OVERRIDE_UPDATED',
-        entity_type: 'user',
-        entity_id: selectedUser.id,
-        old_values: { admin_override_limits: selectedUser.user_plan?.admin_override_limits } as unknown as null,
-        new_values: { admin_override_limits: hasOverrides ? cleanedOverrides : null } as unknown as null
-      }]);
+      if (error) throw error;
 
       setShowOverrideDialog(false);
-      setOverrideLimits({});
+      setOverrideReason('');
       fetchUsers();
-      toast.success(hasOverrides ? 'Limit overrides applied successfully' : 'Limit overrides cleared');
-    } catch (error) {
+      toast.success('Limit overrides updated successfully');
+    } catch (error: any) {
       console.error('Error updating limit overrides:', error);
-      toast.error('Failed to update limit overrides');
+      toast.error(error.message || 'Failed to update limit overrides');
     } finally {
       setIsUpdatingOverride(false);
     }
@@ -1433,6 +1283,15 @@ export default function AdminUsers() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Reason (optional)</Label>
+              <Textarea
+                value={planChangeReason}
+                onChange={(e) => setPlanChangeReason(e.target.value)}
+                placeholder="Why are you updating this plan?"
+                rows={2}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowPlanDialog(false)}>
@@ -1637,6 +1496,20 @@ export default function AdminUsers() {
             </div>
 
             <div className="space-y-2">
+              <Label>Max Auto Orders (leave empty for plan default)</Label>
+              <Input
+                type="number"
+                value={overrideLimits.max_auto_orders ?? ''}
+                onChange={(e) => setOverrideLimits(prev => ({
+                  ...prev,
+                  max_auto_orders: e.target.value ? parseInt(e.target.value) : undefined
+                }))}
+                placeholder="e.g., 50"
+                min={0}
+              />
+            </div>
+
+            <div className="space-y-2">
               <Label>Credits Per Month (leave empty for plan default)</Label>
               <Input
                 type="number"
@@ -1649,6 +1522,17 @@ export default function AdminUsers() {
                 min={0}
               />
             </div>
+
+            <div className="space-y-2">
+              <Label>Reason (optional)</Label>
+              <Textarea
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                placeholder="Why are you overriding these limits?"
+                rows={2}
+              />
+            </div>
+
             <Button 
               variant="outline" 
               size="sm"

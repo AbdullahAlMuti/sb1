@@ -229,9 +229,29 @@ function _ssShowDuplicateBlock(listing, onOverride) {
 
     let productToRun = entry.product;
     if (productToRun.useStoredWatermarkedImages) {
-      const imgStore = await chrome.storage.local.get('watermarkedImages');
-      const wm = imgStore.watermarkedImages || [];
-      if (wm.length) productToRun = { ...productToRun, images: wm };
+      const sessionStore = await chrome.storage.session.get('watermarkedImages');
+      let wm = sessionStore.watermarkedImages || [];
+      if (!wm.length) {
+        const localStore = await chrome.storage.local.get('watermarkedImages');
+        wm = localStore.watermarkedImages || [];
+      }
+      if (wm.length) {
+        const originalImages = [...(productToRun.images || [])];
+        productToRun.images = wm;
+
+        if (Array.isArray(productToRun.variants)) {
+          productToRun.variants.forEach(v => {
+            const imgUrl = v.img || v.image;
+            if (imgUrl) {
+              const origIdx = originalImages.indexOf(imgUrl);
+              if (origIdx !== -1 && wm[origIdx]) {
+                v.img = wm[origIdx];
+                v.image = wm[origIdx];
+              }
+            }
+          });
+        }
+      }
     } else {
       // Auto-edit: quick-import path skips the gallery, so the first-image
       // sticker is applied here, right before upload. Supplier-agnostic —

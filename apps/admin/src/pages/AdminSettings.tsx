@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Settings, Save, Key, Globe, Shield, Sparkles, RefreshCw } from 'lucide-react';
+import { Settings, Save, Key, Globe, Shield, Sparkles, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
 import { Input } from '@repo/ui/components/ui/input';
 import { Label } from '@repo/ui/components/ui/label';
@@ -20,6 +20,7 @@ export default function AdminSettings() {
   });
 
   const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [globalAutoFulfillmentEnabled, setGlobalAutoFulfillmentEnabled] = useState(true);
 
   const [whatsApp, setWhatsApp] = useState({
     supportNumber: '',
@@ -50,6 +51,7 @@ export default function AdminSettings() {
           'admin_whatsapp_number',
           'whatsapp_dashboard_enabled',
           'whatsapp_dashboard_template',
+          'global_auto_fulfillment_enabled',
         ]);
 
       if (error) throw error;
@@ -58,6 +60,7 @@ export default function AdminSettings() {
       for (const row of data || []) map.set(row.key, row.value ?? null);
 
       setGeminiApiKey(map.get('gemini_api_key') || '');
+      setGlobalAutoFulfillmentEnabled((map.get('global_auto_fulfillment_enabled') || 'true').toLowerCase() === 'true');
       setWhatsApp((prev) => ({
         ...prev,
         supportNumber: map.get('support_whatsapp_number') || '',
@@ -89,6 +92,7 @@ export default function AdminSettings() {
         { key: 'admin_whatsapp_number', value: digitsOnly(whatsApp.adminNumber) || null, updated_at: now },
         { key: 'whatsapp_dashboard_enabled', value: whatsApp.dashboardEnabled ? 'true' : 'false', updated_at: now },
         { key: 'whatsapp_dashboard_template', value: (whatsApp.dashboardTemplate || '').trim() || null, updated_at: now },
+        { key: 'global_auto_fulfillment_enabled', value: globalAutoFulfillmentEnabled ? 'true' : 'false', updated_at: now },
       ];
 
       const { error } = await supabase
@@ -219,6 +223,41 @@ export default function AdminSettings() {
             <p className="text-xs text-muted-foreground">
               Placeholders supported: {'{order_id}'}, {'{customer_name}'}, {'{product_name}'}, {'{listing_id}'}
             </p>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Safety & Kill Switches */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.08 }}
+        className="glass-card p-6 border-red-500/20 bg-red-500/5"
+      >
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-lg shadow-red-500/20">
+            <AlertTriangle className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h2 className="text-lg font-display font-semibold text-foreground">Safety & Kill Switches</h2>
+            <p className="text-sm text-muted-foreground">Emergency override controls for automated processes</p>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="flex items-center justify-between p-4 rounded-xl border border-red-500/20 bg-red-500/10">
+            <div>
+              <Label className="text-foreground font-semibold flex items-center gap-2">
+                Global Auto-Fulfillment Enabled
+              </Label>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Disable this to instantly halt all automated ordering and checkout processes across all users.
+              </p>
+            </div>
+            <Switch
+              checked={globalAutoFulfillmentEnabled}
+              onCheckedChange={(checked) => setGlobalAutoFulfillmentEnabled(checked)}
+            />
           </div>
         </div>
       </motion.div>

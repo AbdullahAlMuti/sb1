@@ -1,7 +1,7 @@
 // Thin compatibility wrapper over resolveNextStep (the single routing source of
 // truth). Kept for the simple "do they have access or not" callers that don't
-// know onboarding/trial state. New code should call resolveNextStep directly so
-// onboarding and billing-recovery routing is honored.
+// know trial state. New code should call resolveNextStep directly so trial and
+// billing-recovery routing is honored.
 //
 // This NEVER grants access — it only chooses a destination. The dashboard guard
 // re-validates server-side regardless of where we route.
@@ -17,8 +17,8 @@ export function routeAfterAuth(input: {
     isEmailVerified: true,
     isAdmin: false,
     access: input.canAccess ? 'active' : 'none',
-    onboardingCompleted: true,
     planToken: input.planToken,
     dashboardPath: input.dashboardPath,
+    onboardingCompleted: true,
   });
 }

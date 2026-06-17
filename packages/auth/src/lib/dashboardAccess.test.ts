@@ -50,3 +50,19 @@ test('isDashboardAllowed: server none falls back to profile flags (error toleran
   assert.equal(isDashboardAllowed({ isAdmin: false, access: 'none', profileAllows: true }), true);
   assert.equal(isDashboardAllowed({ isAdmin: false, access: 'none', profileAllows: false }), false);
 });
+
+test('canAccessDashboard: current_period_end in past → false', () => {
+  const expiredProfile = {
+    ...paidActive,
+    current_period_end: new Date(Date.now() - 1000).toISOString(),
+  };
+  assert.equal(canAccessDashboard({ id: 'u' }, expiredProfile, false), false);
+});
+
+test('canAccessDashboard: current_period_end in future → true', () => {
+  const activeProfile = {
+    ...paidActive,
+    current_period_end: new Date(Date.now() + 100000).toISOString(),
+  };
+  assert.equal(canAccessDashboard({ id: 'u' }, activeProfile, false), true);
+});

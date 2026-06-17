@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, createServiceClient } from '../_shared/extension-session.ts';
 import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
-import { enforceActiveSubscription } from '../_shared/plan-middleware.ts';
+import { enforceActiveSubscription, getEntitlement } from '../_shared/plan-middleware.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -29,6 +29,18 @@ serve(async (req) => {
 
     const blockResponse = await enforceActiveSubscription(supabase, userId);
     if (blockResponse) return blockResponse;
+
+    const entitlement = await getEntitlement(supabase, userId);
+    if (entitlement.isTrialing) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: "Product research is not available on trial plans. Please upgrade.", 
+        code: "PAYMENT_REQUIRED" 
+      }), {
+        status: 402,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const userLimit = await checkRateLimit(supabase, {
       bucket: 'ai-product-research:user',

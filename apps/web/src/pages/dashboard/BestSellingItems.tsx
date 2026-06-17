@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { FeatureGate } from '@/components/FeatureGate';
+import { FeatureGate, useFeatureGate, TeaserWrapper } from '@/components/FeatureGate';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@repo/api-client/supabase/client';
 import { 
@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@repo/ui/components/ui/select';
 import { Skeleton } from '@repo/ui/components/ui/skeleton';
+import { toast } from 'sonner';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -35,9 +36,18 @@ const countries = [
 ];
 
 export default function BestSellingItems() {
+  return (
+    <FeatureGate flag="top_selling_products">
+      <BestSellingItemsContent />
+    </FeatureGate>
+  );
+}
+
+function BestSellingItemsContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCountry, setSelectedCountry] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const { gateAction } = useFeatureGate();
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['best-selling-items'],
@@ -73,7 +83,6 @@ export default function BestSellingItems() {
   };
 
   return (
-    <FeatureGate flag="top_selling_products">
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -92,15 +101,25 @@ export default function BestSellingItems() {
               placeholder="Search"
               value={searchQuery}
               onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
+                gateAction(() => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                });
               }}
               className="pl-9 w-48"
             />
           </div>
 
           {/* Country Filter */}
-          <Select value={selectedCountry} onValueChange={(val) => { setSelectedCountry(val); setCurrentPage(1); }}>
+          <Select 
+            value={selectedCountry} 
+            onValueChange={(val) => { 
+              gateAction(() => {
+                setSelectedCountry(val); 
+                setCurrentPage(1); 
+              });
+            }}
+          >
             <SelectTrigger className="w-40">
               <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
               <SelectValue />
@@ -117,7 +136,7 @@ export default function BestSellingItems() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => handlePageChange(currentPage - 1)}
+              onClick={() => gateAction(() => handlePageChange(currentPage - 1))}
               disabled={currentPage === 1}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -138,7 +157,7 @@ export default function BestSellingItems() {
                   key={pageNum}
                   variant={currentPage === pageNum ? 'default' : 'ghost'}
                   size="icon"
-                  onClick={() => handlePageChange(pageNum)}
+                  onClick={() => gateAction(() => handlePageChange(pageNum))}
                   className="h-8 w-8"
                 >
                   {pageNum}
@@ -148,7 +167,7 @@ export default function BestSellingItems() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => handlePageChange(currentPage + 1)}
+              onClick={() => gateAction(() => handlePageChange(currentPage + 1))}
               disabled={currentPage === totalPages || totalPages === 0}
             >
               <ChevronRight className="h-4 w-4" />
@@ -191,7 +210,11 @@ export default function BestSellingItems() {
             <p className="text-muted-foreground">No items found</p>
           </div>
         ) : (
-          <div className="divide-y divide-border">
+          <TeaserWrapper
+            totalCount={filteredItems.length}
+            feature="best selling items"
+            containerClassName="divide-y divide-border"
+          >
             {paginatedItems.map((item) => (
               <div
                 key={item.id}
@@ -241,7 +264,12 @@ export default function BestSellingItems() {
 
                 {/* Stats Icon */}
                 <div className="text-center">
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8"
+                    onClick={() => gateAction(() => toast.info(`Opening analytics for: ${item.title}`))}
+                  >
                     <BarChart3 className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </div>
@@ -253,7 +281,7 @@ export default function BestSellingItems() {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8"
-                      onClick={() => window.open(item.ebay_url, '_blank')}
+                      onClick={() => gateAction(() => window.open(item.ebay_url, '_blank'))}
                     >
                       <ExternalLink className="h-4 w-4 text-muted-foreground" />
                     </Button>
@@ -263,7 +291,7 @@ export default function BestSellingItems() {
                 </div>
               </div>
             ))}
-          </div>
+          </TeaserWrapper>
         )}
       </div>
 
@@ -276,6 +304,5 @@ export default function BestSellingItems() {
         <p>Page {currentPage} of {totalPages || 1}</p>
       </div>
     </div>
-    </FeatureGate>
   );
 }

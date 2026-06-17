@@ -1,8 +1,9 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { XCircle } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
-import { getPlanIntent } from '@repo/auth/lib/planIntent';
+import { getPlanIntent, clearCheckoutPending } from '@repo/auth/lib/planIntent';
 
 /**
  * Shown when the user returns from Stripe without completing payment
@@ -12,6 +13,13 @@ import { getPlanIntent } from '@repo/auth/lib/planIntent';
 export default function PaymentCancelled() {
   const navigate = useNavigate();
   const intent = getPlanIntent();
+
+  // No charge was made, so clear the "checkout in progress" marker — otherwise
+  // "Try again" would be bounced to /payment-success instead of starting a new
+  // session. The plan intent is intentionally kept so retry resumes the plan.
+  useEffect(() => {
+    clearCheckoutPending();
+  }, []);
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">

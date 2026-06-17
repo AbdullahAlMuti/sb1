@@ -16,6 +16,15 @@
 
 const PLAN_INTENT_KEY = 'selectedPlan';
 
+// Set right before redirecting to Stripe Checkout. Used to detect a user who
+// returns to /checkout (e.g. via the dashboard guard) while the Stripe webhook
+// is still syncing — so we route them to /payment-success to verify instead of
+// firing a SECOND Stripe Checkout session (double-payment loop).
+const CHECKOUT_PENDING_KEY = 'checkoutPending';
+// After this long we assume the pending checkout is dead (abandoned tab, failed
+// webhook) and allow a fresh session rather than stranding the user.
+const CHECKOUT_PENDING_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
 // Legacy localStorage keys, in migration-preference order. The first
 // non-empty value found is adopted as the intent token.
 const LEGACY_PLAN_KEYS = ['selectedPlan', 'selectedPlanId', 'selectedPlanName'] as const;
@@ -94,6 +103,7 @@ export function clearPlanIntent(): void {
   const ls = safeLocal();
   try {
     ss?.removeItem(PLAN_INTENT_KEY);
+    ss?.removeItem(CHECKOUT_PENDING_KEY);
   } catch {
     /* ignore */
   }
@@ -105,6 +115,49 @@ export function clearPlanIntent(): void {
         /* ignore */
       }
     }
+  }
+}
+
+/** Mark that a Stripe Checkout session was just started for this plan. */
+export function markCheckoutPending(planId: string): void {
+  const ss = safeSession();
+  if (!ss) return;
+  try {
+    ss.setItem(CHECKOUT_PENDING_KEY, JSON.stringify({ at: Date.now(), plan: planId }));
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
+ * Returns true if a Stripe Checkout was started recently (within the TTL) and
+ * is still unconfirmed — i.e. the user likely just paid and the webhook hasn't
+ * landed yet. Stale entries are cleared and treated as not-pending.
+ */
+export function hasRecentCheckout(): boolean {
+  const ss = safeSession();
+  if (!ss) return false;
+  try {
+    const raw = ss.getItem(CHECKOUT_PENDING_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { at?: number };
+    if (typeof parsed?.at === 'number' && Date.now() - parsed.at < CHECKOUT_PENDING_TTL_MS) {
+      return true;
+    }
+    ss.removeItem(CHECKOUT_PENDING_KEY); // stale — let a fresh session start
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/** Clear the checkout-pending marker (call on payment success or cancel). */
+export function clearCheckoutPending(): void {
+  const ss = safeSession();
+  try {
+    ss?.removeItem(CHECKOUT_PENDING_KEY);
+  } catch {
+    /* ignore */
   }
 }
 

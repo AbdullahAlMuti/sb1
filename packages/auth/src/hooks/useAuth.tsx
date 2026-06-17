@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, Session } from '@supabase/supabase-js';
 import { supabase, getFunctionErrorMessage } from '@repo/api-client/supabase/client';
 import { toast } from 'sonner';
+import { clearPlanIntent } from '../lib/planIntent';
 
 interface Profile {
   id: string;
@@ -350,7 +351,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: new Error(errMsg) };
       }
 
-      toast.success('Please check your email for the verification code!');
+      // Automatically sign in the user on successful signup
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        toast.error(signInError.message);
+        return { error: signInError };
+      }
+
+      toast.success('Account created successfully! Welcome to SellerSuit.');
       return { error: null };
     } catch (err: unknown) {
       const error = toError(err, 'An error occurred during signup');
@@ -391,6 +403,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setProfile(null);
     setRoles([]);
+    clearPlanIntent();
     toast.success('Signed out successfully');
   };
 

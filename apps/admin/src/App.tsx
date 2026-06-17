@@ -41,6 +41,7 @@ import AdminUsage from "./pages/AdminUsage";
 import AdminRoles from "./pages/AdminRoles";
 import AdminPrompts from "./pages/AdminPrompts";
 import AdminAISettings from "./pages/AdminAISettings";
+import AdminDescriptionConfig from "./pages/AdminDescriptionConfig";
 import AdminBestSelling from "./pages/AdminBestSelling";
 import AdminMustSell from "./pages/AdminMustSell";
 import AdminExtension from "./pages/AdminExtension";
@@ -101,6 +102,7 @@ const AdminRouteChildren = () => (
     <Route path="coupons" element={<Navigate to="/overview" replace />} />
     <Route path="ai" element={<AdminAISettings />} />
     <Route path="ai-settings" element={<AdminAISettings />} />
+    <Route path="description-config" element={<AdminDescriptionConfig />} />
     <Route path="automation" element={<AdminPrompts />} />
     <Route path="prompts" element={<AdminPrompts />} />
     <Route path="extension" element={<AdminExtension />} />

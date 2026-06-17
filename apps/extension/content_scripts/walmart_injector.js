@@ -1725,11 +1725,29 @@ const storeWatermarkedImages = async () => {
     console.log(`🔍 storeWatermarkedImages: Total Data URLs collected: ${watermarkedDataUrls.length}`);
     
     if (watermarkedDataUrls.length > 0) {
+        // Quota safety limit: session storage limit is ~10MB.
+        // Base64 chars are roughly 1 byte.
+        const totalCharCount = watermarkedDataUrls.reduce((sum, url) => sum + url.length, 0);
+        console.log(`📊 storeWatermarkedImages: Estimated storage payload size: ${(totalCharCount / 1024 / 1024).toFixed(2)} MB`);
+        if (totalCharCount > 9.5 * 1024 * 1024) {
+            console.error(`❌ storeWatermarkedImages: Payload size of ${(totalCharCount / 1024 / 1024).toFixed(2)} MB exceeds the session storage quota (~10MB limit).`);
+            alert(`⚠️ Error: The total size of edited/watermarked images is too large (${(totalCharCount / 1024 / 1024).toFixed(2)} MB). Please remove some images or reduce their complexity before proceeding.`);
+            return;
+        }
+
         try {
-            await chrome.storage.local.set({ watermarkedImages: watermarkedDataUrls });
-            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome storage`);
+            await new Promise((resolve, reject) => {
+                chrome.storage.session.set({ watermarkedImages: watermarkedDataUrls }, () => {
+                    if (chrome.runtime.lastError) {
+                        reject(new Error(chrome.runtime.lastError.message));
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome session storage`);
             
-            const verification = await chrome.storage.local.get(['watermarkedImages']);
+            const verification = await chrome.storage.session.get(['watermarkedImages']);
             console.log(`🔍 storeWatermarkedImages: Storage verification - ${verification.watermarkedImages?.length || 0} images in storage`);
             
             if (verification.watermarkedImages && verification.watermarkedImages.length > 0) {
@@ -1744,6 +1762,7 @@ const storeWatermarkedImages = async () => {
             }
         } catch (error) {
             console.error('❌ storeWatermarkedImages: Failed to store images:', error);
+            alert(`⚠️ Error storing images in session storage: ${error.message || error}`);
         }
     } else {
         console.warn('⚠️ storeWatermarkedImages: No Data URLs found to store');
@@ -1755,14 +1774,22 @@ const deleteImageFromStorage = async (imageIndex, imgContainer, imageUrl) => {
     try {
         console.log(`Deleting image ${imageIndex + 1} from storage...`);
         
-        const result = await chrome.storage.local.get(['watermarkedImages']);
+        const result = await chrome.storage.session.get(['watermarkedImages']);
         const storedImages = result.watermarkedImages || [];
         
         if (storedImages.length > imageIndex) {
             storedImages.splice(imageIndex, 1);
 
-            await chrome.storage.local.set({ watermarkedImages: storedImages });
-            console.log(`Image ${imageIndex + 1} deleted from storage. ${storedImages.length} images remaining.`);
+            await new Promise((resolve, reject) => {
+                chrome.storage.session.set({ watermarkedImages: storedImages }, () => {
+                    if (chrome.runtime.lastError) {
+                        reject(new Error(chrome.runtime.lastError.message));
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+            console.log(`Image ${imageIndex + 1} deleted from session storage. ${storedImages.length} images remaining.`);
         }
 
         // Also remove from currentProduct.images — the canonical list the upload
@@ -2176,7 +2203,7 @@ const addEventListenersToPanel = () => {
 
                     console.log('═══════════════════════════════════════════════════════');
                     console.log('🔍 Verifying image storage before navigation...');
-                    const storageVerification = await chrome.storage.local.get(['watermarkedImages']);
+                    const storageVerification = await chrome.storage.session.get(['watermarkedImages']);
                     const storedImages = storageVerification.watermarkedImages || [];
                     console.log(`📸 Storage verification: Found ${storedImages.length} images in storage`);
                     

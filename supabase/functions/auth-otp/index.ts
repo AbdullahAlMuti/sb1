@@ -250,6 +250,7 @@ serve(async (req) => {
           existingUser.id,
           {
             password,
+            email_confirm: true,
             user_metadata: { full_name: fullName, goal, pending_plan_id: planId },
           },
         );
@@ -260,18 +261,48 @@ serve(async (req) => {
         const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
           email,
           password,
-          email_confirm: false,
+          email_confirm: true,
           user_metadata: { full_name: fullName, goal, pending_plan_id: planId },
         });
         if (createError) throw createError;
         userId = newUser.user.id;
       }
 
-      const verificationCode = generateOtpCode();
-      await storeOtpCode(supabaseAdmin, userId, email, verificationCode);
-      await sendVerificationEmail(email, verificationCode);
+      // Upsert profile immediately on signup so it is ready when client logs in
+      const { data: existingProfile } = await supabaseAdmin
+        .from("profiles")
+        .select("id")
+        .eq("id", userId)
+        .maybeSingle();
 
-      return jsonResponse({ success: true, message: "Verification code sent successfully" });
+      if (!existingProfile) {
+        const { error: insertError } = await supabaseAdmin.from("profiles").insert({
+          id: userId,
+          email,
+          full_name: fullName || email,
+          credits: 0,
+          is_active: true,
+          settings: goal ? { goal } : {},
+          pending_plan_id: planId || null,
+          payment_status: "unpaid",
+          subscription_status: "inactive",
+          onboarding_completed: false,
+        });
+        if (insertError) throw insertError;
+      } else {
+        const { error: updateError } = await supabaseAdmin
+          .from("profiles")
+          .update({
+            full_name: fullName || email,
+            is_active: true,
+            pending_plan_id: planId || null,
+            onboarding_completed: false,
+          })
+          .eq("id", userId);
+        if (updateError) throw updateError;
+      }
+
+      return jsonResponse({ success: true, message: "Signup successful" });
     }
 
     if (action === "verify") {

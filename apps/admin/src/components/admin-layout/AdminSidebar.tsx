@@ -79,6 +79,7 @@ const navGroups: AdminNavGroup[] = [
     label: "Platform",
     items: [
       { label: "AI / Automation", href: "/ai", icon: Bot },
+      { label: "Description Config", href: "/description-config", icon: ClipboardList },
       // eBay-only scope (see AI_AGENT_SCOPE_EBAY_ONLY.md): the Shopify App admin
       // entry is hidden while Shopify is disabled. The page stays mounted.
       ...(SHOPIFY_ENABLED

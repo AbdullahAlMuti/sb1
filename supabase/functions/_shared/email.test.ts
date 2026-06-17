@@ -56,7 +56,7 @@ test("subscription_activated: includes plan name in subject and html", () => {
   assert.ok(html.includes("Pro"), "html should include plan name");
   assert.ok(html.includes("Bob"), "html should include user name");
   assert.ok(html.includes("5,000"), "Pro html should show 5,000 listings");
-  assert.ok(html.includes("1,500"), "Pro html should show 1,500 credits");
+  assert.ok(html.includes("5,000"), "Pro html should show 5,000 credits");
 });
 
 test("subscription_activated: Starter shows correct limits", () => {

@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { useAuth } from '@repo/auth/hooks/useAuth';
 import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { usePlans } from '@repo/api-client/hooks/usePlans';
-import { getPlanIntent, setPlanIntent, resolvePlanToken } from '@repo/auth/lib/planIntent';
+import { getPlanIntent, setPlanIntent, resolvePlanToken, markCheckoutPending, hasRecentCheckout } from '@repo/auth/lib/planIntent';
 import { canAccessDashboard } from '@repo/auth/ProtectedRoute';
 
 type Interval = 'monthly' | 'yearly';
@@ -51,11 +51,20 @@ export default function Checkout() {
   useEffect(() => {
     if (!ready || !user || hasAccess || !plan) return;
     if (startedRef.current) return;
+    // Double-payment guard: if a Checkout session was started moments ago and
+    // access is still pending, the user has most likely already paid and the
+    // webhook just hasn't landed. Verify on /payment-success instead of opening
+    // a second Stripe session and charging them again.
+    if (hasRecentCheckout()) {
+      navigate('/payment-success', { replace: true });
+      return;
+    }
     startedRef.current = true;
 
     (async () => {
       const { url } = await createCheckout(plan.id, interval);
       if (url) {
+        markCheckoutPending(plan.id);
         window.location.href = url;
         return;
       }
@@ -71,6 +80,10 @@ export default function Checkout() {
   }
   if (ready && hasAccess) {
     return <Navigate to="/dashboard" replace />;
+  }
+  // Returning mid-webhook with a recent checkout → verify, don't re-charge.
+  if (ready && !hasAccess && hasRecentCheckout()) {
+    return <Navigate to="/payment-success" replace />;
   }
   if (ready && !plan) {
     return <Navigate to="/pricing" replace />;

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CheckCircle, XCircle, Loader2, ArrowRight, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Loader2, ArrowRight, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
 import { supabase } from '@repo/api-client/supabase/client';
 import { getDashboardPathForGoal } from '@repo/config/navigation';
@@ -72,28 +72,20 @@ export default function VerifyEmail() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="w-full max-w-[440px]"
+        className="w-full max-w-[380px]"
       >
-        {/* Logo */}
-        <div className="text-center mb-6">
-          <a href="/" className="inline-flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-lg">S</span>
-            </div>
-            <span className="text-2xl font-display font-bold text-foreground">SellerSuit</span>
-          </a>
-        </div>
 
-        <div className="bg-card border border-border/80 p-6 sm:p-8 rounded-[20px] shadow-md flex flex-col space-y-6">
+
+        <div className="w-full flex flex-col space-y-6">
           {status === 'loading' && (
             <div className="space-y-4 text-center py-4">
-              <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
-              <p className="text-muted-foreground text-sm font-medium">Verifying your email address...</p>
+              <Loader2 className="h-10 w-10 animate-spin text-[#0A1128] dark:text-white mx-auto" />
+              <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Verifying your email address...</p>
             </div>
           )}
 
@@ -112,10 +104,10 @@ export default function VerifyEmail() {
               </div>
               
               <div className="space-y-2">
-                <h1 className="text-xl sm:text-2xl font-display font-extrabold tracking-tight text-foreground">
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
                   Email Verified!
                 </h1>
-                <p className="text-muted-foreground text-xs leading-relaxed max-w-[320px] mx-auto">
+                <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed max-w-[320px] mx-auto">
                   Your email has been successfully verified. You can now continue to set up your account.
                 </p>
               </div>
@@ -123,7 +115,7 @@ export default function VerifyEmail() {
               <Button 
                 size="lg" 
                 onClick={handleContinue}
-                className="w-full h-11 text-xs sm:text-sm font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl flex items-center justify-center gap-2 group transition-all"
+                className="w-full h-[46px] text-sm font-semibold bg-[#0A1128] hover:bg-[#121E47] text-white dark:bg-white dark:hover:bg-slate-100 dark:text-[#0A1128] rounded-xl flex items-center justify-center gap-2 group transition-all"
               >
                 Continue to Dashboard
                 <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
@@ -146,10 +138,10 @@ export default function VerifyEmail() {
               </div>
               
               <div className="space-y-2">
-                <h1 className="text-xl sm:text-2xl font-display font-extrabold tracking-tight text-foreground">
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
                   Verification Failed
                 </h1>
-                <p className="text-muted-foreground text-xs leading-relaxed max-w-[320px] mx-auto">
+                <p className="text-slate-550 dark:text-slate-400 text-xs leading-relaxed max-w-[320px] mx-auto">
                   {errorMessage || 'The verification link is invalid or has expired.'}
                 </p>
               </div>
@@ -158,7 +150,7 @@ export default function VerifyEmail() {
                 variant="outline" 
                 size="lg" 
                 onClick={handleRetry}
-                className="w-full h-11 text-xs sm:text-sm font-semibold rounded-xl border border-border/80"
+                className="w-full h-[46px] text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-[#0a1128] dark:text-slate-300"
               >
                 Back to Sign In
               </Button>

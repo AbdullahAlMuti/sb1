@@ -17,6 +17,12 @@ export function canAccessDashboard(user: any, profile: any, isAdmin: boolean): b
   if (!user) return false;
   if (isAdmin) return true;
   if (!profile) return false;
+
+  // If the subscription/trial period has explicitly ended, block access.
+  if (profile.current_period_end && new Date(profile.current_period_end).getTime() < Date.now()) {
+    return false;
+  }
+
   const isPaid = profile.payment_status === 'paid' || profile.payment_status === 'succeeded';
   const isSubscriptionActive = profile.subscription_status === 'active';
   return Boolean(profile.selected_plan_id && isPaid && isSubscriptionActive);

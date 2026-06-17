@@ -160,11 +160,21 @@ export function ProtectedRoute({
     );
   }
 
-  const allowed = isDashboardAllowed({
-    isAdmin,
-    access,
-    profileAllows: canAccessDashboard(user, profile, isAdmin),
-  });
+  const isDashboardRoute = location.pathname.startsWith('/dashboard');
+  const onboardingNotCompleted = profile && profile.onboarding_completed === false;
+
+  // If onboarding is not completed, they are only allowed to see dashboard routes (which will render onboarding stepper)
+  if (onboardingNotCompleted && !isDashboardRoute) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  const allowed = (onboardingNotCompleted && isDashboardRoute)
+    ? true
+    : isDashboardAllowed({
+        isAdmin,
+        access,
+        profileAllows: canAccessDashboard(user, profile, isAdmin),
+      });
 
   if (!allowed) {
     // past_due users keep limited access to the billing/subscription page so they
@@ -181,9 +191,9 @@ export function ProtectedRoute({
       isEmailVerified: true,
       isAdmin,
       access,
-      onboardingCompleted: profile?.onboarding_completed === true,
       planToken,
       dashboardPath: getDashboardPathForGoal((profile?.settings as any)?.goal),
+      onboardingCompleted: profile?.onboarding_completed ?? false,
     });
     return <Navigate to={next} replace />;
   }
@@ -191,12 +201,20 @@ export function ProtectedRoute({
   // Check admin/super_admin requirements first
   if (requireSuperAdmin && !isSuperAdmin) {
     // Non-super-admins trying to access super-admin routes go to dashboard
-    return <Navigate to={isAdmin ? "/admin" : "/dashboard"} replace />;
+    if (isAdmin) {
+      return <Navigate to="/admin" replace />;
+    } else {
+      const appUrl = import.meta.env.VITE_APP_URL || 'http://localhost:3001';
+      window.location.href = `${appUrl}/dashboard`;
+      return null;
+    }
   }
 
   if (requireAdmin && !isAdmin) {
-    // Non-admins trying to access admin routes go to dashboard
-    return <Navigate to="/dashboard" replace />;
+    // Non-admins trying to access admin routes go to the main user dashboard
+    const appUrl = import.meta.env.VITE_APP_URL || 'http://localhost:3001';
+    window.location.href = `${appUrl}/dashboard`;
+    return null;
   }
 
   // Redirect admins away from user dashboard to admin dashboard

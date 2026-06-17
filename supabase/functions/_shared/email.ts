@@ -168,7 +168,7 @@ export function buildEmailContent(
       const isPro = plan.toLowerCase().includes("pro");
       const isStarter = plan.toLowerCase().includes("starter");
       const listings = isPro ? "5,000" : isStarter ? "500" : "—";
-      const credits = isPro ? "1,500" : isStarter ? "500" : "—";
+      const credits = isPro ? "5,000" : isStarter ? "500" : "—";
       const subject = `Welcome to SellerSuit ${plan}`;
       const body = greet +
         h1(`You're on ${plan}. Time to scale. 🎉`) +
@@ -177,7 +177,7 @@ export function buildEmailContent(
           row("Plan", plan) +
           row("Active listings", listings) +
           row("AI credits / month", credits) +
-          row("Auto-orders / month", "Unlimited") +
+          row("Auto-orders / month", isPro ? "Unlimited" : isStarter ? "250" : "—") +
           row("Bulk lister", "✓ Included"),
         ) +
         btn("Go to Dashboard", `${appUrl}/dashboard`);

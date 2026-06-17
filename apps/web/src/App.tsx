@@ -7,19 +7,9 @@ import { TooltipProvider } from "@repo/ui/components/ui/tooltip";
 import { ErrorBoundary } from "@repo/ui/feedback/ErrorBoundary";
 import NotFound from "@repo/ui/feedback/NotFound";
 import { ThemeProvider } from "@repo/ui/theme/useTheme";
-import { AuthProvider } from "@repo/auth/hooks/useAuth";
+import { AuthProvider, useAuth } from "@repo/auth/hooks/useAuth";
 import { ProtectedRoute } from "@repo/auth/ProtectedRoute";
-import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 
-import Index from "./pages/Index";
-import About from "./pages/About";
-import Contact from "./pages/Contact";
-import Documentation from "./pages/Documentation";
-import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
-import TermsOfService from "./pages/legal/TermsOfService";
-import RefundPolicy from "./pages/legal/RefundPolicy";
-
-import Pricing from "./pages/Pricing";
 import Auth from "./pages/auth/Auth";
 import Register from "./pages/auth/Register";
 import VerifyEmail from "./pages/auth/VerifyEmail";
@@ -90,6 +80,27 @@ function AdminRedirect() {
   return <ExternalRedirect to={`${ADMIN_ORIGIN}${adminPath}${location.search}${location.hash}`} />;
 }
 
+const MARKETING_ORIGIN = import.meta.env.VITE_MARKETING_URL ?? "https://sellersuit.com";
+
+function MarketingRedirect() {
+  const location = useLocation();
+  return <ExternalRedirect to={`${MARKETING_ORIGIN}${location.pathname}${location.search}${location.hash}`} />;
+}
+
+function RootRedirect() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return null; // Prevents layout flashing while checking session
+  }
+
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <Navigate to="/auth" replace />;
+}
+
 // eBay-only scope (see AI_AGENT_SCOPE_EBAY_ONLY.md): while Shopify is disabled,
 // every Shopify route redirects to the eBay dashboard. The page components stay
 // imported and recoverable — re-enabling is a flag flip in marketplaceScope.
@@ -138,6 +149,8 @@ const EbayRoutes = () => (
       <Route path="listings/new" element={<NewListing />} />
       <Route path="bulk-lister" element={<BulkLister />} />
       <Route path="orders" element={<EbayOrders />} />
+      {/* Legacy generic-dashboard alias for eBay orders */}
+      <Route path="ebay-orders" element={<Navigate to="../orders" replace />} />
       <Route path="auto-orders" element={<Orders />} />
       <Route path="product-research" element={<ProductResearch />} />
       <Route path="best-selling" element={<BestSellingItems />} />
@@ -145,6 +158,9 @@ const EbayRoutes = () => (
       <Route path="profitable-products" element={<ProfitableProducts />} />
       <Route path="calculator" element={<CalculatorSettings />} />
       <Route path="extension" element={<ExtensionConnect />} />
+      <Route path="alerts" element={<Alerts />} />
+      <Route path="subscription" element={<Subscription />} />
+      <Route path="billing" element={<Subscription />} />
       <Route path="settings" element={<DashboardSettings />} />
     </Route>
   </Routes>
@@ -160,11 +176,16 @@ const App = () => (
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <ErrorBoundary>
               <Routes>
-                <Route path="/" element={<Index />} />
-                <Route path="/about" element={<About />} />
-                <Route path="/contact" element={<Contact />} />
-                <Route path="/documentation" element={<Documentation />} />
-                <Route path="/pricing" element={<Pricing />} />
+                <Route path="/" element={<RootRedirect />} />
+                <Route path="/about" element={<MarketingRedirect />} />
+                <Route path="/contact" element={<MarketingRedirect />} />
+                <Route path="/documentation" element={<MarketingRedirect />} />
+                <Route path="/pricing" element={<MarketingRedirect />} />
+                <Route path="/privacy" element={<MarketingRedirect />} />
+                <Route path="/privacy-policy" element={<MarketingRedirect />} />
+                <Route path="/terms" element={<MarketingRedirect />} />
+                <Route path="/terms-of-service" element={<MarketingRedirect />} />
+                <Route path="/refund" element={<MarketingRedirect />} />
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/signup" element={<Register />} />
                 {/* Legacy alias → canonical /signup (preserves ?plan + nav state) */}
@@ -172,6 +193,7 @@ const App = () => (
 
                 {/* Canonical checkout entry: validates ?plan and starts a Stripe session */}
                 <Route path="/checkout" element={<Checkout />} />
+                <Route path="/billing" element={<Navigate to="/checkout?plan=trial" replace />} />
                 {/* Canonical payment-result pages */}
                 <Route path="/payment-success" element={<CheckoutSuccess />} />
                 <Route path="/payment-cancelled" element={<PaymentCancelled />} />
@@ -186,37 +208,28 @@ const App = () => (
                 <Route path="/payment-required" element={<Navigate to="/choose-plan" replace />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
 
-                <Route path="/privacy" element={<PrivacyPolicy />} />
-                <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-                <Route path="/terms" element={<TermsOfService />} />
-                <Route path="/terms-of-service" element={<TermsOfService />} />
-                <Route path="/refund" element={<RefundPolicy />} />
+
                 <Route path="/admin/*" element={<AdminRedirect />} />
 
-                <Route
-                  path="/dashboard"
-                  element={
-                    <ProtectedRoute>
-                      <DashboardLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<Dashboard />} />
-                  <Route path="listings" element={<Listings />} />
-                  <Route path="listings/new" element={<NewListing />} />
-                  <Route path="ebay-orders" element={<EbayOrders />} />
-                  <Route path="orders" element={<Orders />} />
-                  <Route path="alerts" element={<Alerts />} />
-                  <Route path="subscription" element={<Subscription />} />
-                  <Route path="billing" element={<Subscription />} />
-                  <Route path="extension" element={<ExtensionConnect />} />
-                  <Route path="calculator" element={<CalculatorSettings />} />
-                  <Route path="best-selling" element={<BestSellingItems />} />
-                  <Route path="must-sell" element={<MustSellItems />} />
-                  <Route path="profitable-products" element={<ProfitableProducts />} />
-                  <Route path="product-research" element={<ProductResearch />} />
-                  <Route path="settings" element={<DashboardSettings />} />
-                </Route>
+                {/* Canonical workspace is /dashboard/ebay/* (single eBay layout).
+                    The legacy generic /dashboard/* paths now redirect into it so
+                    there is no split-brain between two dashboard layouts. The bare
+                    /dashboard is also funnelled to /dashboard/ebay by the guard. */}
+                <Route path="/dashboard" element={<Navigate to="/dashboard/ebay" replace />} />
+                <Route path="/dashboard/listings/new" element={<Navigate to="/dashboard/ebay/listings/new" replace />} />
+                <Route path="/dashboard/listings" element={<Navigate to="/dashboard/ebay/listings" replace />} />
+                <Route path="/dashboard/ebay-orders" element={<Navigate to="/dashboard/ebay/orders" replace />} />
+                <Route path="/dashboard/orders" element={<Navigate to="/dashboard/ebay/auto-orders" replace />} />
+                <Route path="/dashboard/alerts" element={<Navigate to="/dashboard/ebay/alerts" replace />} />
+                <Route path="/dashboard/subscription" element={<Navigate to="/dashboard/ebay/subscription" replace />} />
+                <Route path="/dashboard/billing" element={<Navigate to="/dashboard/ebay/billing" replace />} />
+                <Route path="/dashboard/extension" element={<Navigate to="/dashboard/ebay/extension" replace />} />
+                <Route path="/dashboard/calculator" element={<Navigate to="/dashboard/ebay/calculator" replace />} />
+                <Route path="/dashboard/best-selling" element={<Navigate to="/dashboard/ebay/best-selling" replace />} />
+                <Route path="/dashboard/must-sell" element={<Navigate to="/dashboard/ebay/must-sell" replace />} />
+                <Route path="/dashboard/profitable-products" element={<Navigate to="/dashboard/ebay/profitable-products" replace />} />
+                <Route path="/dashboard/product-research" element={<Navigate to="/dashboard/ebay/product-research" replace />} />
+                <Route path="/dashboard/settings" element={<Navigate to="/dashboard/ebay/settings" replace />} />
 
                 <Route path="/dashboard/ebay/*" element={<EbayRoutes />} />
                 <Route path="/dashboard/shopify/*" element={<ShopifyRoutes />} />
@@ -227,7 +240,6 @@ const App = () => (
                 <Route path="/listings" element={<Navigate to="/dashboard/listings" replace />} />
                 <Route path="/products" element={<Navigate to="/dashboard/product-research" replace />} />
                 <Route path="/inventory" element={<Navigate to="/dashboard/listings" replace />} />
-                <Route path="/billing" element={<Navigate to="/dashboard/settings" replace />} />
                 <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
 
                 <Route path="/extension-viewer" element={<ExtensionViewer />} />

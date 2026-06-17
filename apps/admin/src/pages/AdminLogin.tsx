@@ -22,7 +22,7 @@ export default function AdminLogin() {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [accessDenied, setAccessDenied] = useState(false);
 
-  const { signIn, user, isAdmin, isLoading } = useAuth();
+  const { signIn, signOut, user, isAdmin, isLoading } = useAuth();
   const navigate = useNavigate();
 
   // Redirect if already logged in as admin
@@ -34,10 +34,6 @@ export default function AdminLogin() {
         // Non-admin user trying to access admin login
         setAccessDenied(true);
         toast.error('Access denied. Admin privileges required.');
-        // Redirect to home after a short delay
-        setTimeout(() => {
-          navigate('/', { replace: true });
-        }, 2000);
       }
     }
   }, [user, isAdmin, isLoading, navigate]);
@@ -124,8 +120,19 @@ export default function AdminLogin() {
           >
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Access denied. You don't have admin privileges. Redirecting to home...
+              <AlertDescription className="flex flex-col gap-3">
+                <span>Access denied. You don't have admin privileges.</span>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={async () => {
+                    await signOut();
+                    setAccessDenied(false);
+                  }}
+                  className="w-full text-xs font-semibold text-destructive hover:bg-destructive/10 border-destructive/20"
+                >
+                  Sign Out of Current Account
+                </Button>
               </AlertDescription>
             </Alert>
           </motion.div>
