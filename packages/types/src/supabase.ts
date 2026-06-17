@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.1"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       admin_alerts: {
@@ -109,6 +84,56 @@ export type Database = {
           },
         ]
       }
+      admin_audit_logs: {
+        Row: {
+          action: string
+          admin_id: string
+          created_at: string | null
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          metadata: Json | null
+          new_value: string | null
+          old_value: string | null
+          reason: string | null
+          target_user_id: string | null
+        }
+        Insert: {
+          action: string
+          admin_id: string
+          created_at?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          metadata?: Json | null
+          new_value?: string | null
+          old_value?: string | null
+          reason?: string | null
+          target_user_id?: string | null
+        }
+        Update: {
+          action?: string
+          admin_id?: string
+          created_at?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          metadata?: Json | null
+          new_value?: string | null
+          old_value?: string | null
+          reason?: string | null
+          target_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_audit_logs_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       admin_settings: {
         Row: {
           created_at: string
@@ -132,6 +157,41 @@ export type Database = {
           value?: string | null
         }
         Relationships: []
+      }
+      admin_support_notes: {
+        Row: {
+          admin_id: string
+          created_at: string | null
+          id: string
+          note: string
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string | null
+          id?: string
+          note: string
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string | null
+          id?: string
+          note?: string
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_support_notes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       amazon_settings: {
         Row: {
@@ -821,6 +881,39 @@ export type Database = {
         }
         Relationships: []
       }
+      description_config: {
+        Row: {
+          exclusion_rules: Json
+          id: string
+          output_format: string
+          prompt_skeleton: string
+          scope: string
+          sections: Json
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          exclusion_rules: Json
+          id?: string
+          output_format?: string
+          prompt_skeleton: string
+          scope?: string
+          sections: Json
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          exclusion_rules?: Json
+          id?: string
+          output_format?: string
+          prompt_skeleton?: string
+          scope?: string
+          sections?: Json
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
       ebay_connections: {
         Row: {
           access_token_expires_at: string | null
@@ -1016,6 +1109,41 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      ebay_sync_logs: {
+        Row: {
+          created_at: string | null
+          error_category: string | null
+          id: string
+          payload_preview: Json | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          error_category?: string | null
+          id?: string
+          payload_preview?: Json | null
+          status: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          error_category?: string | null
+          id?: string
+          payload_preview?: Json | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ebay_sync_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       extension_activity_logs: {
         Row: {
@@ -2167,6 +2295,147 @@ export type Database = {
         }
         Relationships: []
       }
+      marketing_authors: {
+        Row: {
+          avatar_url: string | null
+          bio: string | null
+          created_at: string
+          id: string
+          name: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      marketing_categories: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          slug: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          slug: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          slug?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      marketing_posts: {
+        Row: {
+          author_id: string | null
+          canonical_url: string | null
+          category_id: string | null
+          content: string
+          cover_image_url: string | null
+          created_at: string
+          excerpt: string | null
+          faq: Json
+          id: string
+          keywords: string[]
+          meta_description: string | null
+          og_image_url: string | null
+          published_at: string | null
+          reading_minutes: number
+          seo_title: string | null
+          slug: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          author_id?: string | null
+          canonical_url?: string | null
+          category_id?: string | null
+          content?: string
+          cover_image_url?: string | null
+          created_at?: string
+          excerpt?: string | null
+          faq?: Json
+          id?: string
+          keywords?: string[]
+          meta_description?: string | null
+          og_image_url?: string | null
+          published_at?: string | null
+          reading_minutes?: number
+          seo_title?: string | null
+          slug: string
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string | null
+          canonical_url?: string | null
+          category_id?: string | null
+          content?: string
+          cover_image_url?: string | null
+          created_at?: string
+          excerpt?: string | null
+          faq?: Json
+          id?: string
+          keywords?: string[]
+          meta_description?: string | null
+          og_image_url?: string | null
+          published_at?: string | null
+          reading_minutes?: number
+          seo_title?: string | null
+          slug?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_posts_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_authors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_posts_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       must_sell_items: {
         Row: {
           category: string | null
@@ -2696,6 +2965,9 @@ export type Database = {
           avatar_url: string | null
           created_at: string | null
           credits: number | null
+          current_period_end: string | null
+          current_period_start: string | null
+          customer_id: string | null
           default_workspace_id: string | null
           ebay_connected: boolean | null
           email: string
@@ -2706,11 +2978,17 @@ export type Database = {
           mfa_enabled: boolean | null
           onboarding_completed: boolean | null
           onboarding_status: string | null
+          payment_status: string | null
+          pending_plan_id: string | null
           plan_id: string | null
           platform_access: string[] | null
+          selected_plan_id: string | null
           settings: Json | null
           shopify_connected: boolean | null
           stripe_customer_id: string | null
+          subscription_id: string | null
+          subscription_provider: string | null
+          subscription_status: string | null
           trial_used_at: string | null
           updated_at: string | null
         }
@@ -2722,6 +3000,9 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string | null
           credits?: number | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          customer_id?: string | null
           default_workspace_id?: string | null
           ebay_connected?: boolean | null
           email: string
@@ -2732,11 +3013,17 @@ export type Database = {
           mfa_enabled?: boolean | null
           onboarding_completed?: boolean | null
           onboarding_status?: string | null
+          payment_status?: string | null
+          pending_plan_id?: string | null
           plan_id?: string | null
           platform_access?: string[] | null
+          selected_plan_id?: string | null
           settings?: Json | null
           shopify_connected?: boolean | null
           stripe_customer_id?: string | null
+          subscription_id?: string | null
+          subscription_provider?: string | null
+          subscription_status?: string | null
           trial_used_at?: string | null
           updated_at?: string | null
         }
@@ -2748,6 +3035,9 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string | null
           credits?: number | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          customer_id?: string | null
           default_workspace_id?: string | null
           ebay_connected?: boolean | null
           email?: string
@@ -2758,11 +3048,17 @@ export type Database = {
           mfa_enabled?: boolean | null
           onboarding_completed?: boolean | null
           onboarding_status?: string | null
+          payment_status?: string | null
+          pending_plan_id?: string | null
           plan_id?: string | null
           platform_access?: string[] | null
+          selected_plan_id?: string | null
           settings?: Json | null
           shopify_connected?: boolean | null
           stripe_customer_id?: string | null
+          subscription_id?: string | null
+          subscription_provider?: string | null
+          subscription_status?: string | null
           trial_used_at?: string | null
           updated_at?: string | null
         }
@@ -2775,8 +3071,22 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "profiles_pending_plan_id_fkey"
+            columns: ["pending_plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "profiles_plan_id_fkey"
             columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_selected_plan_id_fkey"
+            columns: ["selected_plan_id"]
             isOneToOne: false
             referencedRelation: "plans"
             referencedColumns: ["id"]
@@ -3423,6 +3733,41 @@ export type Database = {
         }
         Relationships: []
       }
+      user_feature_overrides: {
+        Row: {
+          admin_id: string
+          created_at: string | null
+          feature_key: string
+          id: string
+          is_enabled: boolean
+          user_id: string
+        }
+        Insert: {
+          admin_id: string
+          created_at?: string | null
+          feature_key: string
+          id?: string
+          is_enabled?: boolean
+          user_id: string
+        }
+        Update: {
+          admin_id?: string
+          created_at?: string | null
+          feature_key?: string
+          id?: string
+          is_enabled?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_feature_overrides_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_plans: {
         Row: {
           admin_override_limits: Json | null
@@ -3677,12 +4022,77 @@ export type Database = {
       }
     }
     Functions: {
+      adjust_user_credits_admin: {
+        Args: {
+          p_adjustment_type: string
+          p_amount: number
+          p_reason: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
       check_user_exists: { Args: { lookup_email: string }; Returns: boolean }
       create_listing_with_variations: {
         Args: { p_listing: Json; p_user_id: string; p_variations: Json }
         Returns: Json
       }
+      extend_user_subscription_admin: {
+        Args: { p_days: number; p_reason: string; p_user_id: string }
+        Returns: boolean
+      }
+      get_admin_audit_log_detail: { Args: { p_log_id: string }; Returns: Json }
       get_auth_user_id_by_email: { Args: { p_email: string }; Returns: string }
+      get_ebay_admin_stats: { Args: never; Returns: Json }
+      get_ebay_feature_controls_admin: {
+        Args: never
+        Returns: {
+          feature_key: string
+          is_enabled: boolean
+          updated_at: string
+        }[]
+      }
+      get_ebay_order_summary: {
+        Args: {
+          p_date_from?: string
+          p_date_to?: string
+          p_search?: string
+          p_status?: string
+          p_user_id: string
+        }
+        Returns: {
+          distinct_rows: number
+          total_revenue: number
+        }[]
+      }
+      get_ebay_user_admin_summary: {
+        Args: { target_user_id: string }
+        Returns: Json
+      }
+      get_ebay_user_dashboard_stats_admin: {
+        Args: { p_user_id: string }
+        Returns: Json
+      }
+      get_ebay_user_support_timeline: {
+        Args: { target_user_id: string }
+        Returns: {
+          description: string
+          event_date: string
+          event_type: string
+          metadata: Json
+        }[]
+      }
+      get_user_credits_admin: {
+        Args: { target_user_id: string }
+        Returns: Json
+      }
+      get_user_feature_overrides_admin: {
+        Args: { p_user_id: string }
+        Returns: {
+          created_at: string
+          feature_key: string
+          is_enabled: boolean
+        }[]
+      }
       get_user_goal: { Args: { lookup_email: string }; Returns: string }
       get_user_plan_name: { Args: { check_user_id: string }; Returns: string }
       has_role: {
@@ -3698,6 +4108,7 @@ export type Database = {
         Returns: boolean
       }
       is_user_blocked: { Args: { check_user_id: string }; Returns: boolean }
+      is_valid_ebay_feature: { Args: { feature_key: string }; Returns: boolean }
       list_user_listings: {
         Args: {
           p_cursor_created?: string
@@ -3746,8 +4157,113 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      log_admin_action: {
+        Args: {
+          p_action: string
+          p_entity_id: string
+          p_entity_type: string
+          p_metadata?: Json
+          p_new_value: string
+          p_old_value: string
+          p_reason: string
+          p_target_user_id: string
+        }
+        Returns: undefined
+      }
+      remove_user_feature_override: {
+        Args: { p_feature_key: string; p_reason: string; p_user_id: string }
+        Returns: undefined
+      }
+      search_admin_audit_logs: {
+        Args: {
+          action_filter?: string
+          limit_val?: number
+          offset_val?: number
+          search_query?: string
+        }
+        Returns: {
+          action: string
+          admin_email: string
+          admin_id: string
+          created_at: string
+          entity_id: string
+          entity_type: string
+          log_id: string
+          metadata: Json
+          new_value: string
+          old_value: string
+          reason: string
+          target_user_email: string
+          target_user_id: string
+        }[]
+      }
+      search_ebay_users_admin: {
+        Args: {
+          limit_val?: number
+          offset_val?: number
+          search_query?: string
+          status_filter?: string
+        }
+        Returns: {
+          account_status: string
+          credits_remaining: number
+          email: string
+          full_name: string
+          is_sync_enabled: boolean
+          latest_sync_status: string
+          latest_synced_at: string
+          orders_last_24h: number
+          orders_last_7d: number
+          total_orders: number
+          user_id: string
+        }[]
+      }
+      search_user_credits_admin: {
+        Args: { limit_val?: number; offset_val?: number; search_query?: string }
+        Returns: {
+          account_status: string
+          credits_remaining: number
+          credits_used: number
+          email: string
+          full_name: string
+          last_adjustment_date: string
+          last_usage_date: string
+          user_id: string
+        }[]
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      toggle_user_status_admin: {
+        Args: { p_is_active: boolean; p_reason: string; p_user_id: string }
+        Returns: boolean
+      }
+      update_ebay_global_feature_control: {
+        Args: { p_enabled: boolean; p_feature_key: string; p_reason: string }
+        Returns: undefined
+      }
+      update_user_feature_override: {
+        Args: {
+          p_enabled: boolean
+          p_feature_key: string
+          p_reason: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
+      update_user_limits_admin: {
+        Args: {
+          p_credits_per_month: number
+          p_max_auto_orders: number
+          p_max_listings: number
+          p_reason: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      update_user_plan_admin: {
+        Args: { p_plan_id: string; p_reason: string; p_user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "user" | "admin" | "super_admin"
@@ -3876,9 +4392,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       app_role: ["user", "admin", "super_admin"],
