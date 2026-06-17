@@ -86,6 +86,18 @@ export async function update<T = unknown>(table: string, id: string, values: Rec
   return data as T;
 }
 
+/** Update rows matching an arbitrary equality filter (for tables not keyed by `id`). */
+export async function updateWhere(
+  table: string,
+  match: Record<string, string | number | boolean>,
+  values: Record<string, unknown>,
+): Promise<void> {
+  let query = sb.from(table).update(values);
+  for (const [col, value] of Object.entries(match)) query = query.eq(col, value);
+  const { error } = await query;
+  if (error) throw error;
+}
+
 export async function remove(table: string, id: string): Promise<void> {
   const { error } = await sb.from(table).delete().eq("id", id);
   if (error) throw error;

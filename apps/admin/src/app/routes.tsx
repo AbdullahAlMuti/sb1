@@ -1,11 +1,14 @@
 import { type ReactNode } from "react";
 import {
+  Activity,
   Bot,
   ClipboardList,
   CreditCard,
   Gauge,
   ListChecks,
   Megaphone,
+  ToggleLeft,
+  Webhook,
   Newspaper,
   Package,
   PackageCheck,
@@ -36,7 +39,7 @@ import AdminExtensionControl from "@/pages/AdminExtensionControl";
 import AdminBlog from "@/pages/AdminBlog";
 import AdminBlogEditor from "@/pages/AdminBlogEditor";
 import AdminNotices from "@/modules/content/notices";
-import AdminAudit from "@/pages/AdminAudit";
+import AdminAudit from "@/modules/ops/AuditPage";
 import AdminRoles from "@/pages/AdminRoles";
 import AdminSettings from "@/pages/AdminSettings";
 import {
@@ -45,6 +48,9 @@ import {
   AdminProfitableProductsPage as AdminProfitableProducts,
 } from "@/modules/catalog";
 import QueuesPage from "@/modules/ops/QueuesPage";
+import SystemHealthPage from "@/modules/ops/SystemHealthPage";
+import FeatureFlagsPage from "@/modules/ops/FeatureFlagsPage";
+import StripeEventsPage from "@/modules/billing/StripeEventsPage";
 import { platformRegistry } from "@/platforms/platformRegistry";
 import { PlatformDashboardLayout } from "@/platforms/components/PlatformDashboardLayout";
 
@@ -89,6 +95,7 @@ export const adminRoutes: AdminRouteDef[] = [
   { path: "subscriptions", element: <AdminSubscriptions />, label: "Subscriptions", icon: Receipt, group: "Billing" },
   { path: "checkout-sessions", element: <AdminCheckoutSessions />, label: "Checkout Sessions", icon: ShoppingCart, group: "Billing" },
   { path: "coupons", element: <AdminCoupons />, label: "Coupons", icon: Tags, group: "Billing" },
+  { path: "billing/stripe-events", element: <StripeEventsPage />, label: "Stripe Events", icon: Webhook, group: "Billing" },
 
   // Platform
   { path: "ai", element: <AdminAISettings />, label: "AI / Automation", icon: Bot, group: "Platform", redirectFrom: ["ai-settings"] },
@@ -107,6 +114,8 @@ export const adminRoutes: AdminRouteDef[] = [
 
   // Operations
   { path: "ops/queues", element: <QueuesPage />, label: "Queues", icon: ListChecks, group: "Operations" },
+  { path: "ops/system-health", element: <SystemHealthPage />, label: "System Health", icon: Activity, group: "Operations" },
+  { path: "ops/flags", element: <FeatureFlagsPage />, label: "Feature Flags", icon: ToggleLeft, group: "Operations" },
 
   // System
   { path: "notices", element: <AdminNotices />, label: "Notices", icon: Megaphone, group: "System", redirectFrom: ["notifications"] },
