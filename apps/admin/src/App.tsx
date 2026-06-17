@@ -147,6 +147,7 @@ const App = () => (
                 <Route path="/admin" element={adminRouteElement}>
                   {AdminRouteChildren()}
                 </Route>
+                <Route path="/dashboard" element={<Navigate to="/overview" replace />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </ErrorBoundary>
