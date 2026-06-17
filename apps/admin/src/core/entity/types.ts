@@ -6,7 +6,8 @@ export type FieldDef =
   | { name: string; label: string; type: "text" | "textarea" | "number"; required?: boolean; placeholder?: string; rows?: number }
   | { name: string; label: string; type: "switch"; required?: boolean }
   | { name: string; label: string; type: "datetime"; required?: boolean }
-  | { name: string; label: string; type: "select"; required?: boolean; options: { value: string; label: string }[] };
+  | { name: string; label: string; type: "select"; required?: boolean; options: { value: string; label: string }[] }
+  | { name: string; label: string; type: "multiselect"; required?: boolean; options: { value: string; label: string }[] };
 
 export type FormValues = Record<string, unknown>;
 
