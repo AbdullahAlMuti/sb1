@@ -46,6 +46,7 @@ import {
 import { toast } from 'sonner';
 import { useRealtimePlans } from '@repo/api-client/hooks/useRealtimeSync';
 import { useAuth } from '@repo/auth/hooks/useAuth';
+import { PageHeader } from '@/core/ui/PageHeader';
 
 interface Plan {
   id: string;
@@ -324,35 +325,30 @@ export default function AdminPlans() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
-      >
-        <div>
-          <h1 className="text-3xl font-display font-bold text-foreground">Plan Management</h1>
-          <p className="text-muted-foreground mt-1">Configure pricing tiers and subscription features</p>
-        </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => setEditingPlan(null)}>
-              <Plus className="h-5 w-5 mr-2" />Add Plan
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>{editingPlan ? 'Edit Plan' : 'Create New Plan'}</DialogTitle>
-              <DialogDescription>Configure the plan details and pricing</DialogDescription>
-            </DialogHeader>
-            <PlanForm
-              plan={editingPlan}
-              onSave={handleSavePlan}
-              onCancel={() => setIsDialogOpen(false)}
-              isSaving={isSaving}
-            />
-          </DialogContent>
-        </Dialog>
-      </motion.div>
+      <PageHeader
+        title="Plan Management"
+        description="Configure pricing tiers and subscription features"
+        icon={CreditCard}
+        actions={
+          <Button onClick={() => { setEditingPlan(null); setIsDialogOpen(true); }}>
+            <Plus className="h-5 w-5 mr-2" />Add Plan
+          </Button>
+        }
+      />
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingPlan ? 'Edit Plan' : 'Create New Plan'}</DialogTitle>
+            <DialogDescription>Configure the plan details and pricing</DialogDescription>
+          </DialogHeader>
+          <PlanForm
+            plan={editingPlan}
+            onSave={handleSavePlan}
+            onCancel={() => setIsDialogOpen(false)}
+            isSaving={isSaving}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
