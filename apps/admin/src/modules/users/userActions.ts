@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAdminMutation } from "@/core/data/mutate";
-import { rpc, invokeFn, list } from "@/core/data/resource";
+import { rpc, invokeFn, list, insert, logAdminAction } from "@/core/data/resource";
 import { keys } from "@/core/data/keys";
 
 /**
@@ -90,4 +90,25 @@ export function useVerifyEmail(userId: string) {
     invalidate: userInvalidation(userId),
     successMessage: "Email verified",
   });
+}
+
+/**
+ * Queue a server-side order resync for the user by enqueuing a job in the
+ * background_jobs queue (drained by queue-worker). This is the real mechanism —
+ * not a no-op — though delivery depends on a worker picking up the job type.
+ */
+export function useQueueResync(userId: string) {
+  return useAdminMutation<void, unknown>(
+    async () => {
+      await insert("background_jobs", {
+        user_id: userId,
+        job_type: "ebay_order_sync",
+        status: "queued",
+        payload: { source: "admin_manual_resync" },
+        run_after: new Date().toISOString(),
+      });
+      await logAdminAction({ action: "order_resync_queued", entityType: "user", entityId: userId, targetUserId: userId });
+    },
+    { invalidate: userInvalidation(userId), successMessage: "Resync queued" },
+  );
 }

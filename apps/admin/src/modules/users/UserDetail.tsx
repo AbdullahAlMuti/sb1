@@ -7,7 +7,7 @@ import {
   DialogTitle,
 } from "@repo/ui/components/ui/dialog";
 import { Button } from "@repo/ui/components/ui/button";
-import { Calendar, CheckCircle, Coins, CreditCard, Settings2, ShieldCheck, UserCog } from "lucide-react";
+import { Calendar, CheckCircle, Coins, CreditCard, RefreshCw, Settings2, ShieldCheck, UserCog } from "lucide-react";
 import { format } from "date-fns";
 import { StatusBadge } from "@/core/ui/StatusBadge";
 import { StateLayout } from "@/core/ui/StateLayout";
@@ -23,6 +23,7 @@ import {
   useChangeRole,
   useExtendSubscription,
   usePlansList,
+  useQueueResync,
   useToggleStatus,
   useUpdateLimits,
   useVerifyEmail,
@@ -56,6 +57,7 @@ export function UserDetail({ userId, open, onOpenChange }: { userId: string | nu
   const changeRole = useChangeRole(id);
   const toggleStatus = useToggleStatus(id);
   const verifyEmail = useVerifyEmail(id);
+  const queueResync = useQueueResync(id);
 
   const actionFields: Record<Exclude<Action, null>, FieldDef[]> = {
     credits: [
@@ -164,6 +166,9 @@ export function UserDetail({ userId, open, onOpenChange }: { userId: string | nu
                   </RequireRole>
                   <Button variant="outline" size="sm" onClick={() => verifyEmail.mutate()} disabled={verifyEmail.isPending}>
                     <CheckCircle className="mr-2 h-4 w-4" />Verify email
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => queueResync.mutate()} disabled={queueResync.isPending}>
+                    <RefreshCw className={`mr-2 h-4 w-4 ${queueResync.isPending ? "animate-spin" : ""}`} />Queue resync
                   </Button>
                   <Button
                     variant="outline"

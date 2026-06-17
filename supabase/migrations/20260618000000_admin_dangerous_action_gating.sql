@@ -7,9 +7,9 @@
 --   * update_user_limits_admin     — overriding plan entitlements
 --   * adjust_user_credits_admin     — only when |amount| > LARGE_GRANT_THRESHOLD
 --
--- IMPORTANT: assign super_admin to the operators who need these BEFORE applying,
--- or they will lose access to limit overrides / large grants. Read RPCs and
--- everyday actions are unaffected.
+-- LOCKOUT-SAFE: the super_admin requirement only takes effect once at least one
+-- super_admin exists. Until then, admins keep full access, so this migration is
+-- safe to apply immediately. Assign super_admin roles when ready to enforce.
 
 -- 1. Limit overrides → super_admin only
 CREATE OR REPLACE FUNCTION public.update_user_limits_admin(
@@ -27,8 +27,15 @@ DECLARE
   v_old_limits jsonb;
   v_new_limits jsonb;
 BEGIN
-  -- Tightened: limit overrides are a super-admin action.
-  IF NOT public.has_role(auth.uid(), 'super_admin'::public.app_role) THEN
+  -- Must be at least admin.
+  IF NOT public.has_role(auth.uid(), 'admin'::public.app_role) THEN
+    RAISE EXCEPTION 'Unauthorized' USING ERRCODE = '42501';
+  END IF;
+  -- Lockout-safe tightening: require super_admin for limit overrides ONLY once a
+  -- super_admin exists. Before any super_admin is assigned, admins retain access
+  -- so applying this migration cannot lock anyone out.
+  IF EXISTS (SELECT 1 FROM public.user_roles WHERE role = 'super_admin')
+     AND NOT public.has_role(auth.uid(), 'super_admin'::public.app_role) THEN
     RAISE EXCEPTION 'Unauthorized: limit overrides require super_admin' USING ERRCODE = '42501';
   END IF;
 
@@ -81,8 +88,11 @@ BEGIN
     RAISE EXCEPTION 'Unauthorized' USING ERRCODE = '42501';
   END IF;
 
-  -- Tightened: large adjustments require super_admin; routine comps stay admin.
+  -- Lockout-safe tightening: large adjustments require super_admin ONLY once a
+  -- super_admin exists; routine comps stay admin. Before any super_admin is
+  -- assigned, admins retain full access.
   IF abs(p_amount) > large_grant_threshold
+     AND EXISTS (SELECT 1 FROM public.user_roles WHERE role = 'super_admin')
      AND NOT public.has_role(auth.uid(), 'super_admin'::public.app_role) THEN
     RAISE EXCEPTION 'Unauthorized: adjustments over % credits require super_admin', large_grant_threshold
       USING ERRCODE = '42501';
