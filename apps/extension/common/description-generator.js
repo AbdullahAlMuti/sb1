@@ -32,6 +32,43 @@ const DescriptionGenerator = (() => {
       pasteBtn.addEventListener('click', handlePasteDescription);
     }
 
+    // Editable Description Character Counter & Storage Sync
+    const previewEl = document.getElementById('description-preview');
+    const descCounter = document.querySelector('.ss-desc-counter');
+    
+    const updateDescCounter = () => {
+      if (previewEl && descCounter) {
+        if (previewEl.querySelector('.description-placeholder') || 
+            previewEl.querySelector('.description-empty-state') || 
+            previewEl.classList.contains('description-empty-state') ||
+            previewEl.querySelector('.ss-desc-empty')) {
+          descCounter.innerHTML = `0 / 5000 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width: 12px; height: 12px; color: #22c55e;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+          return;
+        }
+        const text = previewEl.innerText || '';
+        descCounter.innerHTML = `${text.length} / 5000 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width: 12px; height: 12px; color: #22c55e;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+      }
+    };
+
+    if (previewEl) {
+      previewEl.addEventListener('input', () => {
+        const text = previewEl.innerHTML;
+        currentDescription = text;
+        updateDescCounter();
+        chrome.storage.local.set({ 
+          generatedDescription: text,
+          selectedEbayDescription: text,
+          selectedDescriptionTimestamp: Date.now()
+        });
+      });
+      
+      const observer = new MutationObserver(() => {
+        updateDescCounter();
+      });
+      observer.observe(previewEl, { childList: true, characterData: true, subtree: true });
+      updateDescCounter();
+    }
+
     console.log('[DescriptionGenerator] Initialized');
   }
 
@@ -351,6 +388,18 @@ const DescriptionGenerator = (() => {
 
       currentDescription = result.description;
 
+      // ─── INTEGRATE SELECTED LISTING TEMPLATE ─────────────────────────────────
+      // [TEMPLATE INTEGRATION POINT]
+      // Retrieve selected listing template and wrap the description if required.
+      const activeTemplate = await getSelectedListingTemplate();
+      if (activeTemplate) {
+        console.log('[DescriptionGenerator] Active template to apply:', activeTemplate.name);
+        currentDescription = compileTemplate(activeTemplate, productData, currentDescription);
+      } else {
+        console.log('[DescriptionGenerator] No active template selected. Using fallback (raw description).');
+      }
+      // ──────────────────────────────────────────────────────────────────────────
+
       // Display the description
       if (previewEl) {
         previewEl.innerHTML = currentDescription;
@@ -367,9 +416,45 @@ const DescriptionGenerator = (() => {
         selectedDescriptionTimestamp: Date.now()
       });
 
+      // Populate Title if returned in response (bonus integration)
+      if (result.title) {
+        console.log('[DescriptionGenerator] Title generated:', result.title);
+        const titleDisplay = document.getElementById('ai-generated-title');
+        const titleCounter = document.getElementById('ai-title-counter');
+        const extTitle = document.getElementById('ext-title');
+
+        if (titleDisplay) {
+          titleDisplay.classList.add('has-title');
+          titleDisplay.innerText = result.title;
+          if (titleCounter) {
+            titleCounter.innerHTML = `${result.title.length} / 80 chars <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>`;
+          }
+        }
+
+        if (extTitle) {
+          extTitle.value = result.title;
+        }
+
+        // Save generated title to storage
+        chrome.storage.local.set({
+          selectedEbayTitle: result.title,
+          savedTitles: [result.title],
+          selectedTitleTimestamp: Date.now(),
+          generatedAt: Date.now()
+        });
+
+        // Patch draft
+        if (typeof window !== 'undefined' && window.SSListingDraft) {
+          window.SSListingDraft.patchDraft({
+            title: result.title,
+            title_source: 'ai'
+          }).catch(() => {});
+        }
+      }
+
       // Show success toast
       if (typeof UIHelper !== 'undefined') {
-        UIHelper.showToast('Description generated successfully!', 'success');
+        UIHelper.showToast('Listing content generated successfully!', 'success');
       }
 
       if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('[DescriptionGenerator] Generated:', {
@@ -486,13 +571,171 @@ const DescriptionGenerator = (() => {
     });
   }
 
+  // ─── Listing Templates ──────────────────────────────────────
+  const LISTING_TEMPLATES = [
+    {
+      id: 'default-professional',
+      name: 'Default Professional Template',
+      description: 'A clean and professional eBay description layout suitable for most products.',
+      isDefault: true,
+      status: 'Available',
+      htmlContent: `<div style="font-family: 'Segoe UI', Helvetica, Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; color: #1a202c; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+  <header style="text-align: center; border-bottom: 2px solid #3b82f6; padding-bottom: 16px; margin-bottom: 24px;">
+    <h1 style="color: #1e3a8a; font-size: 24px; margin: 0; font-weight: 700; line-height: 1.3;">{title}</h1>
+  </header>
+  
+  <section style="margin-bottom: 32px;">
+    <h2 style="color: #1e3a8a; font-size: 18px; font-weight: 600; border-left: 4px solid #3b82f6; padding-left: 10px; margin-bottom: 12px;">Product Description</h2>
+    <div style="line-height: 1.6; color: #4a5568; font-size: 15px;">
+      {description}
+    </div>
+  </section>
+  
+  <section style="margin-bottom: 32px;">
+    <h2 style="color: #1e3a8a; font-size: 18px; font-weight: 600; border-left: 4px solid #3b82f6; padding-left: 10px; margin-bottom: 12px;">Key Features</h2>
+    <div style="line-height: 1.6; color: #4a5568; font-size: 15px;">
+      {features}
+    </div>
+  </section>
+
+  <section style="margin-bottom: 32px;">
+    <h2 style="color: #1e3a8a; font-size: 18px; font-weight: 600; border-left: 4px solid #3b82f6; padding-left: 10px; margin-bottom: 12px;">Specifications</h2>
+    <div style="line-height: 1.6; color: #4a5568; font-size: 15px;">
+      {specifications}
+    </div>
+  </section>
+  
+  <footer style="margin-top: 36px; border-top: 1px solid #e2e8f0; padding-top: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #f1f5f9;">
+      <h3 style="color: #1e3a8a; font-size: 14px; margin: 0 0 8px 0; font-weight: 600; display: flex; items-center: center; gap: 6px;">
+        <span>📦</span> Shipping & Handling
+      </h3>
+      <p style="color: #64748b; font-size: 13px; margin: 0; line-height: 1.5;">Fast and free shipping on all orders. We package professionally and ship within 1 business day.</p>
+    </div>
+    <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #f1f5f9;">
+      <h3 style="color: #1e3a8a; font-size: 14px; margin: 0 0 8px 0; font-weight: 600; display: flex; items-center: center; gap: 6px;">
+        <span>🔄</span> 30-Day Returns Policy
+      </h3>
+      <p style="color: #64748b; font-size: 13px; margin: 0; line-height: 1.5;">Shop with confidence. If you're not completely satisfied, return the item within 30 days for a full refund.</p>
+    </div>
+  </footer>
+</div>`
+    }
+  ];
+
+  function getListingTemplates() {
+    return LISTING_TEMPLATES;
+  }
+
+  async function getSelectedListingTemplate() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['selectedListingTemplateId'], (result) => {
+        const id = result.selectedListingTemplateId;
+        if (!id) {
+          // Backward compatibility: default to no template (raw description) if never chosen
+          resolve(null);
+          return;
+        }
+        const template = LISTING_TEMPLATES.find(t => t.id === id);
+        resolve(template || null);
+      });
+    });
+  }
+
+  async function selectListingTemplate(templateId) {
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ selectedListingTemplateId: templateId }, () => {
+        console.log('[DescriptionGenerator] Selected template set:', templateId);
+        resolve();
+      });
+    });
+  }
+
+  /**
+   * Compiles description using HTML template and product fields
+   */
+  function compileTemplate(template, productData, coreDescription) {
+    if (!template || !template.htmlContent) {
+      return coreDescription;
+    }
+
+    let html = template.htmlContent;
+
+    const title = productData.title || '';
+    const brand = productData.brand || '';
+    const condition = productData.condition || 'New';
+
+    let featuresHtml = '';
+    const bullets = productData.bulletPoints || productData.features || [];
+    if (bullets.length > 0) {
+      featuresHtml = '<ul style="margin: 0; padding-left: 20px; line-height: 1.6;">' +
+        bullets.map(b => `<li>${b}</li>`).join('') +
+        '</ul>';
+    }
+
+    let specificationsHtml = '';
+    const specs = productData.specifications || {};
+    if (specs && Object.keys(specs).length > 0) {
+      specificationsHtml = '<table style="width: 100%; border-collapse: collapse; font-size: 14px;">' +
+        Object.entries(specs).map(([k, v]) => `<tr><td style="padding: 8px; border: 1px solid #ddd; width: 30%;"><strong>${k}</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${v}</td></tr>`).join('') +
+        '</table>';
+    }
+
+    const values = {
+      title,
+      brand,
+      condition,
+      description: coreDescription,
+      features: featuresHtml,
+      specifications: specificationsHtml,
+      shipping: '',
+      returns: ''
+    };
+
+    // Auto-remove empty sections: if a placeholder within a <section> is empty, discard that section block
+    const sectionRegex = /<section[^>]*>([\s\S]*?)<\/section>/gi;
+    html = html.replace(sectionRegex, (match, content) => {
+      const foundPlaceholders = [...content.matchAll(/\{\{?(\w+)\}?\}/g)].map(m => m[1]);
+      const shouldRemove = foundPlaceholders.some(key => {
+        return values.hasOwnProperty(key) && !values[key];
+      });
+
+      if (shouldRemove) {
+        console.log('[DescriptionGenerator] Removing empty section containing:', foundPlaceholders);
+        return '';
+      }
+      return match;
+    });
+
+    // Replace placeholders
+    for (const [key, val] of Object.entries(values)) {
+      const regex = new RegExp(`\\{\\{?${key}\\}?\\}`, 'g');
+      html = html.replace(regex, val || '');
+    }
+
+    // Strip leftovers
+    html = html.replace(/\{\{?\w+\}?\}/g, '');
+
+    // Existing sanitization rules
+    html = html
+      .replace(/https?:\/\/[^\s<"]+/gi, '')
+      .replace(/amazon\.com|walmart\.com/gi, '')
+      .replace(/\b(ASIN|UPC|ISBN|Seller Rank|Sales Rank|Sold by|Fulfilled by|Available at)\b/gi, '')
+      .replace(/<img[^>]*>/gi, '');
+
+    return html;
+  }
+
   // Public API
   return {
     init,
     generateDescription: handleGenerateDescription,
     copyDescription: handleCopyDescription,
     pasteDescription: handlePasteDescription,
-    getCurrentDescription: () => currentDescription
+    getCurrentDescription: () => currentDescription,
+    getListingTemplates,
+    getSelectedListingTemplate,
+    selectListingTemplate
   };
 })();
 

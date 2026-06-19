@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from '../_shared/extension-session.ts';
 import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
-import { buildPrompt, renderSections, sanitize, DescriptionConfig } from '../_shared/description.ts';
+import { buildPrompt, renderSections, sanitize, ensureMinimumLength, DescriptionConfig } from '../_shared/description.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -107,13 +107,13 @@ serve(async (req) => {
 
     // Fallback default config if DB config is missing
     const defaultSections = [
-      { key: "title", type: "opening", order: 1, title: "Title", enabled: true, ai_guidance: "Format the title as a clean heading.", static_html: null },
-      { key: "opening", type: "opening", order: 2, title: "Introduction", enabled: true, ai_guidance: "1-2 compelling sentences describing the product.", static_html: null },
-      { key: "features", type: "features", order: 3, title: "✨ Key Features", enabled: true, ai_guidance: "List key features in short, punchy bullet points.", static_html: null },
-      { key: "specifications", type: "specifications", order: 4, title: "📋 Specifications", enabled: true, ai_guidance: "Create key/value pairs of technical specifications.", static_html: null },
-      { key: "shipping", type: "shipping", order: 5, title: "📦 Shipping & Handling", enabled: true, ai_guidance: null, static_html: "<p>• Fast & Free Shipping on all orders</p><p>• Tracking number provided within 24 hours</p><p>• Professionally packaged for safe delivery</p>" },
+      { key: "title", type: "opening", order: 1, title: "Title", enabled: true, ai_guidance: "Produce a clean, readable buyer-facing product heading based on {title}. Remove keyword stuffing, duplicate words, and any supplier or marketplace references. Do not add a brand that is not present in the source data.", static_html: null },
+      { key: "opening", type: "opening", order: 2, title: "Introduction", enabled: true, ai_guidance: "Write a compelling introduction of at least 3-4 sentences (minimum 500 characters total) giving a comprehensive overview of the product and its main benefits. Do not mention any supplier or marketplace name.", static_html: null },
+      { key: "features", type: "features", order: 3, title: "✨ Key Features", enabled: true, ai_guidance: "Return 4-8 short, punchy, benefit-led bullet points as an array of strings. One feature per item, no leading symbols.", static_html: null },
+      { key: "specifications", type: "specifications", order: 4, title: "📋 Specifications", enabled: true, ai_guidance: "Return an array of label/value objects for technical specifications found in the source data only. Do not invent values.", static_html: null },
+      { key: "shipping", type: "shipping", order: 5, title: "📦 Shipping & Handling", enabled: true, ai_guidance: null, static_html: "<p>• Fast & Free Shipping on all orders</p>\n<p>• Tracking number provided within 24 hours</p>\n<p>• Professionally packaged for safe delivery</p>" },
       { key: "returns", type: "returns", order: 6, title: "✅ Returns Policy", enabled: true, ai_guidance: null, static_html: "<p>30-day hassle-free returns. If you're not satisfied, return for a full refund.</p>" },
-      { key: "contact", type: "contact", order: 7, title: "⭐ Thank you for shopping with us! ⭐", enabled: true, ai_guidance: null, static_html: "<p style=\"margin: 0; color: #e65100;\"><strong>⭐ Thank you for shopping with us! ⭐</strong></p><p style=\"margin: 5px 0 0 0; font-size: 12px;\">Questions? Message us anytime - we respond within 24 hours!</p>" }
+      { key: "contact", type: "contact", order: 7, title: "⭐ Thank you for shopping with us! ⭐", enabled: true, ai_guidance: null, static_html: "<p style=\"margin: 0; color: #e65100;\"><strong>⭐ Thank you for shopping with us! ⭐</strong></p>\n<p style=\"margin: 5px 0 0 0; font-size: 12px;\">Questions? Message us anytime - we respond within 24 hours!</p>" }
     ];
 
     const defaultExclusions = {
@@ -134,15 +134,29 @@ serve(async (req) => {
       prompt_skeleton: `You are a professional eBay listing description copywriter.
 Generate structured description data for the product: {title}.
 
-You MUST return ONLY a valid JSON object matching the requested structure.
-Do not wrap in markdown code blocks or return HTML. Return a JSON object with keys corresponding to the AI-generated sections.
+OUTPUT CONTRACT:
+- Return ONLY a single valid JSON object. No markdown code fences, no HTML, no commentary before or after the JSON.
+- The JSON must match this exact shape:
+  {
+    "title": "clean buyer-facing product heading",
+    "opening": "introduction paragraph text",
+    "features": ["feature line", "feature line"],
+    "specifications": [{"label": "Spec name", "value": "Spec value"}]
+  }
 
 SECTION REQUIREMENTS:
 {sections_guidance}
 
-EXCLUSIONS & POLICY RULES:
-- DO NOT mention any of the following terms or brands: {blocked_terms}
-- DO NOT include unsupported claims or phrases: {banned_claim_phrases}
+CONTENT & POLICY RULES:
+- Use ONLY facts found in PRODUCT DATA below. Never invent specifications, materials, dimensions, certifications, compatibility, or claims that are not supported by the source data.
+- DO NOT mention any supplier, retailer, or marketplace name (for example: Amazon, Walmart, AliExpress, eBay) or any of these blocked terms or brands: {blocked_terms}.
+- DO NOT include unsupported or exaggerated claims, including: {banned_claim_phrases}.
+- DO NOT mention prices, discounts, or any currency values.
+- DO NOT include any HTTP/HTTPS links, domain names, email addresses, phone numbers, or social handles.
+- DO NOT mention product identifiers such as ASIN, UPC, EAN, ISBN, or GTIN.
+- DO NOT make medical, safety, legal, or guaranteed-result claims.
+- Write professional, benefit-led, scannable copy with short mobile-friendly sentences.
+- The "opening" value must be detailed, original, and at least 500 characters of high-quality copy.
 
 PRODUCT DATA:
 Title: {title}
@@ -152,8 +166,7 @@ Original Description: {description}
 Bullet Points: {bulletPoints}
 Features: {features}
 Specifications: {specifications}
-Condition: {condition}
-Price: {price}`,
+Condition: {condition}`,
       output_format: 'html_ebay_safe'
     };
 
@@ -310,7 +323,10 @@ Price: {price}`,
     const renderedDescription = renderSections(config, aiJson, normalizedProduct);
 
     // 5) Post-generation sanitation via shared module
-    const finalDescription = sanitize(renderedDescription, config.exclusion_rules);
+    let finalDescription = sanitize(renderedDescription, config.exclusion_rules);
+
+    // 6) Enforce minimum length of 500 characters
+    finalDescription = ensureMinimumLength(finalDescription, config.output_format);
 
     return new Response(JSON.stringify({ 
       success: true, 

@@ -9,6 +9,13 @@ const IGNORE_LIST = [
   'dist',
   'node_modules',
   '.git',
+  '.gitignore',
+  '.prettierrc',
+  'eslint.config.js',
+  'jsconfig.json',
+  'vite.config.js',
+  'vite.config.amazon.js',
+  'vite.config.walmart.js',
   'scripts',
   'manifest.dev.json',
   'manifest.prod.json',
@@ -17,6 +24,28 @@ const IGNORE_LIST = [
   'package-lock.json',
   'fix_ui.js'
 ];
+
+function copyFileSyncSafe(src, dest) {
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      fs.copyFileSync(src, dest);
+      return;
+    } catch (err) {
+      if (err.code === 'EBUSY' && retries > 1) {
+        retries--;
+        const limit = Date.now() + 100;
+        while (Date.now() < limit) {}
+      } else {
+        if (fs.existsSync(dest)) {
+          console.warn(`⚠️ Warning: Could not overwrite locked file ${dest}, using existing version.`);
+          return;
+        }
+        throw err;
+      }
+    }
+  }
+}
 
 function copyDir(src, dest) {
   if (!fs.existsSync(dest)) {
@@ -36,7 +65,7 @@ function copyDir(src, dest) {
     if (entry.isDirectory()) {
       copyDir(srcPath, destPath);
     } else {
-      fs.copyFileSync(srcPath, destPath);
+      copyFileSyncSafe(srcPath, destPath);
     }
   }
 }
@@ -70,20 +99,25 @@ console.log('Building Development Extension...');
 
 // 1. Clean dist dir
 if (fs.existsSync(DIST_DIR)) {
-  fs.rmSync(DIST_DIR, { recursive: true, force: true });
+  try {
+    fs.rmSync(DIST_DIR, { recursive: true, force: true });
+  } catch (err) {
+    console.warn('⚠️ Warning: Could not clean dist directory completely (some files may be locked). Proceeding...');
+  }
 }
 
 // 2. Copy all files
 copyDir(SRC_DIR, DIST_DIR);
 
 // 3. Override with DEV templates
-fs.copyFileSync(path.join(SRC_DIR, 'manifest.dev.json'), path.join(DIST_DIR, 'manifest.json'));
-fs.copyFileSync(path.join(SRC_DIR, 'common', 'config.dev.js'), path.join(DIST_DIR, 'common', 'config.js'));
+copyFileSyncSafe(path.join(SRC_DIR, 'manifest.dev.json'), path.join(DIST_DIR, 'manifest.json'));
+copyFileSyncSafe(path.join(SRC_DIR, 'common', 'config.dev.js'), path.join(DIST_DIR, 'common', 'config.js'));
 
 // 4. Rewrite the dev config from the repo root .env.local when available.
 const ENV_PATH = fs.existsSync(ROOT_ENV_PATH) ? ROOT_ENV_PATH : path.resolve('../../.env');
 const env = loadEnvFile(ENV_PATH);
 const appUrl = env.APP_URL || 'http://localhost:3001';
+const marketingUrl = env.MARKETING_APP_URL || env.VITE_MARKETING_URL || 'http://localhost:3000';
 const supabaseUrl = env.SUPABASE_URL || env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
 const supabaseAnonKey =
   env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || 'local-anon-key';
@@ -108,5 +142,14 @@ configContents = configContents.replace(
   `SUPABASE_ANON: '${supabaseAnonKey}'`
 );
 fs.writeFileSync(configPath, configContents);
+
+// 5. Rewrite WEB_BASE_URL in constants.js to use marketingUrl
+const constantsPath = path.join(DIST_DIR, 'common', 'constants.js');
+let constantsContents = fs.readFileSync(constantsPath, 'utf8');
+constantsContents = constantsContents.replace(
+  /const WEB_BASE_URL = 'https:\/\/sellersuit\.com';/g,
+  `const WEB_BASE_URL = '${marketingUrl}';`
+);
+fs.writeFileSync(constantsPath, constantsContents);
 
 console.log(`✅ Development build ready in: ${DIST_DIR}`);

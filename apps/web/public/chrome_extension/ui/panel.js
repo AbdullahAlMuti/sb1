@@ -137,9 +137,10 @@ async function initAuthStatus() {
         actionBtn.textContent = 'Login';
         actionBtn.onclick = () => {
           // Open web app login page (environment-aware)
-          const authUrl = (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.WEB_APP_AUTH)
-            ? ExtensionConfig.URLS.WEB_APP_AUTH
-            : 'https://app.sellersuit.com/auth';
+          const base = (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.WEB_APP_BASE)
+            ? ExtensionConfig.URLS.WEB_APP_BASE
+            : ((typeof ExtensionConstants !== 'undefined' && ExtensionConstants.WEB_BASE_URL) || 'https://sellersuit.com');
+          const authUrl = `${base}/auth`;
           chrome.tabs.create({ url: authUrl });
         };
       }

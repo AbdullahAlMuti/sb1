@@ -2379,12 +2379,30 @@ const storeWatermarkedImages = async () => {
     console.log(`🔍 storeWatermarkedImages: Total Data URLs collected: ${watermarkedDataUrls.length}`);
 
     if (watermarkedDataUrls.length > 0) {
+        // Quota safety limit: session storage limit is ~10MB.
+        // Base64 chars are roughly 1 byte.
+        const totalCharCount = watermarkedDataUrls.reduce((sum, url) => sum + url.length, 0);
+        console.log(`📊 storeWatermarkedImages: Estimated storage payload size: ${(totalCharCount / 1024 / 1024).toFixed(2)} MB`);
+        if (totalCharCount > 9.5 * 1024 * 1024) {
+            console.error(`❌ storeWatermarkedImages: Payload size of ${(totalCharCount / 1024 / 1024).toFixed(2)} MB exceeds the session storage quota (~10MB limit).`);
+            alert(`⚠️ Error: The total size of edited/watermarked images is too large (${(totalCharCount / 1024 / 1024).toFixed(2)} MB). Please remove some images or reduce their complexity before proceeding.`);
+            return;
+        }
+
         try {
-            await chrome.storage.local.set({ watermarkedImages: watermarkedDataUrls });
-            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome storage`);
+            await new Promise((resolve, reject) => {
+                chrome.storage.session.set({ watermarkedImages: watermarkedDataUrls }, () => {
+                    if (chrome.runtime.lastError) {
+                        reject(new Error(chrome.runtime.lastError.message));
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome session storage`);
 
             // Verify storage
-            const verification = await chrome.storage.local.get(['watermarkedImages']);
+            const verification = await chrome.storage.session.get(['watermarkedImages']);
             console.log(`🔍 storeWatermarkedImages: Storage verification - ${verification.watermarkedImages?.length || 0} images in storage`);
 
             // Additional verification - check if images are valid Data URLs
@@ -2400,6 +2418,7 @@ const storeWatermarkedImages = async () => {
             }
         } catch (error) {
             console.error('❌ storeWatermarkedImages: Failed to store images:', error);
+            alert(`⚠️ Error storing images in session storage: ${error.message || error}`);
         }
     } else {
         console.warn('⚠️ storeWatermarkedImages: No Data URLs found to store');
@@ -2412,7 +2431,7 @@ const deleteImageFromStorage = async (imageIndex, imgContainer, imageUrl) => {
         console.log(`Deleting image ${imageIndex + 1} from storage...`);
 
         // Get current stored images
-        const result = await chrome.storage.local.get(['watermarkedImages']);
+        const result = await chrome.storage.session.get(['watermarkedImages']);
         const storedImages = result.watermarkedImages || [];
 
         // Remove the specific image from storage
@@ -2420,8 +2439,16 @@ const deleteImageFromStorage = async (imageIndex, imgContainer, imageUrl) => {
             storedImages.splice(imageIndex, 1);
 
             // Update storage with remaining images
-            await chrome.storage.local.set({ watermarkedImages: storedImages });
-            console.log(`Image ${imageIndex + 1} deleted from storage. ${storedImages.length} images remaining.`);
+            await new Promise((resolve, reject) => {
+                chrome.storage.session.set({ watermarkedImages: storedImages }, () => {
+                    if (chrome.runtime.lastError) {
+                        reject(new Error(chrome.runtime.lastError.message));
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+            console.log(`Image ${imageIndex + 1} deleted from session storage. ${storedImages.length} images remaining.`);
         }
 
         // Also remove from currentProduct.images — the canonical list the upload
@@ -2489,8 +2516,46 @@ const generateTitleVariations = (originalTitle) => {
     return;
 };
 
+// Helper to update the description character counter dynamically
+const updateDescriptionCounterElements = () => {
+    const descDisplay = document.getElementById('description-preview');
+    const descCounter = document.querySelector('.ss-desc-counter');
+    if (descDisplay && descCounter) {
+        if (descDisplay.querySelector('.description-placeholder') || 
+            descDisplay.querySelector('.description-empty-state') || 
+            descDisplay.classList.contains('description-empty-state') ||
+            descDisplay.querySelector('.ss-desc-empty')) {
+            descCounter.innerHTML = `0 / 5000 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width: 12px; height: 12px; color: #22c55e;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+            return;
+        }
+        const currentText = descDisplay.innerText || '';
+        descCounter.innerHTML = `${currentText.length} / 5000 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width: 12px; height: 12px; color: #22c55e;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    }
+};
+
 // Adds event listeners to the buttons inside our injected panel.
 const addEventListenersToPanel = () => {
+
+    // ═══════════════════════════════════════════════════════════
+    // Editable Description (Live Character Count & Storage Sync)
+    // ═══════════════════════════════════════════════════════════
+    const descDisplay = document.getElementById('description-preview');
+    if (descDisplay) {
+        descDisplay.addEventListener('input', () => {
+            const currentHtml = descDisplay.innerHTML || '';
+            updateDescriptionCounterElements();
+            chrome.storage.local.set({ generatedDescription: currentHtml });
+        });
+        
+        // Initial counter sync
+        updateDescriptionCounterElements();
+        
+        // Observe any DOM changes (e.g. AI generation insertion) to update counter automatically
+        const observer = new MutationObserver(() => {
+            updateDescriptionCounterElements();
+        });
+        observer.observe(descDisplay, { childList: true, characterData: true, subtree: true });
+    }
 
     // ═══════════════════════════════════════════════════════════
     // Editable Title (Live Character Count)
@@ -2814,7 +2879,45 @@ const addEventListenersToPanel = () => {
 
                 chrome.storage.local.set({ generatedDescription: lastGeneratedDescription });
 
-                window.UIHelper?.showToast?.(`Description generated using ${bgResp.provider || 'AI'}!`, 'success');
+                // Populate and save title if returned (bonus integration)
+                if (bgResp.title) {
+                    console.log('🎯 AI Title generated with description:', bgResp.title);
+                    
+                    // Save to storage
+                    await chrome.storage.local.set({ 
+                        selectedEbayTitle: bgResp.title,
+                        savedTitles: [bgResp.title],
+                        selectedTitleTimestamp: Date.now(),
+                        generatedAt: Date.now()
+                    });
+
+                    // Patch listing draft
+                    if (typeof window.SSListingDraft !== 'undefined') {
+                        window.SSListingDraft.patchDraft({
+                            title: bgResp.title,
+                            title_source: 'ai'
+                        }).catch(() => {});
+                    }
+
+                    // Update UI elements
+                    const titleDisplay = document.getElementById('ai-generated-title');
+                    const titleCounter = document.getElementById('ai-title-counter');
+                    const extTitle = document.getElementById('ext-title');
+
+                    if (titleDisplay) {
+                        titleDisplay.classList.add('has-title');
+                        titleDisplay.innerText = bgResp.title;
+                        if (titleCounter) {
+                            titleCounter.innerHTML = `${bgResp.title.length} / 80 chars <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>`;
+                        }
+                    }
+
+                    if (extTitle) {
+                        extTitle.value = bgResp.title;
+                    }
+                }
+
+                window.UIHelper?.showToast?.(`Listing content generated using ${bgResp.provider || 'AI'}!`, 'success');
                 console.log('✅ AI Description generated:', { provider: bgResp.provider, model: bgResp.model, length: bgResp.length });
             } catch (err) {
                 console.error('═══════════════════════════════════════════════════════');
@@ -3172,7 +3275,7 @@ const addEventListenersToPanel = () => {
                         console.log('═══════════════════════════════════════════════════════');
                         console.log('🔍 Verifying image storage before navigation...');
                         console.log('═══════════════════════════════════════════════════════');
-                        const storageVerification = await chrome.storage.local.get(['watermarkedImages']);
+                        const storageVerification = await chrome.storage.session.get(['watermarkedImages']);
                         const storedImages = storageVerification.watermarkedImages || [];
                         console.log(`📸 Storage verification: Found ${storedImages.length} images in storage`);
 
@@ -3556,27 +3659,19 @@ const generateAiTitle = async (inputElement, rowElement, generateBtn, useBtn) =>
 
     if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('🤖 AI Title Request Data (hidden in prod)', productData);
 
-    // Get API Key and Prompt from storage
-    const settings = await chrome.storage.local.get(['geminiApiKey', 'titleGenerationPrompt', 'geminiModel']);
-    const apiKey = settings.geminiApiKey;
+    // Title generation runs server-side via the /generate-titles edge function
+    // (see background/message-router.js GENERATE_TITLE), which authenticates with
+    // the user's saasToken, validates subscription access, and holds the Gemini
+    // key in Deno env. The client must NOT gate on a local geminiApiKey: that key
+    // lives in admin-only admin_settings, so standard users never receive it and
+    // were wrongly blocked. The optional prompt/model overrides are still read
+    // for admins who set them, but they are not required.
+    const settings = await chrome.storage.local.get(['titleGenerationPrompt', 'geminiModel']);
     const promptTemplate = settings.titleGenerationPrompt || 'Create an optimized eBay listing title for: {{title}}. Max 60 characters. No quotes.';
     const model = settings.geminiModel || 'gemini-1.5-flash'; // Default model
 
-    console.log('📝 Using Prompt Template:', promptTemplate);
-
-    if (!apiKey) {
-        inputElement.value = "Error: Missing API Key. Check Admin settings.";
-        generateBtn.textContent = 'No Key';
-        setTimeout(() => {
-            generateBtn.textContent = 'Generate';
-            generateBtn.disabled = false;
-        }, 2000);
-        return;
-    }
-
     chrome.runtime.sendMessage({
         action: "GENERATE_TITLE",
-        apiKey: apiKey,
         prompt: promptTemplate,
         productData: productData,
         model: model
@@ -4767,91 +4862,8 @@ window.forceLoadExtension = function () {
         existingButton.remove();
     }
 
-    // Find the product title element to insert button below it
-    const productTitle = document.getElementById('productTitle');
-
-    // Create the List it button container with modern SaaS styling
-    const buttonContainer = document.createElement('div');
-    buttonContainer.id = 'initial-list-button-container';
-    buttonContainer.style.cssText = `
-        margin: 12px 0 16px 0;
-        display: flex;
-        align-items: center;
-    `;
-
-    const listButton = document.createElement('button');
-    listButton.id = 'initial-list-button';
-    listButton.innerHTML = `
-        <svg viewBox="0 0 120 120" width="20" height="20" style="margin-right: 10px; flex-shrink: 0;">
-            <rect fill="#E53238" x="0" y="0" width="30" height="100" rx="4"/>
-            <rect fill="#0064D2" x="30" y="20" width="30" height="100" rx="4"/>
-            <rect fill="#F5AF02" x="60" y="0" width="30" height="100" rx="4"/>
-            <rect fill="#86B817" x="90" y="20" width="30" height="100" rx="4"/>
-        </svg>
-        <span style="font-weight: 600;">List to eBay</span>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 8px; opacity: 0.8;">
-            <path d="M5 12h14M12 5l7 7-7 7"/>
-        </svg>
-    `;
-    listButton.style.cssText = `
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-        color: #1a1a2e;
-        border: 2px solid #e5e7eb;
-        border-radius: 10px;
-        padding: 10px 20px;
-        cursor: pointer;
-        font-size: 14px;
-        font-weight: 500;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    `;
-
-    // Add hover styles (shared with the normal initializer)
-    {
-        const styleId = 'sellersuit-list-button-styles';
-        const styleSheet = document.getElementById(styleId) || document.createElement('style');
-        styleSheet.id = styleId;
-        styleSheet.textContent = `
-            #initial-list-button:hover {
-                background: linear-gradient(135deg, rgba(99, 102, 241, 0.10) 0%, rgba(139, 92, 246, 0.10) 100%) !important;
-                border-color: rgba(99, 102, 241, 0.45) !important;
-                transform: translateY(-1px) !important;
-                box-shadow: 0 12px 28px rgba(2, 6, 23, 0.12) !important;
-            }
-            #initial-list-button:active {
-                transform: translateY(0) !important;
-            }
-        `;
-        if (!styleSheet.parentElement) document.head.appendChild(styleSheet);
-    }
-
-    buttonContainer.appendChild(listButton);
-
-    // Insert button below product title if found, otherwise append to body as fallback
-    if (productTitle && productTitle.parentElement) {
-        productTitle.parentElement.insertBefore(buttonContainer, productTitle.nextSibling);
-    } else {
-        // Fallback: fixed position if title not found
-        buttonContainer.style.cssText = `
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            z-index: 9998;
-        `;
-        document.body.appendChild(buttonContainer);
-    }
-
-    listButton.addEventListener('click', () => {
-        console.log('🔧 Manual trigger: Opening side panel...');
-        chrome.runtime.sendMessage({ action: 'OPEN_SIDE_PANEL' });
-        buttonContainer.style.display = 'none';
-    });
-
-    console.log('✅ List to eBay button created below product title!');
+    injectInlineButtons();
+    console.log('✅ List to eBay button created!');
 };
 
 // Debug function to check page elements
@@ -4880,115 +4892,159 @@ window.debugAmazonPage = function () {
     return elements;
 };
 
-// Main initialization function
-const initializeApp = async () => {
-    // Check if we are on a valid product page
-    const productTitle = document.getElementById('productTitle');
-    if (!productTitle) {
-        // Not a product page, checking for specific listing types or just exit
-        const dpContainer = document.getElementById('dp-container');
-        if (!dpContainer) return;
-    }
+// Helper function to inject inline buttons
+const injectInlineButtons = () => {
+    // 1. Amazon Search Results
+    const searchCards = document.querySelectorAll('div.s-card-container');
+    searchCards.forEach(card => {
+        if (card.querySelector('.sellersuit-btn-marker')) return;
 
-    // Check if already injected
-    if (document.getElementById('initial-list-button') || document.getElementById('snipe-root-wrapper')) return;
+        const linkEl = card.querySelector('a[href*="/dp/"], a[href*="/gp/"]');
+        if (!linkEl) return;
 
-    // Create the List it button (SaaS-style) and place it directly below the product title
-    const existingContainer = document.getElementById('initial-list-button-container');
-    if (existingContainer) {
-        existingContainer.remove();
-    }
+        let targetUrl = linkEl.href;
+        if (!targetUrl.startsWith('http')) {
+            targetUrl = window.location.origin + linkEl.getAttribute('href');
+        }
+        targetUrl = targetUrl.includes('#') ? targetUrl.split('#')[0] + '#sellersuit_auto_list=true' : targetUrl + '#sellersuit_auto_list=true';
 
-    const buttonContainer = document.createElement('div');
-    buttonContainer.id = 'initial-list-button-container';
-    buttonContainer.style.cssText = `
-        margin: 10px 0 14px 0;
-        display: flex;
-        align-items: center;
-    `;
+        const wrapper = document.createElement('div');
+        wrapper.className = 'sellersuit-btn-wrapper';
+        wrapper.style.cssText = 'position: static; display: block; margin: 8px 0 0 0; padding: 6px 8px; border-radius: 6px;';
 
-    const listButton = document.createElement('button');
-    listButton.id = 'initial-list-button';
-    listButton.setAttribute('type', 'button');
-    listButton.setAttribute('aria-label', 'List this product to eBay');
-    listButton.innerHTML = `
-        <span aria-hidden="true" style="display:inline-flex;align-items:baseline;margin-right:10px;font-weight:900;font-size:18px;line-height:1;letter-spacing:-0.02em;">
-            <span class="ss-ebay-e">e</span><span class="ss-ebay-b">b</span><span class="ss-ebay-a">a</span><span class="ss-ebay-y">y</span>
-        </span>
-        <span style="font-weight:600;">List it</span>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:8px;opacity:0.75;">
-            <path d="M5 12h14M12 5l7 7-7 7"/>
-        </svg>
-    `;
-    listButton.style.cssText = `
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-        color: #0f172a;
-        border: 1px solid rgba(15, 23, 42, 0.16);
-        border-radius: 12px;
-        padding: 10px 16px;
-        cursor: pointer;
-        font-size: 14px;
-        font-weight: 600;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        box-shadow: 0 8px 22px rgba(2, 6, 23, 0.08);
-        transition: transform 160ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 160ms cubic-bezier(0.4, 0, 0.2, 1), background 160ms cubic-bezier(0.4, 0, 0.2, 1), border-color 160ms cubic-bezier(0.4, 0, 0.2, 1);
-        user-select: none;
-        -webkit-user-select: none;
-        z-index: 9998;
-    `;
-
-    // Ensure shared styles exist (hover + ebay logo colors)
-    {
-        const styleId = 'sellersuit-list-button-styles';
-        const styleSheet = document.getElementById(styleId) || document.createElement('style');
-        styleSheet.id = styleId;
-        styleSheet.textContent = `
-            #initial-list-button .ss-ebay-e { color: #E53238; }
-            #initial-list-button .ss-ebay-b { color: #0064D2; }
-            #initial-list-button .ss-ebay-a { color: #F5AF02; }
-            #initial-list-button .ss-ebay-y { color: #86B817; }
-
-            #initial-list-button:hover {
-                background: linear-gradient(135deg, rgba(99, 102, 241, 0.10) 0%, rgba(139, 92, 246, 0.10) 100%) !important;
-                border-color: rgba(99, 102, 241, 0.45) !important;
-                transform: translateY(-1px) !important;
-                box-shadow: 0 12px 28px rgba(2, 6, 23, 0.12) !important;
-            }
-            #initial-list-button:active {
-                transform: translateY(0) !important;
-            }
+        const btn = document.createElement('a');
+        btn.className = 'sellersuit-btn-marker';
+        btn.href = targetUrl;
+        btn.target = '_blank';
+        btn.innerHTML = `
+            <span aria-hidden="true" style="display:inline-flex;align-items:baseline;margin-right:8px;font-weight:900;font-size:14px;line-height:1;letter-spacing:-0.02em;">
+                <span style="color: #E53238;">e</span><span style="color: #0064D2;">b</span><span style="color: #F5AF02;">a</span><span style="color: #86B817;">y</span>
+            </span>
+            <span style="font-weight:600;">List on eBay</span>
         `;
-        if (!styleSheet.parentElement) document.head.appendChild(styleSheet);
-    }
+        btn.style.cssText = 'display: inline-block; padding: 6px 12px; border-radius: 5px; background: #0654ba; color: #fff; text-decoration: none; cursor: pointer; border: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 600; font-size: 13px; transition: opacity 0.2s;';
+        
+        btn.addEventListener('mouseenter', () => btn.style.opacity = '0.9');
+        btn.addEventListener('mouseleave', () => btn.style.opacity = '1.0');
 
-    buttonContainer.appendChild(listButton);
-
-    // Insert right after the title section (immediately below the product title)
-    const titleEl = document.getElementById('productTitle');
-    const anchor = titleEl?.closest('#titleSection') || titleEl?.closest('#title_feature_div') || titleEl?.parentElement;
-
-    if (anchor && anchor.parentElement) {
-        anchor.insertAdjacentElement('afterend', buttonContainer);
-    } else {
-        // Fallback: fixed position if title isn't found
-        buttonContainer.style.cssText = `
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            z-index: 9998;
-        `;
-        document.body.appendChild(buttonContainer);
-    }
-
-    listButton.addEventListener('click', () => {
-        chrome.runtime.sendMessage({ action: 'OPEN_SIDE_PANEL' });
-        buttonContainer.remove();
+        // wrapper.appendChild(btn);
+        // card.appendChild(wrapper);
     });
 
-    console.log('✅ eBay Lister extension initialized on product page.');
+    // 2. Amazon Product Page
+    const isProductPage = !!document.getElementById('productTitle') || !!document.getElementById('dp-container') || !!document.querySelector('#buybox, #desktop_buybox');
+    if (isProductPage) {
+        const buyBox = document.querySelector('#buybox, #desktop_buybox, #rightCol, #centerCol');
+        if (buyBox) {
+            const parent = buyBox.parentNode;
+            if (parent && !document.getElementById('initial-list-button-container')) {
+                const wrapper = document.createElement('div');
+                wrapper.id = 'initial-list-button-container';
+                wrapper.className = 'sellersuit-btn-wrapper';
+                wrapper.style.cssText = 'position: static; display: block; margin: 8px 0 16px 0; padding: 6px 8px; border-radius: 6px;';
+
+                const btn = document.createElement('button');
+                btn.id = 'initial-list-button';
+                btn.className = 'sellersuit-btn-marker';
+                btn.type = 'button';
+                btn.innerHTML = `
+                    <span aria-hidden="true" style="display:inline-flex;align-items:baseline;margin-right:10px;font-weight:900;font-size:16px;line-height:1;letter-spacing:-0.02em;">
+                        <span style="color: #E53238;">e</span><span style="color: #0064D2;">b</span><span style="color: #F5AF02;">a</span><span style="color: #86B817;">y</span>
+                    </span>
+                    <span style="font-weight:600;">List it</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:8px;opacity:0.75;">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                `;
+                btn.style.cssText = 'display: inline-block; padding: 6px 12px; border-radius: 5px; background: #0654ba; color: #fff; text-decoration: none; cursor: pointer; border: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 600; font-size: 13px; transition: opacity 0.2s;';
+
+                btn.addEventListener('mouseenter', () => btn.style.opacity = '0.9');
+                btn.addEventListener('mouseleave', () => btn.style.opacity = '1.0');
+
+                btn.addEventListener('click', () => {
+                    chrome.runtime.sendMessage({ action: 'OPEN_SIDE_PANEL' });
+                    wrapper.style.display = 'none';
+                });
+
+                // wrapper.appendChild(btn);
+
+                // if (document.getElementById('snipe-root-wrapper')) {
+                //     wrapper.style.display = 'none';
+                // }
+
+                // if (buyBox.id === 'buybox' || buyBox.id === 'desktop_buybox') {
+                //     parent.insertBefore(wrapper, buyBox);
+                //     console.log('[Amazon Injector] Injected inline button before buy box element:', buyBox.id);
+                // } else {
+                //     buyBox.prepend(wrapper);
+                //     console.log('[Amazon Injector] Injected inline button at the top of column:', buyBox.id || buyBox.className);
+                // }
+            }
+        } else {
+            console.log('[Amazon Injector] Product page detected but buyBox element not found.');
+        }
+    }
+};
+
+// Helper to wait until the product page is fully loaded and scannable
+const waitForProductPageReady = (checkReady, callback) => {
+    if (checkReady()) {
+        callback();
+        return;
+    }
+    const observer = new MutationObserver((mutations, obs) => {
+        if (checkReady()) {
+            obs.disconnect();
+            callback();
+        }
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    // Safety timeout after 10 seconds
+    setTimeout(() => {
+        observer.disconnect();
+        callback();
+    }, 10000);
+};
+
+// Main initialization function
+const initializeApp = async () => {
+    // Check for auto-list trigger from search results redirect
+    if (window.location.hash.includes('sellersuit_auto_list') || window.location.search.includes('sellersuit_auto_list')) {
+        console.log('[Amazon Injector] Auto-list trigger detected, waiting for scannable DOM...');
+        const checkReady = () => {
+            return !!document.getElementById('productTitle') || 
+                   !!document.getElementById('dp-container') || 
+                   !!document.querySelector('#buybox, #desktop_buybox');
+        };
+        
+        waitForProductPageReady(checkReady, () => {
+            console.log('[Amazon Injector] DOM scannable, opening side panel & triggering auto-scan...');
+            chrome.runtime.sendMessage({ action: 'OPEN_SIDE_PANEL' });
+            chrome.runtime.sendMessage({ action: 'DOM_READY_AUTO_SCAN' });
+        });
+
+        // Clean URL so it doesn't trigger on reload
+        const newSearch = window.location.search.replace(/[?&]sellersuit_auto_list=true/, '').replace(/^&/, '?');
+        const newHash = window.location.hash.replace(/#?sellersuit_auto_list=true/, '');
+        history.replaceState(null, null, window.location.pathname + newSearch + newHash);
+    }
+
+    // Call inline button injection immediately
+    injectInlineButtons();
+
+    // Set up MutationObserver to dynamically watch for lazy-loaded results
+    const observer = new MutationObserver((mutations) => {
+        const hasNewElements = mutations.some(m => m.addedNodes.length > 0 && Array.from(m.addedNodes).some(n => n.nodeType === Node.ELEMENT_NODE));
+        if (hasNewElements) {
+            injectInlineButtons();
+        }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Periodic polling as fallback
+    setInterval(injectInlineButtons, 1500);
+
+    console.log('✅ eBay Lister extension initialized with inline button injection.');
 };
 
 // ─── _applyPricingToProduct ──────────────────────────────────────────────────

@@ -188,7 +188,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
           const bootstrapRes = await AuthHelper.callEdgeFunction('extension-bootstrap');
           if (bootstrapRes.data) {
-            await chrome.storage.local.set({ extensionBootstrapCache: bootstrapRes.data });
+            const updates = { extensionBootstrapCache: bootstrapRes.data };
+            if (bootstrapRes.data.user?.selectedListingTemplateId) {
+              updates.selectedListingTemplateId = bootstrapRes.data.user.selectedListingTemplateId;
+            }
+            await chrome.storage.local.set(updates);
           }
 
           AuthHelper.verifyAuthStatus(true);
@@ -232,6 +236,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
         sendResponse({ ok: true });
       } catch (e) {
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
+  if (request.action === 'AUTO_LIST_NEW_TAB') {
+    (async () => {
+      try {
+        const tab = await chrome.tabs.create({ url: request.url, active: true });
+        await chrome.sidePanel.setOptions({
+          tabId: tab.id,
+          path: 'sidepanel/side-panel.html',
+          enabled: true
+        });
+        await chrome.sidePanel.open({ tabId: tab.id });
+        sendResponse({ ok: true, tabId: tab.id });
+      } catch (e) {
+        console.error('[Background] Failed to open side panel on new tab:', e);
         sendResponse({ ok: false, error: e.message });
       }
     })();
@@ -581,6 +604,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     })();
     return true;
+  } else if (request.action === "LISTING_PUBLISHED") {
+    (async () => {
+      try {
+        if (typeof AuthHelper !== 'undefined') {
+          const payload = {
+            draft_id: request.payload.draftId,
+            ebay_item_id: request.payload.ebayItemId,
+            status: 'active'
+          };
+          const response = await AuthHelper.callEdgeFunction('sync-listing', payload);
+          if (response.error) {
+            sendResponse({ success: false, error: response.error });
+          } else {
+            sendResponse({ success: true, data: response.data });
+          }
+        } else {
+          sendResponse({ success: false, error: 'AuthHelper not found' });
+        }
+      } catch (e) {
+        sendResponse({ success: false, error: e?.message || 'Listing publication sync failed' });
+      }
+    })();
+    return true;
   } else if (request.action === "SS_AI_GENERATE") {
     // Robust AI title/description via AuthHelper (handles ssat_ + legacy auth).
     // request.kind = 'title' | 'description', request.productData = {...}
@@ -659,7 +705,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           body: JSON.stringify(request.productData)
         });
         const json = await resp.json();
-        if (json.success) sendResponse({ success: true, title: json.titles[0].title || json.titles[0] });
+        if (json.success && Array.isArray(json.titles) && json.titles.length) {
+          sendResponse({ success: true, title: json.titles[0].title || json.titles[0] });
+        } else {
+          // Always respond on failure so the content script surfaces the error
+          // instead of receiving an undefined response.
+          sendResponse({ success: false, error: json.error || 'Title generation failed' });
+        }
       } catch (e) {
         sendResponse({ success: false, error: e.message });
       }
@@ -742,7 +794,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'FETCH_IMAGE_AS_BASE64') {
     (async () => {
       try {
+        if (!request.url || (!request.url.startsWith('http://') && !request.url.startsWith('https://'))) {
+          throw new Error('Unsupported URL scheme: Only http/https fetches are permitted.');
+        }
         const response = await fetch(request.url);
+        if (response.type === 'opaque') {
+          throw new Error('opaque_response');
+        }
         if (!response.ok) throw new Error('HTTP error ' + response.status);
         const blob = await response.blob();
         if (typeof FileReader !== 'undefined') {
@@ -765,7 +823,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           sendResponse({ success: true, base64: `data:${blob.type};base64,${base64String}` });
         }
       } catch (err) {
-        sendResponse({ success: false, error: err.message });
+        let errMsg = err.message || String(err);
+        if (errMsg.includes('Failed to fetch') || errMsg === 'opaque_response') {
+          try {
+            const origin = new URL(request.url).origin;
+            errMsg = `Host permission missing for origin: ${origin}`;
+          } catch (_) {}
+        }
+        sendResponse({ success: false, error: errMsg });
       }
     })();
     return true;

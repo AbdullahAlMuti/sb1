@@ -681,7 +681,7 @@ export async function requireFeatureEntitlement(
   );
   if (!isAdminUser) {
     const isPaid = profile?.payment_status === "paid" || profile?.payment_status === "succeeded";
-    const isSubscriptionActive = profile?.subscription_status === "active";
+    const isSubscriptionActive = profile?.subscription_status === "active" || profile?.subscription_status === "trialing";
     if (!profile?.selected_plan_id || !isPaid || !isSubscriptionActive) {
       return false;
     }
@@ -697,7 +697,7 @@ export async function requireFeatureEntitlement(
   }
 
   // 2. Check user plan
-  if (!isPlanActive && userPlan && userPlan.status === "active") {
+  if (!isPlanActive && userPlan && (userPlan.status === "active" || userPlan.status === "trialing")) {
     planId = userPlan.plan_id;
     isPlanActive = true;
   }
@@ -711,8 +711,42 @@ export async function requireFeatureEntitlement(
   if (!isPlanActive || !planId) return false;
 
   // Query the plan
-  const { data: plan } = await supabase.from("plans").select("id, features").eq("id", planId).maybeSingle();
-  if (!plan || !plan.features) return false;
+  const { data: plan } = await supabase
+    .from("plans")
+    .select("id, features, seo_enabled, auto_orders_enabled, is_trial")
+    .eq("id", planId)
+    .maybeSingle();
+
+  if (!plan) return false;
+
+  // Core features allowed for any active plan
+  if (featureKey === "ebay_listing_create" || featureKey === "listing_access") {
+    return true;
+  }
+
+  // Trial plans get access to all features to test the product
+  if (plan.is_trial) {
+    return true;
+  }
+
+  // SEO/AI tools based on plan flag
+  if (
+    featureKey === "description_generation" ||
+    featureKey === "title_generation" ||
+    featureKey === "seo_titles" ||
+    featureKey === "seo_descriptions"
+  ) {
+    if (plan.seo_enabled) return true;
+  }
+
+  // Order syncing/Auto-orders based on plan flag
+  if (
+    featureKey === "ebay_order_sync" ||
+    featureKey === "order_sync" ||
+    featureKey === "auto_orders"
+  ) {
+    if (plan.auto_orders_enabled) return true;
+  }
 
   // Query feature entitlements in DB
   const { data: entitlement } = await supabase
@@ -725,6 +759,11 @@ export async function requireFeatureEntitlement(
   if (entitlement) return Boolean(entitlement.enabled);
 
   const features = plan.features as any;
-  if (Array.isArray(features)) return features.includes(featureKey);
-  return Boolean(features[featureKey]);
+  if (Array.isArray(features)) {
+    return features.includes(featureKey);
+  } else if (features && typeof features === "object") {
+    return Boolean(features[featureKey]);
+  }
+
+  return false;
 }

@@ -785,9 +785,13 @@
 
   /* ── Helper to get base URL ──────────────── */
   function getBaseUrl() {
-    return (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.WEB_APP_BASE)
-      ? ExtensionConfig.URLS.WEB_APP_BASE
-      : 'https://app.sellersuite.com';
+    if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.WEB_APP_BASE) {
+      return ExtensionConfig.URLS.WEB_APP_BASE;
+    }
+    if (typeof ExtensionConstants !== 'undefined' && ExtensionConstants.WEB_BASE_URL) {
+      return ExtensionConstants.WEB_BASE_URL;
+    }
+    return 'https://sellersuit.com';
   }
 
   /* ── Sign in ──────────────────────────────── */
@@ -904,6 +908,142 @@
 
     // Phase 4: restore preview card from existing draft if present
     _restorePreviewFromDraft();
+
+    const runAutoScanAndList = async () => {
+      console.log('[SS Panel] Auto-list active, starting scan...');
+      try {
+        _busy = true;
+        btnMainAction.disabled = true;
+        btnMainAction.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span> Scanning…';
+        
+        const product = await doScan('single');
+        if (product) {
+          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
+          const updatedProduct = recalculateProductPricing(product, stored.calculatorValues);
+          await chrome.storage.local.set({ currentProduct: updatedProduct });
+          
+          if (typeof window.SSListingDraft !== 'undefined') {
+            await window.SSListingDraft.patchDraft({
+              variants: updatedProduct.variants || [],
+              variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
+            });
+          }
+          renderPreviewCard(updatedProduct);
+          
+          // Now run the upload
+          btnMainAction.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span> Uploading…';
+          await doAdvancedUpload(selUploadType.value === 'draft');
+        } else {
+          showToast('Auto-scan failed to scrape product');
+        }
+      } catch (err) {
+        console.error('[SS Panel] Auto-list error:', err);
+        showToast('Auto-list failed: ' + err.message);
+      } finally {
+        _busy = false;
+        btnMainAction.disabled = false;
+        updateMainButton();
+      }
+    };
+
+    const attemptAutoScanAndList = () => {
+      const initialSnap = window.SSPanelStore.getState();
+      if (initialSnap && initialSnap.auth && initialSnap.auth.isValid) {
+        runAutoScanAndList();
+      } else {
+        const unsubscribe = window.SSPanelStore.subscribe(async (state) => {
+          if (state && state.auth && state.auth.isValid) {
+            unsubscribe();
+            runAutoScanAndList();
+          } else if (state && state.auth && !state.auth.isValid) {
+            unsubscribe();
+            console.warn('[SS Panel] Auto-list skipped: user is not logged in');
+          }
+        });
+      }
+    };
+
+    const runAutoScanOnly = async () => {
+      console.log('[SS Panel] Auto-scan only active, starting scan...');
+      try {
+        _busy = true;
+        btnMainAction.disabled = true;
+        btnMainAction.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span> Scanning…';
+        
+        const product = await doScan('single');
+        if (product) {
+          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
+          const updatedProduct = recalculateProductPricing(product, stored.calculatorValues);
+          await chrome.storage.local.set({ currentProduct: updatedProduct });
+          
+          if (typeof window.SSListingDraft !== 'undefined') {
+            await window.SSListingDraft.patchDraft({
+              variants: updatedProduct.variants || [],
+              variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
+            });
+          }
+          renderPreviewCard(updatedProduct);
+        } else {
+          showToast('Auto-scan failed to scrape product');
+        }
+      } catch (err) {
+        console.error('[SS Panel] Auto-scan error:', err);
+        showToast('Auto-scan failed: ' + err.message);
+      } finally {
+        _busy = false;
+        btnMainAction.disabled = false;
+        updateMainButton();
+      }
+    };
+
+    const attemptAutoScanOnly = () => {
+      const initialSnap = window.SSPanelStore.getState();
+      if (initialSnap && initialSnap.auth && initialSnap.auth.isValid) {
+        runAutoScanOnly();
+      } else {
+        const unsubscribe = window.SSPanelStore.subscribe(async (state) => {
+          if (state && state.auth && state.auth.isValid) {
+            unsubscribe();
+            runAutoScanOnly();
+          } else if (state && state.auth && !state.auth.isValid) {
+            unsubscribe();
+            console.warn('[SS Panel] Auto-scan skipped: user is not logged in');
+          }
+        });
+      }
+    };
+
+    // Listen to ready message from content script
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.action === 'DOM_READY_AUTO_SCAN') {
+        chrome.storage.local.get(['autoScanActive', 'autoScanOnly'], async (res) => {
+          if (res.autoScanActive) {
+            await chrome.storage.local.remove('autoScanActive');
+            console.log('[SS Panel] DOM_READY_AUTO_SCAN received & autoScanActive is true, running scan and list...');
+            attemptAutoScanAndList();
+          } else if (res.autoScanOnly) {
+            await chrome.storage.local.remove('autoScanOnly');
+            console.log('[SS Panel] DOM_READY_AUTO_SCAN received & autoScanOnly is true, running scan only...');
+            attemptAutoScanOnly();
+          }
+        });
+        sendResponse({ success: true });
+        return false;
+      }
+    });
+
+    // Check if auto-list / auto-scan is active on panel load
+    chrome.storage.local.get(['autoScanActive', 'autoScanOnly'], async (res) => {
+      if (res.autoScanActive) {
+        await chrome.storage.local.remove('autoScanActive');
+        console.log('[SS Panel] autoScanActive is true on load, running scan and list...');
+        attemptAutoScanAndList();
+      } else if (res.autoScanOnly) {
+        await chrome.storage.local.remove('autoScanOnly');
+        console.log('[SS Panel] autoScanOnly is true on load, running scan only...');
+        attemptAutoScanOnly();
+      }
+    });
   }
 
   /* ── Restore preview from existing draft on panel open ── */

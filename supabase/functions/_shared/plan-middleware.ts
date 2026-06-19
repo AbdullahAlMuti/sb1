@@ -102,7 +102,7 @@ export async function verifySaaSAccess(
     return { allowed: false, reason: "Payment required" };
   }
 
-  if (profile.subscription_status !== 'active') {
+  if (profile.subscription_status !== 'active' && profile.subscription_status !== 'trialing') {
     return { allowed: false, reason: "Subscription is inactive" };
   }
 
@@ -179,7 +179,7 @@ export async function getEntitlement(
       .maybeSingle();
 
     const isPaid = profile?.payment_status === 'paid' || profile?.payment_status === 'succeeded';
-    const isSubActive = profile?.subscription_status === 'active';
+    const isSubActive = profile?.subscription_status === 'active' || profile?.subscription_status === 'trialing';
 
     if (isPaid && isSubActive && status.planName !== 'none') {
       accessState = 'active';
@@ -332,7 +332,7 @@ export async function getFullPlanStatus(
 
     if (!isAdmin) {
       const isPaid = profile.payment_status === 'paid' || profile.payment_status === 'succeeded';
-      const isSubscriptionActive = profile.subscription_status === 'active';
+      const isSubscriptionActive = profile.subscription_status === 'active' || profile.subscription_status === 'trialing';
       if (!profile.selected_plan_id || !isPaid || !isSubscriptionActive) {
         isBlocked = true;
         blockedReason = 'Active paid subscription required.';

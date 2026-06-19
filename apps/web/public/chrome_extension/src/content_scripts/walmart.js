@@ -41,3 +41,5 @@ import '../../suppliers/walmart/adapter.js';
 // ── Injectors ─────────────────────────────────────────────────────────────────
 import '../../content_scripts/walmart_injector.js';
 import '../../content_scripts/image_editor.js';
+import '../../common/listing-card-core.js';
+import '../../content_scripts/listing_card_injector.js';

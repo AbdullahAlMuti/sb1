@@ -161,7 +161,7 @@ export function ProtectedRoute({
   }
 
   const isDashboardRoute = location.pathname.startsWith('/dashboard');
-  const onboardingNotCompleted = profile && profile.onboarding_completed === false;
+  const onboardingNotCompleted = profile && !isAdmin && !isSuperAdmin && profile.onboarding_completed === false;
 
   // If onboarding is not completed, they are only allowed to see dashboard routes (which will render onboarding stepper)
   if (onboardingNotCompleted && !isDashboardRoute) {

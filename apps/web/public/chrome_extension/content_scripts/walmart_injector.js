@@ -1725,11 +1725,29 @@ const storeWatermarkedImages = async () => {
     console.log(`🔍 storeWatermarkedImages: Total Data URLs collected: ${watermarkedDataUrls.length}`);
     
     if (watermarkedDataUrls.length > 0) {
+        // Quota safety limit: session storage limit is ~10MB.
+        // Base64 chars are roughly 1 byte.
+        const totalCharCount = watermarkedDataUrls.reduce((sum, url) => sum + url.length, 0);
+        console.log(`📊 storeWatermarkedImages: Estimated storage payload size: ${(totalCharCount / 1024 / 1024).toFixed(2)} MB`);
+        if (totalCharCount > 9.5 * 1024 * 1024) {
+            console.error(`❌ storeWatermarkedImages: Payload size of ${(totalCharCount / 1024 / 1024).toFixed(2)} MB exceeds the session storage quota (~10MB limit).`);
+            alert(`⚠️ Error: The total size of edited/watermarked images is too large (${(totalCharCount / 1024 / 1024).toFixed(2)} MB). Please remove some images or reduce their complexity before proceeding.`);
+            return;
+        }
+
         try {
-            await chrome.storage.local.set({ watermarkedImages: watermarkedDataUrls });
-            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome storage`);
+            await new Promise((resolve, reject) => {
+                chrome.storage.session.set({ watermarkedImages: watermarkedDataUrls }, () => {
+                    if (chrome.runtime.lastError) {
+                        reject(new Error(chrome.runtime.lastError.message));
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome session storage`);
             
-            const verification = await chrome.storage.local.get(['watermarkedImages']);
+            const verification = await chrome.storage.session.get(['watermarkedImages']);
             console.log(`🔍 storeWatermarkedImages: Storage verification - ${verification.watermarkedImages?.length || 0} images in storage`);
             
             if (verification.watermarkedImages && verification.watermarkedImages.length > 0) {
@@ -1744,6 +1762,7 @@ const storeWatermarkedImages = async () => {
             }
         } catch (error) {
             console.error('❌ storeWatermarkedImages: Failed to store images:', error);
+            alert(`⚠️ Error storing images in session storage: ${error.message || error}`);
         }
     } else {
         console.warn('⚠️ storeWatermarkedImages: No Data URLs found to store');
@@ -1755,14 +1774,22 @@ const deleteImageFromStorage = async (imageIndex, imgContainer, imageUrl) => {
     try {
         console.log(`Deleting image ${imageIndex + 1} from storage...`);
         
-        const result = await chrome.storage.local.get(['watermarkedImages']);
+        const result = await chrome.storage.session.get(['watermarkedImages']);
         const storedImages = result.watermarkedImages || [];
         
         if (storedImages.length > imageIndex) {
             storedImages.splice(imageIndex, 1);
 
-            await chrome.storage.local.set({ watermarkedImages: storedImages });
-            console.log(`Image ${imageIndex + 1} deleted from storage. ${storedImages.length} images remaining.`);
+            await new Promise((resolve, reject) => {
+                chrome.storage.session.set({ watermarkedImages: storedImages }, () => {
+                    if (chrome.runtime.lastError) {
+                        reject(new Error(chrome.runtime.lastError.message));
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+            console.log(`Image ${imageIndex + 1} deleted from session storage. ${storedImages.length} images remaining.`);
         }
 
         // Also remove from currentProduct.images — the canonical list the upload
@@ -1846,8 +1873,46 @@ const generateTitleVariations = (originalTitle) => {
     });
 };
 
+// Helper to update the description character counter dynamically
+const updateDescriptionCounterElements = () => {
+    const descDisplay = document.getElementById('description-preview');
+    const descCounter = document.querySelector('.ss-desc-counter');
+    if (descDisplay && descCounter) {
+        if (descDisplay.querySelector('.description-placeholder') || 
+            descDisplay.querySelector('.description-empty-state') || 
+            descDisplay.classList.contains('description-empty-state') ||
+            descDisplay.querySelector('.ss-desc-empty')) {
+            descCounter.innerHTML = `0 / 5000 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width: 12px; height: 12px; color: #22c55e;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+            return;
+        }
+        const currentText = descDisplay.innerText || '';
+        descCounter.innerHTML = `${currentText.length} / 5000 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width: 12px; height: 12px; color: #22c55e;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    }
+};
+
 // Adds event listeners to the buttons inside our injected panel.
 const addEventListenersToPanel = () => {
+
+    // ═══════════════════════════════════════════════════════════
+    // Editable Description (Live Character Count & Storage Sync)
+    // ═══════════════════════════════════════════════════════════
+    const descDisplay = document.getElementById('description-preview');
+    if (descDisplay) {
+        descDisplay.addEventListener('input', () => {
+            const currentHtml = descDisplay.innerHTML || '';
+            updateDescriptionCounterElements();
+            chrome.storage.local.set({ generatedDescription: currentHtml });
+        });
+        
+        // Initial counter sync
+        updateDescriptionCounterElements();
+        
+        // Observe any DOM changes (e.g. AI generation insertion) to update counter automatically
+        const observer = new MutationObserver(() => {
+            updateDescriptionCounterElements();
+        });
+        observer.observe(descDisplay, { childList: true, characterData: true, subtree: true });
+    }
 
     // ═══════════════════════════════════════════════════════════
     // Editable Title (Live Character Count)
@@ -2068,6 +2133,44 @@ const addEventListenersToPanel = () => {
                     selectedEbayDescription: bgResp.description
                 });
 
+                // Populate and save title if returned (bonus integration)
+                if (bgResp.title) {
+                    console.log('🎯 AI Title generated with description:', bgResp.title);
+                    
+                    // Save to storage
+                    await chrome.storage.local.set({ 
+                        selectedEbayTitle: bgResp.title,
+                        savedTitles: [bgResp.title],
+                        selectedTitleTimestamp: Date.now(),
+                        generatedAt: Date.now()
+                    });
+
+                    // Patch listing draft
+                    if (typeof window.SSListingDraft !== 'undefined') {
+                        window.SSListingDraft.patchDraft({
+                            title: bgResp.title,
+                            title_source: 'ai'
+                        }).catch(() => {});
+                    }
+
+                    // Update UI elements
+                    const titleDisplay = document.getElementById('ai-generated-title');
+                    const titleCounter = document.getElementById('ai-title-counter');
+                    const extTitle = document.getElementById('ext-title');
+
+                    if (titleDisplay) {
+                        titleDisplay.classList.add('has-title');
+                        titleDisplay.innerText = bgResp.title;
+                        if (titleCounter) {
+                            titleCounter.innerHTML = `${bgResp.title.length} / 80 chars <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>`;
+                        }
+                    }
+
+                    if (extTitle) {
+                        extTitle.value = bgResp.title;
+                    }
+                }
+
             } catch (error) {
                 console.error('❌ Error generating AI description:', error);
                 if (descriptionPreviewEl) {
@@ -2176,7 +2279,7 @@ const addEventListenersToPanel = () => {
 
                     console.log('═══════════════════════════════════════════════════════');
                     console.log('🔍 Verifying image storage before navigation...');
-                    const storageVerification = await chrome.storage.local.get(['watermarkedImages']);
+                    const storageVerification = await chrome.storage.session.get(['watermarkedImages']);
                     const storedImages = storageVerification.watermarkedImages || [];
                     console.log(`📸 Storage verification: Found ${storedImages.length} images in storage`);
                     
@@ -2688,6 +2791,110 @@ const downloadImagesAsZip = (images) => {
 
 
 
+// Helper function to inject inline buttons
+const injectInlineButtons = () => {
+    // 1. Walmart Search Results
+    const searchTiles = document.querySelectorAll('div[data-item-id], [data-testid="list-view"] [data-testid="item-card"], [data-testid="grid-view"] [data-testid="item-card"]');
+    searchTiles.forEach(tile => {
+        if (tile.querySelector('.sellersuit-btn-marker')) return;
+
+        const linkEl = tile.querySelector('a[href*="/ip/"]');
+        if (!linkEl) return;
+
+        let targetUrl = linkEl.href;
+        if (!targetUrl.startsWith('http')) {
+            targetUrl = window.location.origin + linkEl.getAttribute('href');
+        }
+        targetUrl = targetUrl.includes('#') ? targetUrl.split('#')[0] + '#sellersuit_auto_list=true' : targetUrl + '#sellersuit_auto_list=true';
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'sellersuit-btn-wrapper';
+        wrapper.style.cssText = 'position: static; display: block; margin: 8px 0 0 0; padding: 6px 8px; border-radius: 6px;';
+
+        const btn = document.createElement('a');
+        btn.className = 'sellersuit-btn-marker';
+        btn.href = targetUrl;
+        btn.target = '_blank';
+        btn.innerHTML = `
+            <span aria-hidden="true" style="display:inline-flex;align-items:baseline;margin-right:8px;font-weight:900;font-size:14px;line-height:1;letter-spacing:-0.02em;">
+                <span style="color: #E53238;">e</span><span style="color: #0064D2;">b</span><span style="color: #F5AF02;">a</span><span style="color: #86B817;">y</span>
+            </span>
+            <span style="font-weight:600;">List on eBay</span>
+        `;
+        btn.style.cssText = 'display: inline-block; padding: 6px 12px; border-radius: 5px; background: #0654ba; color: #fff; text-decoration: none; cursor: pointer; border: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 600; font-size: 13px; transition: opacity 0.2s;';
+        
+        btn.addEventListener('mouseenter', () => btn.style.opacity = '0.9');
+        btn.addEventListener('mouseleave', () => btn.style.opacity = '1.0');
+
+        // wrapper.appendChild(btn);
+        // tile.appendChild(wrapper);
+    });
+
+    // 2. Walmart Product Page
+    const isProductPage = !!document.querySelector('h1[itemprop="name"], .prod-ProductTitle, [data-testid="product-title"]') || 
+                          !!document.querySelector('[data-testid="buy-box-container"], #buy-box-container, [data-automation="buybox"]');
+    if (isProductPage) {
+        const buyBox = document.querySelector('[data-testid="buy-box-container"], #buy-box-container, [data-automation="buybox"], .prod-product-cta-add-to-cart, .add-to-cart-section');
+        if (buyBox && !document.getElementById('initial-list-button-container')) {
+            const wrapper = document.createElement('div');
+            wrapper.id = 'initial-list-button-container';
+            wrapper.className = 'sellersuit-btn-wrapper';
+            wrapper.style.cssText = 'position: static; display: block; margin: 8px 0 16px 0; padding: 6px 8px; border-radius: 6px;';
+
+            const btn = document.createElement('button');
+            btn.id = 'initial-list-button';
+            btn.className = 'sellersuit-btn-marker';
+            btn.type = 'button';
+            btn.innerHTML = `
+                <span aria-hidden="true" style="display:inline-flex;align-items:baseline;margin-right:10px;font-weight:900;font-size:16px;line-height:1;letter-spacing:-0.02em;">
+                    <span style="color: #E53238;">e</span><span style="color: #0064D2;">b</span><span style="color: #F5AF02;">a</span><span style="color: #86B817;">y</span>
+                </span>
+                <span style="font-weight:600;">List it</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left:8px;opacity:0.75;">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+            `;
+            btn.style.cssText = 'display: inline-block; padding: 6px 12px; border-radius: 5px; background: #0654ba; color: #fff; text-decoration: none; cursor: pointer; border: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 600; font-size: 13px; transition: opacity 0.2s;';
+
+            btn.addEventListener('mouseenter', () => btn.style.opacity = '0.9');
+            btn.addEventListener('mouseleave', () => btn.style.opacity = '1.0');
+
+            btn.addEventListener('click', () => {
+                chrome.runtime.sendMessage({ action: 'OPEN_SIDE_PANEL' });
+                wrapper.style.display = 'none';
+            });
+
+            // wrapper.appendChild(btn);
+
+            // if (document.getElementById('snipe-root-wrapper')) {
+            //     wrapper.style.display = 'none';
+            // }
+
+            // buyBox.prepend(wrapper);
+        }
+    }
+};
+
+// Helper to wait until the product page is fully loaded and scannable
+const waitForProductPageReady = (checkReady, callback) => {
+    if (checkReady()) {
+        callback();
+        return;
+    }
+    const observer = new MutationObserver((mutations, obs) => {
+        if (checkReady()) {
+            obs.disconnect();
+            callback();
+        }
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    // Safety timeout after 10 seconds
+    setTimeout(() => {
+        observer.disconnect();
+        callback();
+    }, 10000);
+};
+
 // This function contains the original core logic of the extension for Walmart.
 const initializeApp = () => {
     console.log('🚀 Initializing Walmart app...');
@@ -2702,6 +2909,43 @@ const initializeApp = () => {
         console.log('❌ Not on Walmart domain, skipping initialization');
         return;
     }
+
+    // Check for auto-list trigger from search results redirect
+    if (window.location.hash.includes('sellersuit_auto_list') || window.location.search.includes('sellersuit_auto_list')) {
+        console.log('[Walmart Injector] Auto-list trigger detected, waiting for scannable DOM...');
+        const checkReady = () => {
+            return !!document.querySelector('h1[itemprop="name"], .prod-ProductTitle, [data-testid="product-title"]') || 
+                   !!document.querySelector('[data-testid="buy-box-container"], #buy-box-container, [data-automation="buybox"], .prod-product-cta-add-to-cart, .add-to-cart-section');
+        };
+
+        waitForProductPageReady(checkReady, () => {
+            console.log('[Walmart Injector] DOM scannable, opening side panel & triggering auto-scan...');
+            chrome.runtime.sendMessage({ action: 'OPEN_SIDE_PANEL' });
+            chrome.runtime.sendMessage({ action: 'DOM_READY_AUTO_SCAN' });
+        });
+
+        // Clean URL so it doesn't trigger on reload
+        const newSearch = window.location.search.replace(/[?&]sellersuit_auto_list=true/, '').replace(/^&/, '?');
+        const newHash = window.location.hash.replace(/#?sellersuit_auto_list=true/, '');
+        history.replaceState(null, null, window.location.pathname + newSearch + newHash);
+    }
+
+    // Call inline button injection immediately
+    injectInlineButtons();
+
+    // Set up MutationObserver to dynamically watch for lazy-loaded results
+    const observer = new MutationObserver((mutations) => {
+        const hasNewElements = mutations.some(m => m.addedNodes.length > 0 && Array.from(m.addedNodes).some(n => n.nodeType === Node.ELEMENT_NODE));
+        if (hasNewElements) {
+            injectInlineButtons();
+        }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Periodic polling as fallback
+    setInterval(injectInlineButtons, 1500);
+
+    console.log('✅ eBay Lister extension initialized with inline button injection for Walmart.');
 };
 
 // Calculator Functions

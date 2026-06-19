@@ -46,9 +46,9 @@ test('no access + plan token → /checkout?plan (encoded)', () => {
   assert.equal(resolveNextStep({ ...base, access: 'none', planToken: 'a b' }), '/checkout?plan=a%20b');
 });
 
-test('no access + no plan token → /billing', () => {
-  assert.equal(resolveNextStep({ ...base, access: 'none', planToken: null }), '/billing');
-  assert.equal(resolveNextStep({ ...base, access: 'none', planToken: '   ' }), '/billing');
+test('no access + no plan token → /choose-plan', () => {
+  assert.equal(resolveNextStep({ ...base, access: 'none', planToken: null }), '/choose-plan');
+  assert.equal(resolveNextStep({ ...base, access: 'none', planToken: '   ' }), '/choose-plan');
 });
 
 test('dashboardPath is honored (shopify goal)', () => {

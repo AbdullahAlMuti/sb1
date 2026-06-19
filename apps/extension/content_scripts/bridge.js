@@ -37,7 +37,7 @@
         }
     }));
 
-    window.postMessage({ type: 'SELLERSUIT_EXTENSION_READY' }, '*');
+    window.postMessage({ type: 'SELLERSUIT_EXTENSION_READY' }, window.location.origin);
 
     /**
      * Reads the JWT Session from the website's LocalStorage.
@@ -154,6 +154,15 @@
         if (tokenData) {
             setTimeout(() => syncTokenToExtension(tokenData), 500);
         }
+        try {
+            const templateId = localStorage.getItem('selected_listing_template_id');
+            if (templateId && chrome?.storage?.local) {
+                chrome.storage.local.set({ selectedListingTemplateId: templateId });
+                log('info', 'Initial template synced to extension', { templateId });
+            }
+        } catch (e) {
+            log('debug', 'Failed to perform initial template sync', e);
+        }
     }
 
     /**
@@ -188,7 +197,7 @@
 
         // react app pinging to check connection
         if (data.type === 'PING_EXTENSION') {
-            window.postMessage({ type: 'SELLERSUIT_EXTENSION_READY' }, '*');
+            window.postMessage({ type: 'SELLERSUIT_EXTENSION_READY' }, window.location.origin);
             return;
         }
 
@@ -207,6 +216,14 @@
             const tokenData = extractTokenData();
             if (tokenData) {
                 syncTokenToExtension(tokenData);
+            }
+        }
+
+        // Sync active listing template
+        if (data.type === 'SYNC_LISTING_TEMPLATE') {
+            log('info', 'Syncing listing template to extension:', data.templateId);
+            if (chrome?.storage?.local) {
+                chrome.storage.local.set({ selectedListingTemplateId: data.templateId });
             }
         }
 
@@ -271,7 +288,7 @@
                                 type: 'EBAY_ORDER_SYNC_RESULT',
                                 success: false,
                                 error: userMessage
-                            }, '*');
+                            }, window.location.origin);
                         } else if (response) {
                             if (response.ok) {
                                 log('success', 'eBay order sync completed', { count: response.cache?.count });
@@ -322,13 +339,13 @@
                     window.postMessage({ 
                         type: 'BULK_JOB_ERROR', 
                         error: chrome.runtime.lastError.message 
-                    }, '*');
+                    }, window.location.origin);
                 } else if (response && response.success === false) {
                     console.error('[Dashboard Bridge] Background rejected job:', response);
                     window.postMessage({ 
                         type: 'BULK_JOB_ERROR', 
                         error: response.error || response.message || 'Unknown error'
-                    }, '*');
+                    }, window.location.origin);
                 } else {
                     console.debug('[Dashboard Bridge] Background accepted job:', response);
                 }
@@ -351,10 +368,10 @@
         if (data.type === 'GET_BULK_STATE') {
             chrome.runtime.sendMessage({ action: 'GET_BULK_STATE' }, (response) => {
                 if (chrome.runtime.lastError) {
-                    window.postMessage({ type: 'BULK_JOB_STATE', payload: { active: false, error: chrome.runtime.lastError.message } }, '*');
+                    window.postMessage({ type: 'BULK_JOB_STATE', payload: { active: false, error: chrome.runtime.lastError.message } }, window.location.origin);
                     return;
                 }
-                window.postMessage({ type: 'BULK_JOB_STATE', payload: response || { active: false } }, '*');
+                window.postMessage({ type: 'BULK_JOB_STATE', payload: response || { active: false } }, window.location.origin);
             });
         }
 
@@ -362,7 +379,7 @@
         // The bridge content script reads chrome.storage directly.
         if (data.type === 'GET_BULK_INBOX') {
             chrome.storage.local.get('bulkInbox', (d) => {
-                window.postMessage({ type: 'BULK_INBOX', items: Array.isArray(d.bulkInbox) ? d.bulkInbox : [] }, '*');
+                window.postMessage({ type: 'BULK_INBOX', items: Array.isArray(d.bulkInbox) ? d.bulkInbox : [] }, window.location.origin);
             });
         }
 
@@ -382,7 +399,7 @@
             if (area === 'local' && changes.bulkInbox) {
                 const items = Array.isArray(changes.bulkInbox.newValue) ? changes.bulkInbox.newValue : [];
                 if (items.length > 0) {
-                    window.postMessage({ type: 'BULK_INBOX', items }, '*');
+                    window.postMessage({ type: 'BULK_INBOX', items }, window.location.origin);
                 }
             }
         });
@@ -399,17 +416,17 @@
             window.postMessage({
                 type: 'BULK_JOB_PROGRESS_UPDATE',
                 payload: request.payload
-            }, '*');
+            }, window.location.origin);
         }
         
         if (request.type === 'BULK_JOB_PROGRESS_UPDATE' || request.type === 'BULK_JOB_FINISHED' || request.type === 'BULK_JOB_DEBUG' || request.type === 'BULK_JOB_PAUSED') {
-            window.postMessage(request, '*');
+            window.postMessage(request, window.location.origin);
         }
         
         if (request.type === 'BULK_JOB_FINISHED') {
             window.postMessage({
                 type: 'BULK_JOB_FINISHED'
-            }, '*');
+            }, window.location.origin);
         }
 
         if (request.action === 'ORDER_COMPLETED_BROADCAST') {

@@ -88,7 +88,7 @@ class EbayImageUploader {
         }
       }
 
-      const file = this._dataUrlToFile(processedUrl, `product_image_${i + 1}.jpg`);
+      const file = await window.prepareImageForEbayUpload(processedUrl, i);
       if (file) {
         files.push({ id, file });
         imageMap[id] = { processedUrl };
@@ -107,6 +107,9 @@ class EbayImageUploader {
 
     // Clean legacy watermarkedImages storage
     chrome.storage.local.remove(['watermarkedImages', 'imageUrls']);
+    if (chrome.storage && chrome.storage.session) {
+      chrome.storage.session.remove(['watermarkedImages']);
+    }
 
     return {
       success:      true,
@@ -216,14 +219,7 @@ class EbayImageUploader {
     return false;
   }
 
-  _dataUrlToFile(dataUrl, filename) {
-    const arr  = dataUrl.split(',');
-    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
-    const bin  = atob(arr[1]);
-    const u8   = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-    return new File([u8], filename, { type: mime });
-  }
+
 
   _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 }

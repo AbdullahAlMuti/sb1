@@ -52,6 +52,7 @@ Deno.serve(async (req) => {
         max_listings: profile?.plans?.max_listings || 10,
         max_auto_orders: profile?.plans?.max_auto_orders || 0,
         is_active: profile?.is_active ?? true,
+        selectedListingTemplateId: (profile?.settings as any)?.selected_listing_template_id || 'default-professional',
       }
     };
 

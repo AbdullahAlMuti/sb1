@@ -147,7 +147,19 @@
       if (role === 'scan') {
         btnMainAction.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span> Loading…';
         const product = await doScan(_mode);
-        if (product) renderPreviewCard(product);
+        if (product) {
+          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
+          const updatedProduct = recalculateProductPricing(product, stored.calculatorValues);
+          await chrome.storage.local.set({ currentProduct: updatedProduct });
+          
+          if (typeof window.SSListingDraft !== 'undefined') {
+            await window.SSListingDraft.patchDraft({
+              variants: updatedProduct.variants || [],
+              variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
+            });
+          }
+          renderPreviewCard(updatedProduct);
+        }
       } else {
         btnMainAction.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span>';
         await doAdvancedUpload(selUploadType.value === 'draft');
@@ -602,6 +614,8 @@
           sku_source: skuSource,
           pricing: { ...(draft && draft.pricing), finalPrice },
           price_source: priceSource,
+          variants: ebayProduct.variants || [],
+          variationCount: ebayProduct.variants ? ebayProduct.variants.length : 0
         });
       }
 
@@ -769,23 +783,36 @@
     });
   }
 
+  /* ── Helper to get base URL ──────────────── */
+  function getBaseUrl() {
+    if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.WEB_APP_BASE) {
+      return ExtensionConfig.URLS.WEB_APP_BASE;
+    }
+    if (typeof ExtensionConstants !== 'undefined' && ExtensionConstants.WEB_BASE_URL) {
+      return ExtensionConstants.WEB_BASE_URL;
+    }
+    return 'https://sellersuit.com';
+  }
+
   /* ── Sign in ──────────────────────────────── */
   function doSignIn() {
     chrome.runtime.sendMessage({ action: 'OPEN_DASHBOARD' }, () => {});
-    chrome.tabs.create({ url: 'https://app.sellersuite.com/login' });
+    const baseUrl = getBaseUrl();
+    chrome.tabs.create({ url: `${baseUrl}/auth` });
   }
 
   /* ── Auth footer links ────────────────────── */
   function initAuthLinks() {
     const linkCreate = document.getElementById('link-create-account');
     const linkForgot = document.getElementById('link-forgot-pw');
+    const baseUrl = getBaseUrl();
     if (linkCreate) linkCreate.addEventListener('click', e => {
       e.preventDefault();
-      chrome.tabs.create({ url: 'https://app.sellersuite.com/register' });
+      chrome.tabs.create({ url: `${baseUrl}/signup` });
     });
     if (linkForgot) linkForgot.addEventListener('click', e => {
       e.preventDefault();
-      chrome.tabs.create({ url: 'https://app.sellersuite.com/forgot-password' });
+      chrome.tabs.create({ url: `${baseUrl}/auth?mode=forgot-password` });
     });
   }
 
@@ -840,8 +867,22 @@
     initTabWatchers();
     refreshPageStatus();
 
-    window.SSPanelStore.subscribe(state => {
+    window.SSPanelStore.subscribe(async (state) => {
       _state = state;
+      if (state.product) {
+        const needsPricing = !state.product.finalPrice || (Array.isArray(state.product.variants) && state.product.variants.length > 1 && state.product.variants.some(v => !v.finalPrice));
+        if (needsPricing && !_busy) {
+          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
+          const updatedProduct = recalculateProductPricing(state.product, stored.calculatorValues);
+          await chrome.storage.local.set({ currentProduct: updatedProduct });
+          if (typeof window.SSListingDraft !== 'undefined') {
+            await window.SSListingDraft.patchDraft({
+              variants: updatedProduct.variants || [],
+              variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
+            });
+          }
+        }
+      }
       renderAuth(state);
     });
 
@@ -849,8 +890,160 @@
     _state = snap;
     renderAuth(snap);
 
+    chrome.storage.onChanged.addListener(async (changes, area) => {
+      if (area === 'local' && changes.calculatorValues) {
+        const data = await new Promise(r => chrome.storage.local.get('currentProduct', r));
+        if (data.currentProduct) {
+          const updatedProduct = recalculateProductPricing(data.currentProduct, changes.calculatorValues.newValue);
+          await chrome.storage.local.set({ currentProduct: updatedProduct });
+          if (typeof window.SSListingDraft !== 'undefined') {
+            await window.SSListingDraft.patchDraft({
+              variants: updatedProduct.variants || [],
+              variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
+            });
+          }
+        }
+      }
+    });
+
     // Phase 4: restore preview card from existing draft if present
     _restorePreviewFromDraft();
+
+    const runAutoScanAndList = async () => {
+      console.log('[SS Panel] Auto-list active, starting scan...');
+      try {
+        _busy = true;
+        btnMainAction.disabled = true;
+        btnMainAction.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span> Scanning…';
+        
+        const product = await doScan('single');
+        if (product) {
+          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
+          const updatedProduct = recalculateProductPricing(product, stored.calculatorValues);
+          await chrome.storage.local.set({ currentProduct: updatedProduct });
+          
+          if (typeof window.SSListingDraft !== 'undefined') {
+            await window.SSListingDraft.patchDraft({
+              variants: updatedProduct.variants || [],
+              variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
+            });
+          }
+          renderPreviewCard(updatedProduct);
+          
+          // Now run the upload
+          btnMainAction.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span> Uploading…';
+          await doAdvancedUpload(selUploadType.value === 'draft');
+        } else {
+          showToast('Auto-scan failed to scrape product');
+        }
+      } catch (err) {
+        console.error('[SS Panel] Auto-list error:', err);
+        showToast('Auto-list failed: ' + err.message);
+      } finally {
+        _busy = false;
+        btnMainAction.disabled = false;
+        updateMainButton();
+      }
+    };
+
+    const attemptAutoScanAndList = () => {
+      const initialSnap = window.SSPanelStore.getState();
+      if (initialSnap && initialSnap.auth && initialSnap.auth.isValid) {
+        runAutoScanAndList();
+      } else {
+        const unsubscribe = window.SSPanelStore.subscribe(async (state) => {
+          if (state && state.auth && state.auth.isValid) {
+            unsubscribe();
+            runAutoScanAndList();
+          } else if (state && state.auth && !state.auth.isValid) {
+            unsubscribe();
+            console.warn('[SS Panel] Auto-list skipped: user is not logged in');
+          }
+        });
+      }
+    };
+
+    const runAutoScanOnly = async () => {
+      console.log('[SS Panel] Auto-scan only active, starting scan...');
+      try {
+        _busy = true;
+        btnMainAction.disabled = true;
+        btnMainAction.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span> Scanning…';
+        
+        const product = await doScan('single');
+        if (product) {
+          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
+          const updatedProduct = recalculateProductPricing(product, stored.calculatorValues);
+          await chrome.storage.local.set({ currentProduct: updatedProduct });
+          
+          if (typeof window.SSListingDraft !== 'undefined') {
+            await window.SSListingDraft.patchDraft({
+              variants: updatedProduct.variants || [],
+              variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
+            });
+          }
+          renderPreviewCard(updatedProduct);
+        } else {
+          showToast('Auto-scan failed to scrape product');
+        }
+      } catch (err) {
+        console.error('[SS Panel] Auto-scan error:', err);
+        showToast('Auto-scan failed: ' + err.message);
+      } finally {
+        _busy = false;
+        btnMainAction.disabled = false;
+        updateMainButton();
+      }
+    };
+
+    const attemptAutoScanOnly = () => {
+      const initialSnap = window.SSPanelStore.getState();
+      if (initialSnap && initialSnap.auth && initialSnap.auth.isValid) {
+        runAutoScanOnly();
+      } else {
+        const unsubscribe = window.SSPanelStore.subscribe(async (state) => {
+          if (state && state.auth && state.auth.isValid) {
+            unsubscribe();
+            runAutoScanOnly();
+          } else if (state && state.auth && !state.auth.isValid) {
+            unsubscribe();
+            console.warn('[SS Panel] Auto-scan skipped: user is not logged in');
+          }
+        });
+      }
+    };
+
+    // Listen to ready message from content script
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.action === 'DOM_READY_AUTO_SCAN') {
+        chrome.storage.local.get(['autoScanActive', 'autoScanOnly'], async (res) => {
+          if (res.autoScanActive) {
+            await chrome.storage.local.remove('autoScanActive');
+            console.log('[SS Panel] DOM_READY_AUTO_SCAN received & autoScanActive is true, running scan and list...');
+            attemptAutoScanAndList();
+          } else if (res.autoScanOnly) {
+            await chrome.storage.local.remove('autoScanOnly');
+            console.log('[SS Panel] DOM_READY_AUTO_SCAN received & autoScanOnly is true, running scan only...');
+            attemptAutoScanOnly();
+          }
+        });
+        sendResponse({ success: true });
+        return false;
+      }
+    });
+
+    // Check if auto-list / auto-scan is active on panel load
+    chrome.storage.local.get(['autoScanActive', 'autoScanOnly'], async (res) => {
+      if (res.autoScanActive) {
+        await chrome.storage.local.remove('autoScanActive');
+        console.log('[SS Panel] autoScanActive is true on load, running scan and list...');
+        attemptAutoScanAndList();
+      } else if (res.autoScanOnly) {
+        await chrome.storage.local.remove('autoScanOnly');
+        console.log('[SS Panel] autoScanOnly is true on load, running scan only...');
+        attemptAutoScanOnly();
+      }
+    });
   }
 
   /* ── Restore preview from existing draft on panel open ── */
@@ -884,6 +1077,55 @@
     } catch (e) {
       console.warn('[SS panel] _restorePreviewFromDraft error:', e);
     }
+  }
+
+  function recalculateProductPricing(product, calculatorValues) {
+    if (!product || !window.SSPricingEngine) return product;
+
+    const savedValues = calculatorValues || {};
+    const parseVal = (v, def) => {
+      if (v === null || v === undefined || v === '') return def;
+      const cleaned = String(v).replace(/[^\d.-]/g, '');
+      const n = parseFloat(cleaned);
+      return isNaN(n) ? def : n;
+    };
+    
+    const cfg = {
+      taxPercent:      parseVal(savedValues['tax-percent'],       9),
+      trackingFee:     parseVal(savedValues['tracking-fee'],      0.20),
+      ebayFeePercent:  parseVal(savedValues['ebay-fee-percent'],  20),
+      promoFeePercent: parseVal(savedValues['promo-fee-percent'], 10),
+      desiredProfit:   parseVal(savedValues['desired-profit'],    0),
+      paymentFixedFee: parseVal(savedValues['payment-fixed-fee'], 0.30)
+    };
+
+    const cleanFloat = (val) => {
+      if (val === null || val === undefined) return 0;
+      if (typeof val === 'number') return val;
+      const cleaned = String(val).replace(/[^\d.-]/g, '');
+      const parsed = parseFloat(cleaned);
+      return isNaN(parsed) ? 0 : parsed;
+    };
+
+    const baseRaw = cleanFloat(product.price || product.raw_supplier_price);
+    product.raw_supplier_price = baseRaw;
+    
+    const topIsManual = product.price_source === 'manual' && cleanFloat(product.finalPrice) > 0;
+    if (!topIsManual && baseRaw > 0) {
+      product.finalPrice = window.SSPricingEngine.calculatePrice(baseRaw, cfg);
+    }
+
+    if (Array.isArray(product.variants)) {
+      product.variants.forEach(v => {
+        const raw = cleanFloat(v.price || v.raw_supplier_price) || baseRaw;
+        v.raw_supplier_price = raw;
+        const varIsManual = cleanFloat(v.ebayPrice) > 0;
+        if (!varIsManual && raw > 0) {
+          v.finalPrice = window.SSPricingEngine.calculatePrice(raw, cfg);
+        }
+      });
+    }
+    return product;
   }
 
   if (document.readyState === 'loading') {

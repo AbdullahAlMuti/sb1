@@ -44,6 +44,24 @@ async function syncSettings() {
         }
       } catch(e) {}
 
+      try {
+        const profileRes = await fetch(`${saasUrl}/rest/v1/profiles?select=settings`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${token}`, 'apikey': saasKey, 'Prefer': 'return=representation' }
+        });
+        if (profileRes.ok) {
+          const profileData = await profileRes.json();
+          if (profileData && profileData.length > 0 && profileData[0].settings) {
+            const settings = profileData[0].settings;
+            if (settings.selected_listing_template_id) {
+              updates.selectedListingTemplateId = settings.selected_listing_template_id;
+            }
+          }
+        }
+      } catch(e) {
+        console.error('🔄 SYNC: Profile settings fetch failed', e);
+      }
+
       settingsData.forEach(setting => {
         if (setting.key === 'gemini_api_key') updates.geminiApiKey = setting.value;
         if (setting.key === 'ebay_sync_enabled') updates.ebaySyncEnabled = setting.value === 'true';
@@ -153,8 +171,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   // First-install specific behavior
   if (details.reason === 'install') {
     await chrome.storage.local.set({ firstInstall: true });
-    const urls = getUrls();
-    const onboardingUrl = (urls && urls.WEB_APP_BASE) || 'https://sellersuit.com';
+    const onboardingUrl = (typeof ExtensionConstants !== 'undefined' && ExtensionConstants.WEB_BASE_URL) || 'https://sellersuit.com';
     console.log('🎉 [Background] First Install! Opening onboarding:', onboardingUrl);
     chrome.tabs.create({ url: onboardingUrl });
   }

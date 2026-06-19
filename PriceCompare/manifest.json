@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "PriceCompare",
+  "version": "1.0.0",
+  "description": "Injects Search on Amazon and Search on eBay buttons onto product cards of shopping sites.",
+  "icons": {
+    "16": "icons/amazon.png",
+    "48": "icons/amazon.png",
+    "128": "icons/ebay.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.walmart.com/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "host_permissions": [
+    "*://*.walmart.com/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/amazon.png",
+        "icons/ebay.png"
+      ],
+      "matches": ["*://*.walmart.com/*"]
+    }
+  ]
+}

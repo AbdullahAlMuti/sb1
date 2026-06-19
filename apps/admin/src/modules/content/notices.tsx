@@ -8,7 +8,6 @@ interface Notice {
   id: string;
   title: string;
   content: string | null;
-  message: string | null;
   type: string;
   priority: number;
   target_audience: string | null;
@@ -92,7 +91,6 @@ export const noticesModule: EntityModule<Notice> = {
   toRecord: (v) => ({
     title: v.title,
     content: v.content,
-    message: v.content, // "message" is NOT NULL in the schema
     type: v.type,
     priority: Number(v.priority) || 0,
     target_audience: v.target_audience,

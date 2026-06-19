@@ -22,6 +22,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import { Navigate } from "react-router-dom";
 
 import AdminDashboard from "@/modules/overview";
 import AdminUsers from "@/modules/users/UsersPage";
@@ -89,6 +90,7 @@ export const adminRoutes: AdminRouteDef[] = [
   { path: "users/:userId", element: <AdminUsers /> },
 
   // Billing
+  { path: "billing", element: <Navigate to="/plans" replace /> },
   { path: "plans", element: <AdminPlans />, label: "Plans", icon: Tags, group: "Billing" },
   { path: "plans/:id/features", element: <AdminPlanFeatures /> },
   { path: "plans/:id/prices", element: <AdminPlanPrices /> },
@@ -134,4 +136,4 @@ export const adminRoutes: AdminRouteDef[] = [
 ];
 
 /** Routes that no longer exist (scope cuts / removed aliases) → bounce to overview. */
-export const removedRoutes: string[] = ["workspaces", "reports", "billing", "payments", "credits"];
+export const removedRoutes: string[] = ["workspaces", "reports", "payments", "credits"];
