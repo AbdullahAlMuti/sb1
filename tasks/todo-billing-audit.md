@@ -26,7 +26,11 @@ Plan: `tasks/plan-billing-audit.md` · Verdict: prod works; repo had drift + 2 c
 - [ ] Deploy edge functions (stripe-webhook restore, plan-middleware) — current prod webhook is healthy; deploy is the fix delivery
 - [ ] `deno check` in CI (install deno via denoland/setup-deno so the guard bites)
 - [ ] Stripe test-mode E2E: trial $1 + paid sub → credits per plan, emails fire, replay → duplicate:true, forced error → claim released + retry succeeds
-- [ ] Concurrency test for `deduct_credits_atomic` (N concurrent deducts, balance < N → exactly balance succeed)
+- [x] Concurrency/logic test for `deduct_credits_atomic` → `scripts/sql/deduct_credits_atomic_test.sql` (run via psql on a branch DB; happy-path + over-spend + invalid-amount + documented 2-session concurrency check)
 
-## P3 — Optional hardening (deferred, not started)
-- [ ] REVOKE EXECUTE on admin_* RPCs from anon/authenticated; enable leaked-password protection; RLS policies on flagged admin tables
+## P3 — Hardening: ASSESSED, no code change (admin RPCs already secured)
+- [x] Verified admin RPCs (`adjust_user_credits_admin`, etc.) are called DIRECTLY from apps/admin with the admin's JWT (e.g. AdminUsers.tsx:440) and self-guard via `has_role(auth.uid(),'admin')`.
+      => `authenticated` EXECUTE is REQUIRED; revoking it would break the admin panel. The advisor `authenticated_security_definer_function_executable` warning is an accepted/mitigated risk, NOT actionable.
+- [x] `deduct_credits_atomic` IS fully locked down (service_role only) in migration 20260620120000 — safe because it takes user_id as a param and is only called by edge functions via service_role.
+- [ ] (Manual, dashboard) Enable leaked-password protection — Auth setting, not a migration.
+- [ ] (Optional, ~zero value) RLS-no-policy admin tables are deny-all = already secure; only add policies if intentional read access is ever needed.
