@@ -6,11 +6,14 @@ SellerSuit uses Stripe for all payments. There is no free plan — users must se
 
 ### Plans
 
-| Plan | Price | Listings | Orders | Credits | Notes |
-|---|---|---|---|---|---|
-| Trial | $1 one-time | 10 | 10 | 10 | 7-day access, one per account |
-| Starter | $15/mo · $144/yr | 500 | Unlimited | 500 | 1 credit per new listing |
-| Pro | $49/mo · $470.40/yr | 5,000 | Unlimited | 1,500 | Popular, all features |
+| Plan | Price | Listings | Auto-orders | Credits | eBay accts | Notes |
+|---|---|---|---|---|---|---|
+| Trial | $1 one-time | 10 | 10 | 10 | 1 | 7-day access, one per account |
+| Starter | $15/mo · $144/yr | 500 | 250/mo | 500 | 1 | 1 credit per new listing |
+| Pro | $49/mo · $470.40/yr | 5,000 | Unlimited | 5,000 | 2 | Popular, all features |
+
+> Source of truth is the `plans` table (admin-editable). The numbers above mirror the
+> current DB (migrations `20260613101000_seed_plans_v2` + `20260616000000_update_plan_limits`).
 
 ### Access States
 

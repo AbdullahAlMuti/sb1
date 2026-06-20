@@ -568,49 +568,23 @@ export async function deductUsage(
 ): Promise<boolean> {
   try {
     switch (action) {
-      case 'credit':
-        // Deduct from profiles.credits
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('credits')
-          .eq('id', userId)
-          .single();
-        
-        if (profile) {
-          const newCredits = Math.max(0, (profile.credits ?? 0) - amount);
-          await supabase
-            .from('profiles')
-            .update({ credits: newCredits })
-            .eq('id', userId);
-
-          // Log transaction
-          await supabase.from('credit_transactions').insert({
-            user_id: userId,
-            amount: -amount,
-            balance_after: newCredits,
-            transaction_type: 'usage',
-            description: metadata?.description || 'AI credit usage',
-            metadata,
-          });
-
-          // Also update credits_used in user_plans
-          try {
-            const { data: upCredits } = await supabase
-              .from('user_plans')
-              .select('credits_used')
-              .eq('user_id', userId)
-              .single();
-            if (upCredits) {
-              await supabase
-                .from('user_plans')
-                .update({ credits_used: (upCredits.credits_used ?? 0) + amount })
-                .eq('user_id', userId);
-            }
-          } catch {
-            // Ignore if user_plans record doesn't exist
-          }
+      case 'credit': {
+        // Atomic deduct: locks profiles row, checks balance, deducts, bumps
+        // user_plans.credits_used, and logs credit_transactions in one txn.
+        // Replaces the old non-atomic read-then-write that let concurrent AI
+        // requests overspend. RPC raises (23514) if balance < amount.
+        const { error: rpcErr } = await supabase.rpc('deduct_credits_atomic', {
+          p_user_id: userId,
+          p_amount: amount,
+          p_reason: (metadata?.description as string) || 'AI credit usage',
+          p_metadata: metadata ?? {},
+        });
+        if (rpcErr) {
+          console.error('[plan-middleware] deduct_credits_atomic failed:', rpcErr.message);
+          return false;
         }
         break;
+      }
 
       case 'order':
         try {
