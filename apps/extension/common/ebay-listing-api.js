@@ -455,9 +455,20 @@ window.EbayListingApiHelper = (() => {
     if (!epsData) throw new Error('Could not find epsData in eBay response');
 
     const draftId = listingModel.meta.draftId;
-    const aspectNames = Array.isArray(listingModel.ATTRIBUTES?.attributeList)
-      ? listingModel.ATTRIBUTES.attributeList.map(a => a.attributeName)
+    const attributeList = Array.isArray(listingModel.ATTRIBUTES?.attributeList)
+      ? listingModel.ATTRIBUTES.attributeList
       : [];
+    const aspectNames = attributeList.map(a => a.attributeName);
+
+    // ── TEMP DIAGNOSTIC (Phase 0a — remove before release) ───────────────────
+    // Dumps eBay's REAL attribute schema so we can verify the actual field names
+    // for required / selection-mode / allowed-values (the mapping currently
+    // GUESSES these). Copy this JSON into tests/fixtures/attributeList-*.json.
+    try {
+      console.log('[SS DEBUG attributeList] category schema for draft', draftId,
+        '\n' + JSON.stringify(attributeList, null, 2));
+    } catch (_) { /* circular/huge — ignore */ }
+    // ─────────────────────────────────────────────────────────────────────────
 
     return { draftId, draftCsrfValue, epsData, listingModel, aspectNames };
   }
