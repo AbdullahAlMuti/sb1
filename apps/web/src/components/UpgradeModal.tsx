@@ -20,7 +20,7 @@ const FEATURE_CONTENT = {
       'Unlimited AI product and niche research',
       'Reveal top supplier recommendations (Amazon, Walmart, AliExpress)',
       'Access 5,000+ active listings & auto-orders',
-      'Priority support + 1,500 credits per month'
+      'Priority support + 5,000 credits per month'
     ],
     missingLine: 'Unlock full AI capabilities to analyze wireless earbuds, pet accessories, kitchen niches, and more.'
   },
