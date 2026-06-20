@@ -182,6 +182,11 @@
      */
     window.addEventListener('message', (event) => {
         if (event.source !== window) return;
+        // SS-A3-002: only trust messages from this page's own origin. The bridge
+        // is injected solely on the dashboard origin, so a same-window message
+        // must carry a matching origin; reject anything else before forwarding
+        // it to the privileged background message router.
+        if (event.origin !== window.location.origin) return;
 
         const data = event.data;
         if (!data) return;

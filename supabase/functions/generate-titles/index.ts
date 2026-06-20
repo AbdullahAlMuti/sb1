@@ -91,7 +91,20 @@ serve(async (req) => {
       );
     }
 
-
+    // SS-A5-003: deduct 1 credit per title generation (atomic — no double-spend)
+    const { data: creditResult } = await supabase.rpc("deduct_credits_atomic", {
+      p_user_id: userId,
+      p_amount: 1,
+      p_reason: "Title generation",
+      p_metadata: {},
+    });
+    if (!creditResult?.ok) {
+      console.warn(`[generate-titles] Credit deduction failed for ${userId}:`, creditResult?.reason);
+      return new Response(
+        JSON.stringify({ success: false, error: "Insufficient credits" }),
+        { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const rawBody = await req.json();
     console.log("[generate-titles] Received body:", JSON.stringify(rawBody));
@@ -171,6 +184,28 @@ serve(async (req) => {
       console.log(
         "Using default settings (admin_settings not available):",
         dbError,
+      );
+    }
+
+    // SS-A5-002: prefer the admin-managed 'title' prompt from the prompts table
+    // (the same source the in-dashboard TitleGenerator reads) so edits in the
+    // admin Prompts page take effect on the extension listing flow too. Falls
+    // back to ext_title_prompt (above) / DEFAULT_PROMPT when no row exists.
+    try {
+      const { data: titlePrompt } = await supabase
+        .from("prompts")
+        .select("content")
+        .eq("prompt_type", "title")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (titlePrompt?.content) {
+        promptTemplate = titlePrompt.content;
+      }
+    } catch (promptErr) {
+      console.log(
+        "[generate-titles] prompts table unavailable; using admin_settings/default prompt:",
+        promptErr,
       );
     }
 

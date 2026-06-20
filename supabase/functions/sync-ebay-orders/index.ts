@@ -343,8 +343,20 @@ Deno.serve(async (req) => {
           const { error: err } = await supabase
             .from("ebay_orders")
             .insert(orderData);
-          if (err) throw err;
-          synced++;
+          if (err) {
+            // SS-A4-001: a concurrent sync (alarm + manual, or reopened tab) can
+            // pass the same SELECT and both insert. The unique indexes
+            // (user_id, sales_record_number) and the NULL-SRN partial index then
+            // raise 23505. The row already exists with this payload, so treat the
+            // race-loss as a successful update rather than a hard error.
+            if (err.code === "23505") {
+              updated++;
+            } else {
+              throw err;
+            }
+          } else {
+            synced++;
+          }
         }
       } catch (err: any) {
         console.error(`[sync-ebay-orders] Order ${order.ebay_order_id} failed:`, err.message);

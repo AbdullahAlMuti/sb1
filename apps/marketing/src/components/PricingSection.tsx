@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Sparkles } from "lucide-react";
 import { cn } from "@repo/ui/lib/utils";
+import { supabase } from "@repo/api-client/supabase/client";
 import { siteConfig } from "@/config/siteConfig";
 import { themeConfig } from "@/config/themeConfig";
 import type { BillingInterval, PricingTier } from "@/config/types";
@@ -17,6 +18,44 @@ const PricingSection = () => {
   const campaign = themeConfig.seasonalCampaign;
   const campaignOn = isCampaignActive(campaign);
   const [interval, setInterval] = useState<BillingInterval>("monthly");
+
+  // SS-A5-001: source per-tier feature bullets from the admin-managed
+  // plan_features table (mapped to tiers by plan slug), so the admin "Plan
+  // Features" page actually controls what the pricing page shows. siteConfig
+  // features are the fallback when the DB read fails or a tier has no rows, so
+  // the public page can never render empty.
+  const [dbFeatures, setDbFeatures] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [{ data: plans }, { data: feats }] = await Promise.all([
+          supabase.from("plans").select("id, slug"),
+          supabase
+            .from("plan_features")
+            .select("plan_id, title, included, sort_order")
+            .eq("included", true)
+            .order("sort_order", { ascending: true }),
+        ]);
+        if (cancelled || !plans || !feats) return;
+        const slugById = new Map(
+          (plans as { id: string; slug: string }[]).map((p) => [p.id, p.slug]),
+        );
+        const bySlug: Record<string, string[]> = {};
+        for (const f of feats as { plan_id: string; title: string | null }[]) {
+          const slug = slugById.get(f.plan_id);
+          if (!slug || !f.title) continue;
+          (bySlug[slug] ??= []).push(f.title);
+        }
+        if (!cancelled) setDbFeatures(bySlug);
+      } catch {
+        // keep the siteConfig fallback
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const priceFor = (tier: PricingTier) => {
     if (tier.oneTime) {
@@ -122,7 +161,7 @@ const PricingSection = () => {
                 </div>
 
                 <ul className="mb-6 space-y-3">
-                  {tier.features.map((feature) => (
+                  {(dbFeatures[tier.slug] ?? tier.features).map((feature) => (
                     <li key={feature} className="flex gap-3 text-sm text-foreground">
                       <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success/10 text-success">
                         <Check className="h-3.5 w-3.5" />

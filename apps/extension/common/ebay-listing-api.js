@@ -322,7 +322,13 @@ window.EbayListingApiHelper = (() => {
       uploadedImages = results.filter(Boolean);
       console.log(`[SS EPS] ${uploadedImages.length}/${imageUrls.length} images uploaded`);
       if (uploadedImages.length === 0 && imageUrls.length > 0) {
+        // SS-A3-001: never submit an imageless listing. A total EPS failure is
+        // environmental (CDN host-permission gap / proxy outage) and will recur
+        // for every item, so abort before building the payload. The thrown
+        // message is classified blocking by SSBulkCore.isJobBlockingError so the
+        // bulk runner pauses instead of burning through items creating empty drafts.
         console.error('[SS EPS] All uploads failed — check CDN host_permissions or proxy endpoint');
+        throw new Error(`All ${imageUrls.length} product images failed to upload to eBay EPS — aborting to avoid an imageless listing.`);
       }
     }
 

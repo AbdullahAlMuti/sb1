@@ -1,8 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
-import { sendBillingEmail } from "../_shared/email.ts";
-import { activateTrial } from "../_shared/trial-activation.ts";
 import { syncStripeData } from "../_shared/billing-sync.ts";
 
 const corsHeaders = {
@@ -67,163 +65,6 @@ serve(async (req) => {
 
   const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
-  const findUserIdByCustomer = async (customerId: string | null | undefined): Promise<string | null> => {
-    if (!customerId) return null;
-    const { data } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("stripe_customer_id", customerId)
-      .maybeSingle();
-    return data?.id ?? null;
-  };
-
-  // Subscription ended (canceled/unpaid/deleted): there is no free plan —
-  // the user drops to the explicit no-plan state and the choose-plan gate.
-  const downgradeToNoPlan = async (userId: string, reason: string, clearSubscriptionId: boolean) => {
-    const planPatch: Record<string, unknown> = {
-      plan_id: null,
-      status: "canceled",
-      orders_used: 0,
-      updated_at: new Date().toISOString(),
-    };
-    if (clearSubscriptionId) {
-      planPatch.stripe_subscription_id = null;
-      planPatch.current_period_end = null;
-    }
-
-    await supabase.from("user_plans").update(planPatch).eq("user_id", userId);
-    
-    const profilePatch: Record<string, unknown> = {
-      plan_id: null,
-      credits: 0,
-      selected_plan_id: null,
-      payment_status: "unpaid",
-      subscription_status: "inactive",
-      updated_at: new Date().toISOString()
-    };
-    if (clearSubscriptionId) {
-      profilePatch.subscription_id = null;
-      profilePatch.current_period_end = null;
-    }
-    await supabase.from("profiles").update(profilePatch).eq("id", userId);
-
-    await supabase.from("credit_transactions").insert({
-      user_id: userId,
-      amount: 0,
-      transaction_type: "plan_grant",
-      balance_after: 0,
-      description: "Subscription ended",
-      metadata: { reason },
-    });
-
-    logStep("User downgraded to no plan", { userId, reason });
-  };
-
-  const getUserEmailAndName = async (userId: string): Promise<{ email: string; name?: string } | null> => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("email, full_name")
-      .eq("id", userId)
-      .maybeSingle();
-    if (!data?.email) return null;
-    return { email: data.email, name: data.full_name ?? undefined };
-  };
-
-  // $1 trial purchase (checkout.session.completed with mode === "payment").
-  // Activation is delegated to the shared, idempotent helper (also used by
-  // check-subscription-v2 reconciliation) so the two paths can never diverge.
-  // The trial_used_at claim is atomic, so replayed events and double purchases
-  // activate at most once.
-  const activateTrialFromSession = async (session: Stripe.Checkout.Session) => {
-    const userId = session.metadata?.user_id;
-    const planId = session.metadata?.plan_id;
-    const stripeCustomerId = typeof session.customer === "string" ? session.customer : null;
-
-    if (!userId || !planId) {
-      logStep("Payment-mode session missing metadata", { sessionId: session.id });
-      return;
-    }
-
-    const result = await activateTrial(supabase, stripe, {
-      userId,
-      planId,
-      stripeCustomerId,
-      sourceId: (typeof session.payment_intent === "string" ? session.payment_intent : null) || session.id,
-    });
-
-    if (!result.activated) {
-      logStep("Trial not activated", { userId, sessionId: session.id, reason: result.reason });
-      return;
-    }
-
-    logStep("Trial activated", { userId, trialEnd: result.trialEnd });
-
-    // Fire-and-forget — never let email failure fail the webhook
-    getUserEmailAndName(userId).then((u) => {
-      if (u) {
-        sendBillingEmail({
-          to: u.email,
-          type: "trial_started",
-          userName: u.name,
-          trialEndDate: result.trialEnd,
-        }).catch((e) => logStep("trial_started email error (non-fatal)", { error: String(e) }));
-      }
-    }).catch(() => {});
-  };
-
-  const syncActiveSubscriptionToUser = async (subscription: Stripe.Subscription, userId: string) => {
-    const priceId = subscription.items.data[0]?.price?.id;
-    const { data: planData } = await supabase
-      .from("plans")
-      .select("id, name, credits_per_month, max_auto_orders")
-      .or(`stripe_price_id_monthly.eq.${priceId},stripe_price_id_yearly.eq.${priceId}`)
-      .maybeSingle();
-
-    if (!planData) {
-      logStep("No matching plan found for price", { priceId });
-      await sendErrorAlert("No matching plan found for price on subscription creation", { priceId, subscriptionId: subscription.id, userId });
-      return;
-    }
-
-    const planPayload = {
-      user_id: userId,
-      plan_id: planData.id,
-      status: subscription.status,
-      stripe_subscription_id: subscription.id,
-      current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-      current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-      orders_used: 0,
-      credits_used: 0,
-      updated_at: new Date().toISOString(),
-    };
-
-    // Atomic upsert: checkout.session.completed and customer.subscription.created
-    // (plus the client self-heal) fire concurrently and previously raced on a
-    // SELECT-then-INSERT, violating user_plans_user_id_unique (23505) and failing
-    // the webhook. onConflict resolves it in a single statement.
-    await supabase.from("user_plans").upsert(planPayload, { onConflict: "user_id" });
-
-    await supabase
-      .from("profiles")
-      .update({
-        plan_id: planData.id,
-        credits: planData.credits_per_month,
-        selected_plan_id: planData.id,
-        pending_plan_id: null,
-        payment_status: "paid",
-        subscription_status: "active",
-        customer_id: subscription.customer as string,
-        subscription_id: subscription.id,
-        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-        subscription_provider: "stripe",
-        updated_at: new Date().toISOString()
-      })
-      .eq("id", userId);
-
-    logStep("User plan updated", { userId, planName: planData.name });
-  };
-
   try {
     logStep("Webhook received");
 
@@ -270,7 +111,9 @@ serve(async (req) => {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-      switch (event.type) {
+    }
+
+    switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
         logStep("Checkout completed", { 

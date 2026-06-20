@@ -63,6 +63,21 @@ serve(async (req) => {
       });
     }
 
+    // SS-A5-003: deduct 1 credit per description generation (atomic — no double-spend)
+    const { data: creditResult } = await supabase.rpc('deduct_credits_atomic', {
+      p_user_id: userId,
+      p_amount: 1,
+      p_reason: 'Description generation',
+      p_metadata: {},
+    });
+    if (!creditResult?.ok) {
+      console.warn(`[generate-description] Credit deduction failed for ${userId}:`, creditResult?.reason);
+      return new Response(JSON.stringify({ success: false, error: 'Insufficient credits' }), {
+        status: 402,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // 1) Fetch database-driven description config (global)
     const { data: configData, error: configError } = await supabase
       .from('description_config')

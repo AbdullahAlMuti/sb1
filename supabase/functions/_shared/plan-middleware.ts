@@ -568,49 +568,30 @@ export async function deductUsage(
 ): Promise<boolean> {
   try {
     switch (action) {
-      case 'credit':
-        // Deduct from profiles.credits
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('credits')
-          .eq('id', userId)
-          .single();
-        
-        if (profile) {
-          const newCredits = Math.max(0, (profile.credits ?? 0) - amount);
-          await supabase
-            .from('profiles')
-            .update({ credits: newCredits })
-            .eq('id', userId);
+      case 'credit': {
+        // Atomic guarded decrement (SS-A2-002). The RPC decrements
+        // profiles.credits only if the balance still covers it, writes the
+        // credit_transactions ledger row, and bumps user_plans.credits_used —
+        // all in one transaction, so concurrent AI-credit requests can't
+        // double-spend.
+        const { data: deduct, error: deductErr } = await supabase.rpc('deduct_credits_atomic', {
+          p_user_id: userId,
+          p_amount: amount,
+          p_reason: (metadata?.description as string) || 'AI credit usage',
+          p_metadata: metadata ?? {},
+        });
 
-          // Log transaction
-          await supabase.from('credit_transactions').insert({
-            user_id: userId,
-            amount: -amount,
-            balance_after: newCredits,
-            transaction_type: 'usage',
-            description: metadata?.description || 'AI credit usage',
-            metadata,
-          });
-
-          // Also update credits_used in user_plans
-          try {
-            const { data: upCredits } = await supabase
-              .from('user_plans')
-              .select('credits_used')
-              .eq('user_id', userId)
-              .single();
-            if (upCredits) {
-              await supabase
-                .from('user_plans')
-                .update({ credits_used: (upCredits.credits_used ?? 0) + amount })
-                .eq('user_id', userId);
-            }
-          } catch {
-            // Ignore if user_plans record doesn't exist
-          }
+        if (deductErr) {
+          console.error('[plan-middleware] deduct_credits_atomic error:', deductErr);
+          return false;
+        }
+        if (!deduct?.ok) {
+          // Insufficient balance (race lost) — the action's credit could not be charged.
+          console.warn('[plan-middleware] deduct_credits_atomic declined:', deduct?.reason);
+          return false;
         }
         break;
+      }
 
       case 'order':
         try {
