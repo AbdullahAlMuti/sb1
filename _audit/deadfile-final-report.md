@@ -11,9 +11,9 @@
 | marketing | ~29 orphans triaged | 0 | 0 | 0 |
 | admin | knip set triaged | **11** (`order-details/` island) | `PlanGate`, `PermissionGate` | 0 |
 | web | knip set triaged | **7** (checkout + dashboard-layout islands) | — | 0 |
-| packages | all 7 pkgs | 0 | `usePlanLimits`, `NavLink`, `ThemeToggle`, `WhatsAppButton`, `use-mobile` | 0 |
+| packages/ui | all 7 pkgs, alias-aware | **21** (19 shadcn + `use-mobile` + `NavLink`) | `usePlanLimits`, `ThemeToggle`+`WhatsAppButton` (used) | 0 |
 | supabase | all functions | 0 (all are roots) | 0 | 0 |
-| **Total** | | **19 files** | ~7 | **0** |
+| **Total** | | **40 files** | ~4 | **0** |
 
 - **Excluded false positives (analyzed, never moved): ~134** — 74 `supabase/functions/*` (independent deployed roots), ~50 `@repo/ui` shadcn components (used via deep-path alias knip can't resolve), 10 tests, plus verified-used singles (`routeAfterAuth`, `TurnstileCaptcha`, `usePlans`, `useRealtimeSync`, `use-toast`, `OtpInput`).
 
@@ -23,8 +23,9 @@
 |---|---|---|---|
 | admin | ✅ pass | ✅ `vite build` 4051 modules | after removing 11-file island |
 | web | ✅ pass | ✅ `vite build` 4067 modules | after removing 7-file islands |
+| packages/ui (shared → all 3 apps) | ✅ pass | ✅ marketing 2488 / web 4067 / admin 4051 | after removing 21 ui files |
 | extension backup zip | n/a | n/a | binary, 0 references — cannot affect any build/typecheck |
-| marketing / packages / supabase | untouched | untouched | no moves |
+| marketing / supabase | untouched (no app-specific moves) | untouched | — |
 
 Lint/tests not separately run: removing files with **zero importers** cannot introduce errors in remaining files; typecheck+build are the binding proof. Extension source and Supabase functions were not touched.
 
@@ -36,14 +37,15 @@ Lint/tests not separately run: removing files with **zero importers** cannot int
 | `7f1aee7` | `extension_backup_phase0.zip` + Phase-1 manifest |
 | `7bc4408` | admin `order-details/` dead island (11) |
 | `29803ce` | web checkout + dashboard-layout dead islands (7) |
+| `6d86b70` | 21 unused `packages/ui` files (19 shadcn + `use-mobile` + `NavLink`) |
 
 ## Restore
 Every move has a one-line restore command in `_unused/RESTORE_LOG.md` (Sweep 2 section). Whole sweep reverts with `git reset --hard 7de93ff` (the WIP checkpoint).
 
 ## Things I was unsure about (kept on purpose)
 1. **`packages/auth/.../usePlanLimits.tsx`, admin `modules/.../PlanGate.tsx`/`PermissionGate.tsx`** — 0–1 live refs, but part of an actively-developed `apps/admin/src/modules/` scaffold (untracked-until-this-branch). Likely intentional WIP, not dead. KEPT.
-2. **`packages/ui` 1-ref singles** (`NavLink`, `ThemeToggle`, `WhatsAppButton`, `use-mobile`) — single importer each; could be a real consumer or a small island. Needs cross-app trace. KEPT.
-3. **Which `@repo/ui` shadcn components are genuinely unused** — knip can't resolve the deep-path alias, so I could not produce a trustworthy "unused shadcn" list this pass. A proper audit needs an alias-aware grep of `@repo/ui/components/ui/<name>` across all apps. NOT attempted.
+2. **`packages/ui` singles — RESOLVED.** `use-mobile` + `NavLink` were truly unimported (moved); `ThemeToggle` (marketing Navbar) + `WhatsAppButton` (marketing Contact) are USED → kept.
+3. **Unused shadcn — RESOLVED.** Alias-aware pass (greping `@repo/ui/components/ui/<name>` incl. intra-package edges, iterative leaf-prune) found 19 unused components; moved + build-verified across all 3 apps. The remaining 30 are reachable.
 4. **`apps/marketing/src/App.css`, `packages/ui/src/styles.css`** — knip flags CSS it can't trace; likely imported by `main.tsx`. KEPT.
 5. **Tooling caveat:** both `knip` and `madge` produced heavy false positives on this monorepo's `@repo/*` deep-path aliases and on Supabase function roots. Every move was hand-verified with scoped `git grep` (with control symbols) + typecheck + build. Treat any future automated run with the same skepticism.
 
