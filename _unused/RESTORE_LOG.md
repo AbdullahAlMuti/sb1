@@ -224,5 +224,17 @@ Incremental on top of the 2026-06-21 sweep. Policy: **HIGH-only** (dead-markers,
 | `apps/admin/src/components/dashboard/order-details/{KeyValueGrid,SectionShell,WhatsAppLogo,formatters,types}.{tsx,ts}` | `git checkout 7f1aee7 -- <path>` (identical copy also at `_unused/<same path>`) |
 | `apps/admin/src/components/dashboard/order-details/sections/{Customer,LineItems,OrderSummary,Payment,ShippingAddress,Timeline}Section.tsx` | `git checkout 7f1aee7 -- <path>` (identical copy also at `_unused/<same path>`) |
 
-### Reported but NOT YET moved (MEDIUM — pending per-file verification)
-See `_audit/deadfile-candidates.md`. Web `components/checkout/CheckoutDialog.tsx` + dashboard `DashboardLayout`/`DashboardHeader`/`DashboardSidebar`/`NoticesBanner`/`CouponInput`/`useSentryUser` island (next batch); `packages/auth/.../usePlanLimits.tsx`; admin `modules/admin/components/PlanGate.tsx`. **NOTE:** web `OrderDetailsDrawer.tsx` + its `order-details/` subtree are LIVE (used by `EbayOrders.tsx`) — do NOT touch.
+**web checkout + dashboard-layout islands (7 files)** — two closed dead islands. Entry points have zero importers: `CheckoutDialog.tsx` (nothing imports it) → `CouponInput.tsx`; `DashboardLayout.tsx` (nothing imports it; App.tsx routes via `EbayLayout`/`ShopifyLayout`, not this) → `DashboardHeader.tsx`/`DashboardSidebar.tsx`/`NoticesBanner.tsx`/`useSentryUser.ts`. Verified: `npm --workspace @sellersuit/web run typecheck` ✓ and `npm run build:web` ✓ (4067 modules, no errors).
+
+| Original path | Restore |
+|---|---|
+| `apps/web/src/components/checkout/CheckoutDialog.tsx` | `mv _unused/apps/web/src/components/checkout/CheckoutDialog.tsx apps/web/src/components/checkout/CheckoutDialog.tsx` |
+| `apps/web/src/components/checkout/CouponInput.tsx` | `mv _unused/apps/web/src/components/checkout/CouponInput.tsx apps/web/src/components/checkout/CouponInput.tsx` |
+| `apps/web/src/components/dashboard/DashboardLayout.tsx` | `mv _unused/apps/web/src/components/dashboard/DashboardLayout.tsx apps/web/src/components/dashboard/DashboardLayout.tsx` |
+| `apps/web/src/components/dashboard/DashboardHeader.tsx` | `mv _unused/apps/web/src/components/dashboard/DashboardHeader.tsx apps/web/src/components/dashboard/DashboardHeader.tsx` |
+| `apps/web/src/components/dashboard/DashboardSidebar.tsx` | `mv _unused/apps/web/src/components/dashboard/DashboardSidebar.tsx apps/web/src/components/dashboard/DashboardSidebar.tsx` |
+| `apps/web/src/components/dashboard/NoticesBanner.tsx` | `mv _unused/apps/web/src/components/dashboard/NoticesBanner.tsx apps/web/src/components/dashboard/NoticesBanner.tsx` |
+| `apps/web/src/hooks/useSentryUser.ts` | `mv _unused/apps/web/src/hooks/useSentryUser.ts apps/web/src/hooks/useSentryUser.ts` |
+
+### Reported but NOT moved (MEDIUM — need more per-file verification; KEEP for now)
+See `_audit/deadfile-candidates.md`. `packages/auth/src/hooks/usePlanLimits.tsx` (0 refs); admin `src/modules/admin/components/PlanGate.tsx` (0 refs) — but these are part of an actively-developed `modules/` scaffold, so left for the human. Plus the 1-ref singles (`NavLink`, `ThemeToggle`, `WhatsAppButton`, `use-mobile`). **NOTE:** web `OrderDetailsDrawer.tsx` + its `order-details/` subtree are LIVE (used by `EbayOrders.tsx`) — do NOT touch.
