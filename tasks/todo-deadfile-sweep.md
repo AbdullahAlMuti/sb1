@@ -23,15 +23,15 @@ Hard rule: move only if zero edits to any other file are needed. Unsure → KEEP
 ## Phase 2 — Human review gate
 - [x] P2.1 Tiers approved: **HIGH only** (locked 2026-06-22). Tests + docs excluded by default. MEDIUM/LOW reported, not moved. (Still gated on the Phase-1 manifest before any actual move.)
 
-## Phase 3 — Execute moves (per-surface batches)
+## Phase 3 — Execute moves (per-surface batches)  ✅ DONE (19 files, 0 rollbacks)
 Order: marketing → admin → web → packages → extension → supabase.
-- [ ] P3.1 marketing batch — `git mv` approved files to `_unused/<mirror>`; append restore lines.
-- [ ] P3.2 admin batch.
-- [ ] P3.3 web batch.
-- [ ] P3.4 packages batch (only files proven dead across all 3 apps).
-- [ ] P3.5 extension batch (string-path cross-check mandatory; KEEP on any grep hit).
-- [ ] P3.6 supabase batch (per-function only; `_shared` edges resolved; migrations/config untouched).
-- [ ] P3.7 Append every move to existing `_unused/RESTORE_LOG.md` with one-line restore commands.
+- [x] P3.1 marketing — no candidates.
+- [x] P3.2 admin — `order-details/` dead island (11 files), commit `7bc4408`.
+- [x] P3.3 web — checkout + dashboard-layout islands (7 files), commit `29803ce`.
+- [x] P3.4 packages — none moved (candidates KEPT, see report).
+- [x] P3.5 extension — only `extension_backup_phase0.zip` (commit `7f1aee7`); no source touched.
+- [x] P3.6 supabase — none (all functions are roots).
+- [x] P3.7 Restore lines appended to `_unused/RESTORE_LOG.md` (Sweep 2 section).
 
 ## Phase 4 — Verify (after EACH surface batch)  *(gate per surface)*
 - [ ] P4.web/admin/marketing: `typecheck:<app>` + `build:<app>` + root `lint` green (marketing build runs prerender-blog).
