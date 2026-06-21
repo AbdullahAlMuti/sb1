@@ -248,8 +248,17 @@ Method: greped `components/ui/<name>` / subpath across all live source (apps + p
 | `hooks/use-mobile.tsx` (only importer was `sidebar`, now removed) |
 | `navigation/NavLink.tsx` (zero importers) |
 
+### Tier D — moved (admin `modules/` scaffold + auth hook, zero refs; approved 2026-06-22)
+
+Zero code importers; verified `npm run typecheck` + `npm run build` all 3 apps ✓ (2488/4067/4051 modules). Restore: `mv _unused/<path> <path>`.
+
+| Original path | Note |
+|---|---|
+| `apps/admin/src/modules/admin/components/PlanGate.tsx` | 0 refs |
+| `apps/admin/src/modules/admin/components/PermissionGate.tsx` | ⚠️ 0 code refs, but `admin-permissions.ts:22` doc-comment names `<PermissionGate>` as intended consumer — likely about-to-be-wired scaffold. Restore if resuming the admin permissions build. |
+| `packages/auth/src/hooks/usePlanLimits.tsx` | 0 refs |
+
 ### Reported but NOT moved (KEEP)
 - `packages/ui/src/theme/ThemeToggle.tsx` — **USED** by `apps/marketing/.../Navbar.tsx` (knip false positive).
 - `packages/ui/src/contact/WhatsAppButton.tsx` — **USED** by `apps/marketing/.../Contact.tsx`.
-- `packages/auth/src/hooks/usePlanLimits.tsx` (0 refs); admin `src/modules/admin/components/PlanGate.tsx`/`PermissionGate.tsx` — part of an actively-developed `modules/` scaffold; left for the human.
 - **NOTE:** web `OrderDetailsDrawer.tsx` + its `order-details/` subtree are LIVE (used by `EbayOrders.tsx`) — do NOT touch.
