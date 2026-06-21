@@ -9,11 +9,13 @@
 |---|---|---|---|---|
 | cross-cutting / extension backup | — | **1** (`extension_backup_phase0.zip`) | 0 | 0 |
 | marketing | ~29 orphans triaged | 0 | 0 | 0 |
-| admin | knip set triaged | **11** (`order-details/` island) | `PlanGate`, `PermissionGate` | 0 |
+| admin | knip set triaged | **13** (`order-details/` island 11 + `PlanGate` + `PermissionGate`) | — | 0 |
 | web | knip set triaged | **7** (checkout + dashboard-layout islands) | — | 0 |
-| packages/ui | all 7 pkgs, alias-aware | **21** (19 shadcn + `use-mobile` + `NavLink`) | `usePlanLimits`, `ThemeToggle`+`WhatsAppButton` (used) | 0 |
+| packages | all 7 pkgs, alias-aware | **22** (19 shadcn + `use-mobile` + `NavLink` + `usePlanLimits`) | `ThemeToggle`+`WhatsAppButton` (used) | 0 |
 | supabase | all functions | 0 (all are roots) | 0 | 0 |
-| **Total** | | **40 files** | ~4 | **0** |
+| **Total** | | **43 files** | ~2 | **0** |
+
+⚠️ `PermissionGate` was moved at the user's direction despite a doc-comment in `admin-permissions.ts:22` naming it as intended consumer — flagged in `_unused/RESTORE_LOG.md` (Tier D) as likely about-to-be-wired scaffold; one-line restore.
 
 - **Excluded false positives (analyzed, never moved): ~134** — 74 `supabase/functions/*` (independent deployed roots), ~50 `@repo/ui` shadcn components (used via deep-path alias knip can't resolve), 10 tests, plus verified-used singles (`routeAfterAuth`, `TurnstileCaptcha`, `usePlans`, `useRealtimeSync`, `use-toast`, `OtpInput`).
 
@@ -38,6 +40,7 @@ Lint/tests not separately run: removing files with **zero importers** cannot int
 | `7bc4408` | admin `order-details/` dead island (11) |
 | `29803ce` | web checkout + dashboard-layout dead islands (7) |
 | `6d86b70` | 21 unused `packages/ui` files (19 shadcn + `use-mobile` + `NavLink`) |
+| `42227a5` | admin `modules/` scaffold gates (`PlanGate`, `PermissionGate`) + `usePlanLimits` (3) |
 
 ## Restore
 Every move has a one-line restore command in `_unused/RESTORE_LOG.md` (Sweep 2 section). Whole sweep reverts with `git reset --hard 7de93ff` (the WIP checkpoint).
