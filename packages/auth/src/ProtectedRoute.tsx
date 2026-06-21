@@ -161,7 +161,9 @@ export function ProtectedRoute({
   }
 
   const isDashboardRoute = location.pathname.startsWith('/dashboard');
-  const onboardingNotCompleted = profile && profile.onboarding_completed === false;
+  // Use !== true (not === false) so null / undefined also triggers onboarding,
+  // covering brand-new profiles where the column hasn't been set yet.
+  const onboardingNotCompleted = profile && profile.onboarding_completed !== true;
 
   // If onboarding is not completed, they are only allowed to see dashboard routes (which will render onboarding stepper)
   if (onboardingNotCompleted && !isDashboardRoute) {

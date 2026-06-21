@@ -17,6 +17,12 @@ import {
   CreditCard,
 } from 'lucide-react';
 import { supabase } from '@repo/api-client/supabase/client';
+import {
+  fetchPlans as fetchPlansApi,
+  fetchPlanUserCounts,
+  setPlanActive,
+  archivePlan as archivePlanApi,
+} from '@/modules/billing/services/billing.service';
 import { Button } from '@repo/ui/components/ui/button';
 import { Input } from '@repo/ui/components/ui/input';
 import { Label } from '@repo/ui/components/ui/label';
@@ -147,12 +153,7 @@ export default function AdminPlans() {
 
   const fetchPlans = async () => {
     try {
-      const { data, error } = await supabase
-        .from('plans')
-        .select('*')
-        .order('price_monthly', { ascending: true });
-
-      if (error) throw error;
+      const data = await fetchPlansApi();
 
       const mappedPlans: Plan[] = (data || []).map(p => ({
         id: p.id,
@@ -193,15 +194,12 @@ export default function AdminPlans() {
 
       setPlans(mappedPlans);
 
-      const { data: profiles } = await supabase.from('profiles').select('plan_id');
-
-      if (profiles) {
-        const stats: PlanStats[] = mappedPlans.map(plan => ({
-          planId: plan.id,
-          userCount: profiles.filter(p => p.plan_id === plan.id).length
-        }));
-        setPlanStats(stats);
-      }
+      const counts = await fetchPlanUserCounts();
+      const stats: PlanStats[] = mappedPlans.map(plan => ({
+        planId: plan.id,
+        userCount: counts[plan.id] ?? 0,
+      }));
+      setPlanStats(stats);
     } catch (error) {
       console.error('Error fetching plans:', error);
       toast.error('Failed to fetch plans');
@@ -277,8 +275,7 @@ export default function AdminPlans() {
   const handleDeactivatePlan = async () => {
     if (!deletingPlan) return;
     try {
-      const { error } = await supabase.from('plans').update({ is_active: false }).eq('id', deletingPlan.id);
-      if (error) throw error;
+      await setPlanActive(deletingPlan.id, false);
       setDeletingPlan(null);
       fetchPlans();
       toast.success('Plan deactivated. Existing subscribers are unaffected.');
@@ -291,11 +288,7 @@ export default function AdminPlans() {
   const handleArchivePlan = async () => {
     if (!archivingPlan) return;
     try {
-      const { error } = await supabase
-        .from('plans')
-        .update({ archived_at: new Date().toISOString(), is_public: false })
-        .eq('id', archivingPlan.id);
-      if (error) throw error;
+      await archivePlanApi(archivingPlan.id);
       setArchivingPlan(null);
       fetchPlans();
       toast.success('Plan archived and hidden from pricing page.');
@@ -307,8 +300,7 @@ export default function AdminPlans() {
 
   const togglePlanStatus = async (planId: string, isActive: boolean) => {
     try {
-      const { error } = await supabase.from('plans').update({ is_active: !isActive }).eq('id', planId);
-      if (error) throw error;
+      await setPlanActive(planId, !isActive);
       setPlans(plans.map(p => p.id === planId ? { ...p, is_active: !isActive } : p));
       toast.success(`Plan ${!isActive ? 'enabled' : 'disabled'}`);
     } catch (error) {

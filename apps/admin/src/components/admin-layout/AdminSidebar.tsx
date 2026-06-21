@@ -1,105 +1,35 @@
 import { Link, useLocation } from "react-router-dom";
-import {
-  Activity,
-  Bell,
-  Bot,
-  Boxes,
-  ChevronLeft,
-  ClipboardList,
-  FileClock,
-  Gauge,
-  LifeBuoy,
-  Lock,
-  Megaphone,
-  Newspaper,
-  Package,
-  PlugZap,
-  Receipt,
-  Settings,
-  ShieldCheck,
-  ShoppingBag,
-  ShoppingCart,
-  Store,
-  Tags,
-  Users,
-  Webhook,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronLeft, FileClock } from "lucide-react";
 import SellerSuitLogo from "@repo/ui/brand/SellerSuitLogo";
 import { Button } from "@repo/ui/components/ui/button";
 import { Badge } from "@repo/ui/components/ui/badge";
 import { cn } from "@repo/ui/lib/utils";
-import { SHOPIFY_ENABLED } from "@repo/config/marketplaceScope";
+import { useAuth } from "@repo/auth/hooks/useAuth";
+import { adminNavigation, type NavNode } from "@/modules/admin/navigation/admin-navigation.config";
+import { useNavBadges } from "@/modules/admin/navigation/useNavBadges";
+import { filterNavigation, type AdminPermissionContext } from "@/modules/admin/permissions/admin-permissions";
 
-type AdminNavItem = {
-  label: string;
-  href: string;
-  icon: LucideIcon;
-  badge?: string | number;
-};
+// Dual-mounted routes (`/x` and `/admin/x`) are normalized so active-state
+// highlights correctly no matter which mount the user is on.
+function normalizePath(pathname: string) {
+  if (pathname === "/admin") return "/overview";
+  if (pathname.startsWith("/admin/")) return pathname.slice("/admin".length) || "/overview";
+  return pathname;
+}
 
-type AdminNavGroup = {
-  label?: string;
-  items: AdminNavItem[];
-};
+function isActivePath(pathname: string, node: NavNode) {
+  const href = node.activeMatch ?? node.route;
+  if (!href) return false;
+  const path = normalizePath(pathname);
+  if (href === "/overview") return path === "/" || path === "/overview";
+  return path === href || path.startsWith(`${href}/`);
+}
 
-const navGroups: AdminNavGroup[] = [
-  {
-    items: [{ label: "Overview", href: "/overview", icon: Gauge }],
-  },
-  {
-    label: "Customers",
-    items: [
-      { label: "Users", href: "/users", icon: Users },
-      { label: "Workspaces", href: "/workspaces", icon: Boxes },
-      { label: "Stores", href: "/stores", icon: Store },
-    ],
-  },
-  {
-    label: "Commerce",
-    items: [
-      { label: "Integrations", href: "/integrations", icon: PlugZap },
-      { label: "Products", href: "/products", icon: Package },
-      { label: "Listings", href: "/listings", icon: Tags },
-      { label: "Orders", href: "/orders", icon: ShoppingCart },
-      { label: "Customers", href: "/customers", icon: ShoppingBag },
-      { label: "Inventory", href: "/inventory", icon: Boxes },
-    ],
-  },
-  {
-    label: "Operations",
-    items: [
-      { label: "Sync Health", href: "/sync-health", icon: Activity, badge: 6 },
-      { label: "Webhook Events", href: "/webhook-events", icon: Webhook },
-      { label: "Usage", href: "/usage", icon: Receipt },
-      { label: "Support", href: "/support", icon: LifeBuoy, badge: 4 },
-    ],
-  },
-  {
-    label: "Platform",
-    items: [
-      { label: "AI / Automation", href: "/ai", icon: Bot },
-      { label: "Description Config", href: "/description-config", icon: ClipboardList },
-      // eBay-only scope (see AI_AGENT_SCOPE_EBAY_ONLY.md): the Shopify App admin
-      // entry is hidden while Shopify is disabled. The page stays mounted.
-      ...(SHOPIFY_ENABLED
-        ? [{ label: "Shopify App", href: "/shopify-app", icon: ShoppingBag }]
-        : []),
-      { label: "eBay App", href: "/ebay-app", icon: ShoppingBag },
-      { label: "Extension Setup", href: "/extension", icon: PlugZap },
-      { label: "Extension Control", href: "/extension-control", icon: ShieldCheck },
-      { label: "Blog", href: "/blog", icon: Newspaper },
-      { label: "Notices", href: "/notices", icon: Megaphone, badge: 12 },
-      { label: "Audit Logs", href: "/audit-logs", icon: ClipboardList },
-      { label: "Security", href: "/security", icon: Lock },
-      { label: "Settings", href: "/settings", icon: Settings },
-    ],
-  },
-];
-
-function isActivePath(pathname: string, href: string) {
-  if (href === "/overview") return pathname === "/" || pathname === "/overview" || pathname === "/admin";
-  return pathname === href || pathname.startsWith(`${href}/`);
+function roleLabel(isSuperAdmin: boolean, roles: string[]) {
+  if (isSuperAdmin) return "Super Admin";
+  if (roles.includes("admin")) return "Admin";
+  const first = roles[0];
+  return first ? first.charAt(0).toUpperCase() + first.slice(1) : "Member";
 }
 
 interface AdminSidebarProps {
@@ -111,7 +41,45 @@ interface AdminSidebarProps {
 
 export function AdminSidebar({ collapsed, onToggleCollapsed, onNavigate, mobile = false }: AdminSidebarProps) {
   const location = useLocation();
+  const { user, profile, roles, isAdmin, isSuperAdmin } = useAuth();
+  const badges = useNavBadges();
   const effectiveCollapsed = mobile ? false : collapsed;
+
+  const roleNames = roles.map((r) => r.role);
+  const ctx: AdminPermissionContext = { isAdmin, isSuperAdmin, roles: roleNames };
+  const navGroups = filterNavigation(adminNavigation, ctx);
+
+  const displayName = profile?.full_name || user?.email || "Admin";
+  const initials = (profile?.full_name || user?.email || "A").trim().charAt(0).toUpperCase();
+
+  const renderBadge = (node: NavNode) => {
+    if (!node.badge || effectiveCollapsed) return null;
+
+    if (node.badge.countKey) {
+      const count = badges[node.badge.countKey];
+      if (!count || count <= 0) return null;
+      return (
+        <Badge className="h-4 rounded-md px-1 text-[9px] font-medium border-border">{count}</Badge>
+      );
+    }
+
+    if (node.badge.label) {
+      return (
+        <Badge
+          variant="outline"
+          className={cn(
+            "h-4 rounded-md px-1 text-[9px] font-medium",
+            node.badge.tone === "preview" && "border-dashed text-muted-foreground",
+            node.badge.tone === "warning" && "border-amber-300 text-amber-600",
+          )}
+        >
+          {node.badge.label}
+        </Badge>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <aside
@@ -146,12 +114,12 @@ export function AdminSidebar({ collapsed, onToggleCollapsed, onNavigate, mobile 
               </div>
             )}
             {group.items.map((item) => {
-              const active = isActivePath(location.pathname, item.href);
+              const active = isActivePath(location.pathname, item);
               const Icon = item.icon;
               return (
                 <Link
-                  key={item.href}
-                  to={item.href}
+                  key={item.route ?? item.label}
+                  to={item.route ?? "#"}
                   onClick={onNavigate}
                   title={effectiveCollapsed ? item.label : undefined}
                   className={cn(
@@ -164,11 +132,7 @@ export function AdminSidebar({ collapsed, onToggleCollapsed, onNavigate, mobile 
                 >
                   <Icon className="h-4 w-4 shrink-0" />
                   {!effectiveCollapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
-                  {!effectiveCollapsed && item.badge && (
-                    <Badge className="h-4 rounded-md px-1 text-[9px] font-medium border-border">
-                      {item.badge}
-                    </Badge>
-                  )}
+                  {renderBadge(item)}
                 </Link>
               );
             })}
@@ -180,12 +144,12 @@ export function AdminSidebar({ collapsed, onToggleCollapsed, onNavigate, mobile 
         <div className={cn("rounded-md border border-border bg-sidebar-accent/30 p-2", effectiveCollapsed && "p-2")}>
           <div className={cn("flex items-center gap-2", effectiveCollapsed && "justify-center")}>
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-sidebar-primary text-xs font-medium text-sidebar-primary-foreground">
-              A
+              {initials}
             </div>
             {!effectiveCollapsed && (
               <div className="min-w-0">
-                <div className="truncate text-xs font-medium text-sidebar-foreground">Admin User</div>
-                <div className="truncate text-[10px] text-muted-foreground">Super Admin</div>
+                <div className="truncate text-xs font-medium text-sidebar-foreground">{displayName}</div>
+                <div className="truncate text-[10px] text-muted-foreground">{roleLabel(isSuperAdmin, roleNames)}</div>
               </div>
             )}
           </div>

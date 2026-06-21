@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Mock eBay Listing Page</title>
+  <style>
+    .hidden { display: none; }
+    .modal { position: fixed; top: 10%; left: 10%; background: white; border: 1px solid black; padding: 20px; z-index: 100; }
+  </style>
+</head>
+<body>
+  <h1>Mock eBay Listing</h1>
+
+  <!-- 1. Images -->
+  <div class="image-upload-section">
+    <input type="file" accept="image/*" aria-label="Add photo" id="photo-upload">
+    <div id="image-preview-container"></div>
+  </div>
+
+  <!-- 2. Title -->
+  <div class="title-section">
+    <label for="title-input">Item title</label>
+    <!-- Put a hidden dummy input first to ensure findElementWithSelectors skips it -->
+    <input type="text" class="hidden textbox__control" maxlength="80" aria-label="title">
+    <input type="text" id="title-input" class="textbox__control" name="title" maxlength="80">
+  </div>
+
+  <!-- 3. SKU -->
+  <div class="sku-section">
+    <label for="sku-input">Custom label (SKU)</label>
+    <input type="text" id="sku-input" class="textbox__control" name="customLabel" maxlength="50">
+  </div>
+
+  <!-- 4. Additional Item Specifics -->
+  <div class="additional-specifics">
+    <h3>Additional (optional)</h3>
+    <label><input type="checkbox" id="add1"> Feature 1</label>
+    <label><input type="checkbox" id="add2"> Feature 2</label>
+    <label><input type="checkbox" id="add3"> Feature 3</label>
+    <label><input type="checkbox" id="add4"> Feature 4</label>
+    <label><input type="checkbox" id="add5"> Feature 5</label>
+    <label><input type="checkbox" id="add6"> Feature 6</label>
+  </div>
+
+  <!-- 5. Custom Item Specifics -->
+  <div class="custom-specifics">
+    <button id="add-custom-btn">Add custom item specific</button>
+  </div>
+  
+  <!-- Modal for Custom Specifics -->
+  <div id="custom-modal" class="modal hidden">
+    <input type="text" aria-label="Name" name="name" class="modal-name">
+    <input type="text" aria-label="Value" name="value" class="modal-value">
+    <button id="modal-save">Save</button>
+  </div>
+
+  <!-- 6. Condition -->
+  <div class="condition-section">
+    <label>Condition</label>
+    <select name="condition" id="condition-select">
+      <option value="">- Select -</option>
+      <option value="1000">New</option>
+      <option value="2000">Used</option>
+    </select>
+  </div>
+
+  <!-- 7. Description -->
+  <div class="description-section">
+    <label>Item Description</label>
+    <iframe id="desc-iframe" title="Item description"></iframe>
+  </div>
+
+  <!-- 8. Price -->
+  <div class="price-section">
+    <label>Price</label>
+    <input type="text" name="price" id="price-input">
+  </div>
+
+  <!-- 9. Country -->
+  <div class="country-section">
+    <label>Country of Origin</label>
+    <select name="country" id="country-select">
+      <option value="">- Select -</option>
+      <option value="US">United States</option>
+      <option value="CN">China</option>
+    </select>
+  </div>
+
+  <!-- Mock eBay behavior -->
+  <script>
+    // Simulate image upload processing
+    document.getElementById('photo-upload').addEventListener('change', (e) => {
+      const container = document.getElementById('image-preview-container');
+      Array.from(e.target.files).forEach(f => {
+        const img = document.createElement('img');
+        img.className = 'thumbnail';
+        img.src = 'blob:test';
+        container.appendChild(img);
+      });
+    });
+
+    // Simulate modal behavior
+    document.getElementById('add-custom-btn').addEventListener('click', () => {
+      document.getElementById('custom-modal').classList.remove('hidden');
+    });
+    document.getElementById('modal-save').addEventListener('click', () => {
+      document.getElementById('custom-modal').classList.add('hidden');
+    });
+
+    // Initialize iframe body
+    window.onload = () => {
+      const iframe = document.getElementById('desc-iframe');
+      iframe.contentDocument.open();
+      iframe.contentDocument.write('<body></body>');
+      iframe.contentDocument.close();
+      iframe.contentDocument.body.contentEditable = true;
+    };
+  </script>
+</body>
+</html>

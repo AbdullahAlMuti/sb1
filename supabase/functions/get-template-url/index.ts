@@ -1,12 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { resolveCorsHeaders } from "../_shared/cors.ts";
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
 
 // ── Plan hierarchy (mirrors store-design.types.ts) ────────────────────────────
 
@@ -28,9 +25,9 @@ const log = (step: string, details?: Record<string, unknown>) => {
   console.log(`[GET-TEMPLATE-URL] ${step}${d}`);
 };
 
-function errorResponse(message: string, status = 400): Response {
+function errorResponse(ch: Record<string,string>, message: string, status = 400): Response {
   return new Response(JSON.stringify({ error: message }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...ch, "Content-Type": "application/json" },
     status,
   });
 }
@@ -38,13 +35,14 @@ function errorResponse(message: string, status = 400): Response {
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
+  const corsHeaders = resolveCorsHeaders(req);
   // Preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   if (req.method !== "POST") {
-    return errorResponse("Method not allowed. Use POST.", 405);
+    return errorResponse(corsHeaders, "Method not allowed. Use POST.", 405);
   }
 
   const supabaseUrl        = Deno.env.get("SUPABASE_URL") ?? "";
@@ -58,19 +56,19 @@ serve(async (req: Request) => {
   try {
     body = await req.json();
   } catch {
-    return errorResponse("Invalid JSON body.");
+    return errorResponse(corsHeaders, "Invalid JSON body.");
   }
 
   const { design_id } = body;
   if (!design_id) {
-    return errorResponse("Missing required field: design_id");
+    return errorResponse(corsHeaders, "Missing required field: design_id");
   }
 
   // ── Auth: validate caller JWT ────────────────────────────────────────────
 
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!authHeader.toLowerCase().startsWith("bearer ")) {
-    return errorResponse("Unauthorized — missing Bearer token.", 401);
+    return errorResponse(corsHeaders, "Unauthorized — missing Bearer token.", 401);
   }
 
   // User-scoped client (validates JWT)
@@ -82,7 +80,7 @@ serve(async (req: Request) => {
   const { data: userData, error: authError } = await userClient.auth.getUser();
   if (authError || !userData?.user) {
     log("Auth failed", { error: authError?.message });
-    return errorResponse("Unauthorized — invalid token.", 401);
+    return errorResponse(corsHeaders, "Unauthorized — invalid token.", 401);
   }
 
   const userId = userData.user.id;
@@ -104,17 +102,17 @@ serve(async (req: Request) => {
 
   if (designError || !design) {
     log("Design not found", { design_id, error: designError?.message });
-    return errorResponse("Design not found.", 404);
+    return errorResponse(corsHeaders, "Design not found.", 404);
   }
 
   // ── Check design is publicly accessible ─────────────────────────────────
 
   if (!design.is_published || !design.is_visible) {
-    return errorResponse("This design is not available.", 403);
+    return errorResponse(corsHeaders, "This design is not available.", 403);
   }
 
   if (!design.template_url) {
-    return errorResponse("No template URL is configured for this design.", 404);
+    return errorResponse(corsHeaders, "No template URL is configured for this design.", 404);
   }
 
   // ── Free designs: always grant ───────────────────────────────────────────
@@ -134,7 +132,7 @@ serve(async (req: Request) => {
 
   if (planError) {
     log("Failed to fetch user plan", { userId, error: planError.message });
-    return errorResponse("Failed to verify subscription.", 500);
+    return errorResponse(corsHeaders, "Failed to verify subscription.", 500);
   }
 
   const userPlanName: string = (planNameRow as string | null) ?? "free";
@@ -157,7 +155,7 @@ serve(async (req: Request) => {
 
   if (!canAccess) {
     log("Access denied", { userId, userPlanName, designLevel: design.access_level });
-    return errorResponse(
+    return errorResponse(corsHeaders, 
       `Your current plan (${userPlanName}) does not include access to this design. Please upgrade.`,
       403
     );
@@ -184,7 +182,7 @@ serve(async (req: Request) => {
 
     if (signedError || !signedData?.signedUrl) {
       log("Signed URL generation failed", { error: signedError?.message });
-      return errorResponse("Failed to generate download link. Please try again.", 500);
+      return errorResponse(corsHeaders, "Failed to generate download link. Please try again.", 500);
     }
 
     return new Response(

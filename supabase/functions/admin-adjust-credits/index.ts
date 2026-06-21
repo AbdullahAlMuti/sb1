@@ -1,22 +1,19 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveCorsHeaders } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
 
 type Action = "grant" | "set" | "reset_to_plan";
 
-function json(status: number, body: unknown) {
+function json(ch: Record<string,string>, status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...ch, "Content-Type": "application/json" },
   });
 }
 
 serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
@@ -24,12 +21,12 @@ serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     if (!supabaseUrl || !serviceKey || !anonKey) {
-      return json(500, { error: "Supabase env not configured" });
+      return json(corsHeaders, 500, { error: "Supabase env not configured" });
     }
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return json(401, { error: "No authorization header" });
+      return json(corsHeaders, 401, { error: "No authorization header" });
     }
 
     // Verify caller identity using anon client bound to the incoming token.
@@ -40,7 +37,7 @@ serve(async (req) => {
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: userErr } = await supabaseUser.auth.getUser(token);
     if (userErr || !userData?.user?.id) {
-      return json(401, { error: "Unauthorized" });
+      return json(corsHeaders, 401, { error: "Unauthorized" });
     }
     const adminId = userData.user.id;
 
@@ -56,7 +53,7 @@ serve(async (req) => {
       .in("role", ["admin", "super_admin"]);
 
     if (rolesErr || !roles || roles.length === 0) {
-      return json(403, { error: "Admin access required" });
+      return json(corsHeaders, 403, { error: "Admin access required" });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -65,10 +62,10 @@ serve(async (req) => {
     const reason = String(body.reason ?? "").trim();
     const amountRaw = body.amount;
 
-    if (!userId) return json(400, { error: "userId is required" });
-    if (!reason) return json(400, { error: "reason is required" });
+    if (!userId) return json(corsHeaders, 400, { error: "userId is required" });
+    if (!reason) return json(corsHeaders, 400, { error: "reason is required" });
     if (!action || !["grant", "set", "reset_to_plan"].includes(action)) {
-      return json(400, { error: "Invalid action" });
+      return json(corsHeaders, 400, { error: "Invalid action" });
     }
 
     // Load profile
@@ -77,7 +74,7 @@ serve(async (req) => {
       .select("id, credits, plan_id")
       .eq("id", userId)
       .maybeSingle();
-    if (profileErr || !profile) return json(404, { error: "User profile not found" });
+    if (profileErr || !profile) return json(corsHeaders, 404, { error: "User profile not found" });
 
     const currentCredits = Math.max(Number(profile.credits ?? 0), 0);
 
@@ -107,7 +104,7 @@ serve(async (req) => {
     } else {
       const amount = Number(amountRaw);
       if (!Number.isFinite(amount) || amount === 0) {
-        return json(400, { error: "amount must be a non-zero number" });
+        return json(corsHeaders, 400, { error: "amount must be a non-zero number" });
       }
 
       if (action === "grant") {
@@ -125,7 +122,7 @@ serve(async (req) => {
       .from("profiles")
       .update({ credits: newCredits })
       .eq("id", userId);
-    if (updErr) return json(500, { error: updErr.message });
+    if (updErr) return json(corsHeaders, 500, { error: updErr.message });
 
     const transactionType =
       action === "grant" ? "admin_grant" : action === "set" ? "admin_set" : "admin_reset";
@@ -163,7 +160,7 @@ serve(async (req) => {
       },
     });
 
-    return json(200, {
+    return json(corsHeaders, 200, {
       success: true,
       userId,
       previousCredits: currentCredits,
@@ -174,6 +171,6 @@ serve(async (req) => {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error("admin-adjust-credits error", message);
-    return json(500, { error: message });
+    return json(corsHeaders, 500, { error: message });
   }
 });

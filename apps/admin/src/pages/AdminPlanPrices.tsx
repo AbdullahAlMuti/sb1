@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Plus, Edit2, Trash2, RefreshCw } from 'lucide-react';
 import { supabase } from '@repo/api-client/supabase/client';
+import { getPlanName, fetchPlanPrices, deletePlanPrice } from '@/modules/billing/services/billing.service';
 import { Button } from '@repo/ui/components/ui/button';
 import { Input } from '@repo/ui/components/ui/input';
 import { Label } from '@repo/ui/components/ui/label';
@@ -85,20 +86,19 @@ export default function AdminPlanPrices() {
   }, [planId]);
 
   const fetchPlan = async () => {
-    const { data } = await supabase.from('plans').select('display_name').eq('id', planId!).maybeSingle();
-    if (data) setPlanName(data.display_name);
+    const name = await getPlanName(planId!);
+    if (name) setPlanName(name);
   };
 
   const fetchPrices = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from('plan_prices')
-      .select('*')
-      .eq('plan_id', planId!)
-      .order('interval');
-    if (error) { toast.error('Failed to load prices'); }
-    else { setPrices((data ?? []) as PlanPrice[]); }
-    setIsLoading(false);
+    try {
+      setPrices((await fetchPlanPrices(planId!)) as PlanPrice[]);
+    } catch {
+      toast.error('Failed to load prices');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const openCreate = () => {
@@ -152,9 +152,13 @@ export default function AdminPlanPrices() {
 
   const handleDelete = async () => {
     if (!deletingPrice) return;
-    const { error } = await supabase.from('plan_prices').delete().eq('id', deletingPrice.id);
-    if (error) { toast.error('Failed to delete price'); }
-    else { toast.success('Price deleted'); fetchPrices(); }
+    try {
+      await deletePlanPrice(deletingPrice.id);
+      toast.success('Price deleted');
+      fetchPrices();
+    } catch {
+      toast.error('Failed to delete price');
+    }
     setDeletingPrice(null);
   };
 

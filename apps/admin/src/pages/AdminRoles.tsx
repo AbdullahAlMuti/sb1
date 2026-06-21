@@ -12,7 +12,8 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import { supabase, getFunctionErrorMessage } from '@repo/api-client/supabase/client';
+import { supabase } from '@repo/api-client/supabase/client';
+import { getUsersVerification, updateUserRole } from '@/modules/users/services/users.service';
 import { Button } from '@repo/ui/components/ui/button';
 import { Input } from '@repo/ui/components/ui/input';
 import { Badge } from '@repo/ui/components/ui/badge';
@@ -175,27 +176,9 @@ export default function AdminRoles() {
 
       if (error) throw error;
 
-      // Fetch emails from edge function
+      // Fetch emails from edge function (best-effort; never throws)
       const userIds = (data as any[])?.map(item => item.user_id).filter(Boolean) || [];
-      let userEmails: Record<string, string> = {};
-      
-      if (userIds.length > 0) {
-        try {
-          const { data: sessionData } = await supabase.auth.getSession();
-          const { data: verificationData } = await supabase.functions.invoke('admin-get-users-verification', {
-            body: { userIds },
-            headers: {
-              Authorization: `Bearer ${sessionData.session?.access_token}`,
-            },
-          });
-          
-          if (verificationData?.userEmails) {
-            userEmails = verificationData.userEmails;
-          }
-        } catch (e) {
-          console.error('Error fetching emails:', e);
-        }
-      }
+      const { userEmails } = await getUsersVerification(userIds);
 
       const formattedData = (data as any[])?.map((item: any) => ({
         ...item,
@@ -212,29 +195,6 @@ export default function AdminRoles() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const updateRoleViaFunction = async (userId: string, role: AppRole) => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
-
-    if (!token) {
-      throw new Error('You must be signed in as an admin to update roles');
-    }
-
-    const { data, error } = await supabase.functions.invoke('admin-update-role', {
-      body: { userId, newRole: role },
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    if (error) {
-      const rawErrMsg = await getFunctionErrorMessage(error);
-      throw new Error(rawErrMsg || error.message || 'Failed to update role');
-    }
-    if (data?.error) throw new Error(data.error);
-    return data;
   };
 
   const handleAddRole = async () => {
@@ -259,7 +219,7 @@ export default function AdminRoles() {
         return;
       }
 
-      await updateRoleViaFunction(profile.id, newRole);
+      await updateUserRole(profile.id, newRole);
 
       toast.success(`Role assigned to ${newUserEmail}`);
       setShowAddDialog(false);
@@ -279,7 +239,7 @@ export default function AdminRoles() {
     if (!selectedRole) return;
 
     try {
-      await updateRoleViaFunction(selectedRole.user_id, 'user');
+      await updateUserRole(selectedRole.user_id, 'user');
 
       toast.success('User demoted to regular user');
       setShowDeleteDialog(false);

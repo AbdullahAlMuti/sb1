@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { RefreshCw, Users, CreditCard, Clock } from 'lucide-react';
-import { supabase } from '@repo/api-client/supabase/client';
+import { fetchSubscriptions as fetchSubscriptionsApi } from '@/modules/billing/services/billing.service';
 import { Badge } from '@repo/ui/components/ui/badge';
 import { Button } from '@repo/ui/components/ui/button';
 import { Input } from '@repo/ui/components/ui/input';
@@ -63,21 +63,9 @@ export default function AdminSubscriptions() {
 
   const fetchSubscriptions = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from('user_plans')
-      .select(`
-        id, user_id, status, plan_id, stripe_subscription_id,
-        current_period_end, trial_end, orders_used, credits_used,
-        profiles:user_id (email, full_name),
-        plans:plan_id (name, display_name)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(500);
-
-    if (error) {
-      toast.error('Failed to load subscriptions');
-    } else {
-      const mapped: SubscriptionRow[] = (data ?? []).map((row: any) => ({
+    try {
+      const data = await fetchSubscriptionsApi();
+      const mapped: SubscriptionRow[] = data.map((row: any) => ({
         id: row.id,
         user_id: row.user_id,
         status: row.status ?? 'unknown',
@@ -93,8 +81,11 @@ export default function AdminSubscriptions() {
         plan_display_name: row.plans?.display_name ?? null,
       }));
       setRows(mapped);
+    } catch {
+      toast.error('Failed to load subscriptions');
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const statuses = ['all', ...Array.from(new Set(rows.map((r) => r.status)))];

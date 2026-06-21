@@ -1,11 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 import { enforceActiveSubscription } from "../_shared/plan-middleware.ts";
+import { resolveCorsHeaders } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
 
 // Helper to log PII access for security audit
 const logPIIAccess = async (
@@ -47,10 +44,10 @@ type DeleteRequest = {
 
 type RequestBody = ListRequest | DeleteRequest;
 
-const json = (status: number, body: unknown) =>
+const json = (ch: Record<string,string>, status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...ch, "Content-Type": "application/json" },
   });
 
 const clampInt = (value: unknown, fallback: number, min: number, max: number) => {
@@ -76,6 +73,7 @@ const parseISODate = (value: unknown) => {
 const uuidish = /^[0-9a-fA-F-]{20,}$/;
 
 Deno.serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -83,7 +81,7 @@ Deno.serve(async (req) => {
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return json(401, { error: "Unauthorized" });
+      return json(corsHeaders, 401, { error: "Unauthorized" });
     }
 
     const token = authHeader.replace("Bearer ", "");
@@ -109,7 +107,7 @@ Deno.serve(async (req) => {
 
     const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
     const userId = !claimsError && claimsData?.claims?.sub ? (claimsData.claims.sub as string) : null;
-    if (!userId) return json(401, { error: "Unauthorized" });
+    if (!userId) return json(corsHeaders, 401, { error: "Unauthorized" });
 
     const blockResponse = await enforceActiveSubscription(supabaseAdmin, userId);
     if (blockResponse) return blockResponse;
@@ -122,10 +120,10 @@ Deno.serve(async (req) => {
     });
     if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
 
-    if (req.method !== "POST") return json(405, { error: "Method not allowed" });
+    if (req.method !== "POST") return json(corsHeaders, 405, { error: "Method not allowed" });
 
     const body = (await req.json()) as Partial<RequestBody>;
-    if (!body?.op) return json(400, { error: "Invalid payload" });
+    if (!body?.op) return json(corsHeaders, 400, { error: "Invalid payload" });
 
     if (body.op === "list") {
       const page = clampInt((body as ListRequest).page, 1, 1, 1_000_000);
@@ -182,7 +180,7 @@ Deno.serve(async (req) => {
 
       if (error) {
         console.error("[ebay-orders] list error", error);
-        return json(500, { error: "Failed to load orders" });
+        return json(corsHeaders, 500, { error: "Failed to load orders" });
       }
 
       // SECURITY: Audit log when buyer PII is accessed
@@ -251,7 +249,7 @@ Deno.serve(async (req) => {
         countFor(["refunded", "Refunded"]),
       ]);
 
-      return json(200, {
+      return json(corsHeaders, 200, {
         orders: data ?? [],
         total: count ?? 0,
         totalRevenue: Math.round(totalRevenue * 100) / 100, // Round to 2 decimals
@@ -268,11 +266,11 @@ Deno.serve(async (req) => {
 
     if (body.op === "delete") {
       const ids = (body as DeleteRequest).ids;
-      if (!Array.isArray(ids) || ids.length === 0) return json(400, { error: "ids is required" });
-      if (ids.length > 1000) return json(400, { error: "Too many ids" });
+      if (!Array.isArray(ids) || ids.length === 0) return json(corsHeaders, 400, { error: "ids is required" });
+      if (ids.length > 1000) return json(corsHeaders, 400, { error: "Too many ids" });
 
       const cleaned = Array.from(new Set(ids.filter((id) => typeof id === "string" && uuidish.test(id))));
-      if (cleaned.length === 0) return json(400, { error: "No valid ids" });
+      if (cleaned.length === 0) return json(corsHeaders, 400, { error: "No valid ids" });
 
       // Hard-delete: permanently removes records from the database.
       const { data: deletedData, error: deleteError } = await supabase
@@ -284,18 +282,18 @@ Deno.serve(async (req) => {
 
       if (deleteError) {
         console.error("[ebay-orders] delete error", deleteError);
-        return json(500, { error: "Failed to delete orders" });
+        return json(corsHeaders, 500, { error: "Failed to delete orders" });
       }
 
-      return json(200, {
+      return json(corsHeaders, 200, {
         deletedCount: Array.isArray(deletedData) ? deletedData.length : 0,
         deletedIds: Array.isArray(deletedData) ? deletedData.map((r: any) => r.id) : [],
       });
     }
 
-    return json(400, { error: "Unknown op" });
+    return json(corsHeaders, 400, { error: "Unknown op" });
   } catch (e) {
     console.error("[ebay-orders] unhandled", e);
-    return json(500, { error: "Internal error" });
+    return json(corsHeaders, 500, { error: "Internal error" });
   }
 });

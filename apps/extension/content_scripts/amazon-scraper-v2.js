@@ -570,7 +570,7 @@
               while (!optEl && guard++ < 40) { // bounded — v1 could loop forever
                 const dropBtn = container && container.querySelector('span[data-action="a-dropdown-button"]');
                 if (dropBtn) dropBtn.click();
-                await _sleep(50);
+                await _sleep(200); // 50ms was faster than Amazon Twister JS DOM updates; 200ms matches swatch-click delay
                 optEl = document.querySelector(optEntry);
               }
               if (optEl) optEl.click();
@@ -585,7 +585,7 @@
               else el.querySelector('a')?.click();
             }
           }
-          await _sleep(50);
+          await _sleep(200); // 50ms was faster than Amazon Twister JS DOM updates
         } catch (_) { /* per-option failure is non-fatal */ }
       }
     }

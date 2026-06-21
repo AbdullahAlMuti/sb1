@@ -382,6 +382,7 @@ const DescriptionGenerator = (() => {
       console.error('[DescriptionGenerator] Error:', error);
       
       if (previewEl) {
+        // XSS fix: static SVG wrapper injected via innerHTML, error text via textContent only
         previewEl.innerHTML = `
           <div class="description-placeholder" style="color: #dc2626;">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -389,9 +390,10 @@ const DescriptionGenerator = (() => {
               <line x1="15" y1="9" x2="9" y2="15"/>
               <line x1="9" y1="9" x2="15" y2="15"/>
             </svg>
-            <span>${error.message}</span>
+            <span class="ss-err-msg"></span>
           </div>
         `;
+        previewEl.querySelector('.ss-err-msg').textContent = error.message;
       }
 
       if (typeof UIHelper !== 'undefined') {
