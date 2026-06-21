@@ -236,5 +236,20 @@ Incremental on top of the 2026-06-21 sweep. Policy: **HIGH-only** (dead-markers,
 | `apps/web/src/components/dashboard/NoticesBanner.tsx` | `mv _unused/apps/web/src/components/dashboard/NoticesBanner.tsx apps/web/src/components/dashboard/NoticesBanner.tsx` |
 | `apps/web/src/hooks/useSentryUser.ts` | `mv _unused/apps/web/src/hooks/useSentryUser.ts apps/web/src/hooks/useSentryUser.ts` |
 
-### Reported but NOT moved (MEDIUM — need more per-file verification; KEEP for now)
-See `_audit/deadfile-candidates.md`. `packages/auth/src/hooks/usePlanLimits.tsx` (0 refs); admin `src/modules/admin/components/PlanGate.tsx` (0 refs) — but these are part of an actively-developed `modules/` scaffold, so left for the human. Plus the 1-ref singles (`NavLink`, `ThemeToggle`, `WhatsAppButton`, `use-mobile`). **NOTE:** web `OrderDetailsDrawer.tsx` + its `order-details/` subtree are LIVE (used by `EbayOrders.tsx`) — do NOT touch.
+### Tier C — moved (unused `packages/ui` files, alias-aware reachability; approved 2026-06-22)
+
+Method: greped `components/ui/<name>` / subpath across all live source (apps + packages/ui itself, since ui components import each other via full `@repo/ui/...` paths). Iterative leaf-pruning to fixpoint. Verified: `npm run typecheck` (all 3 apps) ✓ and `npm run build` (marketing 2488 / web 4067 / admin 4051 modules) ✓.
+
+**19 unused shadcn components** (0 importers anywhere) + **2 singles** = 21 files. Restore any: `mv _unused/<path> <path>`.
+
+| Files (all under `packages/ui/src/`) |
+|---|
+| `components/ui/{aspect-ratio, breadcrumb, carousel, chart, collapsible, command, context-menu, drawer, form, hover-card, input-otp, menubar, navigation-menu, radio-group, resizable, sidebar, slider, toggle-group, toggle}.tsx` |
+| `hooks/use-mobile.tsx` (only importer was `sidebar`, now removed) |
+| `navigation/NavLink.tsx` (zero importers) |
+
+### Reported but NOT moved (KEEP)
+- `packages/ui/src/theme/ThemeToggle.tsx` — **USED** by `apps/marketing/.../Navbar.tsx` (knip false positive).
+- `packages/ui/src/contact/WhatsAppButton.tsx` — **USED** by `apps/marketing/.../Contact.tsx`.
+- `packages/auth/src/hooks/usePlanLimits.tsx` (0 refs); admin `src/modules/admin/components/PlanGate.tsx`/`PermissionGate.tsx` — part of an actively-developed `modules/` scaffold; left for the human.
+- **NOTE:** web `OrderDetailsDrawer.tsx` + its `order-details/` subtree are LIVE (used by `EbayOrders.tsx`) — do NOT touch.
