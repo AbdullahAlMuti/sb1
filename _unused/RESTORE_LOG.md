@@ -215,5 +215,14 @@ Incremental on top of the 2026-06-21 sweep. Policy: **HIGH-only** (dead-markers,
 |---|---|---|
 | `apps/extension_backup_phase0.zip` | Tracked manual backup artifact; `git grep "extension_backup_phase0"` → 0 references in any tracked source; no build script/glob references it. | `mv _unused/apps/extension_backup_phase0.zip apps/extension_backup_phase0.zip` |
 
-### Reported but NOT moved (MEDIUM — no dead-marker, kept under HIGH-only policy)
-See `_audit/deadfile-candidates.md`. Notable: admin `src/components/dashboard/order-details/` dead island (16 files, parent `OrderDetailsDrawer.tsx` already quarantined in sweep 1); web `components/checkout/CheckoutDialog.tsx` + dashboard `DashboardLayout`/`DashboardHeader`/`DashboardSidebar`/`NoticesBanner` island; `packages/auth/.../usePlanLimits.tsx`; admin `modules/admin/components/PlanGate.tsx`. These need human review before any move.
+### Tier B — moved (verified dead islands, approved 2026-06-22; verified by admin typecheck + Vite build)
+
+**admin `src/components/dashboard/order-details/` (11 files)** — dead island: parent `OrderDetailsDrawer.tsx` was quarantined in sweep 1, leaving this subtree with zero live importers in `apps/admin/src` (verified scoped grep). These live files were **byte-identical duplicates** of copies sweep 1 had already placed in `_unused/` (it copied instead of moving); `git mv -f` completed the move. Removal verified: `npm --workspace @sellersuit/admin run typecheck` ✓ and `npm run build:admin` ✓ (4051 modules, no errors).
+
+| Original path | Restore |
+|---|---|
+| `apps/admin/src/components/dashboard/order-details/{KeyValueGrid,SectionShell,WhatsAppLogo,formatters,types}.{tsx,ts}` | `git checkout 7f1aee7 -- <path>` (identical copy also at `_unused/<same path>`) |
+| `apps/admin/src/components/dashboard/order-details/sections/{Customer,LineItems,OrderSummary,Payment,ShippingAddress,Timeline}Section.tsx` | `git checkout 7f1aee7 -- <path>` (identical copy also at `_unused/<same path>`) |
+
+### Reported but NOT YET moved (MEDIUM — pending per-file verification)
+See `_audit/deadfile-candidates.md`. Web `components/checkout/CheckoutDialog.tsx` + dashboard `DashboardLayout`/`DashboardHeader`/`DashboardSidebar`/`NoticesBanner`/`CouponInput`/`useSentryUser` island (next batch); `packages/auth/.../usePlanLimits.tsx`; admin `modules/admin/components/PlanGate.tsx`. **NOTE:** web `OrderDetailsDrawer.tsx` + its `order-details/` subtree are LIVE (used by `EbayOrders.tsx`) — do NOT touch.
