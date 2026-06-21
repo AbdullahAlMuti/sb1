@@ -202,3 +202,18 @@ Scanned all 60 edge functions for dead code. All are accounted for:
 - `extension-connect-start` and `extension-logout` are registered in `supabase/config.toml` with explicit JWT config — treated as Tier C (deployed, may serve older extension versions).
 - `delete-demo-ebay-orders` — Tier C (admin runbook utility, no code callers but safe to keep).
 - **No edge functions were quarantined.**
+
+---
+
+## Sweep 2 — Deadfile Sweep (2026-06-22, branch `chore/deadfile-sweep`)
+
+Incremental on top of the 2026-06-21 sweep. Policy: **HIGH-only** (dead-markers, zero references). Analysis tooling: knip 5.88.1 + `git grep` cross-checks (madge discarded — could not resolve `@repo/*` deep-path aliases). Full candidate manifest with evidence: `_audit/deadfile-candidates.md`.
+
+### Tier A — moved (HIGH, zero references confirmed)
+
+| Original path | Reason | Restore |
+|---|---|---|
+| `apps/extension_backup_phase0.zip` | Tracked manual backup artifact; `git grep "extension_backup_phase0"` → 0 references in any tracked source; no build script/glob references it. | `mv _unused/apps/extension_backup_phase0.zip apps/extension_backup_phase0.zip` |
+
+### Reported but NOT moved (MEDIUM — no dead-marker, kept under HIGH-only policy)
+See `_audit/deadfile-candidates.md`. Notable: admin `src/components/dashboard/order-details/` dead island (16 files, parent `OrderDetailsDrawer.tsx` already quarantined in sweep 1); web `components/checkout/CheckoutDialog.tsx` + dashboard `DashboardLayout`/`DashboardHeader`/`DashboardSidebar`/`NoticesBanner` island; `packages/auth/.../usePlanLimits.tsx`; admin `modules/admin/components/PlanGate.tsx`. These need human review before any move.
