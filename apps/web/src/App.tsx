@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "@repo/ui/components/ui/toaster";
@@ -10,42 +10,45 @@ import { ThemeProvider } from "@repo/ui/theme/useTheme";
 import { AuthProvider, useAuth } from "@repo/auth/hooks/useAuth";
 import { ProtectedRoute } from "@repo/auth/ProtectedRoute";
 
-import Auth from "./pages/auth/Auth";
-import Register from "./pages/auth/Register";
-import VerifyEmail from "./pages/auth/VerifyEmail";
-import Dashboard from "./pages/dashboard/Dashboard";
-import Alerts from "./pages/dashboard/Alerts";
-import Orders from "./pages/dashboard/Orders";
-import EbayOrders from "./pages/dashboard/EbayOrders";
-import Listings from "./pages/dashboard/Listings";
-import NewListing from "./pages/dashboard/NewListing";
-import BulkLister from "./pages/dashboard/BulkLister";
-import ExtensionConnect from "./pages/dashboard/ExtensionConnect";
-import DashboardSettings from "./pages/dashboard/Settings";
-import CalculatorSettings from "./pages/dashboard/CalculatorSettings";
-import ProfitableProducts from "./pages/dashboard/ProfitableProducts";
-import BestSellingItems from "./pages/dashboard/BestSellingItems";
-import MustSellItems from "./pages/dashboard/MustSellItems";
-import ProductResearch from "./pages/dashboard/ProductResearch";
-import ExtensionViewer from "./pages/extension/ExtensionViewer";
-import CheckoutSuccess from "./pages/billing/CheckoutSuccess";
-import Checkout from "./pages/billing/Checkout";
-import PaymentCancelled from "./pages/billing/PaymentCancelled";
-import ChoosePlan from "./pages/billing/PaymentRequired";
-import Subscription from "./pages/dashboard/Subscription";
+// Route-level code splitting: each page is its own chunk so first load only
+// ships the shell + the landed route, not all ~40 pages. Rendered under the
+// <Suspense> boundary below.
+const Auth = lazy(() => import("./pages/auth/Auth"));
+const Register = lazy(() => import("./pages/auth/Register"));
+const VerifyEmail = lazy(() => import("./pages/auth/VerifyEmail"));
+const Dashboard = lazy(() => import("./pages/dashboard/Dashboard"));
+const Alerts = lazy(() => import("./pages/dashboard/Alerts"));
+const Orders = lazy(() => import("./pages/dashboard/Orders"));
+const EbayOrders = lazy(() => import("./pages/dashboard/EbayOrders"));
+const Listings = lazy(() => import("./pages/dashboard/Listings"));
+const NewListing = lazy(() => import("./pages/dashboard/NewListing"));
+const BulkLister = lazy(() => import("./pages/dashboard/BulkLister"));
+const ExtensionConnect = lazy(() => import("./pages/dashboard/ExtensionConnect"));
+const DashboardSettings = lazy(() => import("./pages/dashboard/Settings"));
+const CalculatorSettings = lazy(() => import("./pages/dashboard/CalculatorSettings"));
+const ProfitableProducts = lazy(() => import("./pages/dashboard/ProfitableProducts"));
+const BestSellingItems = lazy(() => import("./pages/dashboard/BestSellingItems"));
+const MustSellItems = lazy(() => import("./pages/dashboard/MustSellItems"));
+const ProductResearch = lazy(() => import("./pages/dashboard/ProductResearch"));
+const ExtensionViewer = lazy(() => import("./pages/extension/ExtensionViewer"));
+const CheckoutSuccess = lazy(() => import("./pages/billing/CheckoutSuccess"));
+const Checkout = lazy(() => import("./pages/billing/Checkout"));
+const PaymentCancelled = lazy(() => import("./pages/billing/PaymentCancelled"));
+const ChoosePlan = lazy(() => import("./pages/billing/PaymentRequired"));
+const Subscription = lazy(() => import("./pages/dashboard/Subscription"));
 
-import ShopifyLayout from "./pages/integrations/shopify/ShopifyLayout";
-import ShopifyDashboard from "./pages/integrations/shopify/ShopifyDashboard";
-import WinningProductsPage from "./pages/integrations/shopify/WinningProductsPage";
-import ProductResearchPage from "./pages/integrations/shopify/ProductResearchPage";
-import StoreExplorerPage from "./pages/integrations/shopify/StoreExplorerPage";
-import StoreDesignsPage from "./pages/integrations/shopify/StoreDesignsPage";
-import AdLibraryPage from "./pages/integrations/shopify/AdLibraryPage";
-import AiCopyStudio from "./pages/integrations/shopify/AiCopyStudio";
-import SavedItemsPage from "./pages/integrations/shopify/SavedItemsPage";
-import SettingsPage from "./pages/integrations/shopify/SettingsPage";
-import HelpPage from "./pages/integrations/shopify/HelpPage";
-import EbayLayout from "./pages/integrations/ebay/EbayLayout";
+const ShopifyLayout = lazy(() => import("./pages/integrations/shopify/ShopifyLayout"));
+const ShopifyDashboard = lazy(() => import("./pages/integrations/shopify/ShopifyDashboard"));
+const WinningProductsPage = lazy(() => import("./pages/integrations/shopify/WinningProductsPage"));
+const ProductResearchPage = lazy(() => import("./pages/integrations/shopify/ProductResearchPage"));
+const StoreExplorerPage = lazy(() => import("./pages/integrations/shopify/StoreExplorerPage"));
+const StoreDesignsPage = lazy(() => import("./pages/integrations/shopify/StoreDesignsPage"));
+const AdLibraryPage = lazy(() => import("./pages/integrations/shopify/AdLibraryPage"));
+const AiCopyStudio = lazy(() => import("./pages/integrations/shopify/AiCopyStudio"));
+const SavedItemsPage = lazy(() => import("./pages/integrations/shopify/SavedItemsPage"));
+const SettingsPage = lazy(() => import("./pages/integrations/shopify/SettingsPage"));
+const HelpPage = lazy(() => import("./pages/integrations/shopify/HelpPage"));
+const EbayLayout = lazy(() => import("./pages/integrations/ebay/EbayLayout"));
 import { SHOPIFY_ENABLED } from "@repo/config/marketplaceScope";
 
 const queryClient = new QueryClient();
@@ -166,6 +169,15 @@ const EbayRoutes = () => (
   </Routes>
 );
 
+// Shown while a lazily-loaded route chunk is in flight.
+function RouteFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+    </div>
+  );
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
@@ -175,6 +187,7 @@ const App = () => (
           <Sonner />
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <ErrorBoundary>
+              <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<RootRedirect />} />
                 <Route path="/about" element={<MarketingRedirect />} />
@@ -245,6 +258,7 @@ const App = () => (
                 <Route path="/extension-viewer" element={<ExtensionViewer />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
+              </Suspense>
             </ErrorBoundary>
           </BrowserRouter>
         </TooltipProvider>
