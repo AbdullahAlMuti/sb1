@@ -43,7 +43,7 @@ acceptance criteria, and verification steps.
 - [ ] ◇ Checkpoint 1 — production smoke GO/NO-GO (register→verify→pair→scrape→list→pay→cancel)
 
 ## Phase 2 — Enforce the security perimeter
-- [ ] T2.1 Verify on preview, then flip CSP Report-Only → enforcing in all four `vercel.json`
+- [x] T2.1 **DONE (in repo, commit 527e068):** flipped CSP Report-Only → enforcing in all four `vercel.json`. ⟶ Takes effect on next Vercel deploy; **verify the preview shows no console CSP violations on authed dashboard + live Stripe before promoting** (your step).
 - [ ] T2.2 Triage 9 `rls_enabled_no_policy` tables (service-role-only intended, or add policy)
 - [ ] ◇ Checkpoint 2 — headers enforcing in prod; advisor WARNs resolved or accepted-in-writing
 
@@ -65,5 +65,8 @@ acceptance criteria, and verification steps.
 - [ ] T5.3 Add dashboard summary tables (replace request-time aggregation)
 - [ ] T5.4 Route-level code-splitting (web + admin bundles)
 - [ ] T5.5 Resolve lockfile ambiguity (`package-lock.json` vs `bun.lockb`)
-- [ ] T5.6 Run `get_advisors(performance)`; fix top FK-index / permissive-policy findings
+- [~] T5.6 Ran `get_advisors(performance)` (199 WARN / 120 INFO). **DONE:** applied `fk_covering_indexes`
+  migration to prod (12 unindexed-FK indexes, commit 95298a4, verified 12/12). **Deferred (higher-risk policy
+  rewrites):** 166 `multiple_permissive_policies`, 30 `auth_rls_initplan` (wrap `auth.uid()` in `(select …)`),
+  108 `unused_index` (INFO — candidate drops).
 - [ ] ◇ Checkpoint 5 — scale review after first real traffic
