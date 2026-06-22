@@ -1,0 +1,32 @@
+{
+  "date": "2026-06-23",
+  "reason": "Removed all placeholder/mock admin panel features (AdminModulePage scaffold)",
+  "files": [
+    {
+      "original_path": "apps/admin/src/pages/AdminModulePage.tsx",
+      "tier": "A",
+      "evidence": "Only consumer was App.tsx placeholder routes — all routes removed in same pass. No other importer found.",
+      "restore_via_git": "git checkout HEAD -- apps/admin/src/pages/AdminModulePage.tsx"
+    }
+  ],
+  "routes_removed": [
+    "workspaces", "workspaces/:workspaceId",
+    "stores", "stores/:storeId",
+    "integrations",
+    "products", "products/:productId",
+    "listings", "listings/:listingId",
+    "orders", "orders/:orderId",
+    "customers", "customers/:customerId",
+    "inventory",
+    "sync-health", "sync-jobs/:jobId",
+    "webhook-events", "webhook-events/:eventId",
+    "support", "reports", "security",
+    "billing", "payments", "credits", "coupons"
+  ],
+  "nav_entries_removed": [
+    "Customers/Workspaces", "Customers/Stores",
+    "Commerce (entire section)",
+    "Operations/Sync Health", "Operations/Webhook Events", "Operations/Support",
+    "System/Security"
+  ]
+}

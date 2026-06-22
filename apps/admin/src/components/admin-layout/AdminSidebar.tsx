@@ -69,7 +69,6 @@ export function AdminSidebar({ collapsed, onToggleCollapsed, onNavigate, mobile 
           variant="outline"
           className={cn(
             "h-4 rounded-md px-1 text-[9px] font-medium",
-            node.badge.tone === "preview" && "border-dashed text-muted-foreground",
             node.badge.tone === "warning" && "border-amber-300 text-amber-600",
           )}
         >

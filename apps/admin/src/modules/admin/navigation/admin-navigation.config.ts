@@ -1,37 +1,24 @@
 import {
-  Activity,
   Bot,
-  Boxes,
   ClipboardList,
   CreditCard,
   Gauge,
   KeyRound,
   Layers,
-  LifeBuoy,
-  Lock,
   Megaphone,
   Newspaper,
-  Package,
   PlugZap,
   Receipt,
   Settings,
   ShieldCheck,
   ShoppingBag,
-  ShoppingCart,
-  Store,
-  Tags,
   Users,
-  Webhook,
   type LucideIcon,
 } from "lucide-react";
 import { SHOPIFY_ENABLED } from "@repo/config/marketplaceScope";
 
 /**
  * Single source of truth for the Admin sidebar.
- *
- * The sidebar used to hardcode its groups, fake numeric badges (`6 / 4 / 12`),
- * and a static "Admin User / Super Admin" identity. This config replaces all of
- * that with a dynamic, declarative tree that the renderer (`AdminSidebar`) walks.
  *
  * Routes here MUST match the live routes declared in `App.tsx` so navigation and
  * active-state stay identical. Adding a node never moves a page — it only surfaces
@@ -40,12 +27,12 @@ import { SHOPIFY_ENABLED } from "@repo/config/marketplaceScope";
 
 export type AdminRole = "admin" | "super_admin" | "moderator" | "staff";
 
-export type NavBadgeTone = "default" | "preview" | "warning";
+export type NavBadgeTone = "default" | "warning";
 
 export interface NavBadge {
   /** Resolved dynamically by `useNavBadges()`; hidden when the count is 0/undefined. */
   countKey?: string;
-  /** Static status label (e.g. "Preview" for non-wired scaffold routes). */
+  /** Static status label. */
   label?: string;
   tone?: NavBadgeTone;
 }
@@ -65,8 +52,6 @@ export interface NavNode {
   badge?: NavBadge;
   /** Static visibility toggle (e.g. `SHOPIFY_ENABLED`). */
   visible?: boolean;
-  /** Marks a scaffold route that is not yet wired to a backend. */
-  placeholder?: boolean;
   /** Overrides the prefix used for active-state matching. */
   activeMatch?: string;
 }
@@ -76,8 +61,6 @@ export interface NavGroup {
   items: NavNode[];
 }
 
-const PREVIEW_BADGE: NavBadge = { label: "Preview", tone: "preview" };
-
 export const adminNavigation: NavGroup[] = [
   {
     items: [{ label: "Overview", icon: Gauge, route: "/overview" }],
@@ -86,28 +69,12 @@ export const adminNavigation: NavGroup[] = [
     label: "Customers",
     items: [
       { label: "Users", icon: Users, route: "/users" },
-      { label: "Workspaces", icon: Boxes, route: "/workspaces", placeholder: true, badge: PREVIEW_BADGE },
-      { label: "Stores", icon: Store, route: "/stores", placeholder: true, badge: PREVIEW_BADGE },
-    ],
-  },
-  {
-    label: "Commerce",
-    items: [
-      { label: "Integrations", icon: PlugZap, route: "/integrations", placeholder: true, badge: PREVIEW_BADGE },
-      { label: "Products", icon: Package, route: "/products", placeholder: true, badge: PREVIEW_BADGE },
-      { label: "Listings", icon: Tags, route: "/listings", placeholder: true, badge: PREVIEW_BADGE },
-      { label: "Orders", icon: ShoppingCart, route: "/orders", placeholder: true, badge: PREVIEW_BADGE },
-      { label: "Customers", icon: ShoppingBag, route: "/customers", placeholder: true, badge: PREVIEW_BADGE },
-      { label: "Inventory", icon: Boxes, route: "/inventory", placeholder: true, badge: PREVIEW_BADGE },
     ],
   },
   {
     label: "Operations",
     items: [
-      { label: "Sync Health", icon: Activity, route: "/sync-health", placeholder: true, badge: PREVIEW_BADGE },
-      { label: "Webhook Events", icon: Webhook, route: "/webhook-events", placeholder: true, badge: PREVIEW_BADGE },
       { label: "Usage", icon: Receipt, route: "/usage" },
-      { label: "Support", icon: LifeBuoy, route: "/support", placeholder: true, badge: PREVIEW_BADGE },
     ],
   },
   {
@@ -138,7 +105,6 @@ export const adminNavigation: NavGroup[] = [
     items: [
       { label: "Audit Logs", icon: ClipboardList, route: "/audit-logs" },
       { label: "Roles", icon: KeyRound, route: "/roles" },
-      { label: "Security", icon: Lock, route: "/security", placeholder: true, badge: PREVIEW_BADGE },
       { label: "Settings", icon: Settings, route: "/settings" },
     ],
   },
