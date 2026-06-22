@@ -64,8 +64,9 @@ acceptance criteria, and verification steps.
 - [ ] T5.1 Broaden rate-limiting to remaining edge functions
 - [ ] T5.2 Move Amazon sync / blog AI / Sheets sync to the queue worker
 - [ ] T5.3 Add dashboard summary tables (replace request-time aggregation)
-- [x] T5.4 **DONE:** route-level code-splitting (web) via `React.lazy` + `Suspense` — main entry 1.8MB→516KB
-  (156KB gzip, ~70% less initial JS); verified build chunks + runtime `/auth` render, 0 console errors. (admin: TODO)
+- [x] T5.4 **DONE:** route-level code-splitting via `React.lazy` + `Suspense` for **both web and admin**.
+  web main entry 1.8MB→516KB (156KB gzip, ~70% less); admin 1.77MB→723KB (222KB gzip, ~60% less). Verified
+  build chunks + runtime render (`/auth`, admin `/login`) with 0 console errors.
 - [x] T5.5 **DONE:** removed stale `bun.lockb`; npm canonical (CI `npm ci`)
 - [~] T5.6 Ran `get_advisors(performance)` (199 WARN / 120 INFO). **DONE:** applied `fk_covering_indexes`
   migration to prod (12 unindexed-FK indexes, commit 95298a4, verified 12/12). **Deferred (higher-risk policy
