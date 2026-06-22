@@ -58,7 +58,24 @@ export function getAllowedOrigins(options: CorsOptions = {}): Set<string> {
 export function isAllowedOrigin(origin: string | null | undefined, options: CorsOptions = {}): boolean {
   const normalized = normalizeOrigin(origin);
   if (!normalized) return false;
-  return getAllowedOrigins(options).has(normalized);
+
+  // 1. Direct match in allowed origins set
+  if (getAllowedOrigins(options).has(normalized)) {
+    return true;
+  }
+
+  // 2. Allow subdomains of sellersuit.com and vercel.app previews
+  try {
+    const url = new URL(normalized);
+    const hostname = url.hostname;
+    if (hostname === "sellersuit.com" || hostname.endsWith(".sellersuit.com") || hostname.endsWith(".vercel.app")) {
+      return true;
+    }
+  } catch (_) {
+    // Ignore URL parsing errors
+  }
+
+  return false;
 }
 
 export function resolveCorsHeaders(req: Request, options: CorsOptions = {}): Record<string, string> {
