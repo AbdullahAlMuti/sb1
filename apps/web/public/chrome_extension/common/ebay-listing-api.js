@@ -245,24 +245,43 @@ window.EbayListingApiHelper = (() => {
 
     // Map product specs onto eBay attribute schema
     const attributes = {};
+    const aspectNames = attributeList.map(a => a.attributeName);
     for (const specKey in (product.prod_specs || {})) {
-      const attr = attributeList.find(a => a.attributeName.toLowerCase() === specKey.toLowerCase());
-      if (attr?.multiSelectEnabled) {
-        attributes[specKey] = String(product.prod_specs[specKey]).split(',').map(s => s.trim());
+      const matchedName = matchAspectName(specKey, aspectNames);
+      const attr = attributeList.find(a => a.attributeName === matchedName);
+      if (attr) {
+        if (attr.multiSelectEnabled) {
+          attributes[matchedName] = String(product.prod_specs[specKey]).split(',').map(s => s.trim());
+        } else {
+          attributes[matchedName] = [product.prod_specs[specKey]];
+        }
       } else {
-        attributes[specKey] = [product.prod_specs[specKey]];
+        attributes[matchedName] = [product.prod_specs[specKey]];
       }
     }
 
     // Auto-fill empty REQUIRED attributes
     attributeList
-      .filter(({ groups, value }) =>
-        (!value || !value.length) && groups?.length > 0 && groups[0] === 'REQUIRED'
-      )
+      .filter(attr => {
+        const isRequired = 
+          attr.required === true ||
+          attr.isRequired === true ||
+          attr.usage === 'REQUIRED' ||
+          attr.usageConstraint === 'REQUIRED' ||
+          (attr.minValues && attr.minValues > 0) ||
+          (attr.groups && (attr.groups.includes('REQUIRED') || attr.groups[0] === 'REQUIRED'));
+        const hasValue = 
+          (attr.value && attr.value.length > 0) || 
+          (attr.values && attr.values.length > 0) ||
+          (attr.currentValues && attr.currentValues.length > 0);
+        return isRequired && !hasValue;
+      })
       .forEach(attr => {
         const name = attr.attributeName;
         if (attributes[name]) return;
-        if (!attr.customValuesAllowed && attr.options?.length > 0) {
+        if (name.toLowerCase() === 'brand' && (attr.customValuesAllowed || !attr.options?.length)) {
+          attributes[name] = ['Unbranded'];
+        } else if (attr.options && attr.options.length > 0) {
           attributes[name] = [attr.options[0].value];
         } else {
           attributes[name] = ['Does not apply'];
@@ -273,20 +292,33 @@ window.EbayListingApiHelper = (() => {
     let uploadedImages = [];
     if (window.EbayPhotoUploader && epsData) {
       const imageUrls = product.prod_images || [];
-      console.log(`[SS EPS] Uploading ${imageUrls.length} images...`);
-      const results = await Promise.all(
-        imageUrls.map((url, i) =>
-          window.EbayPhotoUploader.uploadPhoto(url, epsData)
-            .then(id => {
-              console.log(`[SS EPS] ✓ Image ${i + 1}/${imageUrls.length}: ${id}`);
-              return id;
-            })
-            .catch(err => {
-              console.warn(`[SS EPS] ✗ Image ${i + 1}/${imageUrls.length} failed: ${err.message} — ${url}`);
-              return undefined;
-            })
-        )
-      );
+      console.log(`[SS EPS] Uploading ${imageUrls.length} images with bounded concurrency (max 3)...`);
+      
+      const concurrencyLimit = 3;
+      const results = new Array(imageUrls.length);
+      const queue = imageUrls.map((url, index) => ({ url, index }));
+      
+      async function worker() {
+        while (queue.length > 0) {
+          const item = queue.shift();
+          if (!item) break;
+          const { url, index } = item;
+          try {
+            const id = await window.EbayPhotoUploader.uploadPhoto(url, epsData, index);
+            console.log(`[SS EPS] ✓ Image ${index + 1}/${imageUrls.length}: ${id}`);
+            results[index] = id;
+          } catch (err) {
+            console.error(`[SS EPS] ✗ Image ${index + 1}/${imageUrls.length} failed: ${err.message} — ${url}`);
+            results[index] = undefined;
+          }
+        }
+      }
+      
+      const workers = Array(Math.min(concurrencyLimit, imageUrls.length))
+        .fill(null)
+        .map(() => worker());
+      
+      await Promise.all(workers);
       uploadedImages = results.filter(Boolean);
       console.log(`[SS EPS] ${uploadedImages.length}/${imageUrls.length} images uploaded`);
       if (uploadedImages.length === 0 && imageUrls.length > 0) {
@@ -423,9 +455,20 @@ window.EbayListingApiHelper = (() => {
     if (!epsData) throw new Error('Could not find epsData in eBay response');
 
     const draftId = listingModel.meta.draftId;
-    const aspectNames = Array.isArray(listingModel.ATTRIBUTES?.attributeList)
-      ? listingModel.ATTRIBUTES.attributeList.map(a => a.attributeName)
+    const attributeList = Array.isArray(listingModel.ATTRIBUTES?.attributeList)
+      ? listingModel.ATTRIBUTES.attributeList
       : [];
+    const aspectNames = attributeList.map(a => a.attributeName);
+
+    // ── TEMP DIAGNOSTIC (Phase 0a — remove before release) ───────────────────
+    // Dumps eBay's REAL attribute schema so we can verify the actual field names
+    // for required / selection-mode / allowed-values (the mapping currently
+    // GUESSES these). Copy this JSON into tests/fixtures/attributeList-*.json.
+    try {
+      console.log('[SS DEBUG attributeList] category schema for draft', draftId,
+        '\n' + JSON.stringify(attributeList, null, 2));
+    } catch (_) { /* circular/huge — ignore */ }
+    // ─────────────────────────────────────────────────────────────────────────
 
     return { draftId, draftCsrfValue, epsData, listingModel, aspectNames };
   }
@@ -433,15 +476,30 @@ window.EbayListingApiHelper = (() => {
   function matchAspectName(attrName, aspectNames) {
     const clean = s => s.toLowerCase().replace(/[\s_]/g, '');
     const attrClean = clean(attrName);
+
+    const synonymMap = {
+      'itemmodelnumber': 'mpn',
+      'partnumber': 'mpn',
+      'manufacturerpartnumber': 'mpn',
+      'brandname': 'brand',
+      'manufacturer': 'brand',
+      'manufacturername': 'brand',
+      'modelname': 'model',
+      'modelnumber': 'model',
+      'itemtype': 'type',
+      'producttype': 'type',
+      'type': 'type'
+    };
+    const targetClean = synonymMap[attrClean] || attrClean;
     
     // 1. Try exact/case-insensitive match
-    let match = aspectNames.find(a => clean(a) === attrClean);
+    let match = aspectNames.find(a => clean(a) === targetClean);
     if (match) return match;
     
     // 2. Try singular/plural matching
-    const isPlural = attrClean.endsWith('s');
-    const singular = isPlural ? attrClean.slice(0, -1) : attrClean;
-    const plural = isPlural ? attrClean : attrClean + 's';
+    const isPlural = targetClean.endsWith('s');
+    const singular = isPlural ? targetClean.slice(0, -1) : targetClean;
+    const plural = isPlural ? targetClean : targetClean + 's';
     
     match = aspectNames.find(a => {
       const c = clean(a);
@@ -450,7 +508,7 @@ window.EbayListingApiHelper = (() => {
     if (match) return match;
     
     // 3. Special cases for color/colour
-    if (attrClean.includes('color') || attrClean.includes('colour')) {
+    if (targetClean.includes('color') || targetClean.includes('colour')) {
       match = aspectNames.find(a => {
         const c = clean(a);
         return c.includes('color') || c.includes('colour');
@@ -459,7 +517,7 @@ window.EbayListingApiHelper = (() => {
     }
     
     // 4. Special cases for size
-    if (attrClean.includes('size')) {
+    if (targetClean.includes('size')) {
       match = aspectNames.find(a => clean(a).includes('size'));
       if (match) return match;
     }
@@ -480,6 +538,7 @@ window.EbayListingApiHelper = (() => {
     const uploadedImgCache  = new Map();
     // Track seen variationSpecific combos — eBay rejects any duplicate combo
     const seenCombos        = new Set();
+    const seenSkus          = new Set();
 
     // Compute imgPropKey once from first variation, apply rename up-front
     // so it stays consistent across all iterations.
@@ -487,16 +546,33 @@ window.EbayListingApiHelper = (() => {
     // Determine final (post-rename) imgPropKey before the loop
     let imgPropKey = rawImgProp ? matchAspectName(rawImgProp, aspectNames) : null;
 
-    for (let idx = 0; idx < variations.length; idx++) {
-      const variation = { ...variations[idx] }; // shallow copy — don't mutate source
+    // First pass: resolve final cased aspect names for each variation and collect all unique aspect keys
+    const allAspectKeys = new Set();
+    const processedVariations = variations.map(v => {
+      const rawAttrs = v.attrs || {};
+      const attrs = {};
+      for (const attrName of Object.keys(rawAttrs)) {
+        const finalKey = matchAspectName(attrName, aspectNames);
+        attrs[finalKey] = rawAttrs[attrName];
+        allAspectKeys.add(finalKey);
+      }
+      return { ...v, attrs };
+    });
+
+    const aspectKeysArr = Array.from(allAspectKeys);
+
+    for (let idx = 0; idx < processedVariations.length; idx++) {
+      const variation = { ...processedVariations[idx] }; // shallow copy — don't mutate source
       if (!variation.price || variation.price < 1) variation.price = 0.99;
 
-      // Rename attr keys to match the exact eBay aspect names (case/plural matching)
-      const rawAttrs = variation.attrs || {};
-      const attrs    = {};
-      for (const attrName of Object.keys(rawAttrs)) {
-        const finalKey  = matchAspectName(attrName, aspectNames);
-        attrs[finalKey] = rawAttrs[attrName];
+      const attrs = variation.attrs;
+      // Ensure all variations have the exact same set of aspect keys (symmetric dimensions)
+      for (const key of aspectKeysArr) {
+        if (!attrs[key]) {
+          attrs[key] = { productName: 'N/A' };
+        } else if (attrs[key] && typeof attrs[key].productName === 'string') {
+          attrs[key].productName = attrs[key].productName.trim();
+        }
       }
 
       // Build variationSpecific for this combo
@@ -505,10 +581,12 @@ window.EbayListingApiHelper = (() => {
         variationSpecific[attrName] = attrs[attrName].productName;
       }
 
-      // Skip duplicate combos — same as eBay's duplicate check
-      const comboKey = JSON.stringify(
-        Object.keys(variationSpecific).sort().reduce((acc, k) => { acc[k] = variationSpecific[k]; return acc; }, {})
-      );
+      // Skip duplicate combos — case-insensitive and trimmed check
+      const normalizedCombo = Object.keys(variationSpecific).sort().reduce((acc, k) => {
+        acc[k.toLowerCase()] = String(variationSpecific[k]).trim().toLowerCase();
+        return acc;
+      }, {});
+      const comboKey = JSON.stringify(normalizedCombo);
       if (seenCombos.has(comboKey)) {
         console.warn(`[SS MSKU] Skipping duplicate variation combo: ${comboKey}`);
         continue;
@@ -526,27 +604,64 @@ window.EbayListingApiHelper = (() => {
       }
 
       // Upload variation image, grouped by imgPropKey attribute value (retry 2x)
-      if (imgPropKey && attrs[imgPropKey] && variation.img && window.EbayPhotoUploader && epsData) {
+      // Resolve pivot value case-insensitively from attrs
+      let pivotAttr = null;
+      if (imgPropKey) {
+        const targetClean = imgPropKey.toLowerCase().replace(/[\s_]/g, '');
+        const actualKey = Object.keys(attrs).find(k => k.toLowerCase().replace(/[\s_]/g, '') === targetClean);
+        if (actualKey) pivotAttr = attrs[actualKey];
+      }
+
+      if (imgPropKey && pivotAttr && variation.img && window.EbayPhotoUploader && epsData) {
         if (!uploadedImgCache.has(variation.img)) {
           try {
             const photoId = await _retry(
-              () => window.EbayPhotoUploader.uploadPhoto(variation.img, epsData), 2, 500
+              () => window.EbayPhotoUploader.uploadPhoto(variation.img, epsData, idx), 2, 500
             );
             uploadedImgCache.set(variation.img, photoId);
           } catch (err) {
             console.warn('[SS MSKU] Variation image upload failed after retries:', err.message);
+            uploadedImgCache.set(variation.img, null); // cache failure to prevent re-attempts
           }
         }
-        const photoId  = uploadedImgCache.get(variation.img) || '';
-        const groupKey = attrs[imgPropKey].productName;
-        if (!imgPropPictureMap[imgPropKey]) {
-          imgPropPictureMap[imgPropKey] = { [groupKey]: [photoId] };
-        } else if (!imgPropPictureMap[imgPropKey][groupKey]) {
-          imgPropPictureMap[imgPropKey][groupKey] = [photoId];
-        } else if (photoId && !imgPropPictureMap[imgPropKey][groupKey].includes(photoId)) {
-          imgPropPictureMap[imgPropKey][groupKey].push(photoId);
+        const photoId  = uploadedImgCache.get(variation.img);
+        if (photoId) {
+          const groupKey = pivotAttr.productName;
+          if (!imgPropPictureMap[imgPropKey]) {
+            imgPropPictureMap[imgPropKey] = { [groupKey]: [photoId] };
+          } else if (!imgPropPictureMap[imgPropKey][groupKey]) {
+            imgPropPictureMap[imgPropKey][groupKey] = [photoId];
+          } else if (!imgPropPictureMap[imgPropKey][groupKey].includes(photoId)) {
+            imgPropPictureMap[imgPropKey][groupKey].push(photoId);
+          }
         }
       }
+
+      // Guarantee unique generated SKUs and block duplicate/empty SKUs
+      let varSku = variation.sku || variation.supplierVariantId || '';
+      varSku = varSku.trim();
+
+      if (!varSku || seenSkus.has(varSku.toUpperCase())) {
+        const parentId = product.prod_id || '';
+        if (window.SSSkuEngine) {
+          varSku = window.SSSkuEngine.buildReadable(parentId, attrs, window.SSSkuEngine.prefixFor(product.supplier || 'amazon'));
+        } else {
+          varSku = parentId + '-' + Object.values(variationSpecific).join('-');
+        }
+
+        let uniqSku = varSku;
+        let suffixCounter = 1;
+        while (seenSkus.has(uniqSku.toUpperCase())) {
+          const suffix = '-' + suffixCounter;
+          const maxLen = window.SSSkuEngine ? window.SSSkuEngine.MAX_LEN : 50;
+          uniqSku = varSku.slice(0, maxLen - suffix.length) + suffix;
+          suffixCounter++;
+        }
+        varSku = uniqSku;
+      }
+
+      const finalSku = window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(varSku) : varSku;
+      seenSkus.add(finalSku.toUpperCase());
 
       variationItems.push({
         variationSpecific,
@@ -554,9 +669,7 @@ window.EbayListingApiHelper = (() => {
           price:    Number(variation.price).toFixed(2),
           quantity: 1   // always 1 for dropshipping — never use supplier stock count
         },
-        sku:         variation.sku
-                       ? (window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(variation.sku) : variation.sku)
-                       : (variation.supplierVariantId ? (window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(variation.supplierVariantId) : variation.supplierVariantId) : ''),
+        sku:         finalSku,
         state:       'enabled',
         productInfo: {},
         index:       variationItems.length
@@ -565,6 +678,61 @@ window.EbayListingApiHelper = (() => {
 
     const variationSpecificsMetaData = Object.entries(attrValuesMap)
       .map(([name, value]) => ({ name, value }));
+
+    // Assert Payload Invariants
+    const seenCombosCheck = new Set();
+    const metaKeys = variationSpecificsMetaData.map(m => m.name);
+    const seenSkusCheck = new Set();
+
+    for (const item of variationItems) {
+      const sku = item.sku;
+      if (!sku) {
+        throw new Error(`Assertion failed: Variation item index ${item.index} has an empty SKU.`);
+      }
+      if (seenSkusCheck.has(sku.toUpperCase())) {
+        throw new Error(`Assertion failed: Duplicate SKU detected in payload: ${sku}`);
+      }
+      seenSkusCheck.add(sku.toUpperCase());
+
+      const itemKeys = Object.keys(item.variationSpecific);
+      for (const key of metaKeys) {
+        if (!itemKeys.includes(key)) {
+          throw new Error(`Assertion failed: Variation item SKU ${sku} is missing dimension: ${key}`);
+        }
+      }
+      for (const key of itemKeys) {
+        if (!metaKeys.includes(key)) {
+          throw new Error(`Assertion failed: Variation item SKU ${sku} has unexpected dimension: ${key}`);
+        }
+      }
+
+      const comboKey = JSON.stringify(
+        Object.keys(item.variationSpecific).sort().reduce((acc, k) => {
+          acc[k.toLowerCase()] = String(item.variationSpecific[k]).trim().toLowerCase();
+          return acc;
+        }, {})
+      );
+      if (seenCombosCheck.has(comboKey)) {
+        throw new Error(`Assertion failed: Duplicate attribute combination detected: ${comboKey}`);
+      }
+      seenCombosCheck.add(comboKey);
+
+      const price = parseFloat(item.listingVariation.price);
+      if (isNaN(price) || price < 0.99) {
+        throw new Error(`Assertion failed: Variation SKU ${sku} has an invalid price: ${item.listingVariation.price}`);
+      }
+    }
+
+    if (imgPropPictureMap && Object.keys(imgPropPictureMap).length > 0) {
+      const pivotKeys = Object.keys(imgPropPictureMap);
+      if (pivotKeys.length > 1) {
+        throw new Error(`Assertion failed: eBay allows only one picture pivot dimension, found: ${pivotKeys.join(', ')}`);
+      }
+      const pivotKey = pivotKeys[0];
+      if (!metaKeys.includes(pivotKey)) {
+        throw new Error(`Assertion failed: Picture pivot key "${pivotKey}" must be one of the listing dimensions: ${metaKeys.join(', ')}`);
+      }
+    }
 
     const requestBody = JSON.stringify({
       action:                    'save',
@@ -616,16 +784,23 @@ window.EbayListingApiHelper = (() => {
       '| images[0]:', (Array.isArray(product.images) && product.images[0]) || null);
     const bullets = Array.isArray(product.bulletPoints) ? product.bulletPoints : [];
     let descHtml = '';
-    if (bullets.length > 0) {
-      descHtml += '<ul>' + bullets.map(b => `<li>${b}</li>`).join('') + '</ul>';
-    }
-    if (product.description) descHtml += `<p>${product.description}</p>`;
+    const isHtml = product.description && (product.description.trim().startsWith('<') || product.description.includes('</'));
 
-    descHtml = descHtml
-      .replace(/amazon\.com|walmart\.com/gi, '')
-      .replace(/\b(ASIN|UPC|ISBN|Seller Rank|Sales Rank|Sold by|Fulfilled by|Available at)\b/gi, '')
-      .replace(/https?:\/\/[^\s<"]+/gi, '')
-      .replace(/<img[^>]*>/gi, '');
+    if (isHtml) {
+      descHtml = product.description;
+    } else {
+      if (bullets.length > 0) {
+        descHtml += '<ul>' + bullets.map(b => `<li>${b}</li>`).join('') + '</ul>';
+      }
+      if (product.description) {
+        descHtml += `<p>${product.description}</p>`;
+      }
+      descHtml = descHtml
+        .replace(/amazon\.com|walmart\.com/gi, '')
+        .replace(/\b(ASIN|UPC|ISBN|Seller Rank|Sales Rank|Sold by|Fulfilled by|Available at)\b/gi, '')
+        .replace(/https?:\/\/[^\s<"]+/gi, '')
+        .replace(/<img[^>]*>/gi, '');
+    }
     if (!descHtml.trim()) descHtml = '<p>Quality product.</p>';
 
     const basePrice = _cleanFloat(product.price) || 0.99;
@@ -910,7 +1085,7 @@ function _syncListingToDashboard(adapted, product, draftId) {
         amazon_price:        _cleanFloat(product.price) || null,
         amazon_url:          product.url || null,
         amazon_asin:         product.parentAsin || product.asin || null,
-        status:              'active',
+        status:              'draft',
         has_variations:      adapted.prod_variations.length > 1,
         variation_count:     adapted.prod_variations.length,
         // Phase 7: source flags

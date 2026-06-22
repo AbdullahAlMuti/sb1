@@ -147,7 +147,19 @@
       if (role === 'scan') {
         btnMainAction.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span> Loading…';
         const product = await doScan(_mode);
-        if (product) renderPreviewCard(product);
+        if (product) {
+          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
+          const updatedProduct = recalculateProductPricing(product, stored.calculatorValues);
+          await chrome.storage.local.set({ currentProduct: updatedProduct });
+          
+          if (typeof window.SSListingDraft !== 'undefined') {
+            await window.SSListingDraft.patchDraft({
+              variants: updatedProduct.variants || [],
+              variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
+            });
+          }
+          renderPreviewCard(updatedProduct);
+        }
       } else {
         btnMainAction.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span>';
         await doAdvancedUpload(selUploadType.value === 'draft');
@@ -602,6 +614,8 @@
           sku_source: skuSource,
           pricing: { ...(draft && draft.pricing), finalPrice },
           price_source: priceSource,
+          variants: ebayProduct.variants || [],
+          variationCount: ebayProduct.variants ? ebayProduct.variants.length : 0
         });
       }
 
@@ -769,23 +783,32 @@
     });
   }
 
+  /* ── Helper to get base URL ──────────────── */
+  function getBaseUrl() {
+    return (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.WEB_APP_BASE)
+      ? ExtensionConfig.URLS.WEB_APP_BASE
+      : 'https://app.sellersuite.com';
+  }
+
   /* ── Sign in ──────────────────────────────── */
   function doSignIn() {
     chrome.runtime.sendMessage({ action: 'OPEN_DASHBOARD' }, () => {});
-    chrome.tabs.create({ url: 'https://app.sellersuite.com/login' });
+    const baseUrl = getBaseUrl();
+    chrome.tabs.create({ url: `${baseUrl}/auth` });
   }
 
   /* ── Auth footer links ────────────────────── */
   function initAuthLinks() {
     const linkCreate = document.getElementById('link-create-account');
     const linkForgot = document.getElementById('link-forgot-pw');
+    const baseUrl = getBaseUrl();
     if (linkCreate) linkCreate.addEventListener('click', e => {
       e.preventDefault();
-      chrome.tabs.create({ url: 'https://app.sellersuite.com/register' });
+      chrome.tabs.create({ url: `${baseUrl}/signup` });
     });
     if (linkForgot) linkForgot.addEventListener('click', e => {
       e.preventDefault();
-      chrome.tabs.create({ url: 'https://app.sellersuite.com/forgot-password' });
+      chrome.tabs.create({ url: `${baseUrl}/auth?mode=forgot-password` });
     });
   }
 
@@ -840,14 +863,44 @@
     initTabWatchers();
     refreshPageStatus();
 
-    window.SSPanelStore.subscribe(state => {
+    window.SSPanelStore.subscribe(async (state) => {
       _state = state;
+      if (state.product) {
+        const needsPricing = !state.product.finalPrice || (Array.isArray(state.product.variants) && state.product.variants.length > 1 && state.product.variants.some(v => !v.finalPrice));
+        if (needsPricing && !_busy) {
+          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
+          const updatedProduct = recalculateProductPricing(state.product, stored.calculatorValues);
+          await chrome.storage.local.set({ currentProduct: updatedProduct });
+          if (typeof window.SSListingDraft !== 'undefined') {
+            await window.SSListingDraft.patchDraft({
+              variants: updatedProduct.variants || [],
+              variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
+            });
+          }
+        }
+      }
       renderAuth(state);
     });
 
     const snap = window.SSPanelStore.getState();
     _state = snap;
     renderAuth(snap);
+
+    chrome.storage.onChanged.addListener(async (changes, area) => {
+      if (area === 'local' && changes.calculatorValues) {
+        const data = await new Promise(r => chrome.storage.local.get('currentProduct', r));
+        if (data.currentProduct) {
+          const updatedProduct = recalculateProductPricing(data.currentProduct, changes.calculatorValues.newValue);
+          await chrome.storage.local.set({ currentProduct: updatedProduct });
+          if (typeof window.SSListingDraft !== 'undefined') {
+            await window.SSListingDraft.patchDraft({
+              variants: updatedProduct.variants || [],
+              variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
+            });
+          }
+        }
+      }
+    });
 
     // Phase 4: restore preview card from existing draft if present
     _restorePreviewFromDraft();
@@ -884,6 +937,55 @@
     } catch (e) {
       console.warn('[SS panel] _restorePreviewFromDraft error:', e);
     }
+  }
+
+  function recalculateProductPricing(product, calculatorValues) {
+    if (!product || !window.SSPricingEngine) return product;
+
+    const savedValues = calculatorValues || {};
+    const parseVal = (v, def) => {
+      if (v === null || v === undefined || v === '') return def;
+      const cleaned = String(v).replace(/[^\d.-]/g, '');
+      const n = parseFloat(cleaned);
+      return isNaN(n) ? def : n;
+    };
+    
+    const cfg = {
+      taxPercent:      parseVal(savedValues['tax-percent'],       9),
+      trackingFee:     parseVal(savedValues['tracking-fee'],      0.20),
+      ebayFeePercent:  parseVal(savedValues['ebay-fee-percent'],  20),
+      promoFeePercent: parseVal(savedValues['promo-fee-percent'], 10),
+      desiredProfit:   parseVal(savedValues['desired-profit'],    0),
+      paymentFixedFee: parseVal(savedValues['payment-fixed-fee'], 0.30)
+    };
+
+    const cleanFloat = (val) => {
+      if (val === null || val === undefined) return 0;
+      if (typeof val === 'number') return val;
+      const cleaned = String(val).replace(/[^\d.-]/g, '');
+      const parsed = parseFloat(cleaned);
+      return isNaN(parsed) ? 0 : parsed;
+    };
+
+    const baseRaw = cleanFloat(product.price || product.raw_supplier_price);
+    product.raw_supplier_price = baseRaw;
+    
+    const topIsManual = product.price_source === 'manual' && cleanFloat(product.finalPrice) > 0;
+    if (!topIsManual && baseRaw > 0) {
+      product.finalPrice = window.SSPricingEngine.calculatePrice(baseRaw, cfg);
+    }
+
+    if (Array.isArray(product.variants)) {
+      product.variants.forEach(v => {
+        const raw = cleanFloat(v.price || v.raw_supplier_price) || baseRaw;
+        v.raw_supplier_price = raw;
+        const varIsManual = cleanFloat(v.ebayPrice) > 0;
+        if (!varIsManual && raw > 0) {
+          v.finalPrice = window.SSPricingEngine.calculatePrice(raw, cfg);
+        }
+      });
+    }
+    return product;
   }
 
   if (document.readyState === 'loading') {

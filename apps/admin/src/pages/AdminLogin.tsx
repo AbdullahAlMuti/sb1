@@ -27,7 +27,7 @@ export default function AdminLogin() {
 
   // Redirect if already logged in as admin
   useEffect(() => {
-    if (!isLoading && user) {
+    if (!isLoading && user && !isSubmitting) {
       if (isAdmin) {
         navigate('/admin', { replace: true });
       } else {
@@ -36,7 +36,7 @@ export default function AdminLogin() {
         toast.error('Access denied. Admin privileges required.');
       }
     }
-  }, [user, isAdmin, isLoading, navigate]);
+  }, [user, isAdmin, isLoading, navigate, isSubmitting]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};

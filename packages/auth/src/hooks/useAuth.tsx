@@ -192,53 +192,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
     let initialSessionHandled = false;
 
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (!isMounted) return;
-        
-        // Skip if this is the initial session and we've already handled it
-        if (event === 'INITIAL_SESSION' && initialSessionHandled) return;
-        
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          // Explicitly sync dashboard token to extension after login/session change
-          try {
-            if (typeof window !== 'undefined') {
-              window.postMessage({ type: 'REFRESH_EXTENSION_TOKEN' }, window.location.origin);
-            }
-          } catch (err) {
-            console.warn('Failed to dispatch REFRESH_EXTENSION_TOKEN', err);
-          }
-
-          // Defer Supabase calls to avoid potential race conditions
-          setTimeout(() => {
-            if (isMounted) {
-              fetchProfile(session.user.id);
-              fetchRoles(session.user.id);
-            }
-          }, 0);
-        } else {
-          setProfile(null);
-          setRoles([]);
-        }
-        
-        setIsLoading(false);
-      }
-    );
-
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const initializeAuth = async (session: Session | null) => {
       if (!isMounted) return;
-      initialSessionHandled = true;
-      
+
       setSession(session);
       setUser(session?.user ?? null);
-      
+
       if (session?.user) {
-        // Explicitly sync dashboard token to extension after initial mount/check
+        // Explicitly sync dashboard token to extension after initial mount/check/login
         try {
           if (typeof window !== 'undefined') {
             window.postMessage({ type: 'REFRESH_EXTENSION_TOKEN' }, window.location.origin);
@@ -247,11 +208,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.warn('Failed to dispatch REFRESH_EXTENSION_TOKEN', err);
         }
 
-        fetchProfile(session.user.id);
-        fetchRoles(session.user.id);
+        // Defer database calls to ensure Supabase client headers are fully updated
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        if (!isMounted) return;
+
+        // Fetch profile and roles in parallel and wait for them to finish
+        await Promise.all([
+          fetchProfile(session.user.id),
+          fetchRoles(session.user.id),
+        ]);
+      } else {
+        setProfile(null);
+        setRoles([]);
       }
-      
-      setIsLoading(false);
+
+      if (isMounted) {
+        setIsLoading(false);
+      }
+    };
+
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!isMounted) return;
+        
+        // Skip if this is the initial session and we've already handled it
+        if (event === 'INITIAL_SESSION' && initialSessionHandled) return;
+        
+        // Set loading to true when session changes to SIGNED_IN or SIGNED_OUT
+        if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+          setIsLoading(true);
+        }
+        
+        await initializeAuth(session);
+      }
+    );
+
+    // Check for existing session
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!isMounted) return;
+      initialSessionHandled = true;
+      await initializeAuth(session);
     });
 
     return () => {

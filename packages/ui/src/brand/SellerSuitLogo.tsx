@@ -17,7 +17,7 @@ const SellerSuitLogo = ({ size = "md", showText = true }: SellerSuitLogoProps) =
   return (
     <div className="flex items-center gap-2.5">
       <motion.div
-        className="relative grid place-items-center overflow-hidden rounded-lg border border-primary/20 bg-background shadow-sm"
+        className="relative grid place-items-center overflow-hidden"
         style={{ width: icon, height: icon }}
         whileHover={{ y: -1 }}
         transition={{ type: "spring", stiffness: 380, damping: 24 }}

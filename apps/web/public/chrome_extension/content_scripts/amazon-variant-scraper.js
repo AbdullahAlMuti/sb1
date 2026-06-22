@@ -377,7 +377,7 @@
             while (!optEl && dropTries++ < 40) {
               const dropBtn = container && container.querySelector('span[data-action="a-dropdown-button"]');
               if (dropBtn) dropBtn.click();
-              await sleep(50);
+              await sleep(200); // 50ms was faster than Amazon Twister JS DOM updates; 200ms matches swatch-click delay
               optEl = document.querySelector(optEntry);
             }
             if (optEl) optEl.click();
