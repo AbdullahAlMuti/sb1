@@ -31,7 +31,8 @@
     "check:functions": "node scripts/check-edge-functions.mjs",
     "check:local": "npm run env:check:local && npm run security:static && npm run check:functions && npm run typecheck && npm run lint && npm run test && npm run build",
     "release:ready": "npm run check:local",
-    "preview": "npm --workspace @sellersuit/web run preview"
+    "preview": "npm --workspace @sellersuit/web run preview",
+    "smoke": "node smoke_tests.js"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
