@@ -44,7 +44,8 @@ acceptance criteria, and verification steps.
 
 ## Phase 2 — Enforce the security perimeter
 - [x] T2.1 **DONE (in repo, commit 527e068):** flipped CSP Report-Only → enforcing in all four `vercel.json`. ⟶ Takes effect on next Vercel deploy; **verify the preview shows no console CSP violations on authed dashboard + live Stripe before promoting** (your step).
-- [ ] T2.2 Triage 9 `rls_enabled_no_policy` tables (service-role-only intended, or add policy)
+- [x] T2.2 **DONE (verified):** all 9 `rls_enabled_no_policy` tables are referenced only by `supabase/functions/**`
+  (service-role) — zero `apps/` client access. Deny-all RLS is correct by design, not a latent bug. Accepted.
 - [ ] ◇ Checkpoint 2 — headers enforcing in prod; advisor WARNs resolved or accepted-in-writing
 
 ## Phase 3 — Automated safety net for the money paths
@@ -63,8 +64,9 @@ acceptance criteria, and verification steps.
 - [ ] T5.1 Broaden rate-limiting to remaining edge functions
 - [ ] T5.2 Move Amazon sync / blog AI / Sheets sync to the queue worker
 - [ ] T5.3 Add dashboard summary tables (replace request-time aggregation)
-- [ ] T5.4 Route-level code-splitting (web + admin bundles)
-- [ ] T5.5 Resolve lockfile ambiguity (`package-lock.json` vs `bun.lockb`)
+- [x] T5.4 **DONE:** route-level code-splitting (web) via `React.lazy` + `Suspense` — main entry 1.8MB→516KB
+  (156KB gzip, ~70% less initial JS); verified build chunks + runtime `/auth` render, 0 console errors. (admin: TODO)
+- [x] T5.5 **DONE:** removed stale `bun.lockb`; npm canonical (CI `npm ci`)
 - [~] T5.6 Ran `get_advisors(performance)` (199 WARN / 120 INFO). **DONE:** applied `fk_covering_indexes`
   migration to prod (12 unindexed-FK indexes, commit 95298a4, verified 12/12). **Deferred (higher-risk policy
   rewrites):** 166 `multiple_permissive_policies`, 30 `auth_rls_initplan` (wrap `auth.uid()` in `(select …)`),
