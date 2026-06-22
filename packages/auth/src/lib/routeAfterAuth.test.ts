@@ -25,13 +25,16 @@ test('unpaid user with plan token → /checkout (encoded)', () => {
   );
 });
 
-test('unpaid user with no plan token → /pricing (Flow A)', () => {
+test('unpaid user with no plan token → /billing (defaults into trial via /checkout?plan=trial)', () => {
+  // Mirrors resolveNextStep's final fallback. /billing is a real route
+  // (apps/web/src/App.tsx) that redirects to /checkout?plan=trial, so a user
+  // with no chosen plan is funneled into the trial rather than the marketing page.
   assert.equal(
     routeAfterAuth({ canAccess: false, planToken: null, dashboardPath: '/dashboard/ebay' }),
-    '/pricing',
+    '/billing',
   );
   assert.equal(
     routeAfterAuth({ canAccess: false, planToken: '   ', dashboardPath: '/dashboard/ebay' }),
-    '/pricing',
+    '/billing',
   );
 });
