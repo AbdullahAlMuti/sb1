@@ -68,8 +68,9 @@ acceptance criteria, and verification steps.
   web main entry 1.8MB→516KB (156KB gzip, ~70% less); admin 1.77MB→723KB (222KB gzip, ~60% less). Verified
   build chunks + runtime render (`/auth`, admin `/login`) with 0 console errors.
 - [x] T5.5 **DONE:** removed stale `bun.lockb`; npm canonical (CI `npm ci`)
-- [~] T5.6 Ran `get_advisors(performance)` (199 WARN / 120 INFO). **DONE:** applied `fk_covering_indexes`
-  migration to prod (12 unindexed-FK indexes, commit 95298a4, verified 12/12). **Deferred (higher-risk policy
-  rewrites):** 166 `multiple_permissive_policies`, 30 `auth_rls_initplan` (wrap `auth.uid()` in `(select …)`),
-  108 `unused_index` (INFO — candidate drops).
+- [~] T5.6 Ran `get_advisors(performance)` (199 WARN / 120 INFO). **DONE & applied to prod:**
+  (a) `fk_covering_indexes` (12 unindexed-FK indexes, commit 95298a4, verified 12/12);
+  (b) `rls_initplan_optimize` — wrapped `auth.uid()` in `(select …)` on 17 flagged RLS policies
+  (access-neutral; verified stored form). **Still deferred (need careful human review, NOT mechanical):**
+  166 `multiple_permissive_policies` (policy consolidation), 108 `unused_index` (INFO — candidate drops).
 - [ ] ◇ Checkpoint 5 — scale review after first real traffic
