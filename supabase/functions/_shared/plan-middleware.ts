@@ -567,6 +567,15 @@ export async function deductUsage(
   metadata?: Record<string, unknown>
 ): Promise<boolean> {
   try {
+    // The order/seo_* atomic RPCs take an optional defense-in-depth cap (p_max).
+    // validateUserPlan is the primary gate (called before the action); this is a
+    // backstop. Fetch the plan status only for those paths. NOTE: this `status`
+    // was previously referenced but never defined here — an undefined-variable bug
+    // that threw ReferenceError on every order/seo deduction.
+    const status =
+      action === 'order' || action === 'seo_title' || action === 'seo_description'
+        ? await getFullPlanStatus(supabase, userId)
+        : null;
     switch (action) {
       case 'credit': {
         // Atomic deduct: locks profiles row, checks balance, deducts, bumps
@@ -593,7 +602,7 @@ export async function deductUsage(
           p_user_id: userId,
           p_column: 'orders_used',
           p_amount: amount,
-          p_max: status.limits.max_auto_orders > 0 ? status.limits.max_auto_orders : null,
+          p_max: status && status.limits.max_auto_orders > 0 ? status.limits.max_auto_orders : null,
         });
         if (orderErr) {
           console.error('[plan-middleware] deduct_usage_atomic(order) failed:', orderErr.message);
@@ -607,7 +616,7 @@ export async function deductUsage(
           p_user_id: userId,
           p_column: 'seo_titles_used',
           p_amount: amount,
-          p_max: status.limits.max_seo_titles > 0 ? status.limits.max_seo_titles : null,
+          p_max: status && status.limits.max_seo_titles > 0 ? status.limits.max_seo_titles : null,
         });
         if (titleErr) {
           console.error('[plan-middleware] deduct_usage_atomic(seo_title) failed:', titleErr.message);
@@ -621,7 +630,7 @@ export async function deductUsage(
           p_user_id: userId,
           p_column: 'seo_descriptions_used',
           p_amount: amount,
-          p_max: status.limits.max_seo_descriptions > 0 ? status.limits.max_seo_descriptions : null,
+          p_max: status && status.limits.max_seo_descriptions > 0 ? status.limits.max_seo_descriptions : null,
         });
         if (descErr) {
           console.error('[plan-middleware] deduct_usage_atomic(seo_description) failed:', descErr.message);
