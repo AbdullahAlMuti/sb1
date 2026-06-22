@@ -49,13 +49,21 @@ Production scope. `VITE_*` are baked at build time, so a fresh deploy is require
 Supabase → Authentication → Policies (Password) → enable "Leaked password protection". (Clears the last security advisor WARN.)
 
 ### 5. Redeploy edge functions — ONLY after steps 1–2 confirm secrets are set
-This activates the repo's current `plan-middleware` (which calls `deduct_credits_atomic`, now present in prod) and
-the restored `stripe-webhook`/`create-checkout`. **Test in Stripe test mode / a staging key first if possible** —
-a bad billing deploy breaks live checkout.
-- Functions to redeploy: `stripe-webhook`, `create-checkout`, and the plan-middleware consumers
-  (`create-listing`, `generate-titles`, `generate-description`, and any other AI/credit consumers).
-- Verify: one test AI generation deducts exactly one credit (no double-spend); a test checkout writes a
-  `stripe_events` row and lifts limits; replaying the event is a no-op.
+**Deploy requires the Supabase CLI authenticated with a `SUPABASE_ACCESS_TOKEN` (`sbp_…`) — not present in
+this environment, so this step is yours.** Run e.g. `npx supabase functions deploy <name> --project-ref
+ojxzssooylmydystjvdo` (the CLI bundles `_shared` from disk correctly; don't hand-bundle).
+
+**Findings from the 2026-06-22 deploy investigation (so you don't redeploy needlessly):**
+- **Billing functions are ALREADY current — do NOT redeploy** unless you've changed them. Verified
+  `create-checkout` deployed = **v92** with all fixes (server-side priceId match, duplicate-sub guard, trial
+  eligibility). Redeploying current billing functions is pure regression risk.
+- **`ai-image-edit` IS stale and worth deploying** — deployed **v63** has **no credit gating at all** (free AI
+  image edits = billing leak). The repo version adds `validateUserPlan`/`deductUsage('credit')` →
+  `deduct_credits_atomic` (now in prod). This is the one function where the credit migration matters.
+- **`deduct_usage_atomic` order/seo paths**: fixed a `ReferenceError` (undefined `status`) in `plan-middleware`
+  this session (committed) — required before deploying any order/SEO-deducting function.
+- Verify after deploy: AI image edit deducts exactly 1 credit (no double-spend); a blocked user gets 402; a test
+  checkout writes a `stripe_events` row and lifts limits; replaying the event is a no-op.
 
 ### 6. Deploy web/marketing/admin, verify CSP, then promote
 1. Open the Vercel **preview** for branch `chore/prod-readiness` (or after merge). Log in; click through
