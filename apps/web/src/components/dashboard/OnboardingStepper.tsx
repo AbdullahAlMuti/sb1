@@ -38,9 +38,9 @@ const accomplishments: StepOption[] = [
   { id: "niches", label: "Find profitable products and niches" },
   { id: "trends", label: "Find hot trends - before they take off" },
   { id: "competitors", label: "Gather insight on other Competitors" },
-  { id: "listings", label: "Optimize eBay & Amazon listings" },
-  { id: "suppliers", label: "Find reliable suppliers on AliExpress" },
-  { id: "seo", label: "Optimize website for google search" },
+  { id: "listings", label: "List products to eBay faster" },
+  { id: "suppliers", label: "Source products from Amazon or Walmart" },
+  { id: "pricing", label: "Automate pricing and profit margins" },
   { id: "vero", label: "Get alerts, Identify Trademark items" },
   { id: "sellers", label: "Find Top-selling items and sellers" },
 ];

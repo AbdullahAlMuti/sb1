@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Plus, Edit2, Trash2, RefreshCw, Star } from 'lucide-react';
 import { supabase } from '@repo/api-client/supabase/client';
+import { getPlanName, fetchPlanFeatures, deletePlanFeature } from '@/modules/billing/services/billing.service';
 import { Button } from '@repo/ui/components/ui/button';
 import { Input } from '@repo/ui/components/ui/input';
 import { Label } from '@repo/ui/components/ui/label';
@@ -83,21 +84,19 @@ export default function AdminPlanFeatures() {
   }, [planId]);
 
   const fetchPlan = async () => {
-    const { data } = await supabase.from('plans').select('display_name').eq('id', planId!).maybeSingle();
-    if (data) setPlanName(data.display_name);
+    const name = await getPlanName(planId!);
+    if (name) setPlanName(name);
   };
 
   const fetchFeatures = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from('plan_features')
-      .select('*')
-      .eq('plan_id', planId!)
-      .order('group_name')
-      .order('sort_order');
-    if (error) { toast.error('Failed to load features'); }
-    else { setFeatures(data ?? []); }
-    setIsLoading(false);
+    try {
+      setFeatures(await fetchPlanFeatures(planId!));
+    } catch {
+      toast.error('Failed to load features');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const openCreate = () => {
@@ -152,9 +151,13 @@ export default function AdminPlanFeatures() {
 
   const handleDelete = async () => {
     if (!deletingFeature) return;
-    const { error } = await supabase.from('plan_features').delete().eq('id', deletingFeature.id);
-    if (error) { toast.error('Failed to delete feature'); }
-    else { toast.success('Feature deleted'); fetchFeatures(); }
+    try {
+      await deletePlanFeature(deletingFeature.id);
+      toast.success('Feature deleted');
+      fetchFeatures();
+    } catch {
+      toast.error('Failed to delete feature');
+    }
     setDeletingFeature(null);
   };
 

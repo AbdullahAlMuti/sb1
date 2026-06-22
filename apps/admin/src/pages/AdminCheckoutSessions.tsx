@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { RefreshCw, ShoppingCart, Clock, CheckCircle2, XCircle } from 'lucide-react';
-import { supabase } from '@repo/api-client/supabase/client';
+import { fetchCheckoutSessions } from '@/modules/billing/services/billing.service';
 import { Badge } from '@repo/ui/components/ui/badge';
 import { Button } from '@repo/ui/components/ui/button';
 import { Input } from '@repo/ui/components/ui/input';
@@ -67,20 +67,9 @@ export default function AdminCheckoutSessions() {
 
   const fetchSessions = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from('checkout_sessions')
-      .select(`
-        id, user_id, email, selected_plan_id, stripe_checkout_session_id,
-        status, metadata, created_at, updated_at,
-        plans:selected_plan_id (name, display_name)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(500);
-
-    if (error) {
-      toast.error('Failed to load checkout sessions');
-    } else {
-      const mapped: CheckoutSession[] = (data ?? []).map((row: any) => ({
+    try {
+      const data = await fetchCheckoutSessions();
+      const mapped: CheckoutSession[] = data.map((row: any) => ({
         id: row.id,
         user_id: row.user_id,
         email: row.email,
@@ -94,8 +83,11 @@ export default function AdminCheckoutSessions() {
         plan_display_name: row.plans?.display_name ?? null,
       }));
       setSessions(mapped);
+    } catch {
+      toast.error('Failed to load checkout sessions');
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const counts = sessions.reduce<Record<string, number>>((acc, s) => {

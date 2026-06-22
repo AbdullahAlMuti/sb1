@@ -1,11 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { validateUserPlan } from '../_shared/plan-middleware.ts';
 import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
-};
+import { resolveCorsHeaders } from '../_shared/cors.ts';
 
 interface ListingPayload {
   // Support both formats: extension format and direct format
@@ -52,6 +48,7 @@ function extractAsinFromAmazonUrl(url: string | null | undefined): string | null
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req);
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

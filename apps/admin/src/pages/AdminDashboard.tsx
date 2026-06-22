@@ -16,7 +16,7 @@ import { Button } from "@repo/ui/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@repo/ui/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@repo/ui/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@repo/ui/components/ui/tabs";
-import { supabase } from "@repo/api-client/supabase/client";
+import { getAdminDashboardCounts } from "@/modules/admin/services/admin-stats.service";
 import { ActionCenter } from "@/components/admin-dashboard/ActionCenter";
 import { IntegrationWorkQueue, type IntegrationRecord } from "@/components/admin-dashboard/IntegrationWorkQueue";
 import { MetricCard } from "@/components/admin-dashboard/MetricCard";
@@ -131,20 +131,12 @@ export default function AdminDashboard() {
 
     async function loadStats() {
       setIsLoading(true);
-      const [profiles, activeProfiles, listings, orders] = await Promise.all([
-        supabase.from("profiles").select("*", { count: "exact", head: true }),
-        supabase.from("profiles").select("*", { count: "exact", head: true }).eq("is_active", true),
-        supabase.from("listings").select("*", { count: "exact", head: true }),
-        (supabase.from("ebay_orders" as any) as any).select("*", { count: "exact", head: true }),
-      ]);
+      const counts = await getAdminDashboardCounts();
 
       if (!mounted) return;
 
       setStats({
-        totalUsers: profiles.count ?? 0,
-        activeUsers: activeProfiles.count ?? 0,
-        listings: listings.count ?? 0,
-        orders: orders.count ?? 0,
+        ...counts,
         failedJobs: 23,
       });
       setIsLoading(false);

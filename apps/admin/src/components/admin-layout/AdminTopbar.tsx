@@ -2,11 +2,13 @@ import {
   Bell,
   CalendarDays,
   HelpCircle,
+  LogOut,
   Menu,
   Search,
   SlidersHorizontal,
   UserCircle,
 } from "lucide-react";
+import { useAuth } from "@repo/auth/hooks/useAuth";
 import { Button } from "@repo/ui/components/ui/button";
 import { Input } from "@repo/ui/components/ui/input";
 import {
@@ -43,6 +45,19 @@ interface AdminTopbarProps {
 }
 
 export function AdminTopbar({ onOpenMobileSidebar, provider, onProviderChange }: AdminTopbarProps) {
+  const { user, profile, roles, isSuperAdmin, signOut } = useAuth();
+
+  const displayName = profile?.full_name || user?.email || "Admin";
+  const initials = (profile?.full_name || user?.email || "A").trim().charAt(0).toUpperCase();
+  const roleNames = roles.map((r) => r.role);
+  const roleLabel = isSuperAdmin
+    ? "Super Admin"
+    : roleNames.includes("admin")
+      ? "Admin"
+      : roleNames[0]
+        ? roleNames[0].charAt(0).toUpperCase() + roleNames[0].slice(1)
+        : "Member";
+
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="flex min-h-16 items-center gap-3 px-4 lg:px-5">
@@ -128,16 +143,16 @@ export function AdminTopbar({ onOpenMobileSidebar, provider, onProviderChange }:
           <DropdownMenuTrigger asChild>
             <Button type="button" variant="ghost" className="h-11 gap-3 rounded-xl px-2">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
-                A
+                {initials}
               </div>
               <div className="hidden text-left lg:block">
-                <div className="text-sm font-semibold leading-tight text-slate-900">Admin User</div>
-                <div className="text-xs text-slate-500">Super Admin</div>
+                <div className="max-w-[160px] truncate text-sm font-semibold leading-tight text-slate-900">{displayName}</div>
+                <div className="text-xs text-slate-500">{roleLabel}</div>
               </div>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>Admin account</DropdownMenuLabel>
+            <DropdownMenuLabel className="truncate">{displayName}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem>
               <UserCircle className="mr-2 h-4 w-4" />
@@ -145,6 +160,11 @@ export function AdminTopbar({ onOpenMobileSidebar, provider, onProviderChange }:
             </DropdownMenuItem>
             <DropdownMenuItem>Security settings</DropdownMenuItem>
             <DropdownMenuItem>Help center</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => void signOut()} className="text-red-600 focus:text-red-600">
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign out
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

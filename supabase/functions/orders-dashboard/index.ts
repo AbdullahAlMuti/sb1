@@ -1,10 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { enforceActiveSubscription } from "../_shared/plan-middleware.ts";
+import { resolveCorsHeaders } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
 
 type ListRequest = {
   op: "list";
@@ -18,10 +15,10 @@ type ListRequest = {
 
 type RequestBody = ListRequest;
 
-const json = (status: number, body: unknown) =>
+const json = (ch: Record<string,string>, status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...ch, "Content-Type": "application/json" },
   });
 
 const clampInt = (value: unknown, fallback: number, min: number, max: number) => {
@@ -45,11 +42,12 @@ const parseISODate = (value: unknown) => {
 };
 
 Deno.serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) return json(401, { error: "Unauthorized" });
+    if (!authHeader?.startsWith("Bearer ")) return json(corsHeaders, 401, { error: "Unauthorized" });
 
     const token = authHeader.replace("Bearer ", "");
 
@@ -64,14 +62,14 @@ Deno.serve(async (req) => {
 
     const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
     const userId = !claimsError && claimsData?.claims?.sub ? (claimsData.claims.sub as string) : null;
-    if (!userId) return json(401, { error: "Unauthorized" });
+    if (!userId) return json(corsHeaders, 401, { error: "Unauthorized" });
 
     const blockResponse = await enforceActiveSubscription(supabaseAdmin, userId);
     if (blockResponse) return blockResponse;
 
-    if (req.method !== "POST") return json(405, { error: "Method not allowed" });
+    if (req.method !== "POST") return json(corsHeaders, 405, { error: "Method not allowed" });
     const body = (await req.json()) as Partial<RequestBody>;
-    if (body?.op !== "list") return json(400, { error: "Invalid payload" });
+    if (body?.op !== "list") return json(corsHeaders, 400, { error: "Invalid payload" });
 
     const page = clampInt(body.page, 1, 1, 1_000_000);
     const limit = clampInt(body.limit, 50, 1, 200);
@@ -113,10 +111,10 @@ Deno.serve(async (req) => {
 
     if (error) {
       console.error("[orders-dashboard] list error", error);
-      return json(500, { error: "Failed to load orders" });
+      return json(corsHeaders, 500, { error: "Failed to load orders" });
     }
 
-    return json(200, {
+    return json(corsHeaders, 200, {
       orders: data ?? [],
       total: count ?? 0,
       page,
@@ -124,6 +122,6 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     console.error("[orders-dashboard] unhandled", e);
-    return json(500, { error: "Internal error" });
+    return json(corsHeaders, 500, { error: "Internal error" });
   }
 });

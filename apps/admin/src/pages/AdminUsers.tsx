@@ -25,7 +25,12 @@ import {
   Calendar,
   Settings2,
 } from 'lucide-react';
-import { supabase, getFunctionErrorMessage } from '@repo/api-client/supabase/client';
+import { supabase } from '@repo/api-client/supabase/client';
+import {
+  getUsersVerification,
+  updateUserRole as updateUserRoleApi,
+  verifyUserEmail as verifyUserEmailApi,
+} from '@/modules/users/services/users.service';
 import { Button } from '@repo/ui/components/ui/button';
 import { Input } from '@repo/ui/components/ui/input';
 import { Badge } from '@repo/ui/components/ui/badge';
@@ -249,24 +254,7 @@ export default function AdminUsers() {
           .from('user_plans')
           .select('*')
           .in('user_id', userIds) as any,
-        (async () => {
-          if (userIds.length === 0) return { verificationStatuses: {}, userEmails: {} };
-          try {
-            const { data: sessionData } = await supabase.auth.getSession();
-            const { data: verificationData } = await supabase.functions.invoke('admin-get-users-verification', {
-              body: { userIds },
-              headers: {
-                Authorization: `Bearer ${sessionData.session?.access_token}`,
-              },
-            });
-            return {
-              verificationStatuses: verificationData?.verificationStatuses || {},
-              userEmails: verificationData?.userEmails || {}
-            };
-          } catch {
-            return { verificationStatuses: {}, userEmails: {} };
-          }
-        })()
+        getUsersVerification(userIds)
       ]);
 
       const rolesData = rolesResult.data || [];
@@ -343,20 +331,7 @@ export default function AdminUsers() {
         return;
       }
 
-      const { data: sessionData } = await supabase.auth.getSession();
-      
-      const { data, error } = await supabase.functions.invoke('admin-update-role', {
-        body: { userId: selectedUser.id, newRole },
-        headers: {
-          Authorization: `Bearer ${sessionData.session?.access_token}`,
-        },
-      });
-
-      if (error) {
-        const rawErrMsg = await getFunctionErrorMessage(error);
-        throw new Error(rawErrMsg || error.message || 'Failed to update role');
-      }
-      if (data?.error) throw new Error(data.error);
+      await updateUserRoleApi(selectedUser.id, newRole);
 
       setShowRoleDialog(false);
       fetchUsers();
@@ -402,24 +377,15 @@ export default function AdminUsers() {
   const verifyUserEmail = async (userId: string) => {
     setIsVerifyingEmail(userId);
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      
-      const { data, error } = await supabase.functions.invoke('admin-verify-email', {
-        body: { userId },
-        headers: {
-          Authorization: `Bearer ${sessionData.session?.access_token}`,
-        },
-      });
+      const result = await verifyUserEmailApi(userId);
 
-      if (error) throw error;
-
-      if (data.success) {
-        setUsers(users.map(u => 
+      if (result.success) {
+        setUsers(users.map(u =>
           u.id === userId ? { ...u, email_verified: true } : u
         ));
         toast.success('Email verified successfully');
       } else {
-        throw new Error(data.error || 'Failed to verify email');
+        throw new Error(result.error || 'Failed to verify email');
       }
     } catch (error: any) {
       console.error('Error verifying email:', error);

@@ -567,96 +567,77 @@ export async function deductUsage(
   metadata?: Record<string, unknown>
 ): Promise<boolean> {
   try {
+    // The order/seo_* atomic RPCs take an optional defense-in-depth cap (p_max).
+    // validateUserPlan is the primary gate (called before the action); this is a
+    // backstop. Fetch the plan status only for those paths. NOTE: this `status`
+    // was previously referenced but never defined here — an undefined-variable bug
+    // that threw ReferenceError on every order/seo deduction.
+    const status =
+      action === 'order' || action === 'seo_title' || action === 'seo_description'
+        ? await getFullPlanStatus(supabase, userId)
+        : null;
     switch (action) {
-      case 'credit':
-        // Deduct from profiles.credits
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('credits')
-          .eq('id', userId)
-          .single();
-        
-        if (profile) {
-          const newCredits = Math.max(0, (profile.credits ?? 0) - amount);
-          await supabase
-            .from('profiles')
-            .update({ credits: newCredits })
-            .eq('id', userId);
-
-          // Log transaction
-          await supabase.from('credit_transactions').insert({
-            user_id: userId,
-            amount: -amount,
-            balance_after: newCredits,
-            transaction_type: 'usage',
-            description: metadata?.description || 'AI credit usage',
-            metadata,
-          });
-
-          // Also update credits_used in user_plans
-          try {
-            const { data: upCredits } = await supabase
-              .from('user_plans')
-              .select('credits_used')
-              .eq('user_id', userId)
-              .single();
-            if (upCredits) {
-              await supabase
-                .from('user_plans')
-                .update({ credits_used: (upCredits.credits_used ?? 0) + amount })
-                .eq('user_id', userId);
-            }
-          } catch {
-            // Ignore if user_plans record doesn't exist
-          }
+      case 'credit': {
+        // Atomic deduct: locks profiles row, checks balance, deducts, bumps
+        // user_plans.credits_used, and logs credit_transactions in one txn.
+        // Replaces the old non-atomic read-then-write that let concurrent AI
+        // requests overspend. RPC raises (23514) if balance < amount.
+        const { error: rpcErr } = await supabase.rpc('deduct_credits_atomic', {
+          p_user_id: userId,
+          p_amount: amount,
+          p_reason: (metadata?.description as string) || 'AI credit usage',
+          p_metadata: metadata ?? {},
+        });
+        if (rpcErr) {
+          console.error('[plan-middleware] deduct_credits_atomic failed:', rpcErr.message);
+          return false;
         }
         break;
+      }
 
-      case 'order':
-        try {
-          const { data: orderData } = await supabase
-            .from('user_plans')
-            .select('orders_used')
-            .eq('user_id', userId)
-            .single();
-          if (orderData) {
-            await supabase
-              .from('user_plans')
-              .update({ orders_used: (orderData.orders_used ?? 0) + amount })
-              .eq('user_id', userId);
-          }
-        } catch {
-          // Ignore if user_plans record doesn't exist
+      case 'order': {
+        // Atomic increment via FOR UPDATE — replaces non-atomic read-then-write.
+        // Requires migration 20260621000000_deduct_usage_atomic.sql to be applied first.
+        const { error: orderErr } = await supabase.rpc('deduct_usage_atomic', {
+          p_user_id: userId,
+          p_column: 'orders_used',
+          p_amount: amount,
+          p_max: status && status.limits.max_auto_orders > 0 ? status.limits.max_auto_orders : null,
+        });
+        if (orderErr) {
+          console.error('[plan-middleware] deduct_usage_atomic(order) failed:', orderErr.message);
+          return false;
         }
         break;
+      }
 
-      case 'seo_title':
-        const { data: upTitle } = await supabase
-          .from('user_plans')
-          .select('seo_titles_used')
-          .eq('user_id', userId)
-          .single();
-        if (upTitle) {
-          await supabase
-            .from('user_plans')
-            .update({ seo_titles_used: (upTitle.seo_titles_used ?? 0) + amount })
-            .eq('user_id', userId);
+      case 'seo_title': {
+        const { error: titleErr } = await supabase.rpc('deduct_usage_atomic', {
+          p_user_id: userId,
+          p_column: 'seo_titles_used',
+          p_amount: amount,
+          p_max: status && status.limits.max_seo_titles > 0 ? status.limits.max_seo_titles : null,
+        });
+        if (titleErr) {
+          console.error('[plan-middleware] deduct_usage_atomic(seo_title) failed:', titleErr.message);
+          return false;
         }
         break;
+      }
 
-      case 'seo_description':
-        const { data: upDesc } = await supabase
-          .from('user_plans')
-          .select('seo_descriptions_used')
-          .eq('user_id', userId)
-          .single();
-        if (upDesc) {
-          await supabase
-            .from('user_plans')
-            .update({ seo_descriptions_used: (upDesc.seo_descriptions_used ?? 0) + amount })
-            .eq('user_id', userId);
+      case 'seo_description': {
+        const { error: descErr } = await supabase.rpc('deduct_usage_atomic', {
+          p_user_id: userId,
+          p_column: 'seo_descriptions_used',
+          p_amount: amount,
+          p_max: status && status.limits.max_seo_descriptions > 0 ? status.limits.max_seo_descriptions : null,
+        });
+        if (descErr) {
+          console.error('[plan-middleware] deduct_usage_atomic(seo_description) failed:', descErr.message);
+          return false;
         }
         break;
+      }
 
       case 'listing':
         // Listings are counted dynamically, no deduction needed

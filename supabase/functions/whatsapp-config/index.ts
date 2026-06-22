@@ -2,11 +2,8 @@
 // Exposes ONLY non-sensitive WhatsApp settings stored in admin_settings.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.0";
+import { resolveCorsHeaders } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
 
 const KEYS = [
   "support_whatsapp_number",
@@ -28,6 +25,7 @@ function parseBool(val: unknown): boolean {
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req);
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });

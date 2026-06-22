@@ -115,7 +115,9 @@
       'border-radius:8px','font-family:sans-serif','font-size:13px',
       'max-width:360px','box-shadow:0 4px 16px rgba(0,0,0,.3)'
     ].join(';');
-    div.innerHTML = `<strong>SellerSuit variation upload failed:</strong><br>${err.message || err}`;
+    // XSS fix: static HTML for chrome prefix, err.message injected as text node only
+    div.innerHTML = '<strong>SellerSuit variation upload failed:</strong><br>';
+    div.appendChild(document.createTextNode(err.message || String(err)));
     document.body.appendChild(div);
     setTimeout(() => div.remove(), 12000);
   }

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "playwright": false,
+  "playwright-ct": false,
+  "ignore": [
+    "**/playwright.config.ts",
+    "playwright-fixture.ts",
+    "_unused/**",
+    "_audit/**",
+    "dist/**",
+    "apps/web/public/chrome_extension/**",
+    "apps/backup_temp/**"
+  ],
+  "ignoreDependencies": ["lovable-agent-playwright-config"],
+  "ignoreWorkspaces": ["apps/extension"]
+}

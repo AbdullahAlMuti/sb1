@@ -1,11 +1,7 @@
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { resolveCorsHeaders } from '../_shared/cors.ts';
 
 // ── cors / helpers ────────────────────────────────────────────────────────────
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-};
 
 function createServiceClient() {
   return createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '', { auth: { autoRefreshToken: false, persistSession: false } });
@@ -303,6 +299,7 @@ function cleanPrice(price: any): number | null {
 
 // ── main ──────────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req);
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   const json = (body: unknown, status = 200) =>

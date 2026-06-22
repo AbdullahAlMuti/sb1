@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@repo/api-client/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@repo/ui/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@repo/ui/components/ui/table";
 import { Switch } from "@repo/ui/components/ui/switch";
@@ -9,6 +8,14 @@ import { Loader2, Sparkles, User, Settings2, AlertTriangle, Search } from "lucid
 import { toast } from "sonner";
 import { Button } from "@repo/ui/components/ui/button";
 import { Input } from "@repo/ui/components/ui/input";
+import { EmptyState } from "@/modules/admin/components/EmptyState";
+import {
+  getGlobalFeatureControls,
+  getUserFeatureOverrides,
+  updateGlobalFeatureControl,
+  updateUserFeatureOverride,
+  removeUserFeatureOverride,
+} from "@/modules/ebay/services/feature-flags.service";
 
 export default function AdminEbayFeatureControls() {
   const queryClient = useQueryClient();
@@ -28,36 +35,21 @@ export default function AdminEbayFeatureControls() {
   // Fetch Global Controls
   const { data: globalFeatures, isLoading: isLoadingGlobal } = useQuery({
     queryKey: ['ebay-admin-feature-controls-global'],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc('get_ebay_feature_controls_admin');
-      if (error) throw error;
-      return data || [];
-    }
+    queryFn: getGlobalFeatureControls,
   });
 
   // Fetch User Overrides
   const { data: userOverrides, isLoading: isLoadingOverrides } = useQuery({
     queryKey: ['ebay-admin-feature-overrides', debouncedUserId],
-    enabled: isValidUUID(debouncedUserId), 
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc('get_user_feature_overrides_admin', {
-        p_user_id: debouncedUserId
-      });
-      if (error) throw error;
-      return data || [];
-    }
+    enabled: isValidUUID(debouncedUserId),
+    queryFn: () => getUserFeatureOverrides(debouncedUserId),
   });
 
   // Global Mutation
   const updateGlobalMutation = useMutation({
     mutationFn: async ({ featureKey, enabled, reason }: { featureKey: string, enabled: boolean, reason: string }) => {
       if (!reason) throw new Error("A reason is required to change global features.");
-      const { error } = await (supabase as any).rpc('update_ebay_global_feature_control', {
-        p_feature_key: featureKey,
-        p_enabled: enabled,
-        p_reason: reason
-      });
-      if (error) throw error;
+      await updateGlobalFeatureControl({ featureKey, enabled, reason });
     },
     onSuccess: () => {
       toast.success("Global feature updated");
@@ -74,23 +66,12 @@ export default function AdminEbayFeatureControls() {
     mutationFn: async ({ featureKey, enabled, reason, remove }: { featureKey: string, enabled: boolean, reason: string, remove?: boolean }) => {
       if (!isValidUUID(debouncedUserId)) throw new Error("Invalid User UUID format.");
       if (!reason) throw new Error("A reason is required for user overrides.");
-      
-      let error;
+
       if (remove) {
-         ({ error } = await (supabase as any).rpc('remove_user_feature_override', {
-          p_user_id: debouncedUserId,
-          p_feature_key: featureKey,
-          p_reason: reason
-        }));
+        await removeUserFeatureOverride({ userId: debouncedUserId, featureKey, reason });
       } else {
-         ({ error } = await (supabase as any).rpc('update_user_feature_override', {
-          p_user_id: debouncedUserId,
-          p_feature_key: featureKey,
-          p_enabled: enabled,
-          p_reason: reason
-        }));
+        await updateUserFeatureOverride({ userId: debouncedUserId, featureKey, enabled, reason });
       }
-      if (error) throw error;
     },
     onSuccess: () => {
       toast.success("User override updated");
@@ -276,10 +257,11 @@ export default function AdminEbayFeatureControls() {
                 </div>
               )
             ) : (
-              <div className="flex flex-col items-center justify-center p-8 text-center border rounded border-dashed bg-muted/10">
-                <AlertTriangle className="h-8 w-8 text-muted-foreground/50 mb-3" />
-                <p className="text-sm text-muted-foreground">Search for a User UUID to view or apply specific feature overrides.</p>
-              </div>
+              <EmptyState
+                icon={AlertTriangle}
+                title="No user selected"
+                description="Search for a User UUID to view or apply specific feature overrides."
+              />
             )}
           </CardContent>
         </Card>

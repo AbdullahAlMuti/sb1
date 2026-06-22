@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = process.cwd();
-const read = (path) => readFileSync(join(root, path), 'utf8');
+// Normalize CRLF -> LF so string assertions that embed `\n` match on Windows
+// checkouts (config.toml and others are often checked out with CRLF endings).
+const read = (path) => readFileSync(join(root, path), 'utf8').replace(/\r\n/g, '\n');
 
 const checks = [];
 
@@ -98,6 +100,18 @@ check('audited PII payload logs were removed', () => {
     'Email: ${email}',
   ];
   return files.every((file) => forbidden.every((text) => !read(file).includes(text)));
+});
+
+check('stripe-webhook event switch is reachable (not dead code after return)', () => {
+  const source = read('supabase/functions/stripe-webhook/index.ts');
+  // Regression guard: a misplaced brace once put `switch (event.type)` AFTER the
+  // duplicate-event `return`, making every handler dead code. Assert the switch
+  // exists and is NOT immediately preceded by a `});` (the return Response close).
+  const hasSwitch = source.includes('switch (event.type)');
+  const deadCode = /\}\);\s*\n\s*switch \(event\.type\)/.test(source);
+  const releasesClaimOnError = source.includes('claimedEventId') &&
+    source.includes('.from("stripe_events").delete()');
+  return hasSwitch && !deadCode && releasesClaimOnError;
 });
 
 check('Supabase config documents JWT verification exceptions', () => {

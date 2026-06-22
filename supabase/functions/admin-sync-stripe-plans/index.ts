@@ -1,22 +1,18 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "https://esm.sh/stripe@18.5.0";
+import { resolveCorsHeaders } from "../_shared/cors.ts";
 
 // Admin-only replacement for the removed create-stripe-price function.
 // Ensures one Stripe product per active plan (metadata.sellersuit_plan) and
 // the required prices (monthly/yearly recurring, one-time for trial), then
 // writes the price ids back to plans. Idempotent; supports { dryRun: true }.
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
 
-function json(status: number, body: unknown) {
+function json(ch: Record<string,string>, status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...ch, "Content-Type": "application/json" },
   });
 }
 
@@ -66,6 +62,7 @@ function matchExistingPrice(prices: Stripe.Price[], spec: PriceSpec): Stripe.Pri
 }
 
 serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
@@ -73,11 +70,11 @@ serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
-    if (!supabaseUrl || !serviceKey || !anonKey) return json(500, { error: "Supabase env not configured" });
-    if (!stripeKey) return json(500, { error: "STRIPE_SECRET_KEY is not set" });
+    if (!supabaseUrl || !serviceKey || !anonKey) return json(corsHeaders, 500, { error: "Supabase env not configured" });
+    if (!stripeKey) return json(corsHeaders, 500, { error: "STRIPE_SECRET_KEY is not set" });
 
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) return json(401, { error: "No authorization header" });
+    if (!authHeader?.startsWith("Bearer ")) return json(corsHeaders, 401, { error: "No authorization header" });
 
     const supabaseUser = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
@@ -85,7 +82,7 @@ serve(async (req) => {
     });
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: userErr } = await supabaseUser.auth.getUser(token);
-    if (userErr || !userData?.user?.id) return json(401, { error: "Unauthorized" });
+    if (userErr || !userData?.user?.id) return json(corsHeaders, 401, { error: "Unauthorized" });
 
     const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
@@ -96,7 +93,7 @@ serve(async (req) => {
       .select("role")
       .eq("user_id", userData.user.id)
       .in("role", ["admin", "super_admin"]);
-    if (rolesErr || !roles?.length) return json(403, { error: "Admin access required" });
+    if (rolesErr || !roles?.length) return json(corsHeaders, 403, { error: "Admin access required" });
 
     const body = await req.json().catch(() => ({}));
     const dryRun = Boolean(body?.dryRun);
@@ -108,8 +105,8 @@ serve(async (req) => {
       )
       .eq("is_active", true)
       .order("sort_order");
-    if (plansErr) return json(500, { error: `Failed to fetch plans: ${plansErr.message}` });
-    if (!plans?.length) return json(400, { error: "No active plans found" });
+    if (plansErr) return json(corsHeaders, 500, { error: `Failed to fetch plans: ${plansErr.message}` });
+    if (!plans?.length) return json(corsHeaders, 400, { error: "No active plans found" });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     const livemode = stripeKey.startsWith("sk_live_");
@@ -167,7 +164,7 @@ serve(async (req) => {
           actions.push(`would update plans row: ${JSON.stringify(patch)}`);
         } else {
           const { error: patchErr } = await supabaseAdmin.from("plans").update(patch).eq("id", plan.id);
-          if (patchErr) return json(500, { error: `Failed to update plan ${plan.name}: ${patchErr.message}` });
+          if (patchErr) return json(corsHeaders, 500, { error: `Failed to update plan ${plan.name}: ${patchErr.message}` });
           actions.push(`updated plans row: ${JSON.stringify(patch)}`);
         }
       }
@@ -175,10 +172,10 @@ serve(async (req) => {
       report.push({ plan: plan.name, actions });
     }
 
-    return json(200, { ok: true, dryRun, livemode, report });
+    return json(corsHeaders, 200, { ok: true, dryRun, livemode, report });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[ADMIN-SYNC-STRIPE-PLANS]", message);
-    return json(500, { error: message });
+    return json(corsHeaders, 500, { error: message });
   }
 });

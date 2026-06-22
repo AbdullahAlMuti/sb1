@@ -4,17 +4,13 @@
 // Admin-only. Given a topic, returns a structured SEO draft for the editor to refine.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveCorsHeaders } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
 
-function json(status: number, body: unknown) {
+function json(ch: Record<string,string>, status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...ch, "Content-Type": "application/json" },
   });
 }
 
@@ -41,6 +37,7 @@ Return ONLY valid minified JSON in exactly this shape:
 }`;
 
 serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
@@ -49,13 +46,13 @@ serve(async (req) => {
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY") ?? "";
     if (!supabaseUrl || !serviceKey || !anonKey) {
-      return json(500, { error: "Supabase env not configured" });
+      return json(corsHeaders, 500, { error: "Supabase env not configured" });
     }
-    if (!lovableApiKey) return json(500, { error: "AI API key not configured" });
+    if (!lovableApiKey) return json(corsHeaders, 500, { error: "AI API key not configured" });
 
     // --- admin auth ---
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) return json(401, { error: "No authorization header" });
+    if (!authHeader?.startsWith("Bearer ")) return json(corsHeaders, 401, { error: "No authorization header" });
     const token = authHeader.replace("Bearer ", "");
 
     const supabaseUser = createClient(supabaseUrl, anonKey, {
@@ -63,7 +60,7 @@ serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
     const { data: userData, error: userErr } = await supabaseUser.auth.getUser(token);
-    if (userErr || !userData?.user?.id) return json(401, { error: "Unauthorized" });
+    if (userErr || !userData?.user?.id) return json(corsHeaders, 401, { error: "Unauthorized" });
 
     const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
@@ -73,14 +70,14 @@ serve(async (req) => {
       .select("role")
       .eq("user_id", userData.user.id)
       .in("role", ["admin", "super_admin"]);
-    if (!roles || roles.length === 0) return json(403, { error: "Admin access required" });
+    if (!roles || roles.length === 0) return json(corsHeaders, 403, { error: "Admin access required" });
 
     // --- input ---
     const body = await req.json().catch(() => ({}));
     const topic = String(body.topic ?? "").trim();
     const categoryName = String(body.categoryName ?? "").trim();
-    if (!topic) return json(400, { error: "topic is required" });
-    if (topic.length > 500) return json(400, { error: "topic too long" });
+    if (!topic) return json(corsHeaders, 400, { error: "topic is required" });
+    if (topic.length > 500) return json(corsHeaders, 400, { error: "topic too long" });
 
     const userPrompt = `Write a blog article about: "${topic}".${
       categoryName ? `\nCategory: ${categoryName}.` : ""
@@ -104,25 +101,25 @@ serve(async (req) => {
 
     if (!aiResponse.ok) {
       const text = await aiResponse.text();
-      if (aiResponse.status === 429) return json(429, { error: "Rate limit exceeded. Try again shortly." });
-      if (aiResponse.status === 402) return json(402, { error: "AI credits exhausted." });
+      if (aiResponse.status === 429) return json(corsHeaders, 429, { error: "Rate limit exceeded. Try again shortly." });
+      if (aiResponse.status === 402) return json(corsHeaders, 402, { error: "AI credits exhausted." });
       console.error("AI error:", aiResponse.status, text);
-      return json(502, { error: "AI generation failed" });
+      return json(corsHeaders, 502, { error: "AI generation failed" });
     }
 
     const aiData = await aiResponse.json();
     const raw = aiData.choices?.[0]?.message?.content ?? "";
     const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) return json(502, { error: "AI returned no parseable content" });
+    if (!match) return json(corsHeaders, 502, { error: "AI returned no parseable content" });
 
     let parsed: Record<string, unknown>;
     try {
       parsed = JSON.parse(match[0]);
     } catch {
-      return json(502, { error: "AI returned invalid JSON" });
+      return json(corsHeaders, 502, { error: "AI returned invalid JSON" });
     }
 
-    return json(200, {
+    return json(corsHeaders, 200, {
       title: parsed.title ?? topic,
       seoTitle: parsed.seoTitle ?? parsed.title ?? "",
       metaDescription: parsed.metaDescription ?? "",
@@ -133,6 +130,6 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("generate-marketing-post error:", e);
-    return json(500, { error: e instanceof Error ? e.message : "Unknown error" });
+    return json(corsHeaders, 500, { error: e instanceof Error ? e.message : "Unknown error" });
   }
 });

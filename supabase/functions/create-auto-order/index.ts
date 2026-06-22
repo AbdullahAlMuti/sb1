@@ -92,7 +92,16 @@ Deno.serve(async (req) => {
         );
       }
     } catch (err) {
+      // Fail-closed: if we cannot read the kill switch, block the request.
+      // A transient DB error must never silently bypass an admin safety control.
       console.error("[create-auto-order] Failed to evaluate global kill switch setting:", err);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Auto-fulfillment temporarily unavailable — could not verify system status. Please retry in a moment.",
+        }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const userLimit = await checkRateLimit(supabase, {

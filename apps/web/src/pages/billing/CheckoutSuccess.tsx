@@ -376,9 +376,19 @@ export default function CheckoutSuccess() {
             <h1 className="font-display text-xl font-bold text-gray-900 mb-2">
               Still confirming your payment
             </h1>
-            <p className="text-gray-500 mb-6 max-w-xs mx-auto text-xs sm:text-sm leading-relaxed">
-              If you completed payment, it may still be processing — this can take
-              a minute. You can check again, or revisit your plan selection.
+            <p className="text-gray-500 mb-4 max-w-xs mx-auto text-xs sm:text-sm leading-relaxed">
+              Your payment was received. If your plan hasn't activated yet, it
+              will update automatically within <strong>10 minutes</strong>.
+            </p>
+            <p className="text-gray-400 mb-6 max-w-xs mx-auto text-xs leading-relaxed">
+              Still not activated after 10 minutes?{' '}
+              <a
+                href="mailto:support@sellersuit.com"
+                className="text-emerald-600 underline hover:text-emerald-700"
+              >
+                Contact support
+              </a>{' '}
+              and we'll sort it out right away.
             </p>
             <div className="flex flex-col gap-2.5 max-w-xs mx-auto">
               <Button

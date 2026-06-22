@@ -1,11 +1,8 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
 import { checkRateLimit, getClientIp, rateLimitResponse, sha256 } from "../_shared/rate-limit.ts";
+import { resolveCorsHeaders } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
 
 const ADMIN_PANEL_ROLES = new Set(["admin", "super_admin", "moderator", "staff"]);
 const USER_PANEL_ROLE_ERROR =
@@ -17,10 +14,10 @@ const OTP_TTL_MS = 15 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 const OTP_LOCKOUT_MS = 15 * 60 * 1000;
 
-function jsonResponse(body: Record<string, unknown>, status = 200): Response {
+function jsonResponse(ch: Record<string,string>, body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...ch, "Content-Type": "application/json" },
   });
 }
 
@@ -165,6 +162,7 @@ async function sendVerificationEmail(email: string, verificationCode: string) {
 }
 
 serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -178,7 +176,7 @@ serve(async (req) => {
     const email = normalizeEmail(rawEmail);
 
     if (!email) {
-      return jsonResponse({ error: "Email is required" }, 400);
+      return jsonResponse(corsHeaders, { error: "Email is required" }, 400);
     }
 
     const rateLimit = await enforceAuthRateLimits(supabaseAdmin, req, String(action || "unknown"), email);
@@ -189,12 +187,12 @@ serve(async (req) => {
 
     if (action === "validate-login-context") {
       if (loginContext !== "user" && loginContext !== "admin") {
-        return jsonResponse({ error: "Invalid login context" }, 400);
+        return jsonResponse(corsHeaders, { error: "Invalid login context" }, 400);
       }
 
       const user = await findUserByEmail(supabaseAdmin, email);
       if (!user) {
-        return jsonResponse({ success: true });
+        return jsonResponse(corsHeaders, { success: true });
       }
 
       const { data: profile, error: profileError } = await supabaseAdmin
@@ -205,11 +203,11 @@ serve(async (req) => {
       if (profileError) throw profileError;
 
       if (profile && profile.is_active === false) {
-        return jsonResponse({ error: "This account is inactive. Please contact support." }, 403);
+        return jsonResponse(corsHeaders, { error: "This account is inactive. Please contact support." }, 403);
       }
 
       if (user.banned_until && new Date(user.banned_until) > new Date()) {
-        return jsonResponse({ error: "This account is currently disabled. Please contact support." }, 403);
+        return jsonResponse(corsHeaders, { error: "This account is currently disabled. Please contact support." }, 403);
       }
 
       const { data: roles, error: rolesError } = await supabaseAdmin
@@ -222,19 +220,19 @@ serve(async (req) => {
       const hasAdminPanelRole = roleNames.some((role: string) => ADMIN_PANEL_ROLES.has(role));
 
       if (loginContext === "user" && hasAdminPanelRole) {
-        return jsonResponse({ error: USER_PANEL_ROLE_ERROR, code: "INVALID_LOGIN_PANEL" }, 403);
+        return jsonResponse(corsHeaders, { error: USER_PANEL_ROLE_ERROR, code: "INVALID_LOGIN_PANEL" }, 403);
       }
 
       if (loginContext === "admin" && !hasAdminPanelRole) {
-        return jsonResponse({ error: ADMIN_PANEL_ROLE_ERROR, code: "INVALID_LOGIN_PANEL" }, 403);
+        return jsonResponse(corsHeaders, { error: ADMIN_PANEL_ROLE_ERROR, code: "INVALID_LOGIN_PANEL" }, 403);
       }
 
-      return jsonResponse({ success: true });
+      return jsonResponse(corsHeaders, { success: true });
     }
 
     if (action === "signup") {
       if (!password) {
-        return jsonResponse({ error: "Password is required for signup" }, 400);
+        return jsonResponse(corsHeaders, { error: "Password is required for signup" }, 400);
       }
 
       const existingUser = await findUserByEmail(supabaseAdmin, email);
@@ -242,7 +240,7 @@ serve(async (req) => {
 
       if (existingUser) {
         if (existingUser.email_confirmed_at) {
-          return jsonResponse({ error: "This email is already registered. Please log in instead." }, 400);
+          return jsonResponse(corsHeaders, { error: "This email is already registered. Please log in instead." }, 400);
         }
 
         console.log(`Updating unconfirmed user: ${existingUser.id}`);
@@ -302,17 +300,17 @@ serve(async (req) => {
         if (updateError) throw updateError;
       }
 
-      return jsonResponse({ success: true, message: "Signup successful" });
+      return jsonResponse(corsHeaders, { success: true, message: "Signup successful" });
     }
 
     if (action === "verify") {
       if (typeof code !== "string" || !/^\d{6}$/.test(code)) {
-        return jsonResponse({ error: "Invalid verification code" }, 400);
+        return jsonResponse(corsHeaders, { error: "Invalid verification code" }, 400);
       }
 
       const user = await findUserByEmail(supabaseAdmin, email);
       if (!user) {
-        return jsonResponse({ error: "Invalid verification code" }, 400);
+        return jsonResponse(corsHeaders, { error: "Invalid verification code" }, 400);
       }
 
       const { data: codeRecord, error: codeError } = await supabaseAdmin
@@ -326,12 +324,12 @@ serve(async (req) => {
 
       if (codeError) throw codeError;
       if (!codeRecord) {
-        return jsonResponse({ error: "Invalid verification code" }, 400);
+        return jsonResponse(corsHeaders, { error: "Invalid verification code" }, 400);
       }
 
       const now = new Date();
       if (codeRecord.locked_until && new Date(codeRecord.locked_until) > now) {
-        return jsonResponse({ error: "Too many verification attempts. Please try again later." }, 429);
+        return jsonResponse(corsHeaders, { error: "Too many verification attempts. Please try again later." }, 429);
       }
 
       if (new Date(codeRecord.expires_at) < now) {
@@ -341,7 +339,7 @@ serve(async (req) => {
           .eq("user_id", user.id)
           .eq("code", codeRecord.code)
           .eq("used", false);
-        return jsonResponse({ error: "Verification code has expired" }, 400);
+        return jsonResponse(corsHeaders, { error: "Verification code has expired" }, 400);
       }
 
       const submittedCodeHash = await hashOtp(user.id, email, code);
@@ -362,7 +360,7 @@ serve(async (req) => {
           .eq("code", codeRecord.code)
           .eq("used", false);
 
-        return jsonResponse(
+        return jsonResponse(corsHeaders, 
           {
             error: lockedUntil
               ? "Too many verification attempts. Please try again later."
@@ -420,26 +418,26 @@ serve(async (req) => {
           .eq("id", user.id);
       }
 
-      return jsonResponse({ success: true, message: "Email verified successfully" });
+      return jsonResponse(corsHeaders, { success: true, message: "Email verified successfully" });
     }
 
     if (action === "resend") {
       const user = await findUserByEmail(supabaseAdmin, email);
       if (!user) {
-        return jsonResponse({ error: "User not found" }, 404);
+        return jsonResponse(corsHeaders, { error: "User not found" }, 404);
       }
 
       const verificationCode = generateOtpCode();
       await storeOtpCode(supabaseAdmin, user.id, email, verificationCode);
       await sendVerificationEmail(email, verificationCode);
 
-      return jsonResponse({ success: true, message: "Verification code resent successfully" });
+      return jsonResponse(corsHeaders, { success: true, message: "Verification code resent successfully" });
     }
 
-    return jsonResponse({ error: "Invalid action" }, 400);
+    return jsonResponse(corsHeaders, { error: "Invalid action" }, 400);
   } catch (error: unknown) {
     console.error("[auth-otp] Error:", error);
     const message = error instanceof Error ? error.message : "An internal error occurred";
-    return jsonResponse({ error: message }, 500);
+    return jsonResponse(corsHeaders, { error: message }, 500);
   }
 });
