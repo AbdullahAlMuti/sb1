@@ -19,6 +19,14 @@ acceptance criteria, and verification steps.
   `supabase/migrations/20260620120000_deduct_credits_atomic.sql` to prod **before** redeploying any function
   that uses the credit path, or AI credit deduction errors. Migration is additive (`CREATE OR REPLACE`,
   `service_role`-only) and safe.
+- **⚠ NEW security finding: `deduct_usage_atomic` IDOR.** It's a SECURITY DEFINER counter-mutator with **no
+  role guard**, currently EXECUTE-able by any `authenticated` user with an arbitrary `p_user_id` (its lockdown
+  was missed). Folded into the new lockdown migration below (restrict to `service_role`).
+- **Authored reviewed migration `20260622000000_lockdown_definer_execute_grants.sql`** (Phase 1 T1.4) —
+  NOT applied. Revokes `anon` from 22 admin/user RPCs (keeps `authenticated`+`service_role`, they self-guard),
+  revokes all client roles from 4 trigger fns, locks `deduct_usage_atomic` to `service_role`, pins
+  `is_valid_ebay_feature` search_path. **Leaves `is_admin`/`has_role` alone — 41 RLS policies depend on them**
+  (verified). Apply on a preview branch + smoke admin before promoting.
 
 ## Phase 0 — Make the regression gate real
 - [ ] T0.1 Land CI on GitHub (`workflow` scope + `git add -f .github/`, or recreate via web UI) — *needs your token scope*
