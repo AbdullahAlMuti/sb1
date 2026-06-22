@@ -35,10 +35,11 @@ acceptance criteria, and verification steps.
 - [ ] ◇ Checkpoint 0 — CI required-status enabled on `main` (blocked on T0.1)
 
 ## Phase 1 — Production config, secrets & repo↔prod reconciliation  (critical path)
-- [ ] T1.1 Set all prod env/secrets + redeploy (Turnstile key, Sentry DSN, Stripe sk_live, Resend, origins, ENVIRONMENT)
-- [ ] T1.2 Apply migration drift to prod (`deduct_credits_atomic`) + deploy `stripe-webhook` / `create-checkout`
-- [ ] T1.3 Register Stripe LIVE webhook + `STRIPE_WEBHOOK_SECRET`; live checkout + cancel end-to-end
-- [ ] T1.4 Enable leaked-password protection; revoke `anon`/`authenticated` EXECUTE on 28 definer funcs (or document); pin last `search_path`
+- [ ] T1.1 Set all prod env/secrets + redeploy (Turnstile key, Sentry DSN, Stripe sk_live, Resend, origins, ENVIRONMENT) — *your dashboard step*
+- [x] T1.2a **APPLIED to prod (2026-06-22):** `deduct_credits_atomic` migration — drift fixed; verified anon=F/auth=F/service=T. ⟶ still TODO: redeploy `stripe-webhook` / `create-checkout` (your step)
+- [ ] T1.3 Register Stripe LIVE webhook + `STRIPE_WEBHOOK_SECRET`; live checkout + cancel end-to-end — *your dashboard step*
+- [x] T1.4a **APPLIED to prod (2026-06-22):** `lockdown_definer_execute_grants` migration — anon definer WARNs 28→2, search_path 1→0, `deduct_usage_atomic` IDOR closed. Verified grant state matches intent; `is_admin`/`has_role` left (41 RLS policies). Remaining 24 `authenticated` WARNs are self-guarding admin RPCs = accepted.
+- [ ] T1.4b Enable **leaked-password protection** — Supabase Auth dashboard toggle (not DDL); *your step*. Advisor still WARNs.
 - [ ] ◇ Checkpoint 1 — production smoke GO/NO-GO (register→verify→pair→scrape→list→pay→cancel)
 
 ## Phase 2 — Enforce the security perimeter
