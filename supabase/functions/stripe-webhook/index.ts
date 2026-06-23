@@ -22,6 +22,14 @@ serve(async (req) => {
   const stripeKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
   const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
 
+  if (!stripeKey) {
+    logStep("MISSING STRIPE_SECRET_KEY — webhook not configured");
+    return new Response(JSON.stringify({ error: "Payment provider not configured" }), {
+      status: 503,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   // SECURITY: Enforce webhook signature verification in production
   const isDevelopment = Deno.env.get("ENVIRONMENT") === "development";
   if (!webhookSecret && !isDevelopment) {

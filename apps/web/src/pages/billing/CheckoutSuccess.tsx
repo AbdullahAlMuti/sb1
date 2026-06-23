@@ -44,7 +44,7 @@ export default function CheckoutSuccess() {
   const { checkSubscription, planName, access } = useSubscription();
   const [status, setStatus] = useState<'verifying' | 'success' | 'pending'>('verifying');
   const [retryCount, setRetryCount] = useState(0);
-  const maxRetries = 6;
+  const maxRetries = import.meta.env.DEV ? 12 : 6;
 
   const [sessionDetails, setSessionDetails] = useState<CheckoutSessionDetails | null>(null);
   const [copied, setCopied] = useState(false);
@@ -95,7 +95,7 @@ export default function CheckoutSuccess() {
       setRetryCount((prev) => prev + 1);
     };
 
-    const delay = retryCount === 0 ? 2500 : 2000;
+    const delay = retryCount === 0 ? 3000 : (import.meta.env.DEV ? 2500 : 2000);
     const timer = setTimeout(verifySubscription, delay);
     return () => clearTimeout(timer);
   }, [user, authLoading, retryCount, isSuccess, checkSubscription, refreshProfile, navigate]);

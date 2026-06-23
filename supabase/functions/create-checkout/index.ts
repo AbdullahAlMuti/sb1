@@ -94,6 +94,15 @@ serve(async (req) => {
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const stripeKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
+
+  if (!stripeKey) {
+    logStep("MISSING STRIPE_SECRET_KEY — function not configured");
+    return new Response(JSON.stringify({ error: "Payment provider not configured. Contact support." }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 503,
+    });
+  }
+
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
 
   try {
