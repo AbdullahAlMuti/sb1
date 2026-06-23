@@ -8,17 +8,15 @@ import { Label } from "@repo/ui/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@repo/ui/components/ui/select";
 import { Badge } from "@repo/ui/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@repo/ui/components/ui/tabs";
-import { Switch } from "@repo/ui/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@repo/api-client/supabase/client";
 import DOMPurify from "dompurify";
 import {
   Save, Key, Brain, Wand2, RefreshCw, FileText, Puzzle, Eye, EyeOff,
-  Settings2, FlaskConical, Loader2, Copy, Check, Zap, CheckCircle, XCircle,
-  ShieldCheck, Bot, ClipboardList,
+  FlaskConical, Loader2, Copy, Check, Zap, CheckCircle, XCircle,
+  ShieldCheck, ClipboardList,
 } from "lucide-react";
 import AdminExtensionControl from "./AdminExtensionControl";
-import AdminAISettings from "./AdminAISettings";
 import AdminDescriptionConfig from "./AdminDescriptionConfig";
 
 interface ExtensionSettings {
@@ -26,10 +24,7 @@ interface ExtensionSettings {
   api_key: string;
   model: string;
   title_prompt: string;
-  description_prompt: string;
-  enable_auto_scrape: boolean;
-  scrape_delay_ms: number;
-  max_titles_count: number;
+  title_count: number;
 }
 
 interface TestProduct {
@@ -82,46 +77,12 @@ Return ONLY a JSON object:
   ]
 }`;
 
-const DEFAULT_DESCRIPTION_PROMPT = `Transform the following Amazon product data into a professional eBay listing description.
-
-REQUIREMENTS:
-- Remove all Amazon-specific terms (Prime, Subscribe & Save, Amazon's Choice, etc.)
-- Create a compelling, professional description
-- Use HTML formatting for eBay (allowed tags: <b>, <br>, <ul>, <li>, <p>)
-- Include all key product features and specifications
-- Add standard seller sections at the bottom
-
-STRUCTURE YOUR RESPONSE AS:
-1. Opening hook (1-2 sentences)
-2. Key Features (bullet points)
-3. Product Specifications
-4. What's Included
-5. Shipping & Handling
-6. Returns Policy
-7. Contact Information
-
-PRODUCT DATA:
-Title: {title}
-Brand: {brand}
-Category: {category}
-Original Description: {description}
-Bullet Points: {bulletPoints}
-Features: {features}
-Specifications: {specifications}
-Condition: {condition}
-Price: {price}
-
-Generate the eBay description in clean HTML format. Do not include any markdown code blocks, just raw HTML.`;
-
 const DEFAULT_SETTINGS: ExtensionSettings = {
   api_provider: 'lovable',
   api_key: '',
   model: 'google/gemini-2.5-flash',
   title_prompt: DEFAULT_TITLE_PROMPT,
-  description_prompt: DEFAULT_DESCRIPTION_PROMPT,
-  enable_auto_scrape: true,
-  scrape_delay_ms: 1000,
-  max_titles_count: 3,
+  title_count: 3,
 };
 
 const SAMPLE_PRODUCT: TestProduct = {
@@ -135,8 +96,8 @@ const SAMPLE_PRODUCT: TestProduct = {
 };
 
 const VALID_TABS = [
-  "api-config", "title-prompt", "description", "settings", "test",
-  "extension-control", "ai-automation", "description-config",
+  "api-config", "title-prompt", "test",
+  "extension-control", "description-config",
 ] as const;
 type TabValue = typeof VALID_TABS[number];
 
@@ -174,8 +135,7 @@ export default function AdminExtension() {
         .select('key, value')
         .in('key', [
           'ext_ai_provider', 'ext_ai_api_key', 'ext_ai_model',
-          'ext_title_prompt', 'ext_description_prompt',
-          'ext_enable_auto_scrape', 'ext_scrape_delay_ms', 'ext_max_titles_count'
+          'ext_title_prompt', 'ext_title_count',
         ]);
 
       if (error) throw error;
@@ -191,10 +151,7 @@ export default function AdminExtension() {
           api_key: settingsMap['ext_ai_api_key'] || '',
           model: settingsMap['ext_ai_model'] || DEFAULT_SETTINGS.model,
           title_prompt: settingsMap['ext_title_prompt'] || DEFAULT_SETTINGS.title_prompt,
-          description_prompt: settingsMap['ext_description_prompt'] || DEFAULT_SETTINGS.description_prompt,
-          enable_auto_scrape: settingsMap['ext_enable_auto_scrape'] === 'true',
-          scrape_delay_ms: parseInt(settingsMap['ext_scrape_delay_ms']) || DEFAULT_SETTINGS.scrape_delay_ms,
-          max_titles_count: parseInt(settingsMap['ext_max_titles_count']) || DEFAULT_SETTINGS.max_titles_count,
+          title_count: parseInt(settingsMap['ext_title_count']) || DEFAULT_SETTINGS.title_count,
         });
       }
     } catch (error) {
@@ -233,10 +190,7 @@ export default function AdminExtension() {
         saveSetting('ext_ai_api_key', settings.api_key),
         saveSetting('ext_ai_model', settings.model),
         saveSetting('ext_title_prompt', settings.title_prompt),
-        saveSetting('ext_description_prompt', settings.description_prompt),
-        saveSetting('ext_enable_auto_scrape', settings.enable_auto_scrape.toString()),
-        saveSetting('ext_scrape_delay_ms', settings.scrape_delay_ms.toString()),
-        saveSetting('ext_max_titles_count', settings.max_titles_count.toString()),
+        saveSetting('ext_title_count', settings.title_count.toString()),
       ]);
       toast.success('Extension settings saved successfully');
     } catch (error) {
@@ -438,14 +392,6 @@ export default function AdminExtension() {
               <Wand2 className="h-4 w-4" />
               Title Prompt
             </TabsTrigger>
-            <TabsTrigger value="description" className="gap-2 whitespace-nowrap">
-              <FileText className="h-4 w-4" />
-              Description
-            </TabsTrigger>
-            <TabsTrigger value="settings" className="gap-2 whitespace-nowrap">
-              <Settings2 className="h-4 w-4" />
-              Settings
-            </TabsTrigger>
             <TabsTrigger value="test" className="gap-2 whitespace-nowrap">
               <FlaskConical className="h-4 w-4" />
               Test
@@ -455,10 +401,6 @@ export default function AdminExtension() {
             <TabsTrigger value="extension-control" className="gap-2 whitespace-nowrap">
               <ShieldCheck className="h-4 w-4" />
               Extension Control
-            </TabsTrigger>
-            <TabsTrigger value="ai-automation" className="gap-2 whitespace-nowrap">
-              <Bot className="h-4 w-4" />
-              AI Automation
             </TabsTrigger>
             <TabsTrigger value="description-config" className="gap-2 whitespace-nowrap">
               <ClipboardList className="h-4 w-4" />
@@ -629,6 +571,21 @@ export default function AdminExtension() {
                 </p>
               </div>
 
+              <div className="space-y-2 max-w-xs">
+                <Label htmlFor="title_count">Titles to Generate</Label>
+                <Input
+                  id="title_count"
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={settings.title_count}
+                  onChange={(e) => setSettings({ ...settings, title_count: parseInt(e.target.value) || 3 })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Number of title variations the AI returns (1-10)
+                </p>
+              </div>
+
               <div className="flex gap-3">
                 <Button onClick={handleSave} disabled={saving}>
                   <Save className="h-4 w-4 mr-2" />
@@ -641,126 +598,6 @@ export default function AdminExtension() {
                   Reset to Default
                 </Button>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ── Description Prompt ───────────────────────────────────────────────── */}
-        <TabsContent value="description" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Description Generation Prompt
-              </CardTitle>
-              <CardDescription>
-                Customize the prompt used by the extension to generate eBay descriptions
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="description-prompt">Prompt Template</Label>
-                <Textarea
-                  id="description-prompt"
-                  value={settings.description_prompt}
-                  onChange={(e) => setSettings({ ...settings, description_prompt: e.target.value })}
-                  rows={20}
-                  className="font-mono text-sm"
-                />
-                <div className="flex flex-wrap gap-2 mt-2">
-                  <Badge variant="outline">{'{title}'}</Badge>
-                  <Badge variant="outline">{'{description}'}</Badge>
-                  <Badge variant="outline">{'{brand}'}</Badge>
-                  <Badge variant="outline">{'{category}'}</Badge>
-                  <Badge variant="outline">{'{bulletPoints}'}</Badge>
-                  <Badge variant="outline">{'{features}'}</Badge>
-                  <Badge variant="outline">{'{specifications}'}</Badge>
-                  <Badge variant="outline">{'{condition}'}</Badge>
-                  <Badge variant="outline">{'{price}'}</Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Use placeholders above to insert Amazon product data into your prompt
-                </p>
-              </div>
-
-              <div className="flex gap-3">
-                <Button onClick={handleSave} disabled={saving}>
-                  <Save className="h-4 w-4 mr-2" />
-                  {saving ? 'Saving...' : 'Save Prompt'}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setSettings({ ...settings, description_prompt: DEFAULT_DESCRIPTION_PROMPT })}
-                >
-                  Reset to Default
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ── Settings ─────────────────────────────────────────────────────────── */}
-        <TabsContent value="settings" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings2 className="h-5 w-5" />
-                Extension Behavior Settings
-              </CardTitle>
-              <CardDescription>
-                Configure how the Chrome extension behaves when scraping and generating content
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Auto-Scrape on Page Load</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Automatically scrape product data when visiting Amazon pages
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.enable_auto_scrape}
-                  onCheckedChange={(checked) => setSettings({ ...settings, enable_auto_scrape: checked })}
-                />
-              </div>
-
-              <div className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="scrape_delay">Scrape Delay (ms)</Label>
-                  <Input
-                    id="scrape_delay"
-                    type="number"
-                    min={500}
-                    max={5000}
-                    value={settings.scrape_delay_ms}
-                    onChange={(e) => setSettings({ ...settings, scrape_delay_ms: parseInt(e.target.value) || 1000 })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Delay before auto-scraping (500-5000ms)
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="max_titles">Max Titles to Generate</Label>
-                  <Input
-                    id="max_titles"
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={settings.max_titles_count}
-                    onChange={(e) => setSettings({ ...settings, max_titles_count: parseInt(e.target.value) || 3 })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Number of title variations to generate (1-10)
-                  </p>
-                </div>
-              </div>
-
-              <Button onClick={handleSave} disabled={saving}>
-                <Save className="h-4 w-4 mr-2" />
-                {saving ? 'Saving...' : 'Save Settings'}
-              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -960,11 +797,6 @@ export default function AdminExtension() {
         {/* ── Extension Control ─────────────────────────────────────────────────── */}
         <TabsContent value="extension-control" className="space-y-6">
           <AdminExtensionControl />
-        </TabsContent>
-
-        {/* ── AI Automation ─────────────────────────────────────────────────────── */}
-        <TabsContent value="ai-automation" className="space-y-6">
-          <AdminAISettings />
         </TabsContent>
 
         {/* ── Description Config ────────────────────────────────────────────────── */}

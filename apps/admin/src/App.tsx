@@ -23,7 +23,7 @@ const AdminAudit = lazy(() => import("./pages/AdminAudit"));
 const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 const AdminUsage = lazy(() => import("./pages/AdminUsage"));
 const AdminRoles = lazy(() => import("./pages/AdminRoles"));
-// AdminAISettings and AdminDescriptionConfig are embedded inside AdminExtension; no top-level lazy needed.
+// AdminDescriptionConfig is embedded inside AdminExtension; no top-level lazy needed.
 const AdminBestSelling = lazy(() => import("./pages/AdminBestSelling"));
 const AdminMustSell = lazy(() => import("./pages/AdminMustSell"));
 const AdminExtension = lazy(() => import("./pages/AdminExtension"));
@@ -69,8 +69,8 @@ const AdminRouteChildren = () => (
     <Route path="checkout-sessions" element={<AdminCheckoutSessions />} />
     <Route path="usage" element={<AdminUsage />} />
     {/* Extension-related routes: old direct paths redirect into the unified Extension Setup tab */}
-    <Route path="ai" element={<Navigate to="/extension?tab=ai-automation" replace />} />
-    <Route path="ai-settings" element={<Navigate to="/extension?tab=ai-automation" replace />} />
+    <Route path="ai" element={<Navigate to="/extension?tab=api-config" replace />} />
+    <Route path="ai-settings" element={<Navigate to="/extension?tab=api-config" replace />} />
     <Route path="description-config" element={<Navigate to="/extension?tab=description-config" replace />} />
     <Route path="extension-control" element={<Navigate to="/extension?tab=extension-control" replace />} />
     {/* Legacy prompts CRUD removed (dead `prompts` table, no generator read it) */}
