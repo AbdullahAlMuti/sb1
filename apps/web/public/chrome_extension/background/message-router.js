@@ -714,7 +714,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         const tokenData = await chrome.storage.local.get(['saasToken']);
-        const resp = await fetch(`${urls.SUPABASE_FUNCTIONS}/generate-description`, {
+        // Uses generate-description-v2 (identical contract to v1, plus per-user
+        // rate limiting + OpenAI env-key fallback). v1 is retained only for
+        // already-installed extension builds; see its index.ts deprecation note.
+        const resp = await fetch(`${urls.SUPABASE_FUNCTIONS}/generate-description-v2`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': apiKeys.SUPABASE_ANON, 'Authorization': `Bearer ${tokenData.saasToken}` },
           body: JSON.stringify(request.productData)
