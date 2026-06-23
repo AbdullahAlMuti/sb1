@@ -297,7 +297,7 @@ export default function AdminExtension() {
     setGeneratingDescription(true);
     setGeneratedDescription('');
     try {
-      const { data, error } = await supabase.functions.invoke('generate-description', {
+      const { data, error } = await supabase.functions.invoke('generate-description-v2', {
         body: {
           title: testProduct.title,
           brand: testProduct.brand,

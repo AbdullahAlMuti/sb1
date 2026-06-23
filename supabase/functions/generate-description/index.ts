@@ -1,3 +1,9 @@
+// DEPRECATED — superseded by `generate-description-v2` (identical contract,
+// plus per-user rate limiting + OpenAI env-key fallback). All current source
+// callers point at v2. This function is RETAINED AND DEPLOYED only because
+// already-installed extension builds still dispatch GENERATE_DESCRIPTION to it.
+// SAFE TO DELETE once the v2-targeting extension build has fully rolled out via
+// the Chrome Web Store (no v1 traffic in edge logs). Do NOT undeploy before then.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from '../_shared/extension-session.ts';
 import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';

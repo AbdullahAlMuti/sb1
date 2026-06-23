@@ -353,7 +353,7 @@ export default function ExtensionViewer() {
                     { name: "auth-status", method: "GET", description: "Check authentication status" },
                     { name: "get-listings", method: "GET", description: "Fetch user listings" },
                     { name: "dashboard-overview", method: "GET", description: "Get dashboard stats" },
-                    { name: "generate-description", method: "POST", description: "Generate AI descriptions" },
+                    { name: "generate-description-v2", method: "POST", description: "Generate AI descriptions" },
                     { name: "sync-listing", method: "POST", description: "Sync listing data" },
                   ].map((endpoint) => (
                     <div
