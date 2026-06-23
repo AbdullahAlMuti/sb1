@@ -23,7 +23,6 @@ const AdminAudit = lazy(() => import("./pages/AdminAudit"));
 const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 const AdminUsage = lazy(() => import("./pages/AdminUsage"));
 const AdminRoles = lazy(() => import("./pages/AdminRoles"));
-const AdminPrompts = lazy(() => import("./pages/AdminPrompts"));
 // AdminAISettings and AdminDescriptionConfig are embedded inside AdminExtension; no top-level lazy needed.
 const AdminBestSelling = lazy(() => import("./pages/AdminBestSelling"));
 const AdminMustSell = lazy(() => import("./pages/AdminMustSell"));
@@ -74,8 +73,9 @@ const AdminRouteChildren = () => (
     <Route path="ai-settings" element={<Navigate to="/extension?tab=ai-automation" replace />} />
     <Route path="description-config" element={<Navigate to="/extension?tab=description-config" replace />} />
     <Route path="extension-control" element={<Navigate to="/extension?tab=extension-control" replace />} />
-    <Route path="automation" element={<AdminPrompts />} />
-    <Route path="prompts" element={<AdminPrompts />} />
+    {/* Legacy prompts CRUD removed (dead `prompts` table, no generator read it) */}
+    <Route path="automation" element={<Navigate to="/extension?tab=title-prompt" replace />} />
+    <Route path="prompts" element={<Navigate to="/extension?tab=title-prompt" replace />} />
     <Route path="extension" element={<AdminExtension />} />
     <Route path="notifications" element={<AdminNotices />} />
     <Route path="notices" element={<AdminNotices />} />
