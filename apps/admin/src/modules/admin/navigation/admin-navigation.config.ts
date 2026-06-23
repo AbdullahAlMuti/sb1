@@ -62,21 +62,25 @@ export interface NavGroup {
 }
 
 export const adminNavigation: NavGroup[] = [
+  // ─── Overview ────────────────────────────────────────────────────────────────
   {
-    items: [{ label: "Overview", icon: Gauge, route: "/overview" }],
+    label: "Overview",
+    items: [{ label: "Dashboard", icon: Gauge, route: "/overview" }],
   },
+
+  // ─── Customers ───────────────────────────────────────────────────────────────
   {
     label: "Customers",
-    items: [
-      { label: "Users", icon: Users, route: "/users" },
-    ],
+    items: [{ label: "Users", icon: Users, route: "/users" }],
   },
+
+  // ─── Operations ──────────────────────────────────────────────────────────────
   {
     label: "Operations",
-    items: [
-      { label: "Usage", icon: Receipt, route: "/usage" },
-    ],
+    items: [{ label: "Usage", icon: Receipt, route: "/usage" }],
   },
+
+  // ─── Billing ─────────────────────────────────────────────────────────────────
   {
     label: "Billing",
     items: [
@@ -85,27 +89,41 @@ export const adminNavigation: NavGroup[] = [
       { label: "Checkout Sessions", icon: Receipt, route: "/checkout-sessions" },
     ],
   },
+
+  // ─── Platforms (external integrations only) ──────────────────────────────────
   {
-    label: "Platform",
+    label: "Platforms",
     items: [
-      { label: "AI / Automation", icon: Bot, route: "/ai" },
-      { label: "Description Config", icon: ClipboardList, route: "/description-config" },
-      // eBay-only scope (see AI_AGENT_SCOPE_EBAY_ONLY.md): the Shopify App admin
-      // entry stays mounted but is hidden while Shopify is disabled.
-      { label: "Shopify App", icon: ShoppingBag, route: "/shopify-app", visible: SHOPIFY_ENABLED },
       { label: "eBay App", icon: ShoppingBag, route: "/ebay-app" },
-      { label: "Extension Setup", icon: PlugZap, route: "/extension" },
-      { label: "Extension Control", icon: ShieldCheck, route: "/extension-control" },
-      { label: "Blog", icon: Newspaper, route: "/blog" },
-      { label: "Notices", icon: Megaphone, route: "/notices", badge: { countKey: "notices" } },
+      // eBay-only scope: Shopify entry stays mounted but hidden while Shopify is disabled.
+      { label: "Shopify App", icon: ShoppingBag, route: "/shopify-app", visible: SHOPIFY_ENABLED },
     ],
   },
+
+  // ─── Extension ───────────────────────────────────────────────────────────────
+  {
+    label: "Extension",
+    items: [
+      { label: "Extension Setup", icon: PlugZap, route: "/extension" },
+    ],
+  },
+
+  // ─── System ──────────────────────────────────────────────────────────────────
   {
     label: "System",
     items: [
       { label: "Audit Logs", icon: ClipboardList, route: "/audit-logs" },
       { label: "Roles", icon: KeyRound, route: "/roles" },
       { label: "Settings", icon: Settings, route: "/settings" },
+    ],
+  },
+
+  // ─── Content ─────────────────────────────────────────────────────────────────
+  {
+    label: "Content",
+    items: [
+      { label: "Blog", icon: Newspaper, route: "/blog" },
+      { label: "Notices", icon: Megaphone, route: "/notices", badge: { countKey: "notices" } },
     ],
   },
 ];

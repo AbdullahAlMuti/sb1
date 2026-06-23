@@ -24,12 +24,11 @@ const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 const AdminUsage = lazy(() => import("./pages/AdminUsage"));
 const AdminRoles = lazy(() => import("./pages/AdminRoles"));
 const AdminPrompts = lazy(() => import("./pages/AdminPrompts"));
-const AdminAISettings = lazy(() => import("./pages/AdminAISettings"));
-const AdminDescriptionConfig = lazy(() => import("./pages/AdminDescriptionConfig"));
+// AdminAISettings and AdminDescriptionConfig are embedded inside AdminExtension; no top-level lazy needed.
 const AdminBestSelling = lazy(() => import("./pages/AdminBestSelling"));
 const AdminMustSell = lazy(() => import("./pages/AdminMustSell"));
 const AdminExtension = lazy(() => import("./pages/AdminExtension"));
-const AdminExtensionControl = lazy(() => import("./pages/AdminExtensionControl"));
+// AdminExtensionControl is embedded inside AdminExtension; no top-level lazy needed.
 const AdminProfitableProducts = lazy(() => import("./pages/AdminProfitableProducts"));
 const AdminShopifyApp = lazy(() => import("./pages/AdminShopifyApp"));
 const AdminEbayApp = lazy(() => import("./pages/AdminEbayApp"));
@@ -70,13 +69,14 @@ const AdminRouteChildren = () => (
     <Route path="subscriptions" element={<AdminSubscriptions />} />
     <Route path="checkout-sessions" element={<AdminCheckoutSessions />} />
     <Route path="usage" element={<AdminUsage />} />
-    <Route path="ai" element={<AdminAISettings />} />
-    <Route path="ai-settings" element={<AdminAISettings />} />
-    <Route path="description-config" element={<AdminDescriptionConfig />} />
+    {/* Extension-related routes: old direct paths redirect into the unified Extension Setup tab */}
+    <Route path="ai" element={<Navigate to="/extension?tab=ai-automation" replace />} />
+    <Route path="ai-settings" element={<Navigate to="/extension?tab=ai-automation" replace />} />
+    <Route path="description-config" element={<Navigate to="/extension?tab=description-config" replace />} />
+    <Route path="extension-control" element={<Navigate to="/extension?tab=extension-control" replace />} />
     <Route path="automation" element={<AdminPrompts />} />
     <Route path="prompts" element={<AdminPrompts />} />
     <Route path="extension" element={<AdminExtension />} />
-    <Route path="extension-control" element={<AdminExtensionControl />} />
     <Route path="notifications" element={<AdminNotices />} />
     <Route path="notices" element={<AdminNotices />} />
     <Route path="blog" element={<AdminBlog />} />

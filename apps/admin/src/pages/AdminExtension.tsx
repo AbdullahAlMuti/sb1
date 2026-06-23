@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@repo/ui/components/ui/card";
 import { Button } from "@repo/ui/components/ui/button";
 import { Input } from "@repo/ui/components/ui/input";
@@ -11,7 +12,14 @@ import { Switch } from "@repo/ui/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@repo/api-client/supabase/client";
 import DOMPurify from "dompurify";
-import { Save, Key, Brain, Wand2, RefreshCw, FileText, Puzzle, Eye, EyeOff, Settings2, FlaskConical, Loader2, Copy, Check, Zap, CheckCircle, XCircle } from "lucide-react";
+import {
+  Save, Key, Brain, Wand2, RefreshCw, FileText, Puzzle, Eye, EyeOff,
+  Settings2, FlaskConical, Loader2, Copy, Check, Zap, CheckCircle, XCircle,
+  ShieldCheck, Bot, ClipboardList,
+} from "lucide-react";
+import AdminExtensionControl from "./AdminExtensionControl";
+import AdminAISettings from "./AdminAISettings";
+import AdminDescriptionConfig from "./AdminDescriptionConfig";
 
 interface ExtensionSettings {
   api_provider: string;
@@ -46,7 +54,7 @@ const AI_PROVIDERS = [
   { value: 'gemini', label: 'Google Gemini', models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro'] },
 ];
 
-const DEFAULT_TITLE_PROMPT = `You are an expert eBay SEO specialist. 
+const DEFAULT_TITLE_PROMPT = `You are an expert eBay SEO specialist.
 Analyze the following Amazon product title and data to generate 3 unique, click-optimized eBay titles.
 
 THE TASK:
@@ -126,7 +134,20 @@ const SAMPLE_PRODUCT: TestProduct = {
   specifications: 'Display: 6.7" Super Retina XDR\nStorage: 256GB\nChip: A17 Pro\nCamera: 48MP + 12MP + 12MP',
 };
 
+const VALID_TABS = [
+  "api-config", "title-prompt", "description", "settings", "test",
+  "extension-control", "ai-automation", "description-config",
+] as const;
+type TabValue = typeof VALID_TABS[number];
+
 export default function AdminExtension() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get("tab");
+  const activeTab: TabValue =
+    (VALID_TABS as readonly string[]).includes(rawTab ?? "")
+      ? (rawTab as TabValue)
+      : "api-config";
+
   const [settings, setSettings] = useState<ExtensionSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -134,8 +155,7 @@ export default function AdminExtension() {
   const [testingApiKey, setTestingApiKey] = useState(false);
   const [apiKeyStatus, setApiKeyStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [showApiKey, setShowApiKey] = useState(false);
-  
-  // Test feature state
+
   const [testProduct, setTestProduct] = useState<TestProduct>(SAMPLE_PRODUCT);
   const [generatingTitles, setGeneratingTitles] = useState(false);
   const [generatingDescription, setGeneratingDescription] = useState(false);
@@ -153,7 +173,7 @@ export default function AdminExtension() {
         .from('admin_settings')
         .select('key, value')
         .in('key', [
-          'ext_ai_provider', 'ext_ai_api_key', 'ext_ai_model', 
+          'ext_ai_provider', 'ext_ai_api_key', 'ext_ai_model',
           'ext_title_prompt', 'ext_description_prompt',
           'ext_enable_auto_scrape', 'ext_scrape_delay_ms', 'ext_max_titles_count'
         ]);
@@ -261,9 +281,8 @@ export default function AdminExtension() {
 
     setTestingApiKey(true);
     setApiKeyStatus('idle');
-    
+
     try {
-      // Use edge function to avoid CORS issues
       const { data, error } = await supabase.functions.invoke('test-api-key', {
         body: {
           provider: settings.api_provider,
@@ -403,31 +422,53 @@ export default function AdminExtension() {
         </div>
       </div>
 
-      <Tabs defaultValue="api" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 max-w-3xl">
-          <TabsTrigger value="api" className="gap-2">
-            <Key className="h-4 w-4" />
-            API Config
-          </TabsTrigger>
-          <TabsTrigger value="title-prompt" className="gap-2">
-            <Wand2 className="h-4 w-4" />
-            Title Prompt
-          </TabsTrigger>
-          <TabsTrigger value="description-prompt" className="gap-2">
-            <FileText className="h-4 w-4" />
-            Description
-          </TabsTrigger>
-          <TabsTrigger value="settings" className="gap-2">
-            <Settings2 className="h-4 w-4" />
-            Settings
-          </TabsTrigger>
-          <TabsTrigger value="test" className="gap-2">
-            <FlaskConical className="h-4 w-4" />
-            Test
-          </TabsTrigger>
-        </TabsList>
+      <Tabs
+        value={activeTab}
+        onValueChange={(val) => setSearchParams({ tab: val }, { replace: true })}
+        className="space-y-6"
+      >
+        {/* Responsive tab bar: scrolls horizontally on narrow screens */}
+        <div className="overflow-x-auto pb-px">
+          <TabsList className="inline-flex h-auto min-w-max flex-nowrap gap-0 bg-muted p-1 rounded-lg">
+            <TabsTrigger value="api-config" className="gap-2 whitespace-nowrap">
+              <Key className="h-4 w-4" />
+              API Config
+            </TabsTrigger>
+            <TabsTrigger value="title-prompt" className="gap-2 whitespace-nowrap">
+              <Wand2 className="h-4 w-4" />
+              Title Prompt
+            </TabsTrigger>
+            <TabsTrigger value="description" className="gap-2 whitespace-nowrap">
+              <FileText className="h-4 w-4" />
+              Description
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="gap-2 whitespace-nowrap">
+              <Settings2 className="h-4 w-4" />
+              Settings
+            </TabsTrigger>
+            <TabsTrigger value="test" className="gap-2 whitespace-nowrap">
+              <FlaskConical className="h-4 w-4" />
+              Test
+            </TabsTrigger>
+            {/* Divider between setup tabs and integrated feature tabs */}
+            <div className="mx-1 my-1 w-px self-stretch bg-border" aria-hidden />
+            <TabsTrigger value="extension-control" className="gap-2 whitespace-nowrap">
+              <ShieldCheck className="h-4 w-4" />
+              Extension Control
+            </TabsTrigger>
+            <TabsTrigger value="ai-automation" className="gap-2 whitespace-nowrap">
+              <Bot className="h-4 w-4" />
+              AI Automation
+            </TabsTrigger>
+            <TabsTrigger value="description-config" className="gap-2 whitespace-nowrap">
+              <ClipboardList className="h-4 w-4" />
+              Description Config
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-        <TabsContent value="api" className="space-y-6">
+        {/* ── API Config ──────────────────────────────────────────────────────── */}
+        <TabsContent value="api-config" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -515,32 +556,20 @@ export default function AdminExtension() {
                         {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
-                    <Button 
-                      variant="outline" 
-                      onClick={handleTestApiKey} 
+                    <Button
+                      variant="outline"
+                      onClick={handleTestApiKey}
                       disabled={testingApiKey || !settings.api_key}
                       className={`min-w-[140px] ${apiKeyStatus === 'success' ? 'border-green-500 text-green-600' : apiKeyStatus === 'error' ? 'border-red-500 text-red-600' : ''}`}
                     >
                       {testingApiKey ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Testing...
-                        </>
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Testing...</>
                       ) : apiKeyStatus === 'success' ? (
-                        <>
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Valid
-                        </>
+                        <><CheckCircle className="h-4 w-4 mr-2" />Valid</>
                       ) : apiKeyStatus === 'error' ? (
-                        <>
-                          <XCircle className="h-4 w-4 mr-2" />
-                          Invalid
-                        </>
+                        <><XCircle className="h-4 w-4 mr-2" />Invalid</>
                       ) : (
-                        <>
-                          <Zap className="h-4 w-4 mr-2" />
-                          Test API Key
-                        </>
+                        <><Zap className="h-4 w-4 mr-2" />Test API Key</>
                       )}
                     </Button>
                   </div>
@@ -564,6 +593,7 @@ export default function AdminExtension() {
           </Card>
         </TabsContent>
 
+        {/* ── Title Prompt ─────────────────────────────────────────────────────── */}
         <TabsContent value="title-prompt" className="space-y-6">
           <Card>
             <CardHeader>
@@ -615,7 +645,8 @@ export default function AdminExtension() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="description-prompt" className="space-y-6">
+        {/* ── Description Prompt ───────────────────────────────────────────────── */}
+        <TabsContent value="description" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -668,6 +699,7 @@ export default function AdminExtension() {
           </Card>
         </TabsContent>
 
+        {/* ── Settings ─────────────────────────────────────────────────────────── */}
         <TabsContent value="settings" className="space-y-6">
           <Card>
             <CardHeader>
@@ -733,9 +765,9 @@ export default function AdminExtension() {
           </Card>
         </TabsContent>
 
+        {/* ── Test ─────────────────────────────────────────────────────────────── */}
         <TabsContent value="test" className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-2">
-            {/* Sample Product Input */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -844,9 +876,7 @@ export default function AdminExtension() {
               </CardContent>
             </Card>
 
-            {/* Generated Results */}
             <div className="space-y-6">
-              {/* Generated Titles */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -889,7 +919,6 @@ export default function AdminExtension() {
                 </CardContent>
               </Card>
 
-              {/* Generated Description */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -926,6 +955,21 @@ export default function AdminExtension() {
               </Card>
             </div>
           </div>
+        </TabsContent>
+
+        {/* ── Extension Control ─────────────────────────────────────────────────── */}
+        <TabsContent value="extension-control" className="space-y-6">
+          <AdminExtensionControl />
+        </TabsContent>
+
+        {/* ── AI Automation ─────────────────────────────────────────────────────── */}
+        <TabsContent value="ai-automation" className="space-y-6">
+          <AdminAISettings />
+        </TabsContent>
+
+        {/* ── Description Config ────────────────────────────────────────────────── */}
+        <TabsContent value="description-config" className="space-y-6">
+          <AdminDescriptionConfig />
         </TabsContent>
       </Tabs>
     </div>
