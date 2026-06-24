@@ -137,7 +137,7 @@ export async function isAdmin(supabase: SupabaseClient, userId: string): Promise
     .from("user_roles")
     .select("role")
     .eq("user_id", userId)
-    .in("role", ["admin", "super_admin"]);
+    .in("role", ["admin"]);
 
   if (error) return false;
   return (data || []).length > 0;
@@ -677,7 +677,7 @@ export async function requireFeatureEntitlement(
   // Enforce active paid subscription for non-admins
   const { data: roleRows } = await supabase.from("user_roles").select("role").eq("user_id", userId);
   const isAdminUser = (roleRows || []).some(
-    (r: any) => r.role === "admin" || r.role === "super_admin" || r.role === "moderator"
+    (r: any) => r.role === "admin"
   );
   if (!isAdminUser) {
     const isPaid = profile?.payment_status === "paid" || profile?.payment_status === "succeeded";

@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveCorsHeaders } from "../_shared/cors.ts";
 
 
-const VALID_ROLES = ["user", "admin", "super_admin"] as const;
+const VALID_ROLES = ["user", "admin"] as const;
 type AppRole = typeof VALID_ROLES[number];
 
 serve(async (req) => {
@@ -50,7 +50,7 @@ serve(async (req) => {
       .from("user_roles")
       .select("role")
       .eq("user_id", user.id)
-      .in("role", ["admin", "super_admin"]);
+      .in("role", ["admin"]);
 
     if (roleError || !adminRoles || adminRoles.length === 0) {
       return new Response(
@@ -59,8 +59,6 @@ serve(async (req) => {
       );
     }
     
-    const isCallerSuperAdmin = adminRoles.some((r) => r.role === "super_admin");
-
     // Get the user ID and new role to update from request body
     const { userId, newRole } = await req.json();
 
@@ -88,14 +86,6 @@ serve(async (req) => {
       );
     }
 
-    // Only super admins may grant super admin.
-    if (targetNewRole === "super_admin" && !isCallerSuperAdmin) {
-      return new Response(
-        JSON.stringify({ error: "Only a super admin can grant the super admin role" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     // Check target roles before deleting anything.
     const { data: targetRoles, error: targetRolesError } = await supabaseAdmin
       .from("user_roles")
@@ -110,15 +100,6 @@ serve(async (req) => {
     }
 
     const oldRoles = (targetRoles || []).map((row) => row.role as AppRole);
-    const targetIsSuperAdmin = oldRoles.includes("super_admin");
-
-    // Only super admins may modify existing super admins.
-    if (targetIsSuperAdmin && !isCallerSuperAdmin) {
-      return new Response(
-        JSON.stringify({ error: "Cannot modify a super admin unless you are a super admin" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
 
     // Prevent modifying your own role to prevent accidental lockouts
     if (userId === user.id) {
@@ -128,11 +109,13 @@ serve(async (req) => {
       );
     }
 
-    if (targetIsSuperAdmin && targetNewRole !== "super_admin") {
-      const { count: superAdminCount, error: countError } = await supabaseAdmin
+    // Prevent removing the last admin — that would lock everyone out of the panel.
+    const targetIsAdmin = oldRoles.includes("admin");
+    if (targetIsAdmin && targetNewRole !== "admin") {
+      const { count: adminCount, error: countError } = await supabaseAdmin
         .from("user_roles")
         .select("*", { count: "exact", head: true })
-        .eq("role", "super_admin");
+        .eq("role", "admin");
 
       if (countError) {
         return new Response(
@@ -141,9 +124,9 @@ serve(async (req) => {
         );
       }
 
-      if ((superAdminCount || 0) <= 1) {
+      if ((adminCount || 0) <= 1) {
         return new Response(
-          JSON.stringify({ error: "Cannot remove the last super admin" }),
+          JSON.stringify({ error: "Cannot remove the last admin" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }

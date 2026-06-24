@@ -11,7 +11,6 @@ import type { AdminRole, NavGroup, NavNode } from "../navigation/admin-navigatio
 
 export interface AdminPermissionContext {
   isAdmin: boolean;
-  isSuperAdmin: boolean;
   roles: string[];
   /** Active subscription plan id (admins bypass plan gating). */
   plan?: string | null;
@@ -28,15 +27,11 @@ export interface PermissionRule {
 }
 
 const ROLE_RANK: Record<AdminRole, number> = {
-  staff: 1,
-  moderator: 2,
-  admin: 3,
-  super_admin: 4,
+  admin: 1,
 };
 
 function hasRequiredRole(rule: PermissionRule, ctx: AdminPermissionContext): boolean {
   if (!rule.requiredRole) return true;
-  if (rule.requiredRole === "super_admin") return ctx.isSuperAdmin;
 
   const required = ROLE_RANK[rule.requiredRole];
   const highest = ctx.roles.reduce((max, role) => {

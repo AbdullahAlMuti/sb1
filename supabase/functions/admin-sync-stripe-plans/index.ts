@@ -92,7 +92,7 @@ serve(async (req) => {
       .from("user_roles")
       .select("role")
       .eq("user_id", userData.user.id)
-      .in("role", ["admin", "super_admin"]);
+      .in("role", ["admin"]);
     if (rolesErr || !roles?.length) return json(corsHeaders, 403, { error: "Admin access required" });
 
     const body = await req.json().catch(() => ({}));

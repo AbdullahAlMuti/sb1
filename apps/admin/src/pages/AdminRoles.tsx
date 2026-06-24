@@ -4,7 +4,6 @@ import {
   Search,
   Shield,
   ShieldCheck,
-  ShieldAlert,
   Users,
   RefreshCw,
   Plus,
@@ -47,7 +46,7 @@ import { Label } from '@repo/ui/components/ui/label';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
-type AppRole = 'user' | 'admin' | 'super_admin';
+type AppRole = 'user' | 'admin';
 
 interface UserRole {
   id: string;
@@ -63,7 +62,6 @@ interface UserRole {
 interface RoleStats {
   totalUsers: number;
   adminCount: number;
-  superAdminCount: number;
   regularUsers: number;
 }
 
@@ -74,7 +72,6 @@ export default function AdminRoles() {
   const [stats, setStats] = useState<RoleStats>({
     totalUsers: 0,
     adminCount: 0,
-    superAdminCount: 0,
     regularUsers: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
@@ -129,11 +126,6 @@ export default function AdminRoles() {
         .select('*', { count: 'exact', head: true })
         .eq('role', 'admin');
 
-      const { count: superAdmins } = await (supabase
-        .from('user_roles')
-        .select('*', { count: 'exact', head: true })
-        .eq('role', 'super_admin' as any) as any);
-
       const { count: users } = await supabase
         .from('user_roles')
         .select('*', { count: 'exact', head: true })
@@ -142,7 +134,6 @@ export default function AdminRoles() {
       setStats({
         totalUsers: total || 0,
         adminCount: admins || 0,
-        superAdminCount: superAdmins || 0,
         regularUsers: users || 0,
       });
     } catch (error) {
@@ -265,13 +256,6 @@ export default function AdminRoles() {
 
   const getRoleBadge = (role: AppRole) => {
     switch (role) {
-      case 'super_admin':
-        return (
-          <Badge className="bg-red-500/20 text-red-400">
-            <ShieldAlert className="h-3 w-3 mr-1" />
-            Super Admin
-          </Badge>
-        );
       case 'admin':
         return (
           <Badge className="bg-amber-500/20 text-amber-400">
@@ -316,7 +300,7 @@ export default function AdminRoles() {
       </motion.div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
           <Card className="border-primary/20 bg-primary/5">
             <CardContent className="pt-6">
@@ -327,22 +311,6 @@ export default function AdminRoles() {
                 </div>
                 <div className="p-3 rounded-xl bg-primary/20">
                   <Users className="h-6 w-6 text-primary" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-          <Card className="border-red-500/20 bg-red-500/5">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-red-400 uppercase tracking-wide">Super Admins</p>
-                  <p className="text-3xl font-bold text-foreground mt-1">{stats.superAdminCount}</p>
-                </div>
-                <div className="p-3 rounded-xl bg-red-500/20">
-                  <ShieldAlert className="h-6 w-6 text-red-400" />
                 </div>
               </div>
             </CardContent>
@@ -404,7 +372,6 @@ export default function AdminRoles() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Roles</SelectItem>
-            <SelectItem value="super_admin">Super Admin</SelectItem>
             <SelectItem value="admin">Admin</SelectItem>
             <SelectItem value="user">User</SelectItem>
           </SelectContent>
@@ -532,7 +499,7 @@ export default function AdminRoles() {
           <DialogHeader>
             <DialogTitle>Assign Admin Role</DialogTitle>
             <DialogDescription>
-              Assign an admin or super admin role to a user.
+              Assign an admin role to a user.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -553,7 +520,6 @@ export default function AdminRoles() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="super_admin">Super Admin</SelectItem>
                 </SelectContent>
               </Select>
             </div>

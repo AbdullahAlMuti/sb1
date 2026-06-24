@@ -358,7 +358,7 @@ serve(async (req) => {
     // Enforce active paid subscription
     const { data: roleRows } = await supabase.from('user_roles').select('role').eq('user_id', user.id);
     const isAdmin = (roleRows || []).some(
-      (r: any) => r.role === 'admin' || r.role === 'super_admin' || r.role === 'moderator'
+      (r: any) => r.role === 'admin'
     );
 
     if (!isAdmin) {

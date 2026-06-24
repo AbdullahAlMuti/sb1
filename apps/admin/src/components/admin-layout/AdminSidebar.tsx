@@ -25,8 +25,7 @@ function isActivePath(pathname: string, node: NavNode) {
   return path === href || path.startsWith(`${href}/`);
 }
 
-function roleLabel(isSuperAdmin: boolean, roles: string[]) {
-  if (isSuperAdmin) return "Super Admin";
+function roleLabel(roles: string[]) {
   if (roles.includes("admin")) return "Admin";
   const first = roles[0];
   return first ? first.charAt(0).toUpperCase() + first.slice(1) : "Member";
@@ -41,12 +40,12 @@ interface AdminSidebarProps {
 
 export function AdminSidebar({ collapsed, onToggleCollapsed, onNavigate, mobile = false }: AdminSidebarProps) {
   const location = useLocation();
-  const { user, profile, roles, isAdmin, isSuperAdmin } = useAuth();
+  const { user, profile, roles, isAdmin } = useAuth();
   const badges = useNavBadges();
   const effectiveCollapsed = mobile ? false : collapsed;
 
   const roleNames = roles.map((r) => r.role);
-  const ctx: AdminPermissionContext = { isAdmin, isSuperAdmin, roles: roleNames };
+  const ctx: AdminPermissionContext = { isAdmin, roles: roleNames };
   const navGroups = filterNavigation(adminNavigation, ctx);
 
   const displayName = profile?.full_name || user?.email || "Admin";
@@ -148,7 +147,7 @@ export function AdminSidebar({ collapsed, onToggleCollapsed, onNavigate, mobile 
             {!effectiveCollapsed && (
               <div className="min-w-0">
                 <div className="truncate text-xs font-medium text-sidebar-foreground">{displayName}</div>
-                <div className="truncate text-[10px] text-muted-foreground">{roleLabel(isSuperAdmin, roleNames)}</div>
+                <div className="truncate text-[10px] text-muted-foreground">{roleLabel(roleNames)}</div>
               </div>
             )}
           </div>

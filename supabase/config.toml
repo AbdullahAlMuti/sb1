@@ -4,7 +4,7 @@ project_id = "ojxzssooylmydystjvdo"
 [functions.create-checkout]
 verify_jwt = true
 
-# Marketing blog (admin-only; handler additionally requires the admin/super_admin role).
+# Marketing blog (admin-only; handler additionally requires the admin role).
 [functions.generate-marketing-post]
 verify_jwt = true
 
@@ -30,7 +30,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.admin-sync-stripe-plans]
-verify_jwt = true # Handler additionally requires the admin/super_admin role.
+verify_jwt = true # Handler additionally requires the admin role.
 
 [functions.check-subscription-v2]
 verify_jwt = true

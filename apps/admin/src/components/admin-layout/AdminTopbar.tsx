@@ -45,18 +45,16 @@ interface AdminTopbarProps {
 }
 
 export function AdminTopbar({ onOpenMobileSidebar, provider, onProviderChange }: AdminTopbarProps) {
-  const { user, profile, roles, isSuperAdmin, signOut } = useAuth();
+  const { user, profile, roles, signOut } = useAuth();
 
   const displayName = profile?.full_name || user?.email || "Admin";
   const initials = (profile?.full_name || user?.email || "A").trim().charAt(0).toUpperCase();
   const roleNames = roles.map((r) => r.role);
-  const roleLabel = isSuperAdmin
-    ? "Super Admin"
-    : roleNames.includes("admin")
-      ? "Admin"
-      : roleNames[0]
-        ? roleNames[0].charAt(0).toUpperCase() + roleNames[0].slice(1)
-        : "Member";
+  const roleLabel = roleNames.includes("admin")
+    ? "Admin"
+    : roleNames[0]
+      ? roleNames[0].charAt(0).toUpperCase() + roleNames[0].slice(1)
+      : "Member";
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">

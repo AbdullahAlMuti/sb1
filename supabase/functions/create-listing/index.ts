@@ -105,7 +105,7 @@ async function resolveAuth(supabase: SupabaseClient, req: Request) {
     // Enforce subscription check for extension sessions
     const { data: roleRows } = await supabase.from('user_roles').select('role').eq('user_id', profile.id);
     const isAdmin = (roleRows || []).some(
-      (r: any) => r.role === 'admin' || r.role === 'super_admin' || r.role === 'moderator'
+      (r: any) => r.role === 'admin'
     );
     if (!isAdmin) {
       const isPaid = profile.payment_status === 'paid' || profile.payment_status === 'succeeded';
@@ -128,7 +128,7 @@ async function resolveAuth(supabase: SupabaseClient, req: Request) {
   // Enforce subscription check for legacy JWT
   const { data: roleRows } = await supabase.from('user_roles').select('role').eq('user_id', data.user.id);
   const isAdmin = (roleRows || []).some(
-    (r: any) => r.role === 'admin' || r.role === 'super_admin' || r.role === 'moderator'
+    (r: any) => r.role === 'admin'
   );
   if (!isAdmin) {
     const isPaid = profile.payment_status === 'paid' || profile.payment_status === 'succeeded';

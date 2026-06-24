@@ -48,7 +48,7 @@ serve(async (req) => {
       .from("user_roles")
       .select("role")
       .eq("user_id", requestingUser.id)
-      .in("role", ["admin", "super_admin"]);
+      .in("role", ["admin"]);
 
     if (rolesError || !adminRoles || adminRoles.length === 0) {
       console.error("Roles error or not admin:", rolesError);

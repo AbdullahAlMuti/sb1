@@ -4,7 +4,7 @@ import { checkRateLimit, getClientIp, rateLimitResponse, sha256 } from "../_shar
 import { resolveCorsHeaders } from "../_shared/cors.ts";
 
 
-const ADMIN_PANEL_ROLES = new Set(["admin", "super_admin", "moderator", "staff"]);
+const ADMIN_PANEL_ROLES = new Set(["admin"]);
 const USER_PANEL_ROLE_ERROR =
   "This account cannot be used from the user login panel. Please use the admin login page.";
 const ADMIN_PANEL_ROLE_ERROR =

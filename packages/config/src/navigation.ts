@@ -113,7 +113,7 @@ export interface NavItemConfig {
   icon: LucideIcon;
   label: string;
   /** Optional: required roles to see this item */
-  requiredRoles?: ('user' | 'admin' | 'super_admin')[];
+  requiredRoles?: ('user' | 'admin')[];
   /** Optional: badge content */
   badge?: string | number;
   /** Optional: whether this item is disabled */
