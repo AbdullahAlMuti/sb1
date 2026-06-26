@@ -29,27 +29,26 @@ export function EbaySyncSettings() {
             if (!user) return;
 
             const { data, error } = await supabase
-                .from('admin_settings') // Assuming singular user settings in admin_settings for now or user_settings table
-                .select('*')
-                .or(`key.eq.ebay_sync_enabled,key.eq.ebay_sync_days,key.eq.ebay_sync_interval`);
+                .from('user_ebay_settings')
+                .select('is_sync_enabled, sync_frequency')
+                .eq('user_id', user.id)
+                .maybeSingle();
 
-            if (error) throw error;
+            if (error && error.code !== 'PGRST116') throw error; // Ignore not found
 
             if (data) {
-                data.forEach(setting => {
-                    if (setting.key === 'ebay_sync_enabled') setSyncEnabled(setting.value === 'true');
-                    if (setting.key === 'ebay_sync_days') {
-                        // Check if it's one of the presets
-                        const presets = ['1', '3', '7', '14', '30', '90', '365', '730', '1825'];
-                        if (presets.includes(setting.value)) {
-                            setSyncDays(setting.value);
-                        } else {
-                            setSyncDays('custom');
-                            setCustomDays(setting.value);
-                        }
-                    }
-                    if (setting.key === 'ebay_sync_interval') setSyncInterval(setting.value);
-                });
+                setSyncEnabled(data.is_sync_enabled ?? true);
+                
+                // We'll map the sync_frequency text back to days
+                // If it's a number string, use it. Otherwise default.
+                const freq = data.sync_frequency || '90';
+                const presets = ['1', '3', '7', '14', '30', '90', '365', '730', '1825'];
+                if (presets.includes(freq)) {
+                    setSyncDays(freq);
+                } else {
+                    setSyncDays('custom');
+                    setCustomDays(freq);
+                }
             }
         } catch (error) {
             console.error('Error fetching settings:', error);
@@ -70,19 +69,14 @@ export function EbaySyncSettings() {
 
             const finalDays = syncDays === 'custom' ? customDays : syncDays;
 
-            const updates = [
-                { key: 'ebay_sync_enabled', value: String(syncEnabled) },
-                { key: 'ebay_sync_days', value: finalDays },
-                { key: 'ebay_sync_interval', value: syncInterval }
-            ];
-
-            // Assuming 'admin_settings' is the shared table, but typically user specifics go to user_settings.
-            // For this user's context (single tenant SaaS usually uses admin_settings for global param), I will stick to what I've seen.
-            // Actually, typically we use upsert.
-
             const { error } = await supabase
-                .from('admin_settings')
-                .upsert(updates.map(u => ({ ...u, updated_at: new Date().toISOString() })), { onConflict: 'key' });
+                .from('user_ebay_settings')
+                .upsert({ 
+                    user_id: user.id, 
+                    is_sync_enabled: syncEnabled, 
+                    sync_frequency: finalDays,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'user_id' });
 
             if (error) throw error;
 
