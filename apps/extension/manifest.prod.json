@@ -10,7 +10,8 @@
     "tabs",
     "alarms",
     "sidePanel",
-    "unlimitedStorage"
+    "unlimitedStorage",
+    "offscreen"
   ],
   "host_permissions": [
     "*://*.media-amazon.com/*",
@@ -61,7 +62,9 @@
         "*://amazon.com.au/*",
         "*://*.amazon.com.au/*"
       ],
-      "js": ["content_scripts/amazon-xhrpatch.js"],
+      "js": [
+        "content_scripts/amazon-xhrpatch.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
@@ -106,6 +109,7 @@
       ],
       "js": [
         "common/config.js",
+        "common/purify.min.js",
         "common/storage.js",
         "common/pricing-engine.js",
         "common/sku-engine.js",
@@ -123,6 +127,7 @@
       ],
       "js": [
         "common/config.js",
+        "common/purify.min.js",
         "common/storage.js",
         "common/pricing-engine.js",
         "common/sku-engine.js",
@@ -140,6 +145,7 @@
       ],
       "js": [
         "common/config.js",
+        "common/purify.min.js",
         "common/storage.js",
         "common/pricing-engine.js",
         "common/sku-engine.js",
@@ -185,6 +191,7 @@
       ],
       "js": [
         "common/config.js",
+        "common/purify.min.js",
         "common/storage.js",
         "content_scripts/ebay_order_detail_scraper.js"
       ],

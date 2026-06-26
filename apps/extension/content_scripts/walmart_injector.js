@@ -1,4 +1,5 @@
 // ebay-snipping-extension/content_scripts/walmart_injector.js
+import DOMPurify from 'dompurify';
 
 let uiInjected = false;
 
@@ -2099,7 +2100,7 @@ const addEventListenersToPanel = () => {
                     // bgResp.description is intentionally HTML (eBay listing body built
                     // by the AI generation pipeline). Keeping innerHTML is correct here;
                     // the source is our own Edge Function, not raw user/page input.
-                    descriptionPreviewEl.innerHTML = bgResp.description;
+                    descriptionPreviewEl.innerHTML = window.DOMPurify ? window.DOMPurify.sanitize(bgResp.description, { ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'ul', 'li', 'ol', 'div', 'span'] }) : DOMPurify.sanitize(bgResp.description, { ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'ul', 'li', 'ol', 'div', 'span'] });
                 }
                 
                 await chrome.storage.local.set({ 

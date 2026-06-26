@@ -353,7 +353,7 @@ const DescriptionGenerator = (() => {
 
       // Display the description
       if (previewEl) {
-        previewEl.innerHTML = currentDescription;
+        previewEl.innerHTML = DOMPurify.sanitize(currentDescription, { ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'ul', 'li', 'ol', 'div', 'span'] });
       }
 
       // Enable action buttons

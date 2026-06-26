@@ -4,6 +4,8 @@
 // Uses centralized config and performance utilities
 // ═══════════════════════════════════════════════════════════
 
+import DOMPurify from 'dompurify';
+
 // State management
 let uiInjected = false;
 let isProcessing = false;
@@ -2841,7 +2843,7 @@ const addEventListenersToPanel = () => {
                 lastGeneratedDescription = bgResp.description;
 
                 if (descriptionPreviewEl) {
-                    descriptionPreviewEl.innerHTML = lastGeneratedDescription;
+                    descriptionPreviewEl.innerHTML = window.DOMPurify ? window.DOMPurify.sanitize(lastGeneratedDescription, { ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'ul', 'li', 'ol', 'div', 'span'] }) : DOMPurify.sanitize(lastGeneratedDescription, { ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'ul', 'li', 'ol', 'div', 'span'] });
                 }
 
                 if (copyDescriptionBtn) copyDescriptionBtn.disabled = false;
@@ -2918,7 +2920,7 @@ const addEventListenersToPanel = () => {
                 }
 
                 if (descriptionPreviewEl) {
-                    descriptionPreviewEl.innerHTML = displayHtml;
+                    descriptionPreviewEl.innerHTML = window.DOMPurify ? window.DOMPurify.sanitize(displayHtml, { ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'ul', 'li', 'ol', 'div', 'span'] }) : DOMPurify.sanitize(displayHtml, { ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'em', 'strong', 'ul', 'li', 'ol', 'div', 'span'] });
                 }
 
                 window.UIHelper?.showToast?.(errorMessage, 'error');
@@ -5254,7 +5256,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 // Save to shared draft (also mirrors to currentProduct)
                 if (typeof window.SSListingDraft !== 'undefined') {
+                    const oldDraft = await window.SSListingDraft.getDraft();
                     const draft = window.SSListingDraft.productToDraft(product, 'single');
+                    if (oldDraft && (oldDraft.sourceId === draft.sourceId || oldDraft.asin === draft.asin)) {
+                        draft.userOverrides = oldDraft.userOverrides || {};
+                    }
                     await window.SSListingDraft.saveDraft(draft);
                 } else {
                     // Fallback: legacy local storage only
@@ -5299,7 +5305,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 // Save to shared draft (also mirrors to currentProduct)
                 if (typeof window.SSListingDraft !== 'undefined') {
+                    const oldDraft = await window.SSListingDraft.getDraft();
                     const draft = window.SSListingDraft.productToDraft(product, 'all');
+                    if (oldDraft && (oldDraft.sourceId === draft.sourceId || oldDraft.asin === draft.asin)) {
+                        draft.userOverrides = oldDraft.userOverrides || {};
+                    }
                     await window.SSListingDraft.saveDraft(draft);
                 } else {
                     // Fallback: legacy local storage only
