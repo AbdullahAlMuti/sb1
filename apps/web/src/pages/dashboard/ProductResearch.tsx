@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '@repo/auth/hooks/useAuth';
 import { FeatureGate, useFeatureGate, TeaserWrapper } from '@/components/FeatureGate';
 import { supabase } from '@repo/api-client/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@repo/ui/components/ui/card';
@@ -145,12 +146,46 @@ export default function ProductResearch() {
   );
 }
 
+/* ── module cache for tab switching ── */
+let cachedUserId: string | null = null;
+let cachedSearchQuery = '';
+let cachedCategory: string | undefined = undefined;
+let cachedPriceRange: string | undefined = undefined;
+let cachedResults: ResearchResult | null = null;
+
 function ProductResearchContent() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [category, setCategory] = useState<string | undefined>(undefined);
-  const [priceRange, setPriceRange] = useState<string | undefined>(undefined);
+  const { user } = useAuth();
+
+  // Reset cache if the user switches accounts / logs out
+  if (user && cachedUserId !== user.id) {
+    cachedUserId = user.id;
+    cachedSearchQuery = '';
+    cachedCategory = undefined;
+    cachedPriceRange = undefined;
+    cachedResults = null;
+  }
+
+  const [searchQuery, setSearchQuery] = useState(cachedSearchQuery);
+  const [category, setCategory] = useState<string | undefined>(cachedCategory);
+  const [priceRange, setPriceRange] = useState<string | undefined>(cachedPriceRange);
   const [isSearching, setIsSearching] = useState(false);
-  const [results, setResults] = useState<ResearchResult | null>(null);
+  const [results, setResults] = useState<ResearchResult | null>(cachedResults);
+
+  useEffect(() => {
+    cachedSearchQuery = searchQuery;
+  }, [searchQuery]);
+
+  useEffect(() => {
+    cachedCategory = category;
+  }, [category]);
+
+  useEffect(() => {
+    cachedPriceRange = priceRange;
+  }, [priceRange]);
+
+  useEffect(() => {
+    cachedResults = results;
+  }, [results]);
   
   const { isTrialing, gateAction } = useFeatureGate();
 

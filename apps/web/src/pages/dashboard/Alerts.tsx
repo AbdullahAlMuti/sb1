@@ -54,11 +54,24 @@ const typeColors = {
   success: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600',
 };
 
+/* ── module cache for tab switching ── */
+let cachedUserId: string | null = null;
+let cachedNotices: Notice[] | null = null;
+let cachedInventoryAlerts: InventoryAlert[] | null = null;
+
 export default function Alerts() {
   const { user } = useAuth();
-  const [notices, setNotices] = useState<Notice[]>([]);
-  const [inventoryAlerts, setInventoryAlerts] = useState<InventoryAlert[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+
+  // Reset cache if the user switches accounts / logs out
+  if (user && cachedUserId !== user.id) {
+    cachedUserId = user.id;
+    cachedNotices = null;
+    cachedInventoryAlerts = null;
+  }
+
+  const [notices, setNotices] = useState<Notice[]>(cachedNotices || []);
+  const [inventoryAlerts, setInventoryAlerts] = useState<InventoryAlert[]>(cachedInventoryAlerts || []);
+  const [isLoading, setIsLoading] = useState(!cachedNotices || !cachedInventoryAlerts);
   const [dismissedNoticeIds, setDismissedNoticeIds] = useState<Set<string>>(new Set());
 
   const fetchNotices = useCallback(async () => {
@@ -83,6 +96,7 @@ export default function Alerts() {
       });
 
       setNotices(activeNotices);
+      cachedNotices = activeNotices;
     } catch (error) {
       console.error('Error fetching notices:', error);
     }
@@ -101,6 +115,7 @@ export default function Alerts() {
 
       if (error) throw error;
       setInventoryAlerts(data || []);
+      cachedInventoryAlerts = data || [];
     } catch (error) {
       console.error('Error fetching inventory alerts:', error);
     }

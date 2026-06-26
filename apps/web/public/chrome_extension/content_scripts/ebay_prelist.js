@@ -100,6 +100,15 @@ function _ssHideOverlay() {
   if (el) el.remove();
 }
 
+function _ssEscapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function _ssShowError(msg) {
   _ssHideOverlay();
   const div = document.createElement('div');
@@ -110,7 +119,8 @@ function _ssShowError(msg) {
     'border-radius:8px','font-family:sans-serif','font-size:13px',
     'max-width:360px','box-shadow:0 4px 16px rgba(0,0,0,.3)'
   ].join(';');
-  div.innerHTML = `<strong>SellerSuit upload failed:</strong><br>${msg}`;
+  div.innerHTML = `<strong>SellerSuit upload failed:</strong><br>`;
+  div.appendChild(document.createTextNode(msg));
   document.body.appendChild(div);
   setTimeout(() => div.remove(), 12000);
 }
@@ -132,7 +142,7 @@ function _ssShowVeroBlock(matches, onOverride) {
       <div style="font-size:32px;margin-bottom:8px">⚠️</div>
       <div style="font-size:18px;font-weight:700;color:#b00020;margin-bottom:10px">VeRO brand risk detected</div>
       <div style="font-size:14px;color:#444;line-height:1.55;margin-bottom:8px">
-        This product matches protected brand(s): <strong>${brands}</strong>.
+        This product matches protected brand(s): <strong>${_ssEscapeHtml(brands)}</strong>.
       </div>
       <div style="font-size:13px;color:#777;line-height:1.5;margin-bottom:18px">
         Listing VeRO-protected brands can get your eBay account suspended. Recommended: remove the brand from the title. Only override if you are authorized to sell this brand.
@@ -168,7 +178,7 @@ function _ssShowDuplicateBlock(listing, onOverride) {
       <div style="font-size:32px;margin-bottom:8px">🔁</div>
       <div style="font-size:18px;font-weight:700;color:#b8860b;margin-bottom:10px">Already listed</div>
       <div style="font-size:14px;color:#444;line-height:1.55;margin-bottom:8px">
-        You already listed <strong>${title}</strong> on ${when}.
+        You already listed <strong>${_ssEscapeHtml(title)}</strong> on ${_ssEscapeHtml(when)}.
       </div>
       <div style="font-size:13px;color:#777;line-height:1.5;margin-bottom:18px">
         Creating another listing for the same product may trigger eBay duplicate-listing policy. Continue only if intentional.

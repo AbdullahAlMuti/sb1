@@ -63,10 +63,9 @@ Deno.serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('[auth-status] Error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[auth-status] Error:', error instanceof Error ? error.message : error);
     return new Response(
-      JSON.stringify({ success: false, error: errorMessage }),
+      JSON.stringify({ success: false, error: 'Authentication failed' }),
       { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

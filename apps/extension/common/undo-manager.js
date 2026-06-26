@@ -230,7 +230,9 @@ const UndoManager = (() => {
    * Set the root element for DOM lookups (e.g. ShadowRoot)
    * @param {Node} root 
    */
-
+  function setRoot(root) {
+    domRoot = root || document;
+  }
 
   /**
    * Update undo/redo button states
@@ -295,7 +297,8 @@ const UndoManager = (() => {
     clear,
     getInfo,
     isRestoringState,
-    updateButtons
+    updateButtons,
+    setRoot
   };
 })();
 

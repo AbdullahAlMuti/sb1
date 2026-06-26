@@ -91,16 +91,18 @@ serve(async (req) => {
 
     const requestData: DescriptionRequest = await req.json();
     
-    // SECURITY: Input validation and sanitization
-    const title = String(requestData.title || '').slice(0, 1000);
+    // SECURITY: Input validation and sanitization.
+    // Single-line fields have newlines collapsed to spaces to prevent prompt injection.
+    const nl = (s: string) => s.replace(/[\r\n]+/g, ' ');
+    const title = nl(String(requestData.title || '')).slice(0, 1000);
     const description = String(requestData.description || '').slice(0, 10000);
-    const bulletPoints = Array.isArray(requestData.bulletPoints) 
+    const bulletPoints = Array.isArray(requestData.bulletPoints)
       ? requestData.bulletPoints.slice(0, 20).map(bp => String(bp).slice(0, 1000))
       : [];
-    const brand = String(requestData.brand || '').slice(0, 200);
-    const category = String(requestData.category || '').slice(0, 500);
-    const price = String(requestData.price || '').slice(0, 50);
-    const condition = String(requestData.condition || 'New').slice(0, 50);
+    const brand = nl(String(requestData.brand || '')).slice(0, 200);
+    const category = nl(String(requestData.category || '')).slice(0, 500);
+    const price = nl(String(requestData.price || '')).slice(0, 50);
+    const condition = nl(String(requestData.condition || 'New')).slice(0, 50);
     const features = Array.isArray(requestData.features) 
       ? requestData.features.slice(0, 20).map(f => String(f).slice(0, 1000))
       : [];
@@ -313,7 +315,7 @@ Price: {price}`,
     const renderedDescription = renderSections(config, aiJson, normalizedProduct);
 
     // 5) Post-generation sanitation via shared module
-    const finalDescription = sanitize(renderedDescription, config.exclusion_rules);
+    const finalDescription = sanitize(renderedDescription, config.exclusion_rules, config.output_format);
 
     return new Response(JSON.stringify({ 
       success: true, 

@@ -24,10 +24,21 @@ const defaultSettings: CalculatorSettingsData = {
   desired_profit_percent: 15.0,
 };
 
+/* ── module cache for tab switching ── */
+let cachedUserId: string | null = null;
+let cachedSettings: CalculatorSettingsData | null = null;
+
 export default function CalculatorSettings() {
   const { user } = useAuth();
-  const [settings, setSettings] = useState<CalculatorSettingsData>(defaultSettings);
-  const [isLoading, setIsLoading] = useState(true);
+
+  // Reset cache if the user switches accounts / logs out
+  if (user && cachedUserId !== user.id) {
+    cachedUserId = user.id;
+    cachedSettings = null;
+  }
+
+  const [settings, setSettings] = useState<CalculatorSettingsData>(cachedSettings || defaultSettings);
+  const [isLoading, setIsLoading] = useState(!cachedSettings);
   const [isSaving, setIsSaving] = useState(false);
   const [amazonPrice, setAmazonPrice] = useState<number>(5.99);
 
@@ -49,13 +60,15 @@ export default function CalculatorSettings() {
 
       if (data) {
         const settingsData = data as any;
-        setSettings({
+        const newSettings = {
           tax_percent: Number(settingsData.tax_percent),
           tracking_fee: Number(settingsData.tracking_fee),
           ebay_fee_percent: Number(settingsData.ebay_fee_percent),
           promotional_fee_percent: Number(settingsData.promotional_fee_percent),
           desired_profit_percent: Number(settingsData.desired_profit_percent),
-        });
+        };
+        setSettings(newSettings);
+        cachedSettings = newSettings;
       }
     } catch (error) {
       console.error("Error fetching calculator settings:", error);
@@ -85,7 +98,11 @@ export default function CalculatorSettings() {
 
       if (error) throw error;
 
+      cachedSettings = { ...settings };
       toast.success("Calculator settings saved successfully!");
+      
+      // Notify the Chrome extension to sync calculator settings in real-time
+      window.postMessage({ type: "REFRESH_EXTENSION_TOKEN" }, "*");
     } catch (error) {
       console.error("Error saving calculator settings:", error);
       toast.error("Failed to save calculator settings");

@@ -2,8 +2,6 @@ import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, BookOpen, Chrome, CreditCard, LifeBuoy, Settings2 } from "lucide-react";
 
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
 import { Button } from "@repo/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@repo/ui/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@repo/ui/components/ui/accordion";
@@ -17,11 +15,8 @@ export default function Documentation() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-
-      <main className="pt-24">
-        <div className="container max-w-5xl px-4 py-10">
+    <div className="pt-24 flex-1">
+      <div className="container max-w-5xl px-4 py-10">
           <Link to="/">
             <Button variant="ghost" className="mb-8">
               <ArrowLeft className="mr-2 h-4 w-4" />
@@ -210,9 +205,6 @@ export default function Documentation() {
             </Card>
           </section>
         </div>
-      </main>
-
-      <Footer />
     </div>
   );
 }

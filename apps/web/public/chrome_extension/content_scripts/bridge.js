@@ -96,7 +96,10 @@
                     token: tokenData.accessToken,
                     refreshToken: tokenData.refreshToken,
                     user: tokenData.user,
-                    expiresAt: tokenData.expiresAt
+                    expiresAt: tokenData.expiresAt,
+                    // Monotonic timestamp lets the background worker discard
+                    // out-of-order messages from rapid login→logout→login cycles.
+                    syncTimestamp: Date.now()
                 },
                 (response) => {
                     if (chrome.runtime.lastError) {

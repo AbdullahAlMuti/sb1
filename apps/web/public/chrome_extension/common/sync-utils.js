@@ -15,8 +15,8 @@ const SyncUtils = (() => {
       ? ExtensionConfig.API_KEYS.SUPABASE_ANON
       : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qeHpzc29veWxteWR5c3RqdmRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYzMzY3NTgsImV4cCI6MjA4MTkxMjc1OH0.lQcFC2HryZamOEbGYONHpY37K0kTK4OOAa9MlluV7Dc';
 
-  // Debug mode flag - set to true for verbose logging
-  const DEBUG_SYNC = true;
+  const DEBUG_SYNC =
+    (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES?.DEBUG_MODE) || false;
 
   function _sessionStore() {
     try {

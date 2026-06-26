@@ -123,3 +123,10 @@ test("sanitize: strips unwanted elements according to exclusion rules", () => {
   assert.doesNotMatch(cleanHtml, /100% guaranteed/i);
   assert.doesNotMatch(cleanHtml, /lifetime warranty/i);
 });
+
+test("sanitize: preserves newlines when outputFormat is plaintext", () => {
+  const dirtyText = "Line 1\nLine 2\nLine 3  with   extra   spaces.";
+  const cleanText = sanitize(dirtyText, testConfig.exclusion_rules, "plaintext");
+  assert.equal(cleanText, "Line 1\nLine 2\nLine 3 with extra spaces.");
+});
+

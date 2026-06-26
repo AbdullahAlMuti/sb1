@@ -135,6 +135,40 @@ export function breadcrumbJsonLd(
   };
 }
 
+export function organizationJsonLd(opts?: { sameAs?: string[] }): object {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "SellerSuit",
+    url: SITE_URL,
+    logo: `${SITE_URL}/logo.png`,
+    ...(opts?.sameAs?.length ? { sameAs: opts.sameAs } : {}),
+  };
+}
+
+export function softwareAppJsonLd(opts: {
+  name?: string;
+  description: string;
+  url?: string;
+  priceFrom?: string;
+  priceCurrency?: string;
+}): object {
+  return {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: opts.name ?? "SellerSuit",
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Web, Chrome",
+    description: opts.description,
+    url: opts.url ?? SITE_URL,
+    offers: {
+      "@type": "Offer",
+      price: opts.priceFrom ?? "1",
+      priceCurrency: opts.priceCurrency ?? "USD",
+    },
+  };
+}
+
 export function faqJsonLd(faq: MarketingFaqItem[]): object | null {
   if (!faq || faq.length === 0) return null;
   return {

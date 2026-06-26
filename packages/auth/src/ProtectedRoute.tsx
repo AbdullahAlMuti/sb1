@@ -16,15 +16,13 @@ export { canAccessDashboard } from './lib/dashboardAccess';
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireAdmin?: boolean;
-  requireSuperAdmin?: boolean;
 }
 
-export function ProtectedRoute({ 
-  children, 
+export function ProtectedRoute({
+  children,
   requireAdmin = false,
-  requireSuperAdmin = false,
 }: ProtectedRouteProps) {
-  const { user, profile, isAdmin, isSuperAdmin, isLoading, isEmailVerified, resendVerificationEmail, signOut } = useAuth();
+  const { user, profile, isAdmin, isLoading, isEmailVerified, resendVerificationEmail, signOut } = useAuth();
   const { access, isLoading: subscriptionLoading } = useSubscription();
   const location = useLocation();
   const [isResending, setIsResending] = useState(false);
@@ -44,9 +42,16 @@ export function ProtectedRoute({
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
+  // Validate goal once here so both the routing block and the redirect resolver below can use it.
+  const VALID_GOALS = ['ebay', 'shopify', 'both'] as const;
+  type UserGoal = typeof VALID_GOALS[number];
+  const rawGoal = (profile?.settings as Record<string, unknown> | null)?.goal;
+  const userGoal: UserGoal | undefined = VALID_GOALS.includes(rawGoal as UserGoal)
+    ? (rawGoal as UserGoal)
+    : undefined;
+
   // Redirect based on user's registered goal (eBay vs. Shopify)
-  if (profile && !requireAdmin && !requireSuperAdmin && !isAdmin && !isSuperAdmin) {
-    const userGoal = (profile.settings as any)?.goal as string | undefined;
+  if (profile && !requireAdmin && !isAdmin) {
     const isShopifyRoute = location.pathname.startsWith('/dashboard/shopify');
 
     if (!SHOPIFY_ENABLED) {
@@ -163,7 +168,7 @@ export function ProtectedRoute({
   const isDashboardRoute = location.pathname.startsWith('/dashboard');
   // Use !== true (not === false) so null / undefined also triggers onboarding,
   // covering brand-new profiles where the column hasn't been set yet. Admins do not need onboarding.
-  const onboardingNotCompleted = !isAdmin && !isSuperAdmin && profile && profile.onboarding_completed !== true;
+  const onboardingNotCompleted = !isAdmin && profile && profile.onboarding_completed !== true;
 
   // If onboarding is not completed, they are only allowed to see dashboard routes (which will render onboarding stepper)
   if (onboardingNotCompleted && !isDashboardRoute) {
@@ -194,22 +199,10 @@ export function ProtectedRoute({
       isAdmin,
       access,
       planToken,
-      dashboardPath: getDashboardPathForGoal((profile?.settings as any)?.goal),
+      dashboardPath: getDashboardPathForGoal(userGoal),
       onboardingCompleted: profile?.onboarding_completed ?? false,
     });
     return <Navigate to={next} replace />;
-  }
-
-  // Check admin/super_admin requirements first
-  if (requireSuperAdmin && !isSuperAdmin) {
-    // Non-super-admins trying to access super-admin routes go to dashboard
-    if (isAdmin) {
-      return <Navigate to="/admin" replace />;
-    } else {
-      const appUrl = import.meta.env.VITE_APP_URL || 'http://localhost:3001';
-      window.location.href = `${appUrl}/dashboard`;
-      return null;
-    }
   }
 
   if (requireAdmin && !isAdmin) {
@@ -221,7 +214,7 @@ export function ProtectedRoute({
 
   // Redirect admins away from user dashboard to admin dashboard
   // Only applies when NOT on admin-required routes (to avoid redirect loops)
-  if ((isAdmin || isSuperAdmin) && !requireAdmin && !requireSuperAdmin) {
+  if (isAdmin && !requireAdmin) {
     return <Navigate to="/admin" replace />;
   }
 

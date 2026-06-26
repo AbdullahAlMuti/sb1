@@ -27,7 +27,6 @@ const ExtensionConnect = lazy(() => import("./pages/dashboard/ExtensionConnect")
 const DashboardSettings = lazy(() => import("./pages/dashboard/Settings"));
 const CalculatorSettings = lazy(() => import("./pages/dashboard/CalculatorSettings"));
 const ProfitableProducts = lazy(() => import("./pages/dashboard/ProfitableProducts"));
-const BestSellingItems = lazy(() => import("./pages/dashboard/BestSellingItems"));
 const MustSellItems = lazy(() => import("./pages/dashboard/MustSellItems"));
 const ProductResearch = lazy(() => import("./pages/dashboard/ProductResearch"));
 const ExtensionViewer = lazy(() => import("./pages/extension/ExtensionViewer"));
@@ -51,7 +50,14 @@ const HelpPage = lazy(() => import("./pages/integrations/shopify/HelpPage"));
 const EbayLayout = lazy(() => import("./pages/integrations/ebay/EbayLayout"));
 import { SHOPIFY_ENABLED } from "@repo/config/marketplaceScope";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      staleTime: 5 * 60 * 1000, // 5 minutes
+    },
+  },
+});
 const ADMIN_ORIGIN = import.meta.env.VITE_ADMIN_URL ?? "https://admin.sellersuit.com";
 
 function ExternalRedirect({ to }: { to: string }) {
@@ -156,7 +162,6 @@ const EbayRoutes = () => (
       <Route path="ebay-orders" element={<Navigate to="../orders" replace />} />
       <Route path="auto-orders" element={<Orders />} />
       <Route path="product-research" element={<ProductResearch />} />
-      <Route path="best-selling" element={<BestSellingItems />} />
       <Route path="must-sell" element={<MustSellItems />} />
       <Route path="profitable-products" element={<ProfitableProducts />} />
       <Route path="calculator" element={<CalculatorSettings />} />
@@ -238,7 +243,6 @@ const App = () => (
                 <Route path="/dashboard/billing" element={<Navigate to="/dashboard/ebay/billing" replace />} />
                 <Route path="/dashboard/extension" element={<Navigate to="/dashboard/ebay/extension" replace />} />
                 <Route path="/dashboard/calculator" element={<Navigate to="/dashboard/ebay/calculator" replace />} />
-                <Route path="/dashboard/best-selling" element={<Navigate to="/dashboard/ebay/best-selling" replace />} />
                 <Route path="/dashboard/must-sell" element={<Navigate to="/dashboard/ebay/must-sell" replace />} />
                 <Route path="/dashboard/profitable-products" element={<Navigate to="/dashboard/ebay/profitable-products" replace />} />
                 <Route path="/dashboard/product-research" element={<Navigate to="/dashboard/ebay/product-research" replace />} />

@@ -24,11 +24,8 @@ const AdminSettings = lazy(() => import("./pages/AdminSettings"));
 const AdminUsage = lazy(() => import("./pages/AdminUsage"));
 const AdminRoles = lazy(() => import("./pages/AdminRoles"));
 // AdminDescriptionConfig is embedded inside AdminExtension; no top-level lazy needed.
-const AdminBestSelling = lazy(() => import("./pages/AdminBestSelling"));
-const AdminMustSell = lazy(() => import("./pages/AdminMustSell"));
 const AdminExtension = lazy(() => import("./pages/AdminExtension"));
 // AdminExtensionControl is embedded inside AdminExtension; no top-level lazy needed.
-const AdminProfitableProducts = lazy(() => import("./pages/AdminProfitableProducts"));
 const AdminShopifyApp = lazy(() => import("./pages/AdminShopifyApp"));
 const AdminEbayApp = lazy(() => import("./pages/AdminEbayApp"));
 const AdminIntegrationDetail = lazy(() => import("./pages/AdminIntegrationDetail"));
@@ -37,6 +34,7 @@ const AdminPlanFeatures = lazy(() => import("./pages/AdminPlanFeatures"));
 const AdminPlanPrices = lazy(() => import("./pages/AdminPlanPrices"));
 const AdminSubscriptions = lazy(() => import("./pages/AdminSubscriptions"));
 const AdminCheckoutSessions = lazy(() => import("./pages/AdminCheckoutSessions"));
+const AdminHomepageContent = lazy(() => import("./pages/AdminHomepageContent"));
 
 const queryClient = new QueryClient();
 
@@ -79,6 +77,7 @@ const AdminRouteChildren = () => (
     <Route path="extension" element={<AdminExtension />} />
     <Route path="notifications" element={<AdminNotices />} />
     <Route path="notices" element={<AdminNotices />} />
+    <Route path="homepage-content" element={<AdminHomepageContent />} />
     <Route path="blog" element={<AdminBlog />} />
     <Route path="blog/new" element={<AdminBlogEditor />} />
     <Route path="blog/:id/edit" element={<AdminBlogEditor />} />
@@ -86,10 +85,9 @@ const AdminRouteChildren = () => (
     <Route path="audit-logs" element={<AdminAudit />} />
     <Route path="roles" element={<AdminRoles />} />
     <Route path="settings" element={<AdminSettings />} />
-    <Route path="best-selling" element={<AdminBestSelling />} />
-    <Route path="must-sell" element={<AdminMustSell />} />
-    <Route path="profitable-products" element={<AdminProfitableProducts />} />
-    <Route path="product-intelligence" element={<AdminProfitableProducts />} />
+    <Route path="must-sell" element={<Navigate to="/ebay-app" replace />} />
+    <Route path="profitable-products" element={<Navigate to="/ebay-app" replace />} />
+    <Route path="product-intelligence" element={<Navigate to="/ebay-app" replace />} />
     <Route path="shopify-app" element={<AdminShopifyApp />} />
     <Route path="ebay-app" element={<AdminEbayApp />} />
   </>

@@ -1,12 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { enforceActiveSubscription } from '../_shared/plan-middleware.ts';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
-};
+import { resolveCorsHeaders } from '../_shared/cors.ts';
 
 Deno.serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req);
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -51,7 +48,7 @@ Deno.serve(async (req) => {
 
     // Enforce active subscription check
     const supabaseAdmin = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-    const blockResponse = await enforceActiveSubscription(supabaseAdmin, user.id);
+    const blockResponse = await enforceActiveSubscription(supabaseAdmin, user.id, req);
     if (blockResponse) return blockResponse;
 
     // Get today's date for filtering

@@ -50,7 +50,7 @@ serve(async (req) => {
       .from("user_roles")
       .select("role")
       .eq("user_id", adminId)
-      .in("role", ["admin", "super_admin"]);
+      .in("role", ["admin"]);
 
     if (rolesErr || !roles || roles.length === 0) {
       return json(corsHeaders, 403, { error: "Admin access required" });
@@ -122,7 +122,10 @@ serve(async (req) => {
       .from("profiles")
       .update({ credits: newCredits })
       .eq("id", userId);
-    if (updErr) return json(corsHeaders, 500, { error: updErr.message });
+    if (updErr) {
+      console.error("[admin-adjust-credits] db error:", updErr.message);
+      return json(corsHeaders, 500, { error: "Failed to update credits" });
+    }
 
     const transactionType =
       action === "grant" ? "admin_grant" : action === "set" ? "admin_set" : "admin_reset";

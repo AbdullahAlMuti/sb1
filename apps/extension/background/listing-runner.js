@@ -223,13 +223,68 @@ async function getBulkState() {
  * msg: { uploadSessionId, success, listingId?, variationCount?, error? }
  */
 function handleBulkItemResult(msg) {
+  chrome.alarms.clear(`ss-bulk-timeout-${msg.uploadSessionId}`).catch(() => {});
   const waiter = bulkRuntime.uploadWaiters.get(msg.uploadSessionId);
   if (!waiter) {
-    bulkLog(`BULK_ITEM_RESULT for unknown session ${msg.uploadSessionId} — ignored`);
-    return { success: false, message: 'No waiter for session' };
+    bulkLog(`BULK_ITEM_RESULT for unknown session ${msg.uploadSessionId} — attempting stateless resolution`);
+    (async () => {
+      try {
+        const sessionData = await chrome.storage.local.get(msg.uploadSessionId);
+        const sessionObj = sessionData[msg.uploadSessionId];
+        if (!sessionObj) {
+          bulkLog(`BULK_ITEM_RESULT for unknown session ${msg.uploadSessionId} (no storage) — ignored`);
+          return;
+        }
+        
+        await chrome.storage.local.remove(msg.uploadSessionId).catch(() => {});
+        
+        // Try to close any tabs with this session ID
+        try {
+          const queryUrl = `https://www.ebay.com/sl/prelist/suggest?sr=shBulkLister&uploadSessionId=${msg.uploadSessionId}`;
+          const tabs = await new Promise(r => chrome.tabs.query({ url: queryUrl }, r));
+          if (tabs && tabs.length > 0) {
+            for (const t of tabs) {
+              chrome.tabs.remove(t.id).catch(() => {});
+            }
+          }
+        } catch (e) {
+          bulkLog('Failed to query/remove tab for session ' + msg.uploadSessionId);
+        }
+        
+        const bulkItemId = sessionObj.bulkItemId;
+        await loadBulkState();
+        const state = bulkRuntime.state;
+        if (!state || !state.isRunning) {
+          bulkLog(`Job is no longer running or state is null, ignoring result for item ${bulkItemId}`);
+          return;
+        }
+        
+        const item = state.items.find(it => it.id === bulkItemId);
+        if (!item) {
+          bulkLog(`Item ${bulkItemId} not found in state`);
+          return;
+        }
+        
+        if (msg.success) {
+          await finishItem(bulkItemId, {
+            status: 'listed',
+            listingId: msg.listingId,
+            variationCount: msg.variationCount ?? (sessionObj.product?.variants ? sessionObj.product.variants.length : 1)
+          });
+        } else {
+          await failItem(bulkItemId, msg.error || 'eBay upload failed (SW resumed)');
+        }
+        
+        await releaseUploadLock(bulkItemId);
+        chrome.alarms.create(BULK_ALARM_NEXT, { delayInMinutes: 0.01 }); // execute almost immediately
+      } catch (err) {
+        bulkLog(`Error in stateless handleBulkItemResult: ${err.message}`);
+      }
+    })();
+    return { success: true };
   }
+  
   bulkRuntime.uploadWaiters.delete(msg.uploadSessionId);
-  clearTimeout(waiter.timer);
   waiter.resolve({
     success: !!msg.success,
     listingId: msg.listingId || null,
@@ -343,11 +398,11 @@ async function finishBulkJob() {
 // Called at the end of one item, still inside processNextBulkItem's
 // re-entrancy guard — so the no-items-left case must finish inline rather
 // than re-enter processNextBulkItem (which would bounce off the guard).
-function scheduleNext() {
+async function scheduleNext() {
   const state = bulkRuntime.state;
   if (!state || !state.isRunning) return;
   if (!window.SSBulkCore.nextQueuedItem(state)) {
-    finishBulkJob();
+    await finishBulkJob();
     return;
   }
   const minutes = Math.max(0.5, state.intervalMs / 60000);
@@ -446,16 +501,13 @@ function uploadViaEbayTab(product, bulkItemId) {
         bulkRuntime.ebayTabId = null;
       }
       chrome.storage.local.remove(uploadSessionId).catch(() => {});
+      chrome.alarms.clear(`ss-bulk-timeout-${uploadSessionId}`).catch(() => {});
       resolve(result);
     };
 
-    const timer = setTimeout(() => {
-      bulkRuntime.uploadWaiters.delete(uploadSessionId);
-      settle({ success: false, error: 'eBay upload timed out (5 min) — page stuck or eBay flow changed' });
-    }, UPLOAD_TIMEOUT_MS);
+    chrome.alarms.create(`ss-bulk-timeout-${uploadSessionId}`, { delayInMinutes: 5 });
 
     bulkRuntime.uploadWaiters.set(uploadSessionId, {
-      timer,
       resolve: (result) => settle(result)
     });
 
@@ -474,7 +526,7 @@ function uploadViaEbayTab(product, bulkItemId) {
 
       chrome.tabs.create({ url: ebayUrl, active: true }, (tab) => {
         if (chrome.runtime.lastError) {
-          clearTimeout(timer);
+          chrome.alarms.clear(`ss-bulk-timeout-${uploadSessionId}`).catch(() => {});
           bulkRuntime.uploadWaiters.delete(uploadSessionId);
           settle({ success: false, error: chrome.runtime.lastError.message });
           return;
@@ -482,7 +534,7 @@ function uploadViaEbayTab(product, bulkItemId) {
         bulkRuntime.ebayTabId = tab.id;
       });
     })().catch((e) => {
-      clearTimeout(timer);
+      chrome.alarms.clear(`ss-bulk-timeout-${uploadSessionId}`).catch(() => {});
       bulkRuntime.uploadWaiters.delete(uploadSessionId);
       settle({ success: false, error: 'Could not stage upload: ' + (e && e.message ? e.message : e) });
     });
@@ -494,6 +546,13 @@ function uploadViaEbayTab(product, bulkItemId) {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === BULK_ALARM_NEXT || alarm.name === BULK_ALARM_RESUME) {
     processNextBulkItem();
+  } else if (alarm.name.startsWith('ss-bulk-timeout-')) {
+    const uploadSessionId = alarm.name.slice('ss-bulk-timeout-'.length);
+    handleBulkItemResult({
+      uploadSessionId,
+      success: false,
+      error: 'eBay upload timed out (5 min) — page stuck or eBay flow changed'
+    });
   }
 });
 

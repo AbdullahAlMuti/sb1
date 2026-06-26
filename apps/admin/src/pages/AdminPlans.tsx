@@ -15,6 +15,7 @@ import {
   Archive,
   List,
   CreditCard,
+  Trash2,
 } from 'lucide-react';
 import { supabase } from '@repo/api-client/supabase/client';
 import {
@@ -22,6 +23,7 @@ import {
   fetchPlanUserCounts,
   setPlanActive,
   archivePlan as archivePlanApi,
+  deletePlan as deletePlanApi,
 } from '@/modules/billing/services/billing.service';
 import { Button } from '@repo/ui/components/ui/button';
 import { Input } from '@repo/ui/components/ui/input';
@@ -139,7 +141,9 @@ export default function AdminPlans() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [deletingPlan, setDeletingPlan] = useState<Plan | null>(null);
   const [archivingPlan, setArchivingPlan] = useState<Plan | null>(null);
+  const [hardDeletingPlan, setHardDeletingPlan] = useState<Plan | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [showDisabled, setShowDisabled] = useState(false);
 
   const fetchPlansCallback = useCallback(() => {
     fetchPlans();
@@ -298,6 +302,19 @@ export default function AdminPlans() {
     }
   };
 
+  const handleHardDeletePlan = async () => {
+    if (!hardDeletingPlan) return;
+    try {
+      await deletePlanApi(hardDeletingPlan.id);
+      setHardDeletingPlan(null);
+      fetchPlans();
+      toast.success('Plan deleted entirely from the database.');
+    } catch (error: any) {
+      console.error('Error deleting plan:', error);
+      toast.error(error.message || 'Failed to delete plan. It might be referenced by existing subscriptions or checkouts.');
+    }
+  };
+
   const togglePlanStatus = async (planId: string, isActive: boolean) => {
     try {
       await setPlanActive(planId, !isActive);
@@ -325,12 +342,23 @@ export default function AdminPlans() {
           <h1 className="text-3xl font-display font-bold text-foreground">Plan Management</h1>
           <p className="text-muted-foreground mt-1">Configure pricing tiers and subscription features</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => setEditingPlan(null)}>
-              <Plus className="h-5 w-5 mr-2" />Add Plan
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="show-disabled"
+              checked={showDisabled}
+              onCheckedChange={setShowDisabled}
+            />
+            <Label htmlFor="show-disabled" className="text-sm cursor-pointer">
+              Show disabled plans
+            </Label>
+          </div>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={() => setEditingPlan(null)}>
+                <Plus className="h-5 w-5 mr-2" />Add Plan
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingPlan ? 'Edit Plan' : 'Create New Plan'}</DialogTitle>
@@ -344,6 +372,7 @@ export default function AdminPlans() {
             />
           </DialogContent>
         </Dialog>
+        </div>
       </motion.div>
 
       {/* Stats */}
@@ -396,7 +425,9 @@ export default function AdminPlans() {
             <p className="text-muted-foreground mt-2">No plans created yet</p>
           </div>
         ) : (
-          plans.map((plan, index) => (
+          plans
+            .filter((plan) => showDisabled || (plan.is_active && !plan.archived_at))
+            .map((plan, index) => (
             <motion.div
               key={plan.id}
               initial={{ opacity: 0, y: 20 }}
@@ -430,6 +461,15 @@ export default function AdminPlans() {
                       )}
                     </div>
                     <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => setHardDeletingPlan(plan)}
+                        title="Delete from database"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -567,6 +607,28 @@ export default function AdminPlans() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleArchivePlan} className="bg-amber-600 text-white hover:bg-amber-700">
               Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Hard Delete Confirmation */}
+      <AlertDialog open={!!hardDeletingPlan} onOpenChange={() => setHardDeletingPlan(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Plan Forever</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete "{hardDeletingPlan?.display_name}" from the database?
+              This action cannot be undone. It will only succeed if there are no existing subscriptions, users, or checkout sessions associated with this plan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleHardDeletePlan}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

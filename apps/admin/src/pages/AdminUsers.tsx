@@ -30,6 +30,7 @@ import {
   getUsersVerification,
   updateUserRole as updateUserRoleApi,
   verifyUserEmail as verifyUserEmailApi,
+  deleteUsers as deleteUsersApi,
 } from '@/modules/users/services/users.service';
 import { Button } from '@repo/ui/components/ui/button';
 import { Input } from '@repo/ui/components/ui/input';
@@ -109,25 +110,9 @@ interface OverrideLimits {
 
 type SortField = 'id' | 'name' | 'credits' | 'status' | 'created_at' | 'last_login';
 type SortDirection = 'asc' | 'desc';
-type AppRole = 'user' | 'admin' | 'super_admin';
+type AppRole = 'user' | 'admin';
 
 const ITEMS_PER_PAGE = 10;
-
-// Country data for display
-const countries = [
-  { code: 'US', name: 'USA', flag: '🇺🇸' },
-  { code: 'CA', name: 'Canada', flag: '🇨🇦' },
-  { code: 'GB', name: 'UK', flag: '🇬🇧' },
-  { code: 'DE', name: 'Germany', flag: '🇩🇪' },
-  { code: 'FR', name: 'France', flag: '🇫🇷' },
-  { code: 'ES', name: 'Spain', flag: '🇪🇸' },
-  { code: 'IT', name: 'Italy', flag: '🇮🇹' },
-  { code: 'JP', name: 'Japan', flag: '🇯🇵' },
-  { code: 'IN', name: 'India', flag: '🇮🇳' },
-  { code: 'AU', name: 'Australia', flag: '🇦🇺' },
-  { code: 'NL', name: 'Netherlands', flag: '🇳🇱' },
-  { code: 'UA', name: 'Ukraine', flag: '🇺🇦' },
-];
 
 // Generate a consistent user ID based on actual id
 const generateUserId = (id: string): string => {
@@ -136,14 +121,7 @@ const generateUserId = (id: string): string => {
   return `${hash.slice(0, 6)}-${suffix}`;
 };
 
-// Get random country for user (consistent based on id)
-const getUserCountry = (id: string) => {
-  const index = parseInt(id.slice(0, 8), 16) % countries.length;
-  return countries[index];
-};
-
 const getEffectiveRole = (roles: { role: string }[]): AppRole => {
-  if (roles.some((r) => r.role === 'super_admin')) return 'super_admin';
   if (roles.some((r) => r.role === 'admin')) return 'admin';
   return 'user';
 };
@@ -185,6 +163,11 @@ export default function AdminUsers() {
   const [overrideLimits, setOverrideLimits] = useState<OverrideLimits>({});
   const [overrideReason, setOverrideReason] = useState('');
   const [isUpdatingOverride, setIsUpdatingOverride] = useState(false);
+  
+  // Delete user state
+  const [usersToDelete, setUsersToDelete] = useState<string[]>([]);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchUsersCallback = useCallback(() => {
     fetchUsers();
@@ -486,6 +469,24 @@ export default function AdminUsers() {
     }
   };
 
+  const handleDeleteUsers = async () => {
+    if (usersToDelete.length === 0) return;
+    setIsDeleting(true);
+    try {
+      await deleteUsersApi(usersToDelete);
+      toast.success(`Successfully deleted ${usersToDelete.length} user(s)`);
+      setSelectedUsers(prev => prev.filter(id => !usersToDelete.includes(id)));
+      setUsersToDelete([]);
+      setShowDeleteDialog(false);
+      fetchUsers();
+    } catch (error: any) {
+      console.error('Error deleting users:', error);
+      toast.error(error.message || 'Failed to delete selected user(s)');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const exportUsers = () => {
     const headers = ['User ID', 'Email', 'Name', 'Credits', 'Status', 'Roles', 'Joined', 'Last Login'];
     const csvContent = [
@@ -604,6 +605,20 @@ export default function AdminUsers() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {selectedUsers.length > 0 && (
+            <Button 
+              variant="destructive" 
+              size="sm" 
+              onClick={() => {
+                setUsersToDelete(selectedUsers);
+                setShowDeleteDialog(true);
+              }} 
+              className="gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete Selected ({selectedUsers.length})
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={exportUsers} className="gap-2">
             <Download className="h-4 w-4" />
             <span className="hidden sm:inline">Export</span>
@@ -671,9 +686,7 @@ export default function AdminUsers() {
                     <th className="text-left py-3 px-4">
                       <SortableHeader field="name">Customer</SortableHeader>
                     </th>
-                    <th className="text-left py-3 px-4">
-                      <span className="text-xs font-medium text-muted-foreground">Country</span>
-                    </th>
+
                     <th className="text-left py-3 px-4">
                       <SortableHeader field="credits">Credits</SortableHeader>
                     </th>
@@ -707,7 +720,6 @@ export default function AdminUsers() {
                     </tr>
                   ) : (
                     sortedUsers.map((user) => {
-                      const country = getUserCountry(user.id);
                       const userId = generateUserId(user.id);
                       
                       return (
@@ -749,19 +761,12 @@ export default function AdminUsers() {
                               </div>
                             </div>
                           </td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2">
-                              <span className="text-base">{country.flag}</span>
-                              <span className="text-sm text-foreground">{country.name}</span>
-                            </div>
-                          </td>
+
                           <td className="py-3 px-4">
                             <span className="text-sm font-medium text-foreground">{user.credits}</span>
                           </td>
                           <td className="py-3 px-4">
-                            {user.roles.some(r => r.role === 'super_admin') ? (
-                              <Badge className="bg-red-500/10 text-red-500 border-red-500/20 text-xs">Super Admin</Badge>
-                            ) : user.roles.some(r => r.role === 'admin') ? (
+                            {user.roles.some(r => r.role === 'admin') ? (
                               <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-xs">Admin</Badge>
                             ) : (
                               <Badge variant="secondary" className="text-xs">User</Badge>
@@ -810,6 +815,18 @@ export default function AdminUsers() {
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                onClick={() => {
+                                  setSelectedUser(user);
+                                  setUsersToDelete([user.id]);
+                                  setShowDeleteDialog(true);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
                           </td>
                         </tr>
@@ -834,7 +851,6 @@ export default function AdminUsers() {
               ) : (
                 <div className="divide-y divide-border">
                   {sortedUsers.map((user) => {
-                    const country = getUserCountry(user.id);
                     const userId = generateUserId(user.id);
                     
                     return (
@@ -917,14 +933,25 @@ export default function AdminUsers() {
                                     <Settings2 className="h-4 w-4 mr-2" />
                                     Override Limits
                                   </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem 
+                                    className="text-destructive hover:text-destructive focus:text-destructive"
+                                    onClick={() => {
+                                      setSelectedUser(user);
+                                      setUsersToDelete([user.id]);
+                                      setShowDeleteDialog(true);
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete Customer
+                                  </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>
                             
                             <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
                               <span className="text-primary font-medium">{userId}</span>
-                              <span>•</span>
-                              <span>{country.flag} {country.name}</span>
+
                             </div>
                             
                             <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -937,9 +964,7 @@ export default function AdminUsers() {
                               >
                                 {user.is_active ? 'Active' : 'Inactive'}
                               </Badge>
-                              {user.roles.some(r => r.role === 'super_admin') ? (
-                                <Badge className="bg-red-500/10 text-red-500 border-red-500/20 text-xs">Super Admin</Badge>
-                              ) : user.roles.some(r => r.role === 'admin') ? (
+                              {user.roles.some(r => r.role === 'admin') ? (
                                 <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-xs">Admin</Badge>
                               ) : (
                                 <Badge variant="secondary" className="text-xs">User</Badge>
@@ -1012,7 +1037,6 @@ export default function AdminUsers() {
                 <SelectContent>
                   <SelectItem value="user">User</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="super_admin">Super Admin</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1217,6 +1241,19 @@ export default function AdminUsers() {
                 >
                   <Settings2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                   <span className="truncate">Override Limits</span>
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  size="sm"
+                  onClick={() => {
+                    setUsersToDelete([selectedUser.id]);
+                    setShowDetailsDialog(false);
+                    setShowDeleteDialog(true);
+                  }}
+                  className="w-full text-xs sm:text-sm"
+                >
+                  <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                  <span className="truncate">Delete Customer</span>
                 </Button>
               </div>
             </div>
@@ -1517,6 +1554,39 @@ export default function AdminUsers() {
               disabled={isUpdatingOverride}
             >
               {isUpdatingOverride ? 'Saving...' : 'Save Overrides'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              Delete Customer Account(s)
+            </DialogTitle>
+            <DialogDescription>
+              {usersToDelete.length === 1 ? (
+                <>
+                  Are you sure you want to permanently delete this customer's account? 
+                  This action is irreversible and will delete their profile, subscription details, and all associated data.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to permanently delete the <strong>{usersToDelete.length}</strong> selected customer accounts? 
+                  This action is irreversible and will delete their profiles, subscription details, and all associated data.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => { setShowDeleteDialog(false); setUsersToDelete([]); }}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteUsers} disabled={isDeleting}>
+              {isDeleting ? 'Deleting...' : 'Delete Permanently'}
             </Button>
           </DialogFooter>
         </DialogContent>

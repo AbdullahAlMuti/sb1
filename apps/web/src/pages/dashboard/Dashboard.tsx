@@ -246,29 +246,66 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-/* ─────────────────────── main component ───────────────────────────────── */
+/* ── module cache for tab switching ── */
+let cachedUserId: string | null = null;
+let cachedDatePreset: DateRangePreset = 'month';
+let cachedCustomRange: DateRange | undefined = undefined;
+let cachedDashboardData: {
+  stats: DashboardStats;
+  topProducts: TopProduct[];
+  trendData: TrendData[];
+  allOrders: any[];
+} | null = null;
+
+const getInitialCustomRange = () => ({
+  from: subDays(new Date(), 30),
+  to: new Date(),
+});
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { profile, user } = useAuth();
 
-  const [datePreset, setDatePreset] = useState<DateRangePreset>('month');
-  const [customRange, setCustomRange] = useState<DateRange | undefined>({
-    from: subDays(new Date(), 30),
-    to: new Date(),
-  });
-  const [stats, setStats] = useState<DashboardStats>({
-    orderRevenue: 0, inventoryValue: 0, totalCost: 0,
-    netProfit: null, profitOrderCount: 0,
-    completedOrders: 0, pendingOrders: 0, cancelledOrders: 0,
-    unreadAlerts: 0, activeListings: 0,
-    revenueChange: 0, ordersChange: 0, previousOrderRevenue: 0,
-    lastSyncAt: null,
-  });
-  const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [trendData, setTrendData] = useState<TrendData[]>([]);
-  const [allOrders, setAllOrders] = useState<any[]>([]);
+  // Reset cache if the user switches accounts / logs out
+  if (user && cachedUserId !== user.id) {
+    cachedUserId = user.id;
+    cachedDatePreset = 'month';
+    cachedCustomRange = getInitialCustomRange();
+    cachedDashboardData = null;
+  }
+
+  const [datePreset, setDatePreset] = useState<DateRangePreset>(cachedDatePreset);
+  const [customRange, setCustomRange] = useState<DateRange | undefined>(
+    cachedCustomRange || getInitialCustomRange()
+  );
+  const [stats, setStats] = useState<DashboardStats>(
+    cachedDashboardData?.stats || {
+      orderRevenue: 0, inventoryValue: 0, totalCost: 0,
+      netProfit: null, profitOrderCount: 0,
+      completedOrders: 0, pendingOrders: 0, cancelledOrders: 0,
+      unreadAlerts: 0, activeListings: 0,
+      revenueChange: 0, ordersChange: 0, previousOrderRevenue: 0,
+      lastSyncAt: null,
+    }
+  );
+  const [topProducts, setTopProducts] = useState<TopProduct[]>(
+    cachedDashboardData?.topProducts || []
+  );
+  const [isLoading, setIsLoading] = useState(!cachedDashboardData);
+  const [trendData, setTrendData] = useState<TrendData[]>(
+    cachedDashboardData?.trendData || []
+  );
+  const [allOrders, setAllOrders] = useState<any[]>(
+    cachedDashboardData?.allOrders || []
+  );
+
+  useEffect(() => {
+    cachedDatePreset = datePreset;
+  }, [datePreset]);
+
+  useEffect(() => {
+    cachedCustomRange = customRange;
+  }, [customRange]);
 
   /* ── date range helpers ─────────────────────────────────────────────── */
 
@@ -547,17 +584,26 @@ export default function Dashboard() {
         image_url: l.amazon_data?.image || l.amazon_data?.imageUrl || l.amazon_data?.mainImage,
       }));
 
-      setStats({
+      const newStats = {
         orderRevenue: ebayOrdersRevenue, inventoryValue, totalCost,
         netProfit: realNetProfit, profitOrderCount: ordersWithProfit.length,
         completedOrders: completedEbayOrders.length, pendingOrders: pendingEbayOrders.length, cancelledOrders: cancelledEbayOrders.length,
         unreadAlerts: alertsResult.count || 0, activeListings: listingsResult.count || 0,
         revenueChange, ordersChange, previousOrderRevenue, lastSyncAt,
-      });
+      };
+      setStats(newStats);
 
       setAllOrders(ordersForTrend);
       setTopProducts(topProductsData);
-      setTrendData(generateRealTrendData(ordersForTrend, dateRange));
+      const newTrend = generateRealTrendData(ordersForTrend, dateRange);
+      setTrendData(newTrend);
+
+      cachedDashboardData = {
+        stats: newStats,
+        topProducts: topProductsData,
+        trendData: newTrend,
+        allOrders: ordersForTrend,
+      };
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {

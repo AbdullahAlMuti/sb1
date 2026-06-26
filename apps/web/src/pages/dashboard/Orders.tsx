@@ -177,30 +177,85 @@ const getPeriodLabel = (preset: PeriodPreset): string => {
   }
 };
 
+/* ── module cache for tab switching ── */
+let cachedUserId: string | null = null;
+let cachedOrders: EbayOrderRow[] | null = null;
+let cachedTotalOrders: number = 0;
+let cachedSearchQuery: string = "";
+let cachedStatusFilter: string = "all";
+let cachedPeriodPreset: PeriodPreset | null = null;
+let cachedDateRange: DateRange | undefined = undefined;
+let cachedCurrentPage = 1;
+let cachedDrafts: Record<string, EnrichmentRow> = {};
+
+const getInitialPeriodPreset = (): PeriodPreset => `month:${format(new Date(), "yyyy-MM")}`;
+const getInitialDateRange = () => {
+  const now = new Date();
+  return { from: startOfMonth(now), to: endOfMonth(now) };
+};
+
 export default function Orders() {
   const { user, session } = useAuth();
+
+  // Reset cache if the user switches accounts / logs out
+  if (user && cachedUserId !== user.id) {
+    cachedUserId = user.id;
+    cachedOrders = null;
+    cachedTotalOrders = 0;
+    cachedSearchQuery = "";
+    cachedStatusFilter = "all";
+    cachedPeriodPreset = getInitialPeriodPreset();
+    cachedDateRange = getInitialDateRange();
+    cachedCurrentPage = 1;
+    cachedDrafts = {};
+  }
 
   const tablePlainInputClass =
     "h-7 text-xs bg-transparent border-transparent shadow-none px-0 py-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-border focus-visible:px-2 hover:border-border/60";
 
   const PAGE_SIZE = 100;
-  const [isLoading, setIsLoading] = useState(true);
-  const [orders, setOrders] = useState<EbayOrderRow[]>([]);
-  const [totalOrders, setTotalOrders] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>(() => `month:${format(new Date(), "yyyy-MM")}`);
-  const [customRange, setCustomRange] = useState<DateRange | undefined>(() => {
-    const now = new Date();
-    return { from: startOfMonth(now), to: endOfMonth(now) };
-  });
+  const [isLoading, setIsLoading] = useState(!cachedOrders);
+  const [orders, setOrders] = useState<EbayOrderRow[]>(cachedOrders || []);
+  const [totalOrders, setTotalOrders] = useState(cachedTotalOrders);
+  const [currentPage, setCurrentPage] = useState(cachedCurrentPage);
+  const [searchQuery, setSearchQuery] = useState(cachedSearchQuery);
+  const [statusFilter, setStatusFilter] = useState<string>(cachedStatusFilter);
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>(
+    cachedPeriodPreset || getInitialPeriodPreset()
+  );
+  const [customRange, setCustomRange] = useState<DateRange | undefined>(
+    cachedDateRange || getInitialDateRange()
+  );
 
   const dateRange = useMemo(() => getDateRangeFromPreset(periodPreset, customRange), [periodPreset, customRange]);
 
-  const [drafts, setDrafts] = useState<Record<string, EnrichmentRow>>({});
+  const [drafts, setDrafts] = useState<Record<string, EnrichmentRow>>(cachedDrafts);
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const saveSeq = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    cachedSearchQuery = searchQuery;
+  }, [searchQuery]);
+
+  useEffect(() => {
+    cachedStatusFilter = statusFilter;
+  }, [statusFilter]);
+
+  useEffect(() => {
+    cachedPeriodPreset = periodPreset;
+  }, [periodPreset]);
+
+  useEffect(() => {
+    cachedDateRange = customRange;
+  }, [customRange]);
+
+  useEffect(() => {
+    cachedCurrentPage = currentPage;
+  }, [currentPage]);
+
+  useEffect(() => {
+    cachedDrafts = drafts;
+  }, [drafts]);
 
   const monthOptions = useMemo(() => {
     const options = [] as Array<{ value: string; label: string }>;
@@ -236,6 +291,9 @@ export default function Orders() {
         const nextOrders = (resp?.orders || []) as EbayOrderRow[];
         setOrders(nextOrders);
         setTotalOrders(Number(resp?.total || 0));
+
+        cachedOrders = nextOrders;
+        cachedTotalOrders = Number(resp?.total || 0);
 
         setDrafts((prev) => {
           const next = { ...prev };

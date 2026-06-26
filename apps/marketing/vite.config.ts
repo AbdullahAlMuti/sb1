@@ -7,9 +7,24 @@ export default defineConfig(({ mode }) => ({
   envDir: "../../",
   server: {
     host: "::",
-    port: 3000,
+    // Honor the PORT env var (e.g. when the preview harness assigns a free
+    // port) and fall back to the conventional dev port.
+    port: Number(process.env.PORT) || 3000,
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+  build: {
+    rollupOptions: {
+      output: {
+        // Isolate heavy, rarely-changing libraries into long-cached vendor
+        // chunks so they aren't re-downloaded on every app deploy.
+        manualChunks: {
+          "vendor-react": ["react", "react-dom", "react-router-dom"],
+          "vendor-motion": ["framer-motion"],
+          "vendor-query": ["@tanstack/react-query"],
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

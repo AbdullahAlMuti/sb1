@@ -1,8 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
 import BlogCard from "@/components/blog/BlogCard";
 import { getPublishedPosts, getCategories } from "@/lib/blog";
 import { useSeo, SITE_URL } from "@/lib/useSeo";
@@ -27,10 +25,8 @@ export default function BlogIndex() {
   const [featured, ...rest] = posts;
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="pt-24">
-        <div className="container px-4 py-10">
+    <div className="pt-24 flex-1">
+      <div className="container px-4 py-10">
           <header className="mb-10 max-w-2xl">
             <p className="text-sm font-semibold uppercase tracking-wide text-primary">
               SellerSuit Blog
@@ -77,8 +73,6 @@ export default function BlogIndex() {
             </>
           )}
         </div>
-      </main>
-      <Footer />
     </div>
   );
 }

@@ -352,7 +352,13 @@ serve(async (req) => {
       const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
-        aiResponse = parsed.titles || [];
+        if (parsed.titles) {
+          aiResponse = parsed.titles;
+        } else if (parsed.title) {
+          aiResponse = [{ rank: "best", title: parsed.title }];
+        } else {
+          aiResponse = [];
+        }
         console.log("Parsed titles:", aiResponse);
       }
     } catch (parseError) {

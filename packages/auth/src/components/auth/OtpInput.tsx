@@ -49,6 +49,7 @@ export function OtpInput({ value, onChange, disabled = false }: OtpInputProps) {
             onChange={(e) => handleCodeChange(idx, e.target.value)}
             onKeyDown={(e) => handleKeyDown(idx, e)}
             disabled={disabled}
+            aria-label={`Digit ${idx + 1} of 6`}
             className="w-11 h-12 text-center text-lg font-bold rounded-xl border border-border/80 focus:border-primary focus:ring-1 focus:ring-primary/20 bg-background"
           />
           {idx === 2 && <span className="mx-2 text-muted-foreground font-semibold">-</span>}

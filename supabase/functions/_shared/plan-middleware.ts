@@ -6,6 +6,7 @@
 
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isWithinLimit } from "./billing.ts";
+import { resolveCorsHeaders } from "./cors.ts";
 export { isWithinLimit } from "./billing.ts";
 
 export type LimitAction =
@@ -77,7 +78,7 @@ export async function verifySaaSAccess(
     .eq("user_id", userId);
   
   const isAdmin = (roleRows || []).some(
-    (row: any) => row.role === 'admin' || row.role === 'super_admin' || row.role === 'moderator'
+    (row: any) => row.role === 'admin'
   );
   if (isAdmin) {
     return { allowed: true };
@@ -111,21 +112,17 @@ export async function verifySaaSAccess(
 
 export async function enforceActiveSubscription(
   supabaseAdmin: SupabaseClient,
-  userId: string
+  userId: string,
+  req?: Request
 ): Promise<Response | null> {
   const access = await verifySaaSAccess(supabaseAdmin, userId);
   if (!access.allowed) {
-    const corsHeaders = {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-api-key",
-      "Content-Type": "application/json",
-    };
+    const corsHeaders = req
+      ? { ...resolveCorsHeaders(req), "Content-Type": "application/json" }
+      : { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" };
     return new Response(
       JSON.stringify({ success: false, error: access.reason, code: "PAYMENT_REQUIRED" }),
-      {
-        status: 402,
-        headers: corsHeaders,
-      }
+      { status: 402, headers: corsHeaders }
     );
   }
   return null;
@@ -153,7 +150,7 @@ export async function getEntitlement(
     .select("role")
     .eq("user_id", userId);
   const isAdmin = (roleRows || []).some(
-    (row: any) => row.role === 'admin' || row.role === 'super_admin' || row.role === 'moderator'
+    (row: any) => row.role === 'admin'
   );
 
   if (isAdmin) {
@@ -324,7 +321,7 @@ export async function getFullPlanStatus(
       .eq("user_id", userId);
   
     const isAdmin = (roleRows || []).some(
-      (row: any) => row.role === 'admin' || row.role === 'super_admin' || row.role === 'moderator'
+      (row: any) => row.role === 'admin'
     );
 
     let isBlocked = userPlan?.is_blocked ?? false;

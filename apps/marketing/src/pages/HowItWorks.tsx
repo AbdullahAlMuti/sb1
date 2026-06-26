@@ -1,5 +1,3 @@
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
 import WorkflowSection from "@/components/WorkflowSection";
 import CTASection from "@/components/CTASection";
 import { useSeo, SITE_URL } from "@/lib/useSeo";
@@ -12,13 +10,9 @@ export default function HowItWorks() {
   });
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="pt-24">
-        <WorkflowSection />
-        <CTASection />
-      </main>
-      <Footer />
+    <div className="pt-24 flex-1">
+      <WorkflowSection />
+      <CTASection />
     </div>
   );
 }

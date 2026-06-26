@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Cabinet+Grotesk:wght@700;800&family=Syne:wght@500;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -37,16 +37,16 @@
     --input: 0 0% 89.8%;
     --ring: 0 0% 9%;
 
-    --radius: 0.375rem;
+    --radius: 0.5rem;
 
     /* ─── Custom Design Tokens ─── */
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.04), 0 4px 6px -4px rgb(0 0 0 / 0.04);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.03), 0 8px 10px -6px rgb(0 0 0 / 0.03);
     
-    --glass-bg: hsl(0 0% 100% / 0.95);
-    --glass-border: hsl(0 0% 90% / 0.80);
+    --glass-bg: hsl(0 0% 100% / 0.75);
+    --glass-border: hsl(0 0% 90% / 0.60);
 
     /* Text hierarchy */
     --text-primary: 0 0% 9%;
@@ -100,8 +100,8 @@
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
     --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.5);
     
-    --glass-bg: hsl(0 0% 10% / 0.95);
-    --glass-border: hsl(0 0% 20% / 0.55);
+    --glass-bg: hsl(0 0% 10% / 0.75);
+    --glass-border: hsl(0 0% 20% / 0.45);
 
     /* Text hierarchy */
     --text-primary: 0 0% 98%;
@@ -131,19 +131,19 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
     font-size: 14px;
     font-feature-settings: "cv11", "ss01";
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Inter', system-ui, sans-serif;
-    @apply font-medium tracking-tight text-foreground/90;
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+    @apply font-semibold tracking-tight text-foreground/95;
   }
 
   /* Focus styles for accessibility */
   :focus-visible {
-    @apply outline-none ring-1 ring-ring ring-offset-1 ring-offset-background;
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 }
 

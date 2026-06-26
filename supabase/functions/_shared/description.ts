@@ -208,7 +208,7 @@ export function renderSections(config: DescriptionConfig, aiJson: Record<string,
 /**
  * Sanitizes and cleans the HTML/plaintext output according to exclusion rules.
  */
-export function sanitize(text: string, rules: ExclusionRules): string {
+export function sanitize(text: string, rules: ExclusionRules, outputFormat?: string): string {
   let cleaned = text;
 
   // 1. Strip images
@@ -275,9 +275,13 @@ export function sanitize(text: string, rules: ExclusionRules): string {
   }
 
   // Clean up residual spaces/formatting glitches from replacements
-  cleaned = cleaned.replace(/\s+/g, ' ');
-  // Restore basic linebreaks if it was formatted, or make sure tags are preserved
-  cleaned = cleaned.replace(/>\s+</g, '><').trim();
+  if (outputFormat === 'plaintext') {
+    cleaned = cleaned.replace(/[ \t]+/g, ' ').trim(); // Preserve newlines
+  } else {
+    cleaned = cleaned.replace(/\s+/g, ' ');
+    // Restore basic linebreaks if it was formatted, or make sure tags are preserved
+    cleaned = cleaned.replace(/>\s+</g, '><').trim();
+  }
 
   return cleaned;
 }

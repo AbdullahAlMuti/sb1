@@ -19,7 +19,7 @@ export default function About() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="pt-24 flex-1">
       <div className="container max-w-4xl py-12 px-4">
         <Link to="/">
           <Button variant="ghost" className="mb-8">

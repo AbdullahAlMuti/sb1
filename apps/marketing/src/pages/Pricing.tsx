@@ -1,5 +1,3 @@
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
 import PricingSection from "@/components/PricingSection";
 import CTASection from "@/components/CTASection";
 import { useSeo, SITE_URL } from "@/lib/useSeo";
@@ -12,13 +10,9 @@ export default function Pricing() {
   });
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="pt-24">
-        <PricingSection />
-        <CTASection />
-      </main>
-      <Footer />
+    <div className="pt-24 flex-1">
+      <PricingSection />
+      <CTASection />
     </div>
   );
 }

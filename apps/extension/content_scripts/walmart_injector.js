@@ -2,6 +2,15 @@
 
 let uiInjected = false;
 
+const escapeHtml = (value) => {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
 // **IMPROVED** Function to inject the main UI panel
 const injectUI = async ({ fromSidebar = false, sidebarImages = [] } = {}) => {
     if (uiInjected) return;
@@ -2087,6 +2096,9 @@ const addEventListenersToPanel = () => {
                 if (!bgResp?.description) throw new Error('No description returned');
 
                 if (descriptionPreviewEl) {
+                    // bgResp.description is intentionally HTML (eBay listing body built
+                    // by the AI generation pipeline). Keeping innerHTML is correct here;
+                    // the source is our own Edge Function, not raw user/page input.
                     descriptionPreviewEl.innerHTML = bgResp.description;
                 }
                 
@@ -2098,11 +2110,14 @@ const addEventListenersToPanel = () => {
             } catch (error) {
                 console.error('❌ Error generating AI description:', error);
                 if (descriptionPreviewEl) {
-                    descriptionPreviewEl.innerHTML = `
-                        <div class="description-placeholder" style="color: #dc2626;">
-                            <span>Error generating description: ${error.message}</span>
-                        </div>
-                    `;
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'description-placeholder';
+                    wrapper.style.color = '#dc2626';
+                    const span = document.createElement('span');
+                    span.textContent = 'Error generating description: ' + (error.message || 'Unknown error');
+                    wrapper.appendChild(span);
+                    descriptionPreviewEl.innerHTML = '';
+                    descriptionPreviewEl.appendChild(wrapper);
                 }
             } finally {
                 generateDescriptionBtn.disabled = false;
@@ -2502,8 +2517,8 @@ const createTitleRowWithAnimation = (data, index) => {
     
     if (data.isBlankRow) {
         row.innerHTML = `
-            <div class="rank">${data.rank}</div>
-            <div class="type">${data.type}</div>
+            <div class="rank">${escapeHtml(data.rank)}</div>
+            <div class="type">${escapeHtml(data.type)}</div>
             <div class="title-text" contenteditable="true" data-placeholder="Write your custom title here..."></div>
             <div class="char-count">0</div>
             <button class="action-btn">Use</button>
@@ -2588,8 +2603,8 @@ const createTitleRowWithAnimation = (data, index) => {
     }
     
     row.innerHTML = `
-        <div class="rank">${data.rank}</div>
-        <div class="type">${data.type}</div>
+        <div class="rank">${escapeHtml(data.rank)}</div>
+        <div class="type">${escapeHtml(data.type)}</div>
         <div class="title-text" contenteditable="true"></div>
         <div class="char-count">0</div>
         <button class="action-btn">Change</button>
@@ -2628,7 +2643,7 @@ const typewriterAnimation = (element, text, charCountElement, finalCount) => {
 };
 
 // Helper function to create the HTML for a single title row.
-const createTitleRow = (data, isSelected = false) => `<div class="title-row ${isSelected ? 'selected' : ''}" data-title="${data.title}"><div class="rank">${data.rank}</div><div class="type">${data.type}</div><div class="title-text" contenteditable="true">${data.title}</div><div class="char-count">${data.charCount}</div><button class="action-btn">Change</button></div>`;
+const createTitleRow = (data, isSelected = false) => `<div class="title-row ${isSelected ? 'selected' : ''}" data-title="${escapeHtml(data.title)}"><div class="rank">${escapeHtml(data.rank)}</div><div class="type">${escapeHtml(data.type)}</div><div class="title-text" contenteditable="true">${escapeHtml(data.title)}</div><div class="char-count">${escapeHtml(data.charCount)}</div><button class="action-btn">Change</button></div>`;
 
 
 // Download all scraped images
@@ -2739,24 +2754,23 @@ function openCalculator() {
         popup.style.display = 'flex';
         console.log('✅ Calculator popup displayed');
         
-        // Load saved values FIRST
-        loadCalculatorValues();
-
-        // THEN overwrite Walmart price with fresh scrape
-        const walmartPriceInput = document.getElementById('supplier-price');
-        if (walmartPriceInput) {
-            const scrapedPrice = scrapeWalmartPrice();
-            if (scrapedPrice !== 'No price found') {
-                walmartPriceInput.value = scrapedPrice;
-                console.log('💰 Auto-filled Walmart price:', scrapedPrice);
-            } else {
-                console.log('⚠️ No fresh Walmart price scraped on open');
+        // Load saved values FIRST, then overwrite price and calculate
+        loadCalculatorValues(() => {
+            const walmartPriceInput = document.getElementById('supplier-price');
+            if (walmartPriceInput) {
+                const scrapedPrice = scrapeWalmartPrice();
+                if (scrapedPrice !== 'No price found') {
+                    walmartPriceInput.value = scrapedPrice;
+                    console.log('💰 Auto-filled Walmart price:', scrapedPrice);
+                } else {
+                    console.log('⚠️ No fresh Walmart price scraped on open');
+                }
             }
-        }
-        
-        // Trigger calculate to update display
-        calculatePrice();
-        console.log('✅ Calculator opened successfully');
+            
+            // Trigger calculate to update display
+            calculatePrice();
+            console.log('✅ Calculator opened successfully');
+        });
     } else {
         console.error('❌ Calculator popup not found');
     }
@@ -2773,26 +2787,51 @@ function closeCalculator() {
     }
 }
 
-function loadCalculatorValues() {
+function loadCalculatorValues(callback) {
     try {
-        const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
-        const fields = [
-            'tax-percent',
-            'tracking-fee',
-            'ebay-fee-percent',
-            'promo-fee-percent',
-            'desired-profit',
-            'payment-fixed-fee'
-        ];
-        
-        fields.forEach(fieldId => {
-            const input = document.getElementById(fieldId);
-            if (input && savedValues[fieldId] !== undefined) {
-                input.value = savedValues[fieldId];
+        chrome.storage.local.get('calculatorValues', (res) => {
+            const savedValues = res.calculatorValues || JSON.parse(localStorage.getItem('calculatorValues') || '{}');
+            const fields = [
+                'tax-percent',
+                'tracking-fee',
+                'ebay-fee-percent',
+                'promo-fee-percent',
+                'desired-profit',
+                'payment-fixed-fee'
+            ];
+            
+            fields.forEach(fieldId => {
+                const input = document.getElementById(fieldId);
+                if (input && savedValues[fieldId] !== undefined) {
+                    input.value = savedValues[fieldId];
+                }
+            });
+
+            if (typeof callback === 'function') {
+                callback();
             }
         });
     } catch (e) {
         console.error('Error loading calculator values:', e);
+        // Fallback sync call if chrome.storage is not ready
+        try {
+            const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
+            const fields = [
+                'tax-percent',
+                'tracking-fee',
+                'ebay-fee-percent',
+                'promo-fee-percent',
+                'desired-profit',
+                'payment-fixed-fee'
+            ];
+            fields.forEach(fieldId => {
+                const input = document.getElementById(fieldId);
+                if (input && savedValues[fieldId] !== undefined) {
+                    input.value = savedValues[fieldId];
+                }
+            });
+            if (typeof callback === 'function') callback();
+        } catch (_) {}
     }
 }
 
@@ -2816,6 +2855,9 @@ function saveCalculatorValues() {
         });
         
         localStorage.setItem('calculatorValues', JSON.stringify(values));
+        // Mirror to chrome.storage.local so all extension contexts (side panel, background)
+        // can read user-set calculator values without needing Walmart page localStorage access.
+        try { chrome.storage.local.set({ calculatorValues: values }); } catch (_) {}
     } catch (e) {
         console.error('Error saving calculator values:', e);
     }
@@ -2825,69 +2867,70 @@ function saveCalculatorValues() {
 function quickCalculate() {
     console.log('⚡ Quick calculating...');
     
-    const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
-    
-    let walmartPrice = 0;
-    
-    const scrapedPrice = scrapeWalmartPrice();
-    if (scrapedPrice !== 'No price found') {
-        walmartPrice = parseFloat(scrapedPrice);
-        console.log('💰 Using scraped Walmart price for quick calc:', walmartPrice);
-    } else {
-        console.log('⚠️ Scrape failed, quick calc skipped (waiting for price)');
-        const sellItForInput = document.getElementById('sell-it-for-input');
-        if (sellItForInput && !sellItForInput.value) {
-            sellItForInput.placeholder = 'No price found';
+    chrome.storage.local.get('calculatorValues', (res) => {
+        const savedValues = res.calculatorValues || JSON.parse(localStorage.getItem('calculatorValues') || '{}');
+        let walmartPrice = 0;
+        
+        const scrapedPrice = scrapeWalmartPrice();
+        if (scrapedPrice !== 'No price found') {
+            walmartPrice = parseFloat(scrapedPrice);
+            console.log('💰 Using scraped Walmart price for quick calc:', walmartPrice);
+        } else {
+            console.log('⚠️ Scrape failed, quick calc skipped (waiting for price)');
+            const sellItForInput = document.getElementById('sell-it-for-input');
+            if (sellItForInput && !sellItForInput.value) {
+                sellItForInput.placeholder = 'No price found';
+            }
+            return;
         }
-        return;
-    }
-    const parseVal = (val, def) => {
-        const parsed = parseFloat(val);
-        return isNaN(parsed) ? def : parsed;
-    };
+        const parseVal = (val, def) => {
+            const parsed = parseFloat(val);
+            return isNaN(parsed) ? def : parsed;
+        };
 
-    const taxPercent = parseVal(savedValues['tax-percent'], 9);
-    const trackingFee = parseVal(savedValues['tracking-fee'], 0.20);
-    const ebayFeePercent = parseVal(savedValues['ebay-fee-percent'], 20);
-    const promoFeePercent = parseVal(savedValues['promo-fee-percent'], 10);
-    const desiredProfit = parseVal(savedValues['desired-profit'], 0);
-    const paymentFixedFee = parseVal(savedValues['payment-fixed-fee'], 0.30);
-    
-    if (typeof calculateSellingPrice !== 'function') {
-        console.error('calculateSellingPrice is not defined');
-        return;
-    }
+        const taxPercent = parseVal(savedValues['tax-percent'], 9);
+        const trackingFee = parseVal(savedValues['tracking-fee'], 0.20);
+        const ebayFeePercent = parseVal(savedValues['ebay-fee-percent'], 20);
+        const promoFeePercent = parseVal(savedValues['promo-fee-percent'], 10);
+        const desiredProfit = parseVal(savedValues['desired-profit'], 0);
+        const paymentFixedFee = parseVal(savedValues['payment-fixed-fee'], 0.30);
+        
+        if (typeof calculateSellingPrice !== 'function') {
+            console.error('calculateSellingPrice is not defined');
+            return;
+        }
 
-    const result = calculateSellingPrice({
-        sourcePrice: walmartPrice,
-        taxPercent,
-        trackingFee,
-        ebayFeePercent,
-        promoFeePercent,
-        desiredProfit,
-        paymentFixedFee
+        const result = calculateSellingPrice({
+            sourcePrice: walmartPrice,
+            taxPercent,
+            trackingFee,
+            ebayFeePercent,
+            promoFeePercent,
+            desiredProfit,
+            paymentFixedFee
+        });
+
+        if (!result) return;
+        
+        const sellItForInput = document.getElementById('sell-it-for-input') || 
+                               document.querySelector('input[aria-label*="Sell it for" i]') ||
+                               document.querySelector('.price-field input[type="text"]') ||
+                               document.querySelector('input[placeholder*="Sell it for" i]');
+        if (sellItForInput) {
+            sellItForInput.value = result.finalPrice.toFixed(2);
+            sellItForInput.style.backgroundColor = '#e8f5e8';
+            sellItForInput.style.borderColor = '#4caf50';
+            
+            setTimeout(() => {
+                sellItForInput.style.backgroundColor = '';
+                sellItForInput.style.borderColor = '';
+            }, 1500);
+            
+            console.log('💰 Quick calculated price:', result.finalPrice.toFixed(2));
+        } else {
+            console.error('❌ Sell it for input not found');
+        }
     });
-
-    if (!result) return;
-    
-    const sellItForInput = document.getElementById('sell-it-for-input') || 
-                           document.querySelector('input[aria-label*="Sell it for" i]') ||
-                           document.querySelector('.price-field input[type="text"]') ||
-                           document.querySelector('input[placeholder*="Sell it for" i]');
-    if (sellItForInput) {
-        sellItForInput.value = result.finalPrice.toFixed(2);
-        sellItForInput.style.backgroundColor = '#e8f5e8';
-        sellItForInput.style.borderColor = '#4caf50';
-        
-        setTimeout(() => {
-            sellItForInput.style.backgroundColor = '';
-            sellItForInput.style.borderColor = '';
-        }, 1500);
-        
-        console.log('💰 Quick calculated price:', result.finalPrice.toFixed(2));
-    } else {
-        console.error('❌ Sell it for input not found');
-    }
 }
 
 function calculatePrice() {

@@ -5,6 +5,7 @@ import {
   PanelRightOpen,
   Rocket,
   ScanSearch,
+  Shield,
   Sparkles,
   Tags,
   Zap,
@@ -42,23 +43,19 @@ export const siteConfig: SiteConfig = {
   },
 
   hero: {
-    eyebrow: "Amazon · Walmart · AliExpress → eBay",
-    titleLead: "List winning products to eBay in",
-    titleHighlight: "one click.",
+    eyebrow: "VERO Protection v2.0 Live",
+    titleLead: "Turn Amazon & Walmart products into",
+    titleHighlight: "policy-safe eBay listings in 18 seconds.",
     subtitle:
-      "SellerSuit scrapes supplier product data, builds optimized listings with SKUs and pricing, and auto-uploads them to eBay — so you spend minutes per listing, not hours.",
+      "Stop guessing margins and risking account suspension. SellerSuit extracts supplier details, calculates exact eBay fees, and runs automatic VERO trademark checks before publishing your listing.",
     primaryCta: {
-      label: "Add to Chrome — Free",
+      label: "Install Free Chrome Extension",
       href: "https://chromewebstore.google.com/detail/sellersuit",
       event: "cta_add_to_chrome_hero",
       external: true,
     },
-    secondaryCta: { label: "See how it works", href: "/how-it-works", event: "cta_how_it_works_hero" },
-    stats: [
-      { value: "200+", label: "Listings per hour" },
-      { value: "3", label: "Supported suppliers" },
-      { value: "50k+", label: "Active resellers" },
-    ],
+    secondaryCta: { label: "Watch 1-Min Demo", href: "/how-it-works", event: "cta_how_it_works_hero" },
+    stats: [],
   },
 
   trustBar: {
@@ -106,27 +103,27 @@ export const siteConfig: SiteConfig = {
     items: [
       {
         icon: ScanSearch,
-        title: "Supplier scraper",
+        title: "One-click scraper",
         description:
-          "One-click capture of titles, images, variants, and pricing from Amazon, Walmart, and AliExpress product pages.",
+          "Extract high-resolution images, full descriptions, and product variants from Amazon, Walmart, and AliExpress instantly.",
       },
       {
-        icon: Tags,
-        title: "SKU engine",
+        icon: Shield,
+        title: "VERO & policy shield",
         description:
-          "Generate consistent, trackable SKUs for every product and variant so inventory and orders always map back to the source.",
+          "Automatically check for trademarked brands, restricted products, and flagged keywords before listing to protect your seller account.",
       },
       {
         icon: Calculator,
-        title: "Profit calculator",
+        title: "Margin guard engine",
         description:
-          "Factor in supplier cost, eBay and payment fees, and shipping to set prices that protect your margin before you list.",
+          "Auto-factor in eBay category fees, processing cuts, and shipping costs to lock in your desired profit margin before publishing.",
       },
       {
         icon: Boxes,
-        title: "Bulk upload",
+        title: "Background bulk lister",
         description:
-          "Queue dozens of products and publish them to eBay in the background through the same reliable listing pipeline.",
+          "Queue 50+ products simultaneously and let SellerSuit list them sequentially in the background to avoid account rate-limiting flags.",
       },
       {
         icon: LayoutDashboard,
@@ -146,7 +143,7 @@ export const siteConfig: SiteConfig = {
   calculator: {
     eyebrow: "Know your margin first",
     heading: "Profit calculator",
-    subheading: "Adjust the numbers to see your real profit before you list. It's the same math the extension runs on every product.",
+    subheading: "Run the numbers. See exactly how SellerSuit calculates margins and handles complex eBay category fees in real time.",
     fields: [
       { key: "cost", label: "Supplier cost", prefix: "$", min: 0, max: 500, step: 1, default: 18 },
       { key: "price", label: "eBay sell price", prefix: "$", min: 0, max: 1000, step: 1, default: 39 },
@@ -340,7 +337,7 @@ export const siteConfig: SiteConfig = {
     heading: "Manual Listing is costing you hours and missed profit.",
     subheading: "Compare how dropshippers manage listings manually versus with SellerSuit automated flows.",
     manual: {
-      title: "Manual Dropshipping",
+      title: "The Old Way: Manual Copy-Paste",
       description: "Prone to typos, slow updates, and thin margins.",
       items: [
         "Find a hot product on Amazon or Walmart",

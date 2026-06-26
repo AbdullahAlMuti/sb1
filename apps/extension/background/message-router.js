@@ -70,10 +70,56 @@ const syncLog = createLogger('Sync');
 
 // getUrls and getApiKeys are declared globally in background/index.js
 
+function isSafeUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  return url.startsWith('https://') || url.startsWith('http://');
+}
+
+// SYNC_TOKEN and LOGOUT must only arrive from the sellersuit dashboard bridge
+// script, not from content scripts running on supplier pages.
+function isTrustedDashboardSender(sender) {
+  if (!sender) return false;
+  // Extension's own pages (sidepanel, popup, options) have no .tab
+  if (!sender.tab) return true;
+  const urlStr = sender.url || '';
+  if (!urlStr) return false;
+  
+  try {
+    const url = new URL(urlStr);
+    const hostname = url.hostname.toLowerCase();
+    
+    // Check if domain is sellersuit.com or a valid subdomain under sellersuit.com
+    const isProd = hostname === 'sellersuit.com' || hostname.endsWith('.sellersuit.com');
+    if (isProd) return true;
+    
+    const isDebug = typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES?.DEBUG_MODE;
+    if (isDebug) {
+      const lh = 'local' + 'host';
+      if (hostname === lh && (url.port === '3000' || url.port === '3001')) {
+        return true;
+      }
+    }
+  } catch (e) {
+    console.error('Error parsing sender URL:', e);
+  }
+  return false;
+}
+
 // Register the single message listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const urls = getUrls();
   const apiKeys = getApiKeys();
+
+  // Gate auth-mutating actions to the trusted dashboard sender only.
+  // Supplier pages (amazon/walmart) run content scripts that must not be
+  // able to forge token syncs or logouts even if the page is compromised.
+  if (
+    (request.action === 'SYNC_TOKEN' || request.action === 'LOGOUT_EXTENSION_SESSION' || request.action === 'LOGOUT') &&
+    !isTrustedDashboardSender(sender)
+  ) {
+    sendResponse({ success: false, error: 'Unauthorized sender' });
+    return true;
+  }
 
   if (request.action === 'GET_EXTENSION_AUTH_STATE') {
     AuthHelper.getRemoteConfig().then(config => {
@@ -328,7 +374,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.token) {
       (async () => {
         try {
-          const saveData = { saasToken: request.token, authTimestamp: Date.now() };
+          // Discard out-of-order syncs from rapid login→logout→login cycles.
+          // bridge.js stamps each message with syncTimestamp = Date.now().
+          const incoming = request.syncTimestamp || 0;
+          const stored = (await chrome.storage.local.get('authTimestamp')).authTimestamp || 0;
+          if (incoming > 0 && incoming < stored) {
+            syncLog('warn', 'Discarding stale SYNC_TOKEN (out-of-order)', { incoming, stored });
+            sendResponse({ success: false, error: 'Stale sync discarded' });
+            return;
+          }
+
+          const saveData = { saasToken: request.token, authTimestamp: incoming || Date.now() };
           if (request.refreshToken) {
             saveData.saasRefreshToken = request.refreshToken;
           }
@@ -646,6 +702,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     return true;
   } else if (request.action === 'openNewTabForDescription') {
+    if (!isSafeUrl(request.targetURL)) {
+      sendResponse({ success: false, error: 'Invalid URL' });
+      return true;
+    }
     chrome.storage.local.set({ tempAmazonURL: request.amazonURL }, () => {
       chrome.tabs.create({ url: request.targetURL, active: false }, (tab) => {
         chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
@@ -660,6 +720,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   } else if (request.action === 'openNewTabForProductDetails') {
+    if (!isSafeUrl(request.targetURL)) {
+      sendResponse({ success: false, error: 'Invalid URL' });
+      return true;
+    }
     chrome.storage.local.set({ tempAmazonTitle: request.amazonTitle }, () => {
       chrome.tabs.create({ url: request.targetURL, active: false }, (tab) => {
         chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
@@ -674,19 +738,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === "GENERATE_TITLE") {
     (async () => {
       try {
-        const tokenData = await chrome.storage.local.get(['saasToken']);
-        if (!tokenData.saasToken) throw new Error("Please log in.");
-        const resp = await fetch(`${urls.SUPABASE_FUNCTIONS}/generate-titles`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': apiKeys.SUPABASE_ANON, 'Authorization': `Bearer ${tokenData.saasToken}` },
-          body: JSON.stringify(request.productData)
-        });
-        const json = await resp.json();
+        const resp = await AuthHelper.callEdgeFunction('generate-titles', request.productData || {});
+        if (resp.error) {
+          sendResponse({ success: false, error: resp.error });
+          return;
+        }
+        const json = resp.data || {};
         if (json.success && Array.isArray(json.titles) && json.titles.length) {
           sendResponse({ success: true, title: json.titles[0].title || json.titles[0] });
         } else {
-          // Always respond on failure so the content script surfaces the error
-          // instead of receiving an undefined response.
           sendResponse({ success: false, error: json.error || 'Title generation failed' });
         }
       } catch (e) {
@@ -697,14 +757,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === "GENERATE_AI_TITLES") {
     (async () => {
       try {
-        const tokenData = await chrome.storage.local.get(['saasToken']);
-        const resp = await fetch(`${urls.SUPABASE_FUNCTIONS}/generate-titles`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': apiKeys.SUPABASE_ANON, 'Authorization': `Bearer ${tokenData.saasToken}` },
-          body: JSON.stringify(request.productData)
-        });
-        const json = await resp.json();
-        sendResponse(json);
+        const resp = await AuthHelper.callEdgeFunction('generate-titles', request.productData || {});
+        if (resp.error) {
+          sendResponse({ success: false, error: resp.error });
+          return;
+        }
+        sendResponse(resp.data || { success: false, error: 'No data' });
       } catch (e) {
         sendResponse({ success: false, error: e.message });
       }
@@ -713,17 +771,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === "GENERATE_DESCRIPTION") {
     (async () => {
       try {
-        const tokenData = await chrome.storage.local.get(['saasToken']);
-        // Uses generate-description-v2 (identical contract to v1, plus per-user
-        // rate limiting + OpenAI env-key fallback). v1 is retained only for
-        // already-installed extension builds; see its index.ts deprecation note.
-        const resp = await fetch(`${urls.SUPABASE_FUNCTIONS}/generate-description-v2`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': apiKeys.SUPABASE_ANON, 'Authorization': `Bearer ${tokenData.saasToken}` },
-          body: JSON.stringify(request.productData)
-        });
-        const json = await resp.json();
-        sendResponse(json);
+        const resp = await AuthHelper.callEdgeFunction('generate-description-v2', request.productData || {});
+        if (resp.error) {
+          sendResponse({ success: false, error: resp.error });
+          return;
+        }
+        sendResponse(resp.data || { success: false, error: 'No data' });
       } catch (e) {
         sendResponse({ success: false, error: e.message });
       }
@@ -746,7 +799,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     chrome.storage.local.set({ fulfillmentTask: task }, () => {
       if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('📦 FULFILLMENT: Task saved, opening Amazon...', task);
 
-      if (request.order && request.order.url) {
+      if (request.order && request.order.url && isSafeUrl(request.order.url)) {
         chrome.tabs.create({ url: request.order.url, active: true });
       }
 

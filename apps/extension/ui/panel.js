@@ -1335,6 +1335,9 @@ function initCalculator() {
   const closeBtn = document.getElementById('calculator-close-btn');
   const popup = document.getElementById('calculator-popup');
 
+  // Load saved values on initialization
+  loadCalculatorValues();
+
   if (calculatorBtn) {
     calculatorBtn.addEventListener('click', () => {
       if (popup) {
@@ -1482,20 +1485,41 @@ function saveCalculatorValues(sourcePrice, taxPercent, trackingFee, ebayFeePerce
     'payment-fixed-fee': paymentFixedFee
   };
   localStorage.setItem('calculatorValues', JSON.stringify(values));
+  try { chrome.storage.local.set({ calculatorValues: values }); } catch (_) {}
 }
 
-function loadCalculatorValues() {
+function loadCalculatorValues(callback) {
   try {
-    const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
-    const fields = ['tax-percent', 'tracking-fee', 'ebay-fee-percent', 'promo-fee-percent', 'desired-profit', 'payment-fixed-fee'];
-    fields.forEach(fieldId => {
-      const input = document.getElementById(fieldId);
-      if (input && savedValues[fieldId] !== undefined) {
-        input.value = savedValues[fieldId];
+    chrome.storage.local.get('calculatorValues', (res) => {
+      const savedValues = res.calculatorValues || JSON.parse(localStorage.getItem('calculatorValues') || '{}');
+      const fields = ['tax-percent', 'tracking-fee', 'ebay-fee-percent', 'promo-fee-percent', 'desired-profit', 'payment-fixed-fee'];
+      fields.forEach(fieldId => {
+        const input = document.getElementById(fieldId);
+        if (input && savedValues[fieldId] !== undefined) {
+          input.value = savedValues[fieldId];
+        }
+      });
+      if (typeof callback === 'function') {
+        callback();
+      } else {
+        runCalculation();
       }
     });
   } catch (e) {
-    console.error('Error loading calculator values from localStorage:', e);
+    console.error('Error loading calculator values:', e);
+    // Fallback sync
+    try {
+      const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
+      const fields = ['tax-percent', 'tracking-fee', 'ebay-fee-percent', 'promo-fee-percent', 'desired-profit', 'payment-fixed-fee'];
+      fields.forEach(fieldId => {
+        const input = document.getElementById(fieldId);
+        if (input && savedValues[fieldId] !== undefined) {
+          input.value = savedValues[fieldId];
+        }
+      });
+      if (typeof callback === 'function') callback();
+      else runCalculation();
+    } catch (_) {}
   }
 }
 

@@ -45,6 +45,12 @@ export async function archivePlan(planId: string) {
   if (error) throw error;
 }
 
+/** Attempt to delete a plan entirely from the database. Will fail if referenced by user_plans or checkout_sessions. */
+export async function deletePlan(planId: string) {
+  const { error } = await supabase.from("plans").delete().eq("id", planId);
+  if (error) throw error;
+}
+
 /** Display name for a plan — shared by the prices/features sub-pages. */
 export async function getPlanName(planId: string): Promise<string | null> {
   const { data } = await supabase.from("plans").select("display_name").eq("id", planId).maybeSingle();

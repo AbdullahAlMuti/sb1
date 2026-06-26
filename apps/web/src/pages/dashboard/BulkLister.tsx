@@ -128,13 +128,23 @@ const SOURCE_LABEL: Record<ItemSource, string> = {
   paste: 'Pasted', csv: 'CSV', extension: 'Extension',
 };
 
+/* ── module cache for tab switching ── */
+let cachedUserId: string | null = null;
+let cachedItems: BulkItemRow[] | null = null;
+
 export default function BulkLister() {
   const { user } = useAuth();
   const userId = user?.id;
   const navigate = useNavigate();
 
-  const [items, setItems] = useState<BulkItemRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Reset cache if the user switches accounts / logs out
+  if (user && cachedUserId !== user.id) {
+    cachedUserId = user.id;
+    cachedItems = null;
+  }
+
+  const [items, setItems] = useState<BulkItemRow[]>(cachedItems || []);
+  const [loading, setLoading] = useState(!cachedItems);
   const [isRunning, setIsRunning] = useState(false);
   const [extensionConnected, setExtensionConnected] = useState(false);
   const [intervalInput, setIntervalInput] = useState('60');
@@ -169,6 +179,7 @@ export default function BulkLister() {
       toast({ title: 'Failed to load bulk queue', description: error.message, variant: 'destructive' });
     } else {
       setItems(data ?? []);
+      cachedItems = data ?? [];
     }
     setLoading(false);
   }, [userId]);

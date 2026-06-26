@@ -3,6 +3,7 @@ import {
   ClipboardList,
   CreditCard,
   Gauge,
+  Globe,
   KeyRound,
   Layers,
   Megaphone,
@@ -25,7 +26,7 @@ import { SHOPIFY_ENABLED } from "@repo/config/marketplaceScope";
  * an already-mounted route.
  */
 
-export type AdminRole = "admin" | "super_admin" | "moderator" | "staff";
+export type AdminRole = "admin";
 
 export type NavBadgeTone = "default" | "warning";
 
@@ -122,8 +123,9 @@ export const adminNavigation: NavGroup[] = [
   {
     label: "Content",
     items: [
-      { label: "Blog", icon: Newspaper, route: "/blog" },
-      { label: "Notices", icon: Megaphone, route: "/notices", badge: { countKey: "notices" } },
+      { label: "Homepage",  icon: Globe,      route: "/homepage-content" },
+      { label: "Blog",      icon: Newspaper,  route: "/blog" },
+      { label: "Notices",   icon: Megaphone,  route: "/notices", badge: { countKey: "notices" } },
     ],
   },
 ];

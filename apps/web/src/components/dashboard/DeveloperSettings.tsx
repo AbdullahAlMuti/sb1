@@ -7,7 +7,7 @@ import { Label } from "@repo/ui/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@repo/ui/components/ui/card";
 import { toast } from "sonner";
 
-export default function DeveloperSettings() {
+function DeveloperSettingsPanel() {
   const [url, setUrl] = useState("");
   const [key, setKey] = useState("");
   const [isLocalMode, setIsLocalMode] = useState(false);
@@ -122,4 +122,11 @@ export default function DeveloperSettings() {
       </Card>
     </motion.div>
   );
+}
+
+// Never render this panel in production — it lets users swap the Supabase
+// backend via localStorage, which an XSS payload could weaponize.
+export default function DeveloperSettings() {
+  if (import.meta.env.PROD) return null;
+  return <DeveloperSettingsPanel />;
 }

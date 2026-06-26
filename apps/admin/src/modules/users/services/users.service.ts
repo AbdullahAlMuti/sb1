@@ -8,7 +8,7 @@ import { supabase, getFunctionErrorMessage } from "@repo/api-client/supabase/cli
  * calls that were previously duplicated inline across AdminUsers and AdminRoles.
  */
 
-export type AppRole = "user" | "admin" | "super_admin";
+export type AppRole = "user" | "admin";
 
 async function authHeaders() {
   const { data } = await supabase.auth.getSession();
@@ -72,4 +72,22 @@ export async function verifyUserEmail(userId: string): Promise<VerifyEmailResult
   });
   if (error) throw error;
   return (data ?? { success: false }) as VerifyEmailResult;
+}
+
+/** Delete one or multiple users via the `admin-delete-user` Edge Function. */
+export async function deleteUsers(userIds: string[]) {
+  const { token, headers } = await authHeaders();
+  if (!token) throw new Error("You must be signed in as an admin to delete users");
+
+  const { data, error } = await supabase.functions.invoke("admin-delete-user", {
+    body: { userIds },
+    headers,
+  });
+
+  if (error) {
+    const rawErrMsg = await getFunctionErrorMessage(error);
+    throw new Error(rawErrMsg || error.message || "Failed to delete user(s)");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
 }

@@ -106,30 +106,12 @@ export default function AdminUsage() {
     // Operational budget estimate; billing plans have been removed.
     const totalCreditsLimit = profiles.reduce((sum) => sum + 100, 0);
 
-    // Mock storage and bandwidth (would come from actual metrics in production)
-    const storageUsed = 284; // GB
-    const storageLimit = 500; // GB
-    const bandwidthUsed = 1.8; // TB
-    const bandwidthLimit = 5; // TB
-
     return {
       apiCalls: {
         current: totalApiCalls,
         limit: Math.max(1000000, totalApiCalls * 1.2),
         change: 12.5,
         unit: '',
-      },
-      storage: {
-        current: storageUsed,
-        limit: storageLimit,
-        change: 8,
-        unit: 'GB',
-      },
-      bandwidth: {
-        current: bandwidthUsed,
-        limit: bandwidthLimit,
-        change: 15,
-        unit: 'TB',
       },
       activeUsers: {
         current: activeUsers,
@@ -183,8 +165,6 @@ export default function AdminUsage() {
       return {
         name: format(interval, formatStr),
         apiCalls: periodLogs.length,
-        bandwidth: Math.round(periodLogs.length * 0.5 + Math.random() * 20),
-        storage: Math.round(280 + Math.random() * 10),
       };
     });
   }, [usageData?.usageLogs, dateRange]);
@@ -204,24 +184,6 @@ export default function AdminUsage() {
         limitFormat: (val: number) => val >= 1000000 ? `${(val / 1000000).toFixed(0)}M` : val >= 1000 ? `${(val / 1000).toFixed(0)}K` : val.toString(),
       },
       {
-        label: 'Storage',
-        current: stats.storage.current,
-        limit: stats.storage.limit,
-        percentage: (stats.storage.current / stats.storage.limit) * 100,
-        color: 'bg-emerald-500',
-        format: (val: number) => `${val}`,
-        limitFormat: (val: number) => `${val} GB`,
-      },
-      {
-        label: 'Bandwidth',
-        current: stats.bandwidth.current,
-        limit: stats.bandwidth.limit,
-        percentage: (stats.bandwidth.current / stats.bandwidth.limit) * 100,
-        color: 'bg-orange-500',
-        format: (val: number) => `${val}`,
-        limitFormat: (val: number) => `${val} TB`,
-      },
-      {
         label: 'Team Members',
         current: stats.activeUsers.current,
         limit: stats.activeUsers.limit,
@@ -232,22 +194,6 @@ export default function AdminUsage() {
       },
     ];
   }, [stats]);
-
-  // Activity log data
-  const activityLogs = useMemo(() => {
-    if (!usageData?.usageLogs) return [];
-    
-    const recentLogs = usageData.usageLogs.slice(-10).reverse();
-    
-    const activities = [
-      { icon: ArrowUpRight, title: 'API capacity adjusted', description: 'Operational threshold updated', time: '2 hours ago', type: 'info' },
-      { icon: AlertTriangle, title: 'High API usage detected', description: 'Approaching 85% of monthly limit', time: '5 hours ago', type: 'warning' },
-      { icon: Check, title: 'Storage optimization completed', description: 'Freed up 45 GB of storage space', time: '1 day ago', type: 'success' },
-      { icon: Users, title: 'New team members added', description: '12 users added to workspace', time: '2 days ago', type: 'info' },
-    ];
-
-    return activities;
-  }, [usageData?.usageLogs]);
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) return `${(num / 1000000).toFixed(0)}M`;
@@ -337,42 +283,6 @@ export default function AdminUsage() {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/20 border-emerald-200 dark:border-emerald-800">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="p-2 bg-emerald-500/10 rounded-lg">
-                    <HardDrive className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <Badge variant="secondary" className="text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30">
-                    +{stats.storage.change}%
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">Storage Used</p>
-                <p className="text-2xl font-bold">{stats.storage.current} GB</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {stats.storage.limit - stats.storage.current} GB remaining
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950/30 dark:to-orange-900/20 border-orange-200 dark:border-orange-800">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="p-2 bg-orange-500/10 rounded-lg">
-                    <Wifi className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-                  </div>
-                  <Badge variant="secondary" className="text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30">
-                    +{stats.bandwidth.change}%
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">Bandwidth</p>
-                <p className="text-2xl font-bold">{stats.bandwidth.current} TB</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {(stats.bandwidth.limit - stats.bandwidth.current).toFixed(1)} TB remaining
-                </p>
-              </CardContent>
-            </Card>
-
             <Card className="bg-gradient-to-br from-violet-50 to-violet-100 dark:from-violet-950/30 dark:to-violet-900/20 border-violet-200 dark:border-violet-800">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
@@ -408,8 +318,6 @@ export default function AdminUsage() {
                 <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as UsageTab)}>
                   <TabsList className="h-9">
                     <TabsTrigger value="api" className="text-xs px-3">API Calls</TabsTrigger>
-                    <TabsTrigger value="bandwidth" className="text-xs px-3">Bandwidth</TabsTrigger>
-                    <TabsTrigger value="storage" className="text-xs px-3">Storage</TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>
@@ -443,7 +351,7 @@ export default function AdminUsage() {
                     />
                     <Area
                       type="monotone"
-                      dataKey={activeTab === 'api' ? 'apiCalls' : activeTab === 'bandwidth' ? 'bandwidth' : 'storage'}
+                      dataKey="apiCalls"
                       stroke="hsl(var(--primary))"
                       strokeWidth={2}
                       fillOpacity={1}
@@ -455,41 +363,7 @@ export default function AdminUsage() {
             </CardContent>
           </Card>
 
-          {/* Resources Limits Log */}
-          <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Resources Limits</CardTitle>
-                <Button variant="ghost" size="sm" className="text-primary">
-                  View all
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {activityLogs.map((log, index) => (
-                <div key={index} className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className={cn(
-                    "p-2 rounded-full",
-                    log.type === 'warning' ? 'bg-orange-100 dark:bg-orange-900/30' :
-                    log.type === 'success' ? 'bg-emerald-100 dark:bg-emerald-900/30' :
-                    'bg-blue-100 dark:bg-blue-900/30'
-                  )}>
-                    <log.icon className={cn(
-                      "h-4 w-4",
-                      log.type === 'warning' ? 'text-orange-600 dark:text-orange-400' :
-                      log.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' :
-                      'text-blue-600 dark:text-blue-400'
-                    )} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{log.title}</p>
-                    <p className="text-xs text-muted-foreground">{log.description}</p>
-                  </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">{log.time}</span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+
         </div>
 
         {/* Right Sidebar - Resource Limits */}

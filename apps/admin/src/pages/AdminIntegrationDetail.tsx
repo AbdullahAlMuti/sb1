@@ -6,7 +6,18 @@ import { StatusBadge } from "@/components/admin-dashboard/StatusBadge";
 import { useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 
-import { type IntegrationRecord } from "@/components/admin-dashboard/IntegrationWorkQueue";
+export interface IntegrationRecord {
+  id: string;
+  account: string;
+  subtext: string;
+  provider: string;
+  workspace: string;
+  health: "Healthy" | "Warning" | "Error" | "Offline" | "Active" | "Connected";
+  lastSync: string;
+  duration: string;
+  issues: number;
+  nextAction: string;
+}
 
 // Simulated fetch function
 const fetchIntegrationDetail = async (id: string): Promise<IntegrationRecord> => {

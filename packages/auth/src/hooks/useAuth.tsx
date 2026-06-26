@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase, getFunctionErrorMessage } from '@repo/api-client/supabase/client';
 import { toast } from 'sonner';
@@ -27,8 +27,7 @@ interface Profile {
 }
 
 interface UserRole {
-  // NOTE: Some older DBs/extensions may still use 'moderator'. Treat it as admin-like.
-  role: 'user' | 'admin' | 'super_admin' | 'moderator' | 'staff';
+  role: 'user' | 'admin';
 }
 
 type RoleRow = {
@@ -48,7 +47,6 @@ interface AuthContextType {
   profile: Profile | null;
   roles: UserRole[];
   isAdmin: boolean;
-  isSuperAdmin: boolean;
   isLoading: boolean;
   isEmailVerified: boolean;
   signIn: (email: string, password: string, loginContext?: 'user' | 'admin') => Promise<{ error: Error | null }>;
@@ -68,11 +66,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [roles, setRoles] = useState<UserRole[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const isAdmin = roles.some(r => r.role === 'admin' || r.role === 'super_admin' || r.role === 'moderator');
-  const isSuperAdmin = roles.some(r => r.role === 'super_admin');
+  const userRef = useRef<User | null>(null);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  const isAdmin = roles.some(r => r.role === 'admin');
   const isEmailVerified = user?.email_confirmed_at != null;
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = useCallback(async (userId: string) => {
+    // eslint-disable-next-line no-console
+    console.log("[useAuth] fetchProfile start for:", userId);
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -87,11 +92,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // If the profile doesn't exist yet, create it server-side and retry.
       if (!data) {
+        // eslint-disable-next-line no-console
+        console.log("[useAuth] profile missing, calling ensure-profile");
         const { data: ensured, error: ensureError } = await supabase.functions.invoke('ensure-profile');
 
         if (ensureError) {
           console.error('Error ensuring profile:', ensureError);
-          return;
+          throw ensureError;
         }
 
         const ensuredProfile = (ensured as EnsuredProfileResponse | null)?.profile;
@@ -154,12 +161,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         subscription_status: (data as any).subscription_status ?? null,
       };
       setProfile(profileData);
+      // eslint-disable-next-line no-console
+      console.log("[useAuth] fetchProfile success");
     } catch (err) {
       console.error('Error in fetchProfile:', err);
     }
-  };
+  }, []);
 
-  const fetchRoles = async (userId: string) => {
+  const fetchRoles = useCallback(async (userId: string) => {
+    // eslint-disable-next-line no-console
+    console.log("[useAuth] fetchRoles start for:", userId);
     try {
       const { data, error } = await supabase
         .from('user_roles')
@@ -176,23 +187,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: r.role as UserRole['role'],
       }));
       setRoles(mappedRoles);
+      // eslint-disable-next-line no-console
+      console.log("[useAuth] fetchRoles success");
     } catch (err) {
       console.error('Error in fetchRoles:', err);
     }
-  };
+  }, []);
 
-  const refreshProfile = async () => {
+  const refreshProfile = useCallback(async () => {
     if (user) {
       await fetchProfile(user.id);
       await fetchRoles(user.id);
     }
-  };
+  }, [user, fetchProfile, fetchRoles]);
 
   useEffect(() => {
     let isMounted = true;
     let initialSessionHandled = false;
 
     const initializeAuth = async (session: Session | null) => {
+      // eslint-disable-next-line no-console
+      console.log("[useAuth] initializeAuth start, session exists:", !!session);
       if (!isMounted) return;
 
       setSession(session);
@@ -212,6 +227,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await new Promise((resolve) => setTimeout(resolve, 0));
         if (!isMounted) return;
 
+        // eslint-disable-next-line no-console
+        console.log("[useAuth] fetching profile & roles...");
         // Fetch profile and roles in parallel and wait for them to finish
         await Promise.all([
           fetchProfile(session.user.id),
@@ -223,6 +240,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (isMounted) {
+        // eslint-disable-next-line no-console
+        console.log("[useAuth] initializeAuth completed, setting isLoading to false");
         setIsLoading(false);
       }
     };
@@ -235,8 +254,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Skip if this is the initial session and we've already handled it
         if (event === 'INITIAL_SESSION' && initialSessionHandled) return;
         
-        // Set loading to true when session changes to SIGNED_IN or SIGNED_OUT
-        if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+        // Set loading to true when session changes to SIGNED_IN or SIGNED_OUT,
+        // but avoid setting it to true if we already have a user in state
+        // (this prevents flashing and unmounting layout on background token refresh / refocus)
+        if ((event === 'SIGNED_IN' && !userRef.current) || event === 'SIGNED_OUT') {
           setIsLoading(true);
         }
         
@@ -257,9 +278,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const isAdminRole = (role: string) => role === 'admin' || role === 'super_admin' || role === 'moderator' || role === 'staff';
+  const isAdminRole = (role: string) => role === 'admin';
 
-  const signIn = async (email: string, password: string, loginContext: 'user' | 'admin' = 'user') => {
+  const signIn = useCallback(async (email: string, password: string, loginContext: 'user' | 'admin' = 'user') => {
     try {
       const { data: panelCheckData, error: panelCheckError } = await supabase.functions.invoke('auth-otp', {
         body: {
@@ -326,9 +347,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     toast.success('Welcome back!');
     return { error: null };
-  };
+  }, []);
 
-  const signUp = async (email: string, password: string, fullName?: string, goal?: string, planId?: string) => {
+  const signUp = useCallback(async (email: string, password: string, fullName?: string, goal?: string, planId?: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('auth-otp', {
         body: {
@@ -366,9 +387,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       toast.error(error.message);
       return { error };
     }
-  };
+  }, []);
 
-  const verifyOtp = async (email: string, token: string) => {
+  const verifyOtp = useCallback(async (email: string, token: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('auth-otp', {
         body: {
@@ -392,9 +413,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       toast.error(error.message);
       return { error };
     }
-  };
+  }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
@@ -402,9 +423,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRoles([]);
     clearPlanIntent();
     toast.success('Signed out successfully');
-  };
+  }, []);
 
-  const resendVerificationEmail = async (email?: string) => {
+  const resendVerificationEmail = useCallback(async (email?: string) => {
     const targetEmail = email || user?.email;
     if (!targetEmail) {
       return { error: new Error('No email found') };
@@ -432,7 +453,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       toast.error(error.message);
       return { error };
     }
-  };
+  }, [user?.email]);
 
   return (
     <AuthContext.Provider
@@ -442,7 +463,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         roles,
         isAdmin,
-        isSuperAdmin,
         isLoading,
         isEmailVerified,
         signIn,

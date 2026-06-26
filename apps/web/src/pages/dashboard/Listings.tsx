@@ -398,33 +398,76 @@ function SummaryCard({
   );
 }
 
+/* ── module cache for tab switching ── */
+let cachedUserId: string | null = null;
+let cachedListings: Listing[] | null = null;
+let cachedStats: ListingStats | null = null;
+let cachedSearchQuery: string = "";
+let cachedStatusFilter: string = "all";
+let cachedDateRange: DateRange = { from: undefined, to: undefined };
+
 export default function Listings() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, profile } = useAuth();
   const { syncListings, isSyncing: isSyncingSheets, getSettings } = useGoogleSheetsSync();
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [filteredListings, setFilteredListings] = useState<Listing[]>([]);
-  const [rowEdits, setRowEdits] = useState<Record<string, ListingRowEdits>>({});
+
+  // Reset cache if the user switches accounts / logs out
+  if (user && cachedUserId !== user.id) {
+    cachedUserId = user.id;
+    cachedListings = null;
+    cachedStats = null;
+    cachedSearchQuery = "";
+    cachedStatusFilter = "all";
+    cachedDateRange = { from: undefined, to: undefined };
+  }
+
+  const [listings, setListings] = useState<Listing[]>(cachedListings || []);
+  const [filteredListings, setFilteredListings] = useState<Listing[]>(cachedListings || []);
+  const [rowEdits, setRowEdits] = useState<Record<string, ListingRowEdits>>(() => {
+    const initial: Record<string, ListingRowEdits> = {};
+    if (cachedListings) {
+      for (const l of cachedListings) {
+        initial[l.id] = {
+          sku: l.sku ?? "",
+          ebay_price: l.ebay_price == null ? "" : l.ebay_price.toFixed(2),
+          amazon_price: l.amazon_price == null ? "" : l.amazon_price.toFixed(2),
+        };
+      }
+    }
+    return initial;
+  });
   const [savingById, setSavingById] = useState<Record<string, boolean>>({});
-  const [stats, setStats] = useState<ListingStats>({
+  const [stats, setStats] = useState<ListingStats>(cachedStats || {
     totalSourcingCost: 0,
     totalInventoryValue: 0,
     netProfitForecast: 0,
   });
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!cachedListings);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState(cachedSearchQuery);
+  const [statusFilter, setStatusFilter] = useState<string>(cachedStatusFilter);
   const [showNewListingDialog, setShowNewListingDialog] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [selectedListings, setSelectedListings] = useState<Set<string>>(new Set());
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-  const [dateRange, setDateRange] = useState<DateRange>({ from: undefined, to: undefined });
+  const [dateRange, setDateRange] = useState<DateRange>(cachedDateRange);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 25;
+
+  useEffect(() => {
+    cachedSearchQuery = searchQuery;
+  }, [searchQuery]);
+
+  useEffect(() => {
+    cachedStatusFilter = statusFilter;
+  }, [statusFilter]);
+
+  useEffect(() => {
+    cachedDateRange = dateRange;
+  }, [dateRange]);
 
   // Variation expand state — lazy-loaded per listing
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -586,7 +629,11 @@ export default function Listings() {
       const totalInventoryValue = normalized.reduce((sum, listing) => sum + (listing.ebay_price || 0), 0);
       const netProfitForecast = totalInventoryValue - totalSourcingCost;
 
-      setStats({ totalSourcingCost, totalInventoryValue, netProfitForecast });
+      const newStats = { totalSourcingCost, totalInventoryValue, netProfitForecast };
+      setStats(newStats);
+
+      cachedListings = normalized;
+      cachedStats = newStats;
     } catch (error) {
       console.error("[Listings] Error fetching listings:", error);
       toast({

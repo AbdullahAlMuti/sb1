@@ -12,6 +12,15 @@ let isProcessing = false;
 // 🛠️ UTILITY FUNCTIONS (with performance optimizations)
 // ═══════════════════════════════════════════════════════════
 
+const escapeHtml = (value) => {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
 // Debounce utility for rate limiting
 const createDebounce = (fn, delay = 300) => {
     let timer = null;
@@ -2892,11 +2901,20 @@ const addEventListenersToPanel = () => {
                         </div>
                     `;
                 } else {
-                    displayHtml = `
-                        <div class="description-placeholder" style="color: #dc2626;">
-                            <span>${errorMessage}</span>
-                        </div>
-                    `;
+                    // Use a text node for the error message to prevent XSS from
+                    // malicious content in API error strings.
+                    if (descriptionPreviewEl) {
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'description-placeholder';
+                        wrapper.style.color = '#dc2626';
+                        const span = document.createElement('span');
+                        span.textContent = errorMessage;
+                        wrapper.appendChild(span);
+                        descriptionPreviewEl.innerHTML = '';
+                        descriptionPreviewEl.appendChild(wrapper);
+                    }
+                    window.UIHelper?.showToast?.(errorMessage, 'error');
+                    return;
                 }
 
                 if (descriptionPreviewEl) {
@@ -2976,7 +2994,7 @@ const addEventListenersToPanel = () => {
         scrapeSummaryEl.innerHTML = cards.map(c => `
             <div class="scrape-summary-card">
                 <div class="label">${c.label}</div>
-                <div class="value ${c.status}">${c.value}</div>
+                <div class="value ${c.status}">${escapeHtml(c.value)}</div>
             </div>
         `).join('');
     };
@@ -3663,8 +3681,8 @@ const createTitleRowWithAnimation = (data, index) => {
     // Handle AI Title Row
     if (data.isAiRow) {
         row.innerHTML = `
-            <div class="rank">${data.rank}</div>
-            <div class="type">${data.type}</div>
+            <div class="rank">${escapeHtml(data.rank)}</div>
+            <div class="type">${escapeHtml(data.type)}</div>
             <div class="title-text-container" style="flex-grow: 1; display: flex; gap: 5px; align-items: center;">
                 <input type="text" class="title-text ai-title-input" placeholder="Generating AI Title..." style="width: 100%; border: 1px solid #ddd; padding: 4px; border-radius: 4px; font-family: inherit; font-size: inherit;">
             </div>
@@ -3728,8 +3746,8 @@ const createTitleRowWithAnimation = (data, index) => {
     // Handle blank row specially
     if (data.isBlankRow) {
         row.innerHTML = `
-            <div class="rank">${data.rank}</div>
-            <div class="type">${data.type}</div>
+            <div class="rank">${escapeHtml(data.rank)}</div>
+            <div class="type">${escapeHtml(data.type)}</div>
             <div class="title-text" contenteditable="true" data-placeholder="Write your custom title here..."></div>
             <div class="char-count">0</div>
             <button class="action-btn">Use</button>
@@ -3826,8 +3844,8 @@ const createTitleRowWithAnimation = (data, index) => {
     }
 
     row.innerHTML = `
-        <div class="rank">${data.rank}</div>
-        <div class="type">${data.type}</div>
+        <div class="rank">${escapeHtml(data.rank)}</div>
+        <div class="type">${escapeHtml(data.type)}</div>
         <div class="title-text" contenteditable="true"></div>
         <div class="char-count">0</div>
         <button class="action-btn">Change</button>
@@ -3870,7 +3888,7 @@ const typewriterAnimation = (element, text, charCountElement, finalCount) => {
 };
 
 // Helper function to create the HTML for a single title row.
-const createTitleRow = (data, isSelected = false) => `<div class="title-row ${isSelected ? 'selected' : ''}" data-title="${data.title}"><div class="rank">${data.rank}</div><div class="type">${data.type}</div><div class="title-text" contenteditable="true">${data.title}</div><div class="char-count">${data.charCount}</div><button class="action-btn">Change</button></div>`;
+const createTitleRow = (data, isSelected = false) => `<div class="title-row ${isSelected ? 'selected' : ''}" data-title="${escapeHtml(data.title)}"><div class="rank">${escapeHtml(data.rank)}</div><div class="type">${escapeHtml(data.type)}</div><div class="title-text" contenteditable="true">${escapeHtml(data.title)}</div><div class="char-count">${escapeHtml(data.charCount)}</div><button class="action-btn">Change</button></div>`;
 
 
 // Download all scraped images
@@ -3972,24 +3990,23 @@ function openCalculator() {
         popup.style.display = 'flex';
         console.log('✅ Calculator popup displayed');
 
-        // Load saved values FIRST
-        loadCalculatorValues();
-
-        // THEN overwrite Amazon price with fresh scrape
-        const amazonPriceInput = document.getElementById('supplier-price');
-        if (amazonPriceInput) {
-            const scrapedPrice = scrapeAmazonPrice();
-            if (scrapedPrice !== 'No price found') {
-                amazonPriceInput.value = scrapedPrice;
-                console.log('💰 Auto-filled Amazon price:', scrapedPrice);
-            } else {
-                console.log('⚠️ No fresh Amazon price scraped on open');
+        // Load saved values FIRST, then overwrite price and calculate
+        loadCalculatorValues(() => {
+            const amazonPriceInput = document.getElementById('supplier-price');
+            if (amazonPriceInput) {
+                const scrapedPrice = scrapeAmazonPrice();
+                if (scrapedPrice !== 'No price found') {
+                    amazonPriceInput.value = scrapedPrice;
+                    console.log('💰 Auto-filled Amazon price:', scrapedPrice);
+                } else {
+                    console.log('⚠️ No fresh Amazon price scraped on open');
+                }
             }
-        }
-        
-        // Trigger calculate to update display
-        calculatePrice();
-        console.log('✅ Calculator opened successfully');
+            
+            // Trigger calculate to update display
+            calculatePrice();
+            console.log('✅ Calculator opened successfully');
+        });
     } else {
         console.error('❌ Calculator popup not found');
     }
@@ -4006,26 +4023,51 @@ function closeCalculator() {
     }
 }
 
-function loadCalculatorValues() {
+function loadCalculatorValues(callback) {
     try {
-        const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
-        const fields = [
-            'tax-percent',
-            'tracking-fee',
-            'ebay-fee-percent',
-            'promo-fee-percent',
-            'desired-profit',
-            'payment-fixed-fee'
-        ];
+        chrome.storage.local.get('calculatorValues', (res) => {
+            const savedValues = res.calculatorValues || JSON.parse(localStorage.getItem('calculatorValues') || '{}');
+            const fields = [
+                'tax-percent',
+                'tracking-fee',
+                'ebay-fee-percent',
+                'promo-fee-percent',
+                'desired-profit',
+                'payment-fixed-fee'
+            ];
 
-        fields.forEach(fieldId => {
-            const input = document.getElementById(fieldId);
-            if (input && savedValues[fieldId] !== undefined) {
-                input.value = savedValues[fieldId];
+            fields.forEach(fieldId => {
+                const input = document.getElementById(fieldId);
+                if (input && savedValues[fieldId] !== undefined) {
+                    input.value = savedValues[fieldId];
+                }
+            });
+
+            if (typeof callback === 'function') {
+                callback();
             }
         });
     } catch (e) {
         console.error('Error loading calculator values:', e);
+        // Fallback sync call if chrome.storage is not ready
+        try {
+            const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
+            const fields = [
+                'tax-percent',
+                'tracking-fee',
+                'ebay-fee-percent',
+                'promo-fee-percent',
+                'desired-profit',
+                'payment-fixed-fee'
+            ];
+            fields.forEach(fieldId => {
+                const input = document.getElementById(fieldId);
+                if (input && savedValues[fieldId] !== undefined) {
+                    input.value = savedValues[fieldId];
+                }
+            });
+            if (typeof callback === 'function') callback();
+        } catch (_) {}
     }
 }
 
@@ -4061,85 +4103,85 @@ function saveCalculatorValues() {
 function quickCalculate() {
     console.log('⚡ Quick calculating...');
 
-    // Get saved values from localStorage or use defaults
-    const savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}');
+    chrome.storage.local.get('calculatorValues', (res) => {
+        const savedValues = res.calculatorValues || JSON.parse(localStorage.getItem('calculatorValues') || '{}');
+        let amazonPrice = 0;
 
-    let amazonPrice = 0;
-
-    // Always scrape Amazon price first to ensure it's current
-    const scrapedPrice = scrapeAmazonPrice();
-    if (scrapedPrice !== 'No price found') {
-        amazonPrice = parseFloat(scrapedPrice);
-        console.log('💰 Using scraped Amazon price for quick calc:', amazonPrice);
-    } else {
-        console.log('⚠️ Scrape failed, quick calc skipped (waiting for price)');
-        const sellItForInput = document.getElementById('sell-it-for-input');
-        if (sellItForInput && !sellItForInput.value) {
-            sellItForInput.placeholder = 'No price found';
+        // Always scrape Amazon price first to ensure it's current
+        const scrapedPrice = scrapeAmazonPrice();
+        if (scrapedPrice !== 'No price found') {
+            amazonPrice = parseFloat(scrapedPrice);
+            console.log('💰 Using scraped Amazon price for quick calc:', amazonPrice);
+        } else {
+            console.log('⚠️ Scrape failed, quick calc skipped (waiting for price)');
+            const sellItForInput = document.getElementById('sell-it-for-input');
+            if (sellItForInput && !sellItForInput.value) {
+                sellItForInput.placeholder = 'No price found';
+            }
+            return;
         }
-        return;
-    }
 
-    const parseVal = (val, def) => {
-        const parsed = parseFloat(val);
-        return isNaN(parsed) ? def : parsed;
-    };
+        const parseVal = (val, def) => {
+            const parsed = parseFloat(val);
+            return isNaN(parsed) ? def : parsed;
+        };
 
-    const taxPercent = parseVal(savedValues['tax-percent'], 9);
-    const trackingFee = parseVal(savedValues['tracking-fee'], 0.20);
-    const ebayFeePercent = parseVal(savedValues['ebay-fee-percent'], 20);
-    const promoFeePercent = parseVal(savedValues['promo-fee-percent'], 10);
-    const desiredProfit = parseVal(savedValues['desired-profit'], 0);
-    const paymentFixedFee = parseVal(savedValues['payment-fixed-fee'], 0.30);
+        const taxPercent = parseVal(savedValues['tax-percent'], 9);
+        const trackingFee = parseVal(savedValues['tracking-fee'], 0.20);
+        const ebayFeePercent = parseVal(savedValues['ebay-fee-percent'], 20);
+        const promoFeePercent = parseVal(savedValues['promo-fee-percent'], 10);
+        const desiredProfit = parseVal(savedValues['desired-profit'], 0);
+        const paymentFixedFee = parseVal(savedValues['payment-fixed-fee'], 0.30);
 
-    if (typeof calculateSellingPrice !== 'function') {
-        console.error('calculateSellingPrice is not defined');
-        return;
-    }
+        if (typeof calculateSellingPrice !== 'function') {
+            console.error('calculateSellingPrice is not defined');
+            return;
+        }
 
-    const result = calculateSellingPrice({
-        sourcePrice: amazonPrice,
-        taxPercent,
-        trackingFee,
-        ebayFeePercent,
-        promoFeePercent,
-        desiredProfit,
-        paymentFixedFee
+        const result = calculateSellingPrice({
+            sourcePrice: amazonPrice,
+            taxPercent,
+            trackingFee,
+            ebayFeePercent,
+            promoFeePercent,
+            desiredProfit,
+            paymentFixedFee
+        });
+
+        if (!result) return;
+
+        // Auto-fill "Sell it for" field
+        const sellItForInput = document.getElementById('sell-it-for-input') ||
+            document.querySelector('input[aria-label*="Sell it for" i]') ||
+            document.querySelector('.price-field input[type="text"]') ||
+            document.querySelector('input[placeholder*="Sell it for" i]');
+        if (sellItForInput) {
+            // Mark as calc-fill so manual-edit listener doesn't misfire
+            sellItForInput._ssCalcFill = true;
+            sellItForInput.value = result.finalPrice.toFixed(2);
+            sellItForInput.style.backgroundColor = '#e8f5e8';
+            sellItForInput.style.borderColor = '#4caf50';
+
+            // Phase 5: patch draft with calculated price
+            if (typeof window.SSListingDraft !== 'undefined') {
+                window.SSListingDraft.patchDraft({
+                    pricing: { finalPrice: result.finalPrice, rawPrice: amazonPrice },
+                    price_source: 'calculated'
+                }).catch(() => {});
+            }
+
+            // Reset styling after 1.5 seconds
+            setTimeout(() => {
+                sellItForInput.style.backgroundColor = '';
+                sellItForInput.style.borderColor = '';
+                sellItForInput._ssCalcFill = false;
+            }, 1500);
+
+            console.log('💰 Quick calculated price:', result.finalPrice.toFixed(2));
+        } else {
+            console.error('❌ Sell it for input not found');
+        }
     });
-
-    if (!result) return;
-
-    // Auto-fill "Sell it for" field
-    const sellItForInput = document.getElementById('sell-it-for-input') ||
-        document.querySelector('input[aria-label*="Sell it for" i]') ||
-        document.querySelector('.price-field input[type="text"]') ||
-        document.querySelector('input[placeholder*="Sell it for" i]');
-    if (sellItForInput) {
-        // Mark as calc-fill so manual-edit listener doesn't misfire
-        sellItForInput._ssCalcFill = true;
-        sellItForInput.value = result.finalPrice.toFixed(2);
-        sellItForInput.style.backgroundColor = '#e8f5e8';
-        sellItForInput.style.borderColor = '#4caf50';
-
-        // Phase 5: patch draft with calculated price
-        if (typeof window.SSListingDraft !== 'undefined') {
-            window.SSListingDraft.patchDraft({
-                pricing: { finalPrice: result.finalPrice, rawPrice: amazonPrice },
-                price_source: 'calculated'
-            }).catch(() => {});
-        }
-
-        // Reset styling after 1.5 seconds
-        setTimeout(() => {
-            sellItForInput.style.backgroundColor = '';
-            sellItForInput.style.borderColor = '';
-            sellItForInput._ssCalcFill = false;
-        }, 1500);
-
-        console.log('💰 Quick calculated price:', result.finalPrice.toFixed(2));
-    } else {
-        console.error('❌ Sell it for input not found');
-    }
 }
 
 function calculatePrice() {

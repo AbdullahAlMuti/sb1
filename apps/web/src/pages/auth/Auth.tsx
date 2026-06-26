@@ -185,21 +185,18 @@ export default function Auth() {
         setMode('verify-email');
       }
     } catch (error: any) {
-      // Handle specific error cases
-      if (
-        error.message?.includes('User already registered') || 
-        error.message?.includes('non-2xx status code') || 
-        error.message?.includes('already exists')
-      ) {
-        setErrors({ email: 'This email is already registered. Please sign in instead.' });
-        toast.error('This email is already registered.');
-      } else if (error.message?.includes('Invalid login credentials')) {
+      if (mode === 'login') {
+        // Generic message regardless of cause — prevents email enumeration.
         setErrors({ password: 'Invalid email or password. Please try again.' });
         toast.error('Invalid email or password. Please try again.');
       } else if (error.message?.includes('login panel')) {
         setErrors({ password: error.message });
       } else {
-        toast.error(error.message || 'An error occurred');
+        // Signup and other flows: use a generic message.
+        // Do not reveal whether an email already exists in the system.
+        const genericMsg = 'Something went wrong. Please try again.';
+        setErrors({ email: genericMsg });
+        toast.error(genericMsg);
       }
     } finally {
       setIsSubmitting(false);

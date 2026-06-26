@@ -2,13 +2,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, createServiceClient } from '../_shared/extension-session.ts';
 import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
 import { enforceActiveSubscription, getEntitlement } from '../_shared/plan-middleware.ts';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { resolveCorsHeaders } from '../_shared/cors.ts';
 
 serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req, { extension: true });
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -27,7 +24,7 @@ serve(async (req) => {
     const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
     const userId = authContext.userId;
 
-    const blockResponse = await enforceActiveSubscription(supabase, userId);
+    const blockResponse = await enforceActiveSubscription(supabase, userId, req);
     if (blockResponse) return blockResponse;
 
     const entitlement = await getEntitlement(supabase, userId);
@@ -85,10 +82,11 @@ serve(async (req) => {
 
     const requestBody = await req.json();
     
-    // SECURITY: Input validation and sanitization
-    const query = String(requestBody.query || '').slice(0, 500);
-    const category = String(requestBody.category || '').slice(0, 200);
-    const priceRange = String(requestBody.priceRange || '').slice(0, 100);
+    // SECURITY: Input validation — collapse newlines to prevent prompt injection.
+    const nl = (s: string) => s.replace(/[\r\n]+/g, ' ');
+    const query = nl(String(requestBody.query || '')).slice(0, 500);
+    const category = nl(String(requestBody.category || '')).slice(0, 200);
+    const priceRange = nl(String(requestBody.priceRange || '')).slice(0, 100);
     
     if (!query) {
       return new Response(JSON.stringify({ error: 'Query is required' }), {

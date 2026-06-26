@@ -7,7 +7,9 @@ export default defineConfig(({ mode }) => ({
   envDir: "../../",
   server: {
     host: "::",
-    port: 3001,
+    // Honor the PORT env var (e.g. when the preview harness assigns a free
+    // port) and fall back to the conventional dev port.
+    port: Number(process.env.PORT) || 3001,
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {

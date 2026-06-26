@@ -155,6 +155,12 @@ window.SSBulkCore = (() => {
         return { ...it, status: 'queued', error: null };
       }
       if (it.status === 'uploading') {
+        const started = it.startedAt || 0;
+        const elapsed = Date.now() - started;
+        const limitMs = 5 * 60 * 1000;
+        if (elapsed < limitMs) {
+          return it;
+        }
         changed = true;
         return {
           ...it,

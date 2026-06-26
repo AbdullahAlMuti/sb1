@@ -2,12 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from '../_shared/extension-session.ts';
 import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
 import { buildPrompt, renderSections, sanitize, DescriptionConfig } from '../_shared/description.ts';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, accept',
-};
+import { resolveCorsHeaders } from '../_shared/cors.ts';
 
 interface DescriptionRequest {
   title?: string;
@@ -22,6 +17,7 @@ interface DescriptionRequest {
 }
 
 serve(async (req) => {
+  const corsHeaders = resolveCorsHeaders(req, { extension: true });
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -310,7 +306,7 @@ Price: {price}`,
     const renderedDescription = renderSections(config, aiJson, normalizedProduct);
 
     // 5) Post-generation sanitation via shared module
-    const finalDescription = sanitize(renderedDescription, config.exclusion_rules);
+    const finalDescription = sanitize(renderedDescription, config.exclusion_rules, config.output_format);
 
     return new Response(JSON.stringify({ 
       success: true, 

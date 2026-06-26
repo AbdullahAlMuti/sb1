@@ -165,7 +165,7 @@ window.SSVariationNormalizer = (() => {
       sourcePrice,
       calculatedPrice: _priceNumber(v.calculatedPrice, v.finalPrice),
       finalPrice: finalPrice || v.finalPrice,
-      ebayPrice: _priceNumber(v.ebayPrice) ? v.ebayPrice : v.ebayPrice,
+      ebayPrice: _priceNumber(v.ebayPrice),
       raw_supplier_price: sourcePrice || v.raw_supplier_price,
       images,
       finalImages: Array.isArray(v.finalImages) && v.finalImages.length ? v.finalImages : images,

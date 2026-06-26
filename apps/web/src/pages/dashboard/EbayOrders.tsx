@@ -114,37 +114,96 @@ interface SyncStatus {
   orderCount: number | null;
 }
 
+/* ── module cache for tab switching ── */
+let cachedUserId: string | null = null;
+let cachedOrders: EbayOrder[] | null = null;
+let cachedTotalOrders: number = 0;
+let cachedTotalRevenue: number = 0;
+let cachedSyncStatus: SyncStatus | null = null;
+let cachedLastRefresh: Date | null = null;
+let cachedServerCounts: any = null;
+let cachedSearchQuery: string = "";
+let cachedStatusFilter: string = "all";
+let cachedPeriodPreset: PeriodPreset | null = null;
+let cachedDateRange: DateRange | undefined = undefined;
+let cachedCurrentPage = 1;
+
+const getInitialPeriodPreset = (): PeriodPreset => `month:${format(new Date(), "yyyy-MM")}`;
+const getInitialDateRange = () => {
+  const now = new Date();
+  return { from: startOfMonth(now), to: endOfMonth(now) };
+};
+
 export default function EbayOrders() {
   const { user, session } = useAuth();
   const extensionStatus = useExtensionStatus();
 
+  // Reset cache if the user switches accounts / logs out
+  if (user && cachedUserId !== user.id) {
+    cachedUserId = user.id;
+    cachedOrders = null;
+    cachedTotalOrders = 0;
+    cachedTotalRevenue = 0;
+    cachedSyncStatus = null;
+    cachedLastRefresh = null;
+    cachedServerCounts = null;
+    cachedSearchQuery = "";
+    cachedStatusFilter = "all";
+    cachedPeriodPreset = getInitialPeriodPreset();
+    cachedDateRange = getInitialDateRange();
+    cachedCurrentPage = 1;
+  }
+
   const PAGE_SIZE = 100;
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalRevenue, setTotalRevenue] = useState(0);
+  const [currentPage, setCurrentPage] = useState(cachedCurrentPage);
+  const [totalRevenue, setTotalRevenue] = useState(cachedTotalRevenue);
 
-  const [totalOrders, setTotalOrders] = useState(0);
-  const [orders, setOrders] = useState<EbayOrder[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [totalOrders, setTotalOrders] = useState(cachedTotalOrders);
+  const [orders, setOrders] = useState<EbayOrder[]>(cachedOrders || []);
+  const [isLoading, setIsLoading] = useState(!cachedOrders);
   const [isAutoRefreshing, setIsAutoRefreshing] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>({
-    lastSync: null,
-    isActive: false,
-    orderCount: null,
-  });
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(
+    cachedSyncStatus || {
+      lastSync: null,
+      isActive: false,
+      orderCount: null,
+    }
+  );
 
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>(() => `month:${format(new Date(), "yyyy-MM")}`);
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
-    const now = new Date();
-    return { from: startOfMonth(now), to: endOfMonth(now) };
-  });
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(cachedLastRefresh);
+  const [searchQuery, setSearchQuery] = useState(cachedSearchQuery);
+  const [statusFilter, setStatusFilter] = useState<string>(cachedStatusFilter);
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>(
+    cachedPeriodPreset || getInitialPeriodPreset()
+  );
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(
+    cachedDateRange || getInitialDateRange()
+  );
   const [newOrderIds, setNewOrderIds] = useState<Set<string>>(new Set());
 
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    cachedSearchQuery = searchQuery;
+  }, [searchQuery]);
+
+  useEffect(() => {
+    cachedStatusFilter = statusFilter;
+  }, [statusFilter]);
+
+  useEffect(() => {
+    cachedPeriodPreset = periodPreset;
+  }, [periodPreset]);
+
+  useEffect(() => {
+    cachedDateRange = dateRange;
+  }, [dateRange]);
+
+  useEffect(() => {
+    cachedCurrentPage = currentPage;
+  }, [currentPage]);
 
   // UI-only state: mark an order as "processing" after clicking "Order Now".
   const [processingOrderIds, setProcessingOrderIds] = useState<Set<string>>(new Set());
@@ -313,8 +372,10 @@ export default function EbayOrders() {
       setOrders(orders);
       setTotalOrders(Number(data?.total || 0));
       setTotalRevenue(Number(data?.totalRevenue || 0));
+      
+      let nextCounts = serverCounts;
       if (data?.counts) {
-        setServerCounts({
+        nextCounts = {
           all: Number(data.counts.all || 0),
           pending: Number(data.counts.pending || 0),
           processing: Number(data.counts.processing || 0),
@@ -322,17 +383,29 @@ export default function EbayOrders() {
           completed: Number(data.counts.completed || 0),
           cancelled: Number(data.counts.cancelled || 0),
           refunded: Number(data.counts.refunded || 0),
-        });
+        };
+        setServerCounts(nextCounts);
       }
-      setLastRefresh(new Date());
+      const nextRefresh = new Date();
+      setLastRefresh(nextRefresh);
+
       // Derive last sync time from the most recently synced order in this batch
       const syncDates = orders
         .map(o => o.synced_at ? new Date(o.synced_at) : null)
         .filter(Boolean) as Date[];
+      let nextSyncStatus = syncStatus;
       if (syncDates.length > 0) {
         const latestSync = new Date(Math.max(...syncDates.map(d => d.getTime())));
-        setSyncStatus(prev => ({ ...prev, lastSync: latestSync }));
+        nextSyncStatus = { ...syncStatus, lastSync: latestSync };
+        setSyncStatus(nextSyncStatus);
       }
+
+      cachedOrders = orders;
+      cachedTotalOrders = Number(data?.total || 0);
+      cachedTotalRevenue = Number(data?.totalRevenue || 0);
+      cachedServerCounts = nextCounts;
+      cachedLastRefresh = nextRefresh;
+      cachedSyncStatus = nextSyncStatus;
     } catch (error: any) {
       console.error("Error fetching eBay orders:", error);
       if (!silent) {
@@ -594,7 +667,7 @@ export default function EbayOrders() {
 
     if (processingOrderIds.has(order.id) || order.order_status?.toLowerCase() === 'processing') {
       return (
-        <Badge variant="outline" className="gap-1.5 border-green-500/25 bg-green-500/10 text-green-600 animate-pulse font-medium">
+        <Badge variant="outline" className="gap-1.5 border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-400 animate-pulse font-medium">
           <RefreshCw className="h-3 w-3 animate-spin" />
           Processing
         </Badge>
@@ -603,11 +676,12 @@ export default function EbayOrders() {
 
     return (
       <Badge variant="outline" className={cn(
-        "capitalize font-medium shadow-sm",
-        statusLower === 'completed' && "border-green-500/25 bg-green-500/10 text-green-600",
-        statusLower === 'shipped' && "border-blue-500/25 bg-blue-500/10 text-blue-600",
-        statusLower === 'cancelled' && "border-red-500/25 bg-red-500/10 text-red-600",
-        statusLower === 'pending' && "border-amber-500/25 bg-amber-500/10 text-amber-600",
+        "capitalize font-medium shadow-sm transition-all duration-300 rounded-full px-2.5 py-0.5",
+        statusLower === 'completed' && "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 dark:bg-emerald-500/5",
+        statusLower === 'shipped' && "border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400 dark:bg-blue-500/5",
+        statusLower === 'cancelled' && "border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400 dark:bg-red-500/5",
+        statusLower === 'pending' && "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400 dark:bg-amber-500/5",
+        statusLower === 'refunded' && "border-purple-500/20 bg-purple-500/10 text-purple-600 dark:text-purple-400 dark:bg-purple-500/5",
       )}>
         {statusLower}
       </Badge>
@@ -728,78 +802,101 @@ export default function EbayOrders() {
   }, [stats]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Premium Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-border/60">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground bg-gradient-to-r from-foreground via-foreground/90 to-foreground/75 bg-clip-text">eBay Orders</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Manage, track, and sync your eBay sales, buyer shipping details, and net profit margins.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {extensionStatus.isInstalled ? (
+            <Badge variant="outline" className="h-7 gap-1.5 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 px-2.5 font-semibold shadow-sm">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Sync Extension Active (v{extensionStatus.version || "1.0.0"})
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="h-7 gap-1.5 bg-destructive/5 text-destructive border-destructive/20 px-2.5 font-semibold shadow-sm">
+              <span className="h-1.5 w-1.5 rounded-full bg-destructive" />
+              Extension Not Connected
+            </Badge>
+          )}
+        </div>
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <Card className="h-full flex flex-col">
-            <CardHeader className="px-5 py-4 pb-2">
+          <Card className="h-full flex flex-col bg-card/60 backdrop-blur-sm border-border/80 shadow-md hover:shadow-lg transition-all duration-300">
+            <CardHeader className="px-6 py-5 pb-3">
               <div className="flex items-center justify-between gap-3">
-                <CardTitle className="text-sm font-semibold text-foreground">Order Overview</CardTitle>
+                <CardTitle className="text-sm font-semibold text-foreground/80 tracking-wide uppercase">Order Performance</CardTitle>
               </div>
             </CardHeader>
-            <CardContent className="px-5 pb-4 pt-0">
-              <div className="flex flex-col gap-4">
+            <CardContent className="px-6 pb-6 pt-0">
+              <div className="flex flex-col gap-6">
                 <div className="flex items-end justify-between gap-4">
                   <div>
-                    <div className="text-xs text-muted-foreground">Total Order</div>
-                    <div className="text-3xl font-bold tracking-tight">{stats.total.toLocaleString()}</div>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Sales Count</div>
+                    <div className="text-4xl font-extrabold tracking-tight mt-1 text-foreground">{stats.total.toLocaleString()}</div>
                   </div>
                   <div className="text-right">
                     <div className="flex items-center justify-end gap-1.5">
-                      <div className="text-xs text-muted-foreground">Total Revenue</div>
-                      <span className="text-[10px] font-medium text-emerald-700 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">
-                        Confirmed
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Revenue</div>
+                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 dark:bg-emerald-500/5 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full shadow-sm">
+                        Gross
                       </span>
                     </div>
-                    <div className="text-3xl font-bold tracking-tight text-green-600">
+                    <div className="text-4xl font-extrabold tracking-tight mt-1 text-emerald-600 dark:text-emerald-400">
                       ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
-                    <div className="text-[10px] text-muted-foreground/70 mt-0.5">
-                      Sum of buyer payments (before fees)
+                    <div className="text-[10px] text-muted-foreground mt-1">
+                      Gross buyer payments (excluding shipping fees)
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="h-4 w-1 rounded-full bg-primary" />
+                <div className="grid grid-cols-3 gap-4 pt-2 border-t border-border/40">
+                  <div className="flex items-center gap-2.5">
+                    <span className="h-5 w-1.5 rounded-full bg-blue-500 shadow-sm" />
                     <div>
-                      <div className="text-[11px] text-muted-foreground">Completed</div>
-                      <div className="text-sm font-semibold">{stats.completed}</div>
+                      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Completed</div>
+                      <div className="text-base font-bold text-foreground">{stats.completed}</div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="h-4 w-1 rounded-full bg-accent" />
+                  <div className="flex items-center gap-2.5">
+                    <span className="h-5 w-1.5 rounded-full bg-amber-500 shadow-sm" />
                     <div>
-                      <div className="text-[11px] text-muted-foreground">Pending</div>
-                      <div className="text-sm font-semibold">{stats.pending}</div>
+                      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Pending</div>
+                      <div className="text-base font-bold text-foreground">{stats.pending}</div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="h-4 w-1 rounded-full bg-destructive" />
+                  <div className="flex items-center gap-2.5">
+                    <span className="h-5 w-1.5 rounded-full bg-red-500 shadow-sm" />
                     <div>
-                      <div className="text-[11px] text-muted-foreground">Cancelled</div>
-                      <div className="text-sm font-semibold">{stats.cancelled}</div>
+                      <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Cancelled</div>
+                      <div className="text-base font-bold text-foreground">{stats.cancelled}</div>
                     </div>
                   </div>
                 </div>
 
-                <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
-                  <div className="h-full flex">
-                    <div
-                      className="h-full bg-primary"
-                      style={{ width: `${(stats.completed / Math.max(1, stats.total)) * 100}%` }}
-                    />
-                    <div
-                      className="h-full bg-accent"
-                      style={{ width: `${(stats.pending / Math.max(1, stats.total)) * 100}%` }}
-                    />
-                    <div
-                      className="h-full bg-destructive"
-                      style={{ width: `${(stats.cancelled / Math.max(1, stats.total)) * 100}%` }}
-                    />
-                  </div>
+                <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden shadow-inner flex">
+                  <div
+                    className="h-full bg-blue-500 transition-all duration-500 ease-out"
+                    style={{ width: `${(stats.completed / Math.max(1, stats.total)) * 100}%` }}
+                    title={`Completed: ${((stats.completed / Math.max(1, stats.total)) * 100).toFixed(0)}%`}
+                  />
+                  <div
+                    className="h-full bg-amber-500 transition-all duration-500 ease-out"
+                    style={{ width: `${(stats.pending / Math.max(1, stats.total)) * 100}%` }}
+                    title={`Pending: ${((stats.pending / Math.max(1, stats.total)) * 100).toFixed(0)}%`}
+                  />
+                  <div
+                    className="h-full bg-red-500 transition-all duration-500 ease-out"
+                    style={{ width: `${(stats.cancelled / Math.max(1, stats.total)) * 100}%` }}
+                    title={`Cancelled: ${((stats.cancelled / Math.max(1, stats.total)) * 100).toFixed(0)}%`}
+                  />
                 </div>
               </div>
             </CardContent>
@@ -807,44 +904,48 @@ export default function EbayOrders() {
         </div>
 
         <div>
-          <Card className="h-full flex flex-col">
-            <CardHeader className="px-5 py-4 pb-2">
-              <CardTitle className="text-sm font-semibold text-foreground">Revenue</CardTitle>
+          <Card className="h-full flex flex-col bg-card/60 backdrop-blur-sm border-border/80 shadow-md hover:shadow-lg transition-all duration-300">
+            <CardHeader className="px-6 py-5 pb-3">
+              <CardTitle className="text-sm font-semibold text-foreground/80 tracking-wide uppercase">Status Mix</CardTitle>
             </CardHeader>
-            <CardContent className="px-5 pb-4 pt-0">
-              <div className="flex items-center gap-4">
+            <CardContent className="px-6 pb-6 pt-0 flex flex-col justify-between flex-1">
+              <div className="flex items-center gap-6">
                 <div
-                  className="h-24 w-24 rounded-full shrink-0"
+                  className="h-24 w-24 rounded-full shrink-0 shadow-md relative group transition-transform duration-300 hover:scale-105"
                   style={{
                     background: `conic-gradient(
-                      hsl(var(--primary)) 0 ${statsPct.completed}%,
-                      hsl(var(--accent)) ${statsPct.completed}% ${statsPct.completed + statsPct.pending}%,
-                      hsl(var(--destructive)) ${statsPct.completed + statsPct.pending}% 100%
+                      #3b82f6 0 ${statsPct.completed}%,
+                      #f59e0b ${statsPct.completed}% ${statsPct.completed + statsPct.pending}%,
+                      #ef4444 ${statsPct.completed + statsPct.pending}% 100%
                     )`,
                   }}
                   aria-label="Order status distribution"
-                />
+                >
+                  <div className="absolute inset-2.5 rounded-full bg-background dark:bg-slate-900 shadow-inner flex items-center justify-center">
+                    <span className="text-[10px] font-bold text-muted-foreground">MIX</span>
+                  </div>
+                </div>
                 <div className="space-y-2 text-sm flex-1">
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-primary" />
-                      <span className="text-muted-foreground">Completed</span>
+                      <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
+                      <span className="text-muted-foreground text-xs font-semibold">Completed</span>
                     </div>
-                    <span className="font-medium">{statsPct.completed}%</span>
+                    <span className="font-bold text-xs">{statsPct.completed}%</span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-accent" />
-                      <span className="text-muted-foreground">Pending</span>
+                      <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                      <span className="text-muted-foreground text-xs font-semibold">Pending</span>
                     </div>
-                    <span className="font-medium">{statsPct.pending}%</span>
+                    <span className="font-bold text-xs">{statsPct.pending}%</span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-destructive" />
-                      <span className="text-muted-foreground">Cancelled</span>
+                      <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                      <span className="text-muted-foreground text-xs font-semibold">Cancelled</span>
                     </div>
-                    <span className="font-medium">{statsPct.cancelled}%</span>
+                    <span className="font-bold text-xs">{statsPct.cancelled}%</span>
                   </div>
                 </div>
               </div>
@@ -973,6 +1074,54 @@ export default function EbayOrders() {
                   </div>
                 </PopoverContent>
               </Popover>
+
+              {/* Custom Date Range Picker */}
+              {periodPreset === "custom" && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="date-range-picker"
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "h-9 w-full sm:w-[240px] justify-start text-left font-normal text-sm gap-2",
+                        !dateRange && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="truncate">
+                        {dateRange?.from ? (
+                          dateRange.to ? (
+                            <>
+                              {format(dateRange.from, "LLL dd, yyyy")} - {format(dateRange.to, "LLL dd, yyyy")}
+                            </>
+                          ) : (
+                            format(dateRange.from, "LLL dd, yyyy")
+                          )
+                        ) : (
+                          "Pick a date range"
+                        )}
+                      </span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 bg-popover z-50 shadow-lg border border-border" align="start">
+                    <Calendar
+                      initialFocus
+                      mode="range"
+                      defaultMonth={dateRange?.from}
+                      selected={dateRange}
+                      onSelect={(range) => {
+                        setDateRange(range);
+                        // Only reset page and fetch if we have a full selection
+                        if (range?.from && range?.to) {
+                          setCurrentPage(1);
+                        }
+                      }}
+                      numberOfMonths={2}
+                    />
+                  </PopoverContent>
+                </Popover>
+              )}
             </div>
 
             {/* Right: Action Buttons */}
@@ -1067,8 +1216,8 @@ export default function EbayOrders() {
             </div>
           </div>
 
-          {/* Status Tabs - Now directly below controls */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 mt-4 scrollbar-thin">
+          {/* Status Tabs - Sleek Segmented Control */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 mt-4 scrollbar-thin bg-muted/40 p-1.5 rounded-lg border border-border/40">
             {[
               { value: "all", label: "All", count: statusTabCounts.all },
               { value: "pending", label: "Pending", count: statusTabCounts.pending },
@@ -1086,16 +1235,18 @@ export default function EbayOrders() {
                   setCurrentPage(1);
                 }}
                 className={cn(
-                  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition-colors",
+                  "inline-flex items-center gap-2 px-3.5 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-all duration-300",
                   statusFilter === tab.value
-                    ? "bg-primary text-primary-foreground"
+                    ? "bg-background text-foreground shadow-sm border border-border/60"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
                 {tab.label}
                 <span className={cn(
-                  "text-xs px-1.5 py-0.5 rounded-full",
-                  statusFilter === tab.value ? "bg-primary-foreground/20" : "bg-muted"
+                  "text-[10px] px-1.5 py-0.5 rounded-full font-bold transition-all",
+                  statusFilter === tab.value 
+                    ? "bg-primary/10 text-primary" 
+                    : "bg-muted-foreground/10 text-muted-foreground"
                 )}>
                   {tab.count}
                 </span>
@@ -1108,8 +1259,50 @@ export default function EbayOrders() {
       <Card className="overflow-hidden border-border shadow-sm">
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="flex items-center justify-center py-20">
-              <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+            <div className="overflow-x-auto">
+              <Table className="min-w-[900px]">
+                <TableHeader className="bg-muted/40">
+                  <TableRow>
+                    <TableHead className="w-[44px] h-10 px-3" />
+                    <TableHead className="min-w-[100px] h-10 px-3 text-xs">Sale No</TableHead>
+                    <TableHead className="min-w-[140px] h-10 px-3 text-xs">Order Number</TableHead>
+                    <TableHead className="w-[120px] h-10 px-3 text-xs">Date Paid</TableHead>
+                    <TableHead className="w-[120px] h-10 px-3 text-xs">Ship By Date</TableHead>
+                    <TableHead className="min-w-[180px] h-10 px-3 text-xs">Buyer</TableHead>
+                    <TableHead className="w-[90px] h-10 px-3 text-xs">Quantity</TableHead>
+                    <TableHead className="min-w-[140px] h-10 px-3 text-xs">SKU</TableHead>
+                    <TableHead className="min-w-[220px] h-10 px-3 text-xs">Shipping</TableHead>
+                    <TableHead className="w-[120px] h-10 px-3 text-xs">Revenue</TableHead>
+                    <TableHead className="w-[110px] h-10 px-3 text-xs">Net Earnings ↗</TableHead>
+                    <TableHead className="w-[140px] h-10 px-3 text-xs">Order Status</TableHead>
+                    <TableHead className="w-[60px] h-10 px-3 text-xs text-right" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Array.from({ length: 5 }).map((_, idx) => (
+                    <TableRow key={`skeleton-row-${idx}`} className="h-16 animate-pulse border-b border-border/40">
+                      <TableCell className="px-3 py-4"><div className="h-4 w-4 rounded bg-muted" /></TableCell>
+                      <TableCell className="px-3 py-4"><div className="h-4 w-12 rounded bg-muted" /></TableCell>
+                      <TableCell className="px-3 py-4"><div className="h-4 w-24 rounded bg-muted" /></TableCell>
+                      <TableCell className="px-3 py-4"><div className="h-4 w-16 rounded bg-muted" /></TableCell>
+                      <TableCell className="px-3 py-4"><div className="h-4 w-16 rounded bg-muted" /></TableCell>
+                      <TableCell className="px-3 py-4"><div className="h-4 w-20 rounded bg-muted" /></TableCell>
+                      <TableCell className="px-3 py-4"><div className="h-4 w-6 rounded bg-muted" /></TableCell>
+                      <TableCell className="px-3 py-4"><div className="h-4 w-20 rounded bg-muted" /></TableCell>
+                      <TableCell className="px-3 py-4">
+                        <div className="space-y-1">
+                          <div className="h-4 w-24 rounded bg-muted" />
+                          <div className="h-3 w-32 rounded bg-muted/60" />
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-3 py-4"><div className="h-4 w-12 rounded bg-muted" /></TableCell>
+                      <TableCell className="px-3 py-4"><div className="h-6 w-14 rounded-full bg-muted" /></TableCell>
+                      <TableCell className="px-3 py-4"><div className="h-6 w-16 rounded-full bg-muted" /></TableCell>
+                      <TableCell className="px-3 py-4 text-right"><div className="h-8 w-8 ml-auto rounded bg-muted" /></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           ) : (
             <div className="overflow-x-auto scrollbar-thin">
@@ -1160,12 +1353,11 @@ export default function EbayOrders() {
                       const transaction = typeof order.total_amount === "number" ? order.total_amount : null;
                       const shipping = typeof order.shipping_cost === "number" ? order.shipping_cost : null;
 
-
                       return (
                         <TableRow
                           key={order.id}
                           className={cn(
-                            "align-top border-b cursor-pointer transition-all duration-500",
+                            "align-top border-b border-border/40 cursor-pointer transition-all duration-300 hover:bg-muted/40",
                             newOrderIds.has(order.id) && "bg-primary/5",
                             updatedOrderIds.has(order.id) && "bg-green-500/5 ring-1 ring-inset ring-green-500/20 shadow-sm z-10",
                           )}
@@ -1175,7 +1367,7 @@ export default function EbayOrders() {
                           }}
                         >
                           <TableCell
-                            className="px-3 py-3"
+                            className="px-3 py-4"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <Checkbox
@@ -1185,58 +1377,66 @@ export default function EbayOrders() {
                             />
                           </TableCell>
                           {/* Sale No */}
-                          <TableCell className="px-3 py-3 font-mono text-sm">
+                          <TableCell className="px-3 py-4 font-mono text-xs text-foreground/80">
                             <div className="flex flex-col items-start gap-1">
                               {order.order_date && new Date(order.order_date).toDateString() === latestDate && (
-                                <Badge
-                                  variant="outline"
-                                  className="bg-green-500/10 text-green-600 border-green-500/20 text-[10px] h-4 px-1 whitespace-nowrap font-bold"
-                                >
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-sm animate-pulse whitespace-nowrap">
                                   New Order
-                                </Badge>
+                                </span>
                               )}
-                              <span>{order.sales_record_number || '—'}</span>
+                              <span className="font-semibold">{order.sales_record_number || '—'}</span>
                             </div>
                           </TableCell>
 
                           {/* Order Number */}
-                          <TableCell className="px-3 py-3 font-mono text-sm max-w-[140px] truncate" onClick={(e) => e.stopPropagation()}>
+                          <TableCell className="px-3 py-4 font-mono text-xs max-w-[140px] truncate" onClick={(e) => e.stopPropagation()}>
                             <a
                               href={`https://www.ebay.com/mesh/ord/details?mode=SH&srn=${order.sales_record_number || ""}&orderid=${order.ebay_order_id}&source=Orders&ru=https%3A%2F%2Fwww.ebay.com%2Fsh%2Ford`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-primary hover:underline inline-flex items-center gap-1"
+                              className="text-primary font-semibold hover:underline inline-flex items-center gap-1 transition-colors"
                             >
                               {order.ebay_order_id || '—'}
-                              <ExternalLink className="h-3 w-3" />
+                              <ExternalLink className="h-3 w-3 opacity-60" />
                             </a>
                           </TableCell>
 
                           {/* Date Paid */}
-                          <TableCell className="px-3 py-3 text-sm">
+                          <TableCell className="px-3 py-4 text-xs text-muted-foreground">
                             {order.date_paid ? format(new Date(order.date_paid), 'MMM dd, yyyy') : '—'}
                           </TableCell>
 
                           {/* Ship By Date */}
-                          <TableCell className="px-3 py-3 text-sm">
+                          <TableCell className="px-3 py-4 text-xs text-muted-foreground">
                             {order.ship_by_date ? format(new Date(order.ship_by_date), 'MMM dd, yyyy') : '—'}
                           </TableCell>
 
                           {/* Buyer */}
-                          <TableCell className="px-3 py-3">
-                            <div className="text-sm truncate max-w-[160px]">
+                          <TableCell className="px-3 py-4">
+                            <div className="text-xs font-medium text-foreground truncate max-w-[160px]">
                               {order.buyer_name || '—'}
                             </div>
                           </TableCell>
 
                           {/* Quantity */}
-                          <TableCell className="px-3 py-3 text-sm">{order.quantity ?? 1}</TableCell>
+                          <TableCell className="px-3 py-4 text-xs font-semibold text-foreground/80">{order.quantity ?? 1}</TableCell>
 
                           {/* SKU */}
-                          <TableCell className="px-3 py-3 text-sm">{order.custom_label || order.item_number || '—'}</TableCell>
+                          <TableCell className="px-3 py-4 text-xs font-mono">
+                            {order.custom_label ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-muted text-muted-foreground border border-border/60">
+                                <Tag className="h-3 w-3 text-muted-foreground/80 shrink-0" />
+                                {order.custom_label}
+                              </span>
+                            ) : order.item_number ? (
+                              <span className="text-muted-foreground/80">{order.item_number}</span>
+                            ) : (
+                              <span className="text-muted-foreground/40">—</span>
+                            )}
+                          </TableCell>
 
                           {/* Shipping (Ship To) */}
-                          <TableCell className="px-3 py-3 text-sm">
+                          <TableCell className="px-3 py-4 text-xs">
                             {(() => {
                               const ship = (order.shipping_address || {}) as any;
                               const name = typeof ship?.name === "string" ? ship.name : "";
@@ -1270,14 +1470,17 @@ export default function EbayOrders() {
                                     <TooltipTrigger asChild>
                                       <button
                                         type="button"
-                                        className="text-left w-full rounded-md px-2 py-1 -mx-2 -my-1 hover:bg-muted/60 focus:outline-none focus:ring-2 focus:ring-ring"
+                                        className="text-left w-full rounded-lg px-2 py-1 -mx-2 -my-1 hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                                       >
-                                        <div className="font-medium truncate max-w-[210px]">{line1}</div>
+                                        <div className="font-semibold text-foreground truncate max-w-[210px] flex items-center gap-1.5">
+                                          <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                          {line1}
+                                        </div>
                                         {line2 ? (
-                                          <div className="text-xs text-muted-foreground truncate max-w-[210px]">{line2}</div>
+                                          <div className="text-[11px] text-muted-foreground truncate max-w-[210px] pl-5">{line2}</div>
                                         ) : null}
                                         {line3 ? (
-                                          <div className="text-xs text-muted-foreground truncate max-w-[210px]">{line3}</div>
+                                          <div className="text-[11px] text-muted-foreground truncate max-w-[210px] pl-5">{line3}</div>
                                         ) : null}
                                       </button>
                                     </TooltipTrigger>
@@ -1297,57 +1500,54 @@ export default function EbayOrders() {
                           </TableCell>
 
                           {/* Revenue */}
-                          <TableCell className="px-3 py-3 text-sm font-medium">
+                          <TableCell className="px-3 py-4 text-xs font-semibold text-foreground">
                             {transaction !== null ? (
                               transaction === 0 ? (
-                                <span className="text-red-500 line-through">$0.00</span>
+                                <span className="text-muted-foreground/60 line-through">$0.00</span>
                               ) : (
                                 `$${transaction.toFixed(2)}`
                               )
-                            ) : '—'}
+                            ) : <span className="text-muted-foreground/40">—</span>}
                           </TableCell>
 
                           {/* Net Profit */}
-                          <TableCell className="px-3 py-3 text-sm">
+                          <TableCell className="px-3 py-4 text-xs">
                             {order.add_fee !== null ? (
                               <div className="flex items-center gap-1.5">
-                                <span className="bg-green-500/10 text-green-600 px-2 py-0.5 rounded-full font-bold shadow-sm border border-green-500/20">
+                                <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold shadow-sm border border-emerald-500/20">
                                   ${order.add_fee.toFixed(2)}
                                 </span>
                               </div>
                             ) : (
                               <div className="flex items-center">
                                 <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6 text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10 transition-colors"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2.5 text-[10px] font-semibold gap-1 bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400 hover:bg-amber-500 hover:text-white transition-all duration-300 shadow-sm rounded-md"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleOrderProcessing(order);
                                   }}
-                                  title="Check Net Profit (Sync Order)"
+                                  title="Calculate & Sync Net Profit from eBay details"
                                 >
-                                  <Zap className="h-4 w-4 fill-current" />
+                                  <Zap className="h-3 w-3 fill-current animate-pulse" />
+                                  Calc Profit
                                 </Button>
                               </div>
                             )}
                           </TableCell>
 
-
-
                           {/* Order Status */}
-                          <TableCell className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                          <TableCell className="px-3 py-4" onClick={(e) => e.stopPropagation()}>
                             {getStatusBadge(order)}
                           </TableCell>
 
-                          <TableCell className="px-3 py-3 text-right">
+                          <TableCell className="px-3 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openDeleteConfirm([order.id]);
-                              }}
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors rounded-lg"
+                              onClick={() => openDeleteConfirm([order.id])}
                               aria-label={`Delete order ${order.ebay_order_id}`}
                             >
                               <Trash2 className="h-4 w-4" />

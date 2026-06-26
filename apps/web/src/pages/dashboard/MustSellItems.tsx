@@ -42,32 +42,32 @@ const formatSold = (count: number): string => {
   return count.toLocaleString();
 };
 
-// Get rank badge based on position
+// Get rank badge based on position with high-end premium styling
 const getRankBadge = (rank: number) => {
   if (rank === 1) {
     return (
-      <div className="absolute -top-2 -left-2 z-10 w-10 h-10 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-full flex items-center justify-center shadow-lg border-2 border-white dark:border-gray-800">
-        <Crown className="h-5 w-5 text-white" />
+      <div className="absolute -top-2 -left-2 z-10 w-11 h-11 bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-600 rounded-xl flex items-center justify-center shadow-[0_4px_16px_rgba(245,158,11,0.45)] border border-yellow-200/50 dark:border-yellow-400/30 animate-pulse">
+        <Crown className="h-6 w-6 text-white drop-shadow-[0_2px_4px_rgba(180,83,9,0.5)]" />
       </div>
     );
   }
   if (rank === 2) {
     return (
-      <div className="absolute -top-2 -left-2 z-10 w-10 h-10 bg-gradient-to-br from-gray-300 to-gray-400 rounded-full flex items-center justify-center shadow-lg border-2 border-white dark:border-gray-800">
-        <Award className="h-5 w-5 text-white" />
+      <div className="absolute -top-2 -left-2 z-10 w-10 h-10 bg-gradient-to-br from-slate-200 via-slate-300 to-slate-500 rounded-xl flex items-center justify-center shadow-[0_4px_16px_rgba(148,163,184,0.35)] border border-slate-100/50 dark:border-slate-300/30">
+        <Award className="h-5 w-5 text-white drop-shadow-[0_2px_4px_rgba(71,85,105,0.4)]" />
       </div>
     );
   }
   if (rank === 3) {
     return (
-      <div className="absolute -top-2 -left-2 z-10 w-10 h-10 bg-gradient-to-br from-amber-600 to-amber-700 rounded-full flex items-center justify-center shadow-lg border-2 border-white dark:border-gray-800">
-        <Medal className="h-5 w-5 text-white" />
+      <div className="absolute -top-2 -left-2 z-10 w-10 h-10 bg-gradient-to-br from-amber-600 via-amber-700 to-amber-900 rounded-xl flex items-center justify-center shadow-[0_4px_16px_rgba(180,83,9,0.4)] border border-amber-500/50 dark:border-amber-700/30">
+        <Medal className="h-5 w-5 text-white drop-shadow-[0_2px_4px_rgba(120,53,4,0.4)]" />
       </div>
     );
   }
   return (
-    <div className="absolute -top-2 -left-2 z-10 w-8 h-8 bg-gradient-to-br from-primary/80 to-primary rounded-full flex items-center justify-center shadow-md border-2 border-white dark:border-gray-800">
-      <span className="text-xs font-bold text-primary-foreground">#{rank}</span>
+    <div className="absolute -top-2 -left-2 z-10 w-8 h-8 bg-gradient-to-br from-slate-800 to-slate-950 dark:from-slate-900 dark:to-black rounded-lg flex items-center justify-center shadow-md border border-slate-700/50">
+      <span className="text-xs font-black text-slate-200">#{rank}</span>
     </div>
   );
 };
@@ -137,6 +137,16 @@ export default function MustSellItems() {
     return items.filter((i) => (i.category || '').trim() === selectedCategory);
   }, [items, selectedCategory]);
 
+  const maxSold = useMemo(() => {
+    if (!items || items.length === 0) return 1;
+    return Math.max(...items.map((i) => i.total_sold));
+  }, [items]);
+
+  const maxRevenue = useMemo(() => {
+    if (!items || items.length === 0) return 1;
+    return Math.max(...items.map((i) => i.price * i.total_sold));
+  }, [items]);
+
   const totalPages = filteredItems.length ? Math.ceil(filteredItems.length / ITEMS_PER_PAGE) : 1;
   const paginatedItems = filteredItems.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
@@ -162,138 +172,175 @@ export default function MustSellItems() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="relative space-y-8 pb-12">
+      {/* Decorative ambient background mesh */}
+      <div className="absolute -top-24 right-0 w-80 h-80 bg-orange-500/10 dark:bg-orange-500/5 rounded-full blur-[100px] pointer-events-none select-none -z-10" />
+      <div className="absolute top-20 left-10 w-96 h-96 bg-blue-500/5 rounded-full blur-[120px] pointer-events-none select-none -z-10" />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 shadow-lg">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 shadow-[0_8px_24px_rgba(249,115,22,0.25)] dark:shadow-[0_8px_30px_rgba(249,115,22,0.15)] flex-shrink-0 animate-bounce-subtle">
               <Flame className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Must Sell Products</h1>
-              <p className="text-sm text-muted-foreground">Top trending products • Last 7 days</p>
+              <div className="flex items-center gap-2">
+                <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-foreground via-foreground/90 to-foreground/75 bg-clip-text text-transparent">
+                  Must Sell Items
+                </h1>
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground/90 mt-1">
+                Top trending products with proven velocity • Updated in real-time
+              </p>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0 shadow-md px-3 py-1">
+          <Badge className="bg-gradient-to-r from-orange-500 to-amber-500 text-white border-0 shadow-lg shadow-orange-500/10 px-3.5 py-1.5 rounded-full font-bold text-xs select-none">
             <TrendingUp className="h-3.5 w-3.5 mr-1.5" />
-            {items?.length || 0} Hot Products
+            {items?.length || 0} High-Demand Products
           </Badge>
         </div>
       </div>
 
       {/* Filters */}
-      <Card className="p-4 bg-card/50 backdrop-blur-sm border-border/50">
-        <div className="flex flex-col gap-4">
+      <Card className="p-5 bg-card/60 dark:bg-slate-900/60 backdrop-blur-md border border-border/80 dark:border-slate-800/80 shadow-[0_4px_20px_rgba(0,0,0,0.02)] rounded-[22px]">
+        <div className="flex flex-col gap-5">
           {/* Category Tabs */}
-          <Tabs
-            value={selectedCategory}
-            onValueChange={(val) => {
-              setSelectedCategory(val);
-              setCurrentPage(1);
-            }}
-          >
-            <TabsList className="w-full justify-start overflow-x-auto bg-background">
-              <TabsTrigger value="all">All</TabsTrigger>
-              {categories.map((c) => (
-                <TabsTrigger key={c} value={c}>
-                  {c}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-
-          {/* Search + Country */}
-          <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search products..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
+          {categories.length > 0 && (
+            <Tabs
+              value={selectedCategory}
+              onValueChange={(val) => {
+                setSelectedCategory(val);
                 setCurrentPage(1);
               }}
-              className="pl-10 bg-background"
-            />
-          </div>
-          <Select value={selectedCountry} onValueChange={(value) => {
-            setSelectedCountry(value);
-            setCurrentPage(1);
-          }}>
-            <SelectTrigger className="w-full sm:w-48 bg-background">
-              <SelectValue placeholder="All Countries" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">🌍 All Countries</SelectItem>
-              <SelectItem value="US">🇺🇸 United States</SelectItem>
-              <SelectItem value="UK">🇬🇧 United Kingdom</SelectItem>
-              <SelectItem value="DE">🇩🇪 Germany</SelectItem>
-              <SelectItem value="AU">🇦🇺 Australia</SelectItem>
-              <SelectItem value="CA">🇨🇦 Canada</SelectItem>
-            </SelectContent>
-          </Select>
+              className="w-full"
+            >
+              <TabsList className="w-full justify-start overflow-x-auto bg-slate-100/50 dark:bg-slate-950/40 p-1.5 rounded-xl gap-1">
+                <TabsTrigger 
+                  value="all" 
+                  className="rounded-lg text-xs font-semibold px-4 py-2 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:shadow-sm transition-all"
+                >
+                  All Categories
+                </TabsTrigger>
+                {categories.map((c) => (
+                  <TabsTrigger 
+                    key={c} 
+                    value={c}
+                    className="rounded-lg text-xs font-semibold px-4 py-2 data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:shadow-sm transition-all"
+                  >
+                    {c}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          )}
+
+          {/* Search + Country */}
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-muted-foreground/75" />
+              <Input
+                placeholder="Search products by keyword..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="pl-11 bg-background/55 focus-visible:ring-orange-500/35 focus-visible:border-orange-500/50 border-border/75 rounded-xl h-11 transition-all"
+              />
+            </div>
+            <Select value={selectedCountry} onValueChange={(value) => {
+              setSelectedCountry(value);
+              setCurrentPage(1);
+            }}>
+              <SelectTrigger className="w-full md:w-56 bg-background/55 border-border/75 rounded-xl h-11 focus:ring-orange-500/35">
+                <SelectValue placeholder="Filter by Country" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl border-border/80">
+                <SelectItem value="all">🌍 All Countries</SelectItem>
+                <SelectItem value="US">🇺🇸 United States</SelectItem>
+                <SelectItem value="UK">🇬🇧 United Kingdom</SelectItem>
+                <SelectItem value="DE">🇩🇪 Germany</SelectItem>
+                <SelectItem value="AU">🇦🇺 Australia</SelectItem>
+                <SelectItem value="CA">🇨🇦 Canada</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </Card>
 
       {/* Product Grid */}
       {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <Card key={i} className="overflow-hidden">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+          {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
+            <Card key={i} className="overflow-hidden border border-border/60 rounded-[20px]">
               <Skeleton className="aspect-square w-full" />
-              <CardContent className="p-4 space-y-3">
+              <CardContent className="p-5 space-y-4">
                 <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-3 w-2/3" />
-                <Skeleton className="h-5 w-1/3" />
-                <div className="flex gap-4">
-                  <Skeleton className="h-4 w-1/3" />
-                  <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-3.5 w-2/3" />
+                <Skeleton className="h-6 w-1/3" />
+                <div className="pt-2 border-t border-border/40 space-y-3">
+                  <div className="space-y-1">
+                    <Skeleton className="h-3 w-1/3" />
+                    <Skeleton className="h-2 w-full" />
+                  </div>
+                  <div className="space-y-1">
+                    <Skeleton className="h-3 w-1/4" />
+                    <Skeleton className="h-2 w-full" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       ) : paginatedItems?.length === 0 ? (
-        <Card className="p-12 text-center bg-card/50 backdrop-blur-sm">
-          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-            <TrendingUp className="h-8 w-8 text-muted-foreground" />
+        <Card className="p-16 text-center bg-card/60 dark:bg-slate-900/60 border border-border/80 dark:border-slate-800/80 rounded-[22px] shadow-[0_4px_24px_rgba(0,0,0,0.01)] max-w-lg mx-auto">
+          <div className="w-16 h-16 rounded-2xl bg-orange-500/10 dark:bg-orange-500/5 flex items-center justify-center mx-auto mb-5 border border-orange-500/10">
+            <TrendingUp className="h-8 w-8 text-orange-500" />
           </div>
-          <h3 className="text-lg font-semibold">No products found</h3>
-          <p className="text-muted-foreground mt-1">Try adjusting your search or filters</p>
+          <h3 className="text-xl font-bold text-foreground">No matches found</h3>
+          <p className="text-muted-foreground text-sm mt-2 max-w-xs mx-auto">
+            Try adjusting your search criteria or country filter to discover high-velocity opportunities.
+          </p>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
           {paginatedItems?.map((item, index) => {
             const globalRank = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
             const estimatedRevenue = item.price * item.total_sold;
             const isHot = globalRank <= 10;
+            const revenuePercentage = Math.round((estimatedRevenue / maxRevenue) * 100);
+            const soldPercentage = Math.round((item.total_sold / maxSold) * 100);
             
             return (
               <div
                 key={item.id}
+                className="group relative"
               >
-
+                {/* Ambient glow container visible on hover */}
+                <div className="absolute -inset-[1px] bg-gradient-to-r from-orange-500 to-amber-500 rounded-[21px] blur-sm opacity-0 group-hover:opacity-40 transition duration-500 pointer-events-none" />
+                
                 <Card 
-                  className="relative overflow-hidden group hover:shadow-xl transition-all duration-300 border-2 hover:border-primary/40 bg-card animate-fade-in"
-                  style={{ animationDelay: `${index * 50}ms` }}
+                  className="relative overflow-hidden border border-border/80 dark:border-slate-800/80 hover:border-transparent bg-gradient-to-b from-card/90 to-card/98 dark:from-slate-900/90 dark:to-slate-950/98 backdrop-blur-md rounded-[20px] transition-all duration-500 ease-out h-full flex flex-col group-hover:shadow-[0_20px_45px_-12px_rgba(249,115,22,0.12)]"
+                  style={{ animationDelay: `${index * 30}ms` }}
                 >
                   {/* Rank Badge */}
                   {getRankBadge(globalRank)}
                 
                   {/* Hot Badge for top 10 */}
                   {isHot && (
-                    <div className="absolute top-2 right-2 z-10">
+                    <div className="absolute top-2.5 right-2.5 z-10 select-none">
                       <Badge
                         className={[
-                          'border-0 shadow-md text-[10px] px-2 py-0.5',
-                          // Keep it minimal/trustworthy: themed “primary” rather than loud colors
-                          'bg-primary text-primary-foreground',
-                          // Slightly stronger for top 3
-                          globalRank <= 3 ? 'shadow-lg' : '',
+                          'border-0 shadow-md text-[10px] px-2.5 py-0.5 font-extrabold',
+                          'bg-orange-500 text-white shadow-orange-500/10',
+                          globalRank <= 3 ? 'animate-pulse' : '',
                         ].join(' ')}
                       >
                         <Flame className="h-3 w-3 mr-1" />
@@ -303,29 +350,30 @@ export default function MustSellItems() {
                   )}
 
                   {/* Product Image */}
-                  <div className="relative aspect-square bg-gradient-to-br from-muted to-muted/50 overflow-hidden">
+                  <div className="relative aspect-square bg-slate-100 dark:bg-slate-900/50 overflow-hidden rounded-t-[18px] select-none">
                     {item.image_url ? (
                       <img
                         src={item.image_url}
                         alt={item.title}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+                        loading="lazy"
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
-                        <Package className="h-16 w-16 text-muted-foreground/50" />
+                        <Package className="h-16 w-16 text-muted-foreground/30" />
                       </div>
                     )}
                     
                     {/* Gradient Overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                     
                     {/* Quick Action Overlay */}
-                    <div className="absolute inset-0 flex items-end justify-center pb-4 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0">
-                      <div className="flex gap-2">
+                    <div className="absolute inset-0 flex items-end justify-center pb-5 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-3 group-hover:translate-y-0">
+                      <div className="flex gap-2 px-4 w-full">
                         <Button 
                           size="sm" 
                           onClick={() => handleAddToEbay(item)}
-                          className="bg-primary hover:bg-primary/90 shadow-lg"
+                          className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-semibold shadow-lg shadow-orange-500/20 border-0 rounded-xl h-9"
                         >
                           <Plus className="h-4 w-4 mr-1" />
                           Add to eBay
@@ -333,8 +381,7 @@ export default function MustSellItems() {
                         {item.ebay_url && (
                           <Button 
                             size="sm" 
-                            variant="secondary"
-                            className="shadow-lg"
+                            className="bg-white/95 dark:bg-slate-800/95 hover:bg-white dark:hover:bg-slate-800 shadow-lg text-foreground border border-border/50 rounded-xl w-9 h-9 p-0"
                             asChild
                           >
                             <a href={item.ebay_url} target="_blank" rel="noopener noreferrer">
@@ -347,71 +394,80 @@ export default function MustSellItems() {
                   </div>
 
                   {/* Product Info */}
-                  <CardContent className="p-4 space-y-3">
-                    {/* Title */}
-                    <h3 className="font-semibold text-foreground line-clamp-2 text-sm min-h-[2.5rem] leading-tight group-hover:text-primary transition-colors">
-                      {item.title}
-                    </h3>
-                    
-                    {/* Category */}
-                    {item.category && (
-                      <Badge variant="secondary" className="text-[10px] font-normal px-2 py-0.5 bg-muted/80">
-                        {item.category}
-                      </Badge>
-                    )}
-                    
-                    {/* Price */}
-                    <div className="flex items-baseline gap-2">
-                      <p className="text-xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
-                        ${item.price.toFixed(2)}
-                      </p>
-                      {item.profit > 0 && (
-                        <span className="text-xs text-emerald-500 font-medium">
-                          +${item.profit.toFixed(2)} profit
-                        </span>
-                      )}
+                  <CardContent className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                    <div className="space-y-2.5">
+                      {/* Category & Country Badges */}
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        {item.category && (
+                          <Badge variant="secondary" className="text-[10px] font-semibold px-2 py-0.5 bg-slate-100 dark:bg-slate-800/80 text-muted-foreground border-0 rounded-md">
+                            {item.category}
+                          </Badge>
+                        )}
+                        <Badge variant="outline" className="text-[10px] font-medium px-1.5 py-0.5 border-border/40 text-muted-foreground/80 rounded-md">
+                          {item.country === 'US' ? '🇺🇸 US' :
+                           item.country === 'UK' ? '🇬🇧 UK' :
+                           item.country === 'DE' ? '🇩🇪 DE' :
+                           item.country === 'AU' ? '🇦🇺 AU' :
+                           item.country === 'CA' ? '🇨🇦 CA' : `🌍 ${item.country}`}
+                        </Badge>
+                      </div>
+
+                      {/* Title */}
+                      <h3 className="font-bold text-foreground line-clamp-2 text-sm min-h-[2.5rem] leading-snug group-hover:text-orange-500 dark:group-hover:text-orange-400 transition-colors duration-300">
+                        {item.title}
+                      </h3>
+                      
+                      {/* Price & Profit */}
+                      <div className="flex items-baseline gap-2 pt-1">
+                        <p className="text-xl font-extrabold text-foreground tracking-tight">
+                          ${item.price.toFixed(2)}
+                        </p>
+                        {item.profit > 0 && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/20">
+                            +${item.profit.toFixed(2)} profit
+                          </span>
+                        )}
+                      </div>
                     </div>
                     
-                    {/* Stats Row */}
-                    <div className="pt-3 border-t border-border/50 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                          <span className="text-xs text-muted-foreground">Revenue</span>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <HelpCircle className="h-3 w-3 text-muted-foreground/60" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Estimated total revenue</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                    {/* Stats Row with horizontal visual indicator bars */}
+                    <div className="pt-3.5 border-t border-border/50 space-y-3">
+                      {/* Revenue Progress */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-muted-foreground font-medium flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            Revenue
+                          </span>
+                          <span className={`font-bold ${getRevenueColorClass(estimatedRevenue)}`}>
+                            {formatRevenue(estimatedRevenue)}
+                          </span>
                         </div>
-                        <span className={`font-bold text-sm ${getRevenueColorClass(estimatedRevenue)}`}>
-                          {formatRevenue(estimatedRevenue)}
-                        </span>
+                        <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-emerald-500 rounded-full transition-all duration-1000"
+                            style={{ width: `${Math.min(100, Math.max(8, revenuePercentage))}%` }}
+                          />
+                        </div>
                       </div>
                       
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-2 h-2 rounded-full bg-purple-500" />
-                          <span className="text-xs text-muted-foreground">Items Sold</span>
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <HelpCircle className="h-3 w-3 text-muted-foreground/60" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Total units sold</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
+                      {/* Items Sold Progress */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-muted-foreground font-medium flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                            Items Sold
+                          </span>
+                          <span className={`font-bold ${getSoldColorClass(item.total_sold)}`}>
+                            {formatSold(item.total_sold)}
+                          </span>
                         </div>
-                        <span className={`font-bold text-sm ${getSoldColorClass(item.total_sold)}`}>
-                          {formatSold(item.total_sold)}
-                        </span>
+                        <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-purple-500 rounded-full transition-all duration-1000"
+                            style={{ width: `${Math.min(100, Math.max(8, soldPercentage))}%` }}
+                          />
+                        </div>
                       </div>
                     </div>
                   </CardContent>
@@ -424,17 +480,20 @@ export default function MustSellItems() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-4">
+        <div className="flex items-center justify-center gap-2 pt-8">
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            onClick={() => {
+              setCurrentPage(p => Math.max(1, p - 1));
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
             disabled={currentPage === 1}
-            className="hover:bg-primary hover:text-primary-foreground transition-colors"
+            className="hover:bg-orange-500 hover:text-white transition-colors border-border/80 rounded-xl px-4"
           >
             Previous
           </Button>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
               let pageNum: number;
               if (totalPages <= 5) {
@@ -452,8 +511,11 @@ export default function MustSellItems() {
                   key={pageNum}
                   variant={currentPage === pageNum ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setCurrentPage(pageNum)}
-                  className={`w-9 h-9 p-0 ${currentPage === pageNum ? 'shadow-md' : ''}`}
+                  onClick={() => {
+                    setCurrentPage(pageNum);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className={`w-10 h-10 p-0 rounded-xl ${currentPage === pageNum ? 'bg-orange-500 text-white shadow-md shadow-orange-500/10 border-0' : 'border-border/80'}`}
                 >
                   {pageNum}
                 </Button>
@@ -463,9 +525,12 @@ export default function MustSellItems() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            onClick={() => {
+              setCurrentPage(p => Math.min(totalPages, p + 1));
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
             disabled={currentPage === totalPages}
-            className="hover:bg-primary hover:text-primary-foreground transition-colors"
+            className="hover:bg-orange-500 hover:text-white transition-colors border-border/80 rounded-xl px-4"
           >
             Next
           </Button>

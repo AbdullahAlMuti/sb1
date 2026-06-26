@@ -452,6 +452,36 @@ const AuthHelper = (() => {
     }
   }
 
+  /**
+   * Sync calculator settings from backend to chrome.storage.local
+   */
+  async function syncCalculatorSettings() {
+    try {
+      log('info', 'Syncing calculator settings from backend...');
+      const response = await callEdgeFunction('get-calculator-settings');
+      if (response && response.data && response.data.success && response.data.settings) {
+        const s = response.data.settings;
+        // Map database keys (snake_case) to extension keys (kebab-case)
+        const mapped = {
+          'tax-percent': s.tax_percent,
+          'tracking-fee': s.tracking_fee,
+          'ebay-fee-percent': s.ebay_fee_percent,
+          'promo-fee-percent': s.promotional_fee_percent,
+          'desired-profit': s.desired_profit_percent,
+          'payment-fixed-fee': 0.30 // default fixed fee (not in DB settings)
+        };
+        await chrome.storage.local.set({ calculatorValues: mapped });
+        log('success', 'Calculator settings synced successfully', mapped);
+        return true;
+      } else {
+        log('warn', 'Failed to sync calculator settings: invalid response', response);
+      }
+    } catch (e) {
+      log('error', 'Error syncing calculator settings', e.message);
+    }
+    return false;
+  }
+
   let isExtensionUnlocked = false;
   let lastAuthCheck = 0;
   const AUTH_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes default
@@ -490,6 +520,9 @@ const AuthHelper = (() => {
           userEmail: result.user.email,
           authTimestamp: Date.now()
         });
+
+        // Sync calculator settings from backend to local storage
+        await syncCalculatorSettings();
 
         isExtensionUnlocked = true;
         lastAuthCheck = Date.now();
@@ -548,6 +581,7 @@ const AuthHelper = (() => {
     promptLogin,
     SUPABASE_URL,
     verifyAuthStatus,
+    syncCalculatorSettings,
     isUnlocked: () => isExtensionUnlocked,
     setUnlocked: (val) => { isExtensionUnlocked = val; },
     getLastCheck: () => lastAuthCheck,

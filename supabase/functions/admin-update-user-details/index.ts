@@ -43,7 +43,7 @@ serve(async (req) => {
       .from("user_roles")
       .select("role")
       .eq("user_id", user.id)
-      .in("role", ["admin", "super_admin"]);
+      .in("role", ["admin"]);
 
     if (roleError || !adminRoles || adminRoles.length === 0) {
       return new Response(
@@ -106,8 +106,9 @@ serve(async (req) => {
       .eq("id", userId);
 
     if (updateError) {
+      console.error("[admin-update-user-details] db error:", updateError.message);
       return new Response(
-        JSON.stringify({ error: updateError.message }),
+        JSON.stringify({ error: "Failed to update user details" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

@@ -9,8 +9,6 @@ import {
   AccordionTrigger,
 } from "@repo/ui/components/ui/accordion";
 
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
 import NotFound from "@repo/ui/feedback/NotFound";
 import ArticleBody from "@/components/blog/ArticleBody";
 import BlogCard from "@/components/blog/BlogCard";
@@ -93,11 +91,7 @@ export default function BlogPost() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background">
-        <Navbar />
-        <main className="container px-4 pt-32 text-muted-foreground">Loading…</main>
-        <Footer />
-      </div>
+      <div className="container px-4 pt-32 text-muted-foreground flex-1">Loading…</div>
     );
   }
 
@@ -106,10 +100,8 @@ export default function BlogPost() {
   const related = relatedPosts(allPosts, post);
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="pt-24">
-        <article className="container max-w-3xl px-4 py-10">
+    <div className="pt-24 flex-1">
+      <article className="container max-w-3xl px-4 py-10">
           <Link
             to="/blog"
             className="mb-6 inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
@@ -201,8 +193,6 @@ export default function BlogPost() {
             </div>
           </section>
         )}
-      </main>
-      <Footer />
     </div>
   );
 }

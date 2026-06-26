@@ -12,10 +12,10 @@ export default function ExtensionSimulator() {
   const [isListing, setIsListing] = useState(false);
   const [listingStep, setListingStep] = useState(0);
   const [isListed, setIsListed] = useState(false);
-  const [selectedSupplier, setSelectedSupplier] = useState<"amazon" | "walmart">("amazon");
+  const [selectedSupplier, setSelectedSupplier] = useState<"aliexpress" | "wholesale">("aliexpress");
 
   // Math variables
-  const cost = selectedSupplier === "amazon" ? 79.99 : 54.50;
+  const cost = selectedSupplier === "aliexpress" ? 79.99 : 54.50;
   const shipping = 4.99;
   const feePct = 13.25;
 
@@ -27,8 +27,9 @@ export default function ExtensionSimulator() {
 
   const steps = [
     "Analyzing supplier details...",
+    "Auditing listing against eBay VERO database...",
     "Building optimized titles & images...",
-    "Generating SKU structure...",
+    "Generating margin-protected pricing...",
     "Publishing active listing to eBay..."
   ];
 
@@ -74,33 +75,33 @@ export default function ExtensionSimulator() {
               <span className="h-2 w-2 rounded-full bg-warning/60" />
               <span className="h-2 w-2 rounded-full bg-success/60" />
               <div className="mx-2 flex-1 rounded bg-secondary/80 px-2 py-0.5 text-center text-[10px] truncate">
-                {selectedSupplier === "amazon" 
-                  ? "https://www.amazon.com/dp/B08GP8E123" 
-                  : "https://www.walmart.com/ip/882194121"}
+                {selectedSupplier === "aliexpress" 
+                  ? "https://www.aliexpress.com/item/1005001234.html" 
+                  : "https://www.wholesalesupplier.com/product/88219"}
               </div>
             </div>
 
             {/* Supplier Selector Chips */}
             <div className="mb-5 flex gap-2">
               <button 
-                onClick={() => { setSelectedSupplier("amazon"); setIsListed(false); setListingStep(0); }}
+                onClick={() => { setSelectedSupplier("aliexpress"); setIsListed(false); setListingStep(0); }}
                 className={`rounded px-2.5 py-1 text-xs font-semibold border transition-all ${
-                  selectedSupplier === "amazon" 
+                  selectedSupplier === "aliexpress" 
                     ? "bg-card border-primary/50 text-foreground shadow-sm" 
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
-                Amazon.com
+                AliExpress
               </button>
               <button 
-                onClick={() => { setSelectedSupplier("walmart"); setIsListed(false); setListingStep(0); }}
+                onClick={() => { setSelectedSupplier("wholesale"); setIsListed(false); setListingStep(0); }}
                 className={`rounded px-2.5 py-1 text-xs font-semibold border transition-all ${
-                  selectedSupplier === "walmart" 
+                  selectedSupplier === "wholesale" 
                     ? "bg-card border-primary/50 text-foreground shadow-sm" 
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
-                Walmart.com
+                Wholesale Supplier
               </button>
             </div>
 
@@ -109,7 +110,7 @@ export default function ExtensionSimulator() {
               <div className="h-24 w-24 sm:h-28 sm:w-28 shrink-0 rounded-xl bg-card border border-border/60 p-2 flex items-center justify-center relative overflow-hidden">
                 {/* Simulated chair/appliance using SVGs */}
                 <svg viewBox="0 0 100 100" className="h-20 w-20 text-muted-foreground/40" fill="currentColor">
-                  {selectedSupplier === "amazon" ? (
+                  {selectedSupplier === "aliexpress" ? (
                     // Office Chair shape
                     <g>
                       <rect x="35" y="15" width="30" height="30" rx="4" />
@@ -131,7 +132,7 @@ export default function ExtensionSimulator() {
                   )}
                 </svg>
                 <span className="absolute bottom-1 right-1 rounded bg-secondary px-1 text-[8px] font-bold">
-                  {selectedSupplier === "amazon" ? "B08GP8" : "WM-8821"}
+                  {selectedSupplier === "aliexpress" ? "AE-1005" : "WS-8821"}
                 </span>
               </div>
 
@@ -140,7 +141,7 @@ export default function ExtensionSimulator() {
                   BEST SELLER
                 </span>
                 <h4 className="mt-1 font-display text-xs sm:text-sm font-semibold text-foreground truncate">
-                  {selectedSupplier === "amazon" 
+                  {selectedSupplier === "aliexpress" 
                     ? "Ergonomic Office Chair with 3D Lumbar Support" 
                     : "High-Performance 1000W Professional Blender"}
                 </h4>
@@ -202,11 +203,21 @@ export default function ExtensionSimulator() {
                 </label>
                 <div className="flex items-center gap-1 rounded bg-secondary/35 px-2 py-1 text-[10px] border border-border/40">
                   <span className="text-muted-foreground truncate flex-1">
-                    {selectedSupplier === "amazon" 
+                    {selectedSupplier === "aliexpress" 
                       ? "Ergonomic Office Chair 3D Lumbar Support Mesh Adjustable Desk" 
                       : "Professional Blender 1000W Countertop High Speed Smoothie"}
                   </span>
                 </div>
+              </div>
+
+              {/* VERO Shield Indicator */}
+              <div className="flex items-center gap-2 rounded bg-success/10 px-2 py-1.5 border border-success/35 text-[10px] text-success">
+                <span className="relative flex h-1.5 w-1.5 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-success"></span>
+                </span>
+                <span className="font-semibold">VERO Shield: Policy Safe</span>
+                <span className="text-[9px] text-success/80 ml-auto">Verified compliant</span>
               </div>
 
               {/* SKU Generator */}
@@ -216,7 +227,7 @@ export default function ExtensionSimulator() {
                     Custom SKU
                   </label>
                   <div className="rounded bg-secondary/35 px-2 py-1 text-[10px] font-mono border border-border/40 text-foreground">
-                    {selectedSupplier === "amazon" ? "SLR-AMZ-B08G" : "SLR-WMT-8821"}
+                    {selectedSupplier === "aliexpress" ? "SLR-ALI-1005" : "SLR-WHS-8821"}
                   </div>
                 </div>
                 <div>
@@ -346,7 +357,7 @@ export default function ExtensionSimulator() {
               <div className="min-w-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-success">Active eBay Listing Created</p>
                 <h5 className="text-xs font-semibold text-foreground truncate max-w-xs">
-                  {selectedSupplier === "amazon" 
+                  {selectedSupplier === "aliexpress" 
                     ? "Ergonomic Office Chair 3D Lumbar Support Mesh Adjustable Desk" 
                     : "Professional Blender 1000W Countertop High Speed Smoothie"}
                 </h5>

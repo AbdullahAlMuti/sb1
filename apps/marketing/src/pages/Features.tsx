@@ -1,5 +1,3 @@
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
 import FeaturesSection from "@/components/FeaturesSection";
 import CTASection from "@/components/CTASection";
 import { useSeo, SITE_URL } from "@/lib/useSeo";
@@ -12,13 +10,9 @@ export default function Features() {
   });
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="pt-24">
-        <FeaturesSection />
-        <CTASection />
-      </main>
-      <Footer />
+    <div className="pt-24 flex-1">
+      <FeaturesSection />
+      <CTASection />
     </div>
   );
 }

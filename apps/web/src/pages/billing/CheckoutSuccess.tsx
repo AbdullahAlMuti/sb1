@@ -51,6 +51,9 @@ export default function CheckoutSuccess() {
   const [countdown, setCountdown] = useState<number | null>(5);
 
   const isSuccess = isAdmin || access === 'active' || access === 'trial';
+  
+  // eslint-disable-next-line no-console
+  console.log("CheckoutSuccess Render State:", { status, retryCount, isSuccess, access, authLoading, userEmail: user?.email });
 
   // Confetti particles coordinates and delays
   const confettiPieces = [

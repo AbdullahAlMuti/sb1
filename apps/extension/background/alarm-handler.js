@@ -9,56 +9,28 @@ const EBAY_ORDER_SYNC_INTERVAL = 15 * 60 * 1000; // 15 minutes
 
 async function syncSettings() {
   try {
-    const data = await chrome.storage.local.get('saasToken');
-    const token = data.saasToken;
-    if (!token) return;
+    if (typeof AuthHelper === 'undefined') return;
+    const isAuth = await AuthHelper.isAuthenticated();
+    if (!isAuth) return;
 
-    const urls = getUrls();
-    const apiKeys = getApiKeys();
-    if (!urls || !apiKeys) return;
+    const response = await AuthHelper.callEdgeFunction('extension-bootstrap');
+    if (response.data && response.data.success) {
+      const data = response.data;
+      const updates = {
+        extensionBootstrapCache: data
+      };
 
-    const saasUrl = urls.SUPABASE_URL;
-    const saasKey = apiKeys.SUPABASE_ANON;
-
-    const response = await fetch(`${saasUrl}/rest/v1/admin_settings?select=*`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'apikey': saasKey,
-        'Prefer': 'return=representation'
-      }
-    });
-
-    if (response.ok) {
-      const settingsData = await response.json();
-      const updates = {};
-
-      try {
-        const userSettingsRes = await fetch(`${saasUrl}/rest/v1/user_ebay_settings?select=*`, {
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${token}`, 'apikey': saasKey, 'Prefer': 'return=representation' }
-        });
-        if (userSettingsRes.ok) {
-          const userSet = await userSettingsRes.json();
-          if (userSet && userSet.length > 0) updates.userEbaySettings = userSet[0];
+      // Map feature flags if present
+      if (data.featureFlags) {
+        updates.ebaySyncEnabled = data.featureFlags.ebay_sync_enabled !== false;
+        if (data.featureFlags.ebay_sync_interval) {
+          updates.ebaySyncInterval = parseInt(data.featureFlags.ebay_sync_interval, 10) * 60 * 1000;
         }
-      } catch(e) {}
-
-      settingsData.forEach(setting => {
-        if (setting.key === 'gemini_api_key') updates.geminiApiKey = setting.value;
-        if (setting.key === 'ebay_sync_enabled') updates.ebaySyncEnabled = setting.value === 'true';
-        if (setting.key === 'ebay_sync_days') updates.ebaySyncDays = parseInt(setting.value, 10) || 90;
-        if (setting.key === 'ebay_sync_interval') {
-          const newInterval = (parseInt(setting.value, 10) || 60) * 60 * 1000;
-          updates.ebaySyncInterval = newInterval;
-        }
-      });
-
-      if (Object.keys(updates).length > 0) {
-        await chrome.storage.local.set(updates);
-        console.log('🔄 SYNC: Settings updated from Admin Panel.', updates);
-        startEbayOrderSyncInterval();
       }
+
+      await chrome.storage.local.set(updates);
+      console.log('🔄 SYNC: Bootstrap cache and settings updated.', updates);
+      startEbayOrderSyncInterval();
     }
   } catch (error) {
     console.error('🔄 SYNC ERROR:', error);

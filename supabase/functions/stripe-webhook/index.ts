@@ -30,9 +30,7 @@ serve(async (req) => {
     });
   }
 
-  // SECURITY: Enforce webhook signature verification in production
-  const isDevelopment = Deno.env.get("ENVIRONMENT") === "development";
-  if (!webhookSecret && !isDevelopment) {
+  if (!webhookSecret) {
     logStep("SECURITY ERROR: STRIPE_WEBHOOK_SECRET not configured");
     return new Response(
       JSON.stringify({ error: "Webhook secret not configured" }),
@@ -222,25 +220,22 @@ serve(async (req) => {
 
     let event: Stripe.Event;
 
-    // SECURITY: Verify webhook signature
-    if (webhookSecret && signature) {
-      try {
-        event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-        logStep("Webhook signature verified");
-      } catch (err) {
-        logStep("Webhook signature verification failed", { error: String(err) });
-        return new Response(JSON.stringify({ error: "Invalid signature" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    } else if (isDevelopment) {
-      // WARNING: Development mode only - signature not verified
-      event = JSON.parse(body);
-      logStep("WARNING: Development mode - webhook signature not verified");
-    } else {
-      logStep("SECURITY ERROR: Missing webhook signature");
+    // Stripe signature is always required — no dev bypass.
+    // Use STRIPE_WEBHOOK_SECRET_TEST when testing locally with the Stripe CLI.
+    if (!signature) {
+      logStep("SECURITY ERROR: Missing stripe-signature header");
       return new Response(JSON.stringify({ error: "Missing signature" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+      logStep("Webhook signature verified");
+    } catch (err) {
+      logStep("Webhook signature verification failed", { error: String(err) });
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
