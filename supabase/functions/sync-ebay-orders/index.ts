@@ -1,4 +1,4 @@
-import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient, corsHeaders } from "../_shared/extension-session.ts";
+import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient, extCorsHeaders } from "../_shared/extension-session.ts";
 import { checkRateLimit, getClientIp as getRateLimitIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 interface EbayOrderPayload {
@@ -104,7 +104,7 @@ function maskPII(obj: any) {
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: extCorsHeaders(req) });
   }
 
   try {
@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
       limit: 30,
       windowSeconds: 60,
     });
-    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, corsHeaders);
+    if (!ipLimit.allowed) return rateLimitResponse(ipLimit, extCorsHeaders(req));
     
     // Authenticate using the shared dual-auth resolver
     const authContext = await resolveExtensionOrLegacyAuth(supabase, req);
@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
       limit: 60,
       windowSeconds: 60,
     });
-    if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
+    if (!userLimit.allowed) return rateLimitResponse(userLimit, extCorsHeaders(req));
 
     // Verify feature entitlement
     const hasAccess = await requireFeatureEntitlement(supabase, userId, authContext.workspaceId, "ebay_order_sync");
@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
       console.warn(`[sync-ebay-orders] User ${userId} missing ebay_order_sync entitlement`);
       return new Response(
         JSON.stringify({ success: false, error: "Feature not entitled or subscription inactive" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 403, headers: { ...extCorsHeaders(req), "Content-Type": "application/json" } }
       );
     }
 
@@ -152,7 +152,7 @@ Deno.serve(async (req) => {
       await logSyncEvent(supabase, userId, 'error', 'backend_sync', 'payload_parse_failed', null, { error: e.message });
       return new Response(
         JSON.stringify({ success: false, error: "Invalid JSON body" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...extCorsHeaders(req), "Content-Type": "application/json" } }
       );
     }
     
@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
       await logSyncEvent(supabase, userId, 'error', 'backend_sync', 'validation_failed', null, { reason: 'orders array required' });
       return new Response(
         JSON.stringify({ success: false, error: "Invalid payload: orders array required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 400, headers: { ...extCorsHeaders(req), "Content-Type": "application/json" } }
       );
     }
 
@@ -172,7 +172,7 @@ Deno.serve(async (req) => {
       await logSyncEvent(supabase, userId, 'info', null, 'sync_completed', null, { message: 'No orders provided' });
       return new Response(
         JSON.stringify({ success: true, synced: 0, skipped: 0 }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { headers: { ...extCorsHeaders(req), "Content-Type": "application/json" } }
       );
     }
 
@@ -361,7 +361,7 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({ success: true, synced, updated, skipped, errors: errors.length > 0 ? errors : undefined }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...extCorsHeaders(req), "Content-Type": "application/json" } }
     );
 
   } catch (error: any) {
@@ -371,7 +371,7 @@ Deno.serve(async (req) => {
     // Auth failures themselves shouldn't normally log to ebay_sync_logs unless we want to.
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...extCorsHeaders(req), "Content-Type": "application/json" } }
     );
   }
 });

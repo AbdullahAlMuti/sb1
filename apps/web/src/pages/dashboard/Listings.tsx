@@ -405,6 +405,7 @@ let cachedStats: ListingStats | null = null;
 let cachedSearchQuery: string = "";
 let cachedStatusFilter: string = "all";
 let cachedDateRange: DateRange = { from: undefined, to: undefined };
+let cachedTotalCount: number = 0;
 
 export default function Listings() {
   const navigate = useNavigate();
@@ -420,9 +421,11 @@ export default function Listings() {
     cachedSearchQuery = "";
     cachedStatusFilter = "all";
     cachedDateRange = { from: undefined, to: undefined };
+    cachedTotalCount = 0;
   }
 
   const [listings, setListings] = useState<Listing[]>(cachedListings || []);
+  const [totalCount, setTotalCount] = useState<number>(cachedTotalCount);
   const [filteredListings, setFilteredListings] = useState<Listing[]>(cachedListings || []);
   const [rowEdits, setRowEdits] = useState<Record<string, ListingRowEdits>>(() => {
     const initial: Record<string, ListingRowEdits> = {};
@@ -549,9 +552,10 @@ export default function Listings() {
         const createdAt = new Date(l.created_at);
         return isAfter(createdAt, last30DaysStart);
       }).length,
-      total: listings.length,
+      // totalCount comes from the server-side COUNT(*) — accurate across all pages
+      total: totalCount,
     };
-  }, [listings]);
+  }, [listings, totalCount]);
 
   // Calculate status-based stats
   const statusStats = useMemo(() => {
@@ -575,22 +579,43 @@ export default function Listings() {
     ebay_item_id: "",
   });
 
-  const fetchListings = async (showLog = false) => {
+  const fetchListings = async (page = currentPage, showLog = false) => {
     if (!user) {
       if (import.meta.env.DEV) console.log("[Listings] No user, skipping fetch");
       return;
     }
-    
+
     try {
-      if (import.meta.env.DEV) console.log("[Listings] Fetching listings for user:", user.id);
-      
-      const { data, error } = await supabase
+      if (import.meta.env.DEV) console.log("[Listings] Fetching page", page, "for user:", user.id);
+
+      const from = (page - 1) * itemsPerPage;
+      const to = page * itemsPerPage - 1;
+
+      let query = supabase
         .from("listings")
-        .select("*")
+        .select("*", { count: "exact" })
         .eq("user_id", user.id)
         .order("updated_at", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
-        .limit(500);
+        .range(from, to);
+
+      // Push filters to the DB so we only transfer matching rows
+      if (searchQuery) {
+        query = query.or(
+          `title.ilike.%${searchQuery}%,sku.ilike.%${searchQuery}%,amazon_asin.ilike.%${searchQuery}%`
+        );
+      }
+      if (statusFilter !== "all") {
+        query = query.eq("status", statusFilter);
+      }
+      if (dateRange.from) {
+        query = query.gte("created_at", startOfDay(dateRange.from).toISOString());
+      }
+      if (dateRange.to) {
+        query = query.lte("created_at", endOfDay(dateRange.to).toISOString());
+      }
+
+      const { data, error, count } = await query;
 
       if (error) {
         console.error("[Listings] Query error:", error);
@@ -598,18 +623,18 @@ export default function Listings() {
       }
 
       const listingsData = data || [];
-      if (import.meta.env.DEV) console.log("[Listings] Fetched", listingsData.length, "listings");
-      
+      const total = count ?? 0;
+
+      if (import.meta.env.DEV) console.log("[Listings] Fetched", listingsData.length, "of", total, "listings");
       if (showLog && listingsData.length > 0) {
         if (import.meta.env.DEV) console.log("[Listings] Latest listing:", listingsData[0]);
       }
-      
+
       const normalized = listingsData.map(normalizeListingRow);
       setListings(normalized);
       setFilteredListings(normalized);
+      setTotalCount(total);
 
-      // Initialize edit buffers (preserve any already-typed values)
-      // Note: prices are now read-only, but we keep the type for compatibility
       setRowEdits((prev) => {
         const next = { ...prev };
         for (const l of normalized) {
@@ -624,9 +649,9 @@ export default function Listings() {
         return next;
       });
 
-      // Calculate stats
-      const totalSourcingCost = normalized.reduce((sum, listing) => sum + (listing.amazon_price || 0), 0);
-      const totalInventoryValue = normalized.reduce((sum, listing) => sum + (listing.ebay_price || 0), 0);
+      // Stats derived from current page — good enough for dashboarding
+      const totalSourcingCost = normalized.reduce((sum, l) => sum + (l.amazon_price || 0), 0);
+      const totalInventoryValue = normalized.reduce((sum, l) => sum + (l.ebay_price || 0), 0);
       const netProfitForecast = totalInventoryValue - totalSourcingCost;
 
       const newStats = { totalSourcingCost, totalInventoryValue, netProfitForecast };
@@ -634,6 +659,7 @@ export default function Listings() {
 
       cachedListings = normalized;
       cachedStats = newStats;
+      cachedTotalCount = total;
     } catch (error) {
       console.error("[Listings] Error fetching listings:", error);
       toast({
@@ -750,20 +776,8 @@ export default function Listings() {
   useEffect(() => {
     if (user) {
       if (import.meta.env.DEV) console.log("[Listings] User available, fetching listings...");
-      fetchListings(true);
+      fetchListings(1, true);
     }
-  }, [user]);
-  
-  // Poll for new listings every 30 seconds as fallback for realtime
-  useEffect(() => {
-    if (!user) return;
-    
-    const interval = setInterval(() => {
-      if (import.meta.env.DEV) console.log("[Listings] Polling for updates...");
-      fetchListings();
-    }, 30000);
-    
-    return () => clearInterval(interval);
   }, [user]);
 
   // Real-time sync for listings
@@ -775,8 +789,8 @@ export default function Listings() {
         filter: `user_id=eq.${user.id}`,
         callback: (payload) => {
           if (import.meta.env.DEV) console.log('[Realtime] Listing changed:', payload.eventType, payload);
-          // Immediate refresh on any change
-          fetchListings(true);
+          // Immediate refresh on any change (realtime replaces the 30s polling interval)
+          fetchListings(currentPage, true);
 
           // Background Google Sheets auto-sync (additive; does not affect core listing logic)
           enqueueAutoSheetsSync(payload as any);
@@ -798,54 +812,25 @@ export default function Listings() {
     [user?.id]
   );
 
-  // Filter listings when search, status filter, or date range changes
+  // Re-fetch when filters change — debounced to avoid a DB round-trip per keystroke
   useEffect(() => {
-    let filtered = listings;
+    if (!user) return;
+    const timer = setTimeout(() => {
+      setCurrentPage(1);
+      fetchListings(1);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchQuery, statusFilter, dateRange]);
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(listing => 
-        (listing.title?.toLowerCase() || '').includes(query) ||
-        (listing.sku?.toLowerCase() || '').includes(query) ||
-        (listing.amazon_asin?.toLowerCase() || '').includes(query)
-      );
-    }
+  // Re-fetch when page changes (filter changes reset to page 1 above)
+  useEffect(() => {
+    if (!user || isLoading) return;
+    fetchListings(currentPage);
+  }, [currentPage]);
 
-    if (statusFilter !== "all") {
-      filtered = filtered.filter(listing => listing.status === statusFilter);
-    }
-
-    // Apply date range filter
-    if (dateRange.from || dateRange.to) {
-      filtered = filtered.filter(listing => {
-        const createdAt = new Date(listing.created_at);
-        
-        if (dateRange.from && dateRange.to) {
-          return isWithinInterval(createdAt, { 
-            start: startOfDay(dateRange.from), 
-            end: endOfDay(dateRange.to) 
-          });
-        } else if (dateRange.from) {
-          return isAfter(createdAt, startOfDay(dateRange.from)) || 
-                 createdAt.toDateString() === dateRange.from.toDateString();
-        } else if (dateRange.to) {
-          const endDate = endOfDay(dateRange.to);
-          return createdAt <= endDate;
-        }
-        return true;
-      });
-    }
-
-    setFilteredListings(filtered);
-    setCurrentPage(1); // Reset to first page when filters change
-  }, [searchQuery, statusFilter, listings, dateRange]);
-
-  // Paginated listings
-  const totalPages = Math.ceil(filteredListings.length / itemsPerPage);
-  const paginatedListings = filteredListings.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  // Paginated listings — data is already the current page from the server
+  const totalPages = Math.ceil(totalCount / itemsPerPage);
+  const paginatedListings = filteredListings;
 
   const goToPage = (page: number) => {
     setCurrentPage(Math.max(1, Math.min(page, totalPages)));
@@ -858,10 +843,10 @@ export default function Listings() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     if (import.meta.env.DEV) console.log("[Listings] Manual refresh triggered");
-    await fetchListings(true);
+    await fetchListings(currentPage, true);
     toast({
       title: "Refreshed",
-      description: `Loaded ${listings.length} listings`,
+      description: `Showing page ${currentPage} of ${totalPages}`,
     });
   };
 
@@ -881,7 +866,7 @@ export default function Listings() {
           title: "Sync Complete",
           description: `Updated ${data.results?.length || 0} listings from Amazon`,
         });
-        fetchListings();
+        fetchListings(currentPage);
       } else {
         setSyncError(data.error);
         toast({
@@ -958,7 +943,7 @@ export default function Listings() {
         ebay_item_id: "",
       });
       setShowNewListingDialog(false);
-      fetchListings();
+      fetchListings(currentPage);
     } catch (error) {
       console.error("Error creating listing:", error);
       toast({
@@ -985,7 +970,7 @@ export default function Listings() {
         description: "Listing has been removed",
       });
 
-      fetchListings();
+      fetchListings(currentPage);
     } catch (error) {
       console.error("Error deleting listing:", error);
       toast({
@@ -1091,7 +1076,7 @@ export default function Listings() {
       if (error) throw error;
 
       toast({ title: 'Repaired', description: 'Listing fields were backfilled.' });
-      fetchListings(true);
+      fetchListings(currentPage, true);
     } catch (e) {
       console.error('[Listings] Repair failed:', e);
       toast({
@@ -1901,10 +1886,10 @@ export default function Listings() {
       </Card>
 
       {/* Pagination */}
-      {!isLoading && filteredListings.length > 0 && (
+      {!isLoading && totalCount > 0 && (
         <div className="flex items-center justify-between">
           <p className="text-[11px] text-muted-foreground">
-            Showing {(currentPage - 1) * itemsPerPage + 1}-{Math.min(currentPage * itemsPerPage, filteredListings.length)} of {filteredListings.length} listings
+            Showing {(currentPage - 1) * itemsPerPage + 1}-{Math.min(currentPage * itemsPerPage, totalCount)} of {totalCount} listings
           </p>
           {totalPages > 1 && (
             <Pagination>

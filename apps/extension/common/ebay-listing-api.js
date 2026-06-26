@@ -31,20 +31,43 @@ function _getEbaySuffix() {
   return window.location.host.split('ebay').pop()?.replace('.', '') || 'com';
 }
 
-// eBay hard-limits titles to 80 chars. Amazon titles routinely exceed this and
-// contain junk eBay rejects. Strip noise, collapse spaces, truncate at a word
-// boundary <= 80. (2.1 baseline — AI optimizer is the opt-in upgrade.)
+// eBay hard-limits titles to 80 chars. Amazon/AI titles routinely exceed this
+// and contain junk eBay penalizes. Strip noise, deduplicate words, remove spam
+// phrases, collapse spaces, truncate at a word boundary <= 80.
+// Applied to BOTH the raw scraped title AND any AI-generated title.
 function _enforceEbayTitle(title) {
   let t = String(title || '')
-    .replace(/\((?:pack of \d+|set of \d+)\)/ig, ' ')
-    .replace(/\b(amazon'?s? choice|best ?seller|amazon\.com|walmart\.com)\b/ig, ' ')
-    .replace(/[|]/g, ' ')
+    // Supplier branding & pack/set annotations
+    .replace(/\((?:pack of \d+|set of \d+|qty \d+|count: \d+)\)/ig, ' ')
+    .replace(/\b(amazon'?s? choice|best ?seller|amazon\.com|walmart\.com|sold by amazon)\b/ig, ' ')
+    // Promo / spam phrases that eBay's search penalizes
+    .replace(/\b(free shipping|fast shipping|ships fast|limited stock|best deal|best price|great deal|lowest price|on sale|buy now|top rated|high quality|premium quality|brand new in box)\b/ig, ' ')
+    // Pipes, extra punctuation, emoji (basic)
+    .replace(/[|~*!#^]/g, ' ')
+    .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}]/gu, ' ')
+    // Collapse whitespace
     .replace(/\s{2,}/g, ' ')
     .trim();
+
+  // Deduplicate consecutive identical words (case-insensitive)
+  t = t.replace(/\b(\w+)\s+\1\b/gi, '$1');
+
+  // Enforce 80-char eBay limit with word-boundary truncation
   if (t.length <= 80) return t;
   const cut = t.slice(0, 80);
   const lastSpace = cut.lastIndexOf(' ');
   return (lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trim();
+}
+
+// Maps a raw condition value (scraped string or numeric ID) to an eBay condition
+// numeric ID. Defaults to 1000 (New) — the correct value for all current suppliers.
+const _EBAY_CONDITION_MAP = { new: 1000, used: 3000, refurbished: 2000, 'used - like new': 3000, 'used - very good': 4000, 'used - good': 5000, 'used - acceptable': 6000 };
+function resolveConditionId(raw) {
+  if (raw == null) return 1000;
+  if (typeof raw === 'number') return raw;
+  const n = parseInt(raw, 10);
+  if (!isNaN(n)) return n;
+  return _EBAY_CONDITION_MAP[String(raw).toLowerCase().trim()] || 1000;
 }
 
 function _deepFind(obj, predicate, depth = 12) {
@@ -144,12 +167,12 @@ window.EbayListingApiHelper = (() => {
   // Fetches eBay's listing creation page for the given title+category.
   // Parses inline JS chunks to extract the draft model, CSRF map, and epsData.
   // Returns [listingData, appData, parsedCsrfToken].
-  async function createListing(productTitle, categoryId) {
+  async function createListing(productTitle, categoryId, conditionId = 1000) {
     const params = new URLSearchParams({
       mode:             'AddItem',
       categoryId:       String(categoryId),
       title:            productTitle,
-      condition:        '1000',
+      condition:        String(conditionId),
       sr:               'pl',
       isUid:            'false',
       aspects:          'eJyLrlbKS8xNVbJSCqksSFXSUSpLzCkFcqOV',
@@ -339,7 +362,7 @@ window.EbayListingApiHelper = (() => {
       itemLocationCityState: 'Multiple locations',
       description:           product.prod_desc || '',
       meta:                  { descriptionEditorMode: descEditorMode },
-      condition:             1000,
+      condition:             product.prod_condition || 1000,
       removedFields:         []
     };
 
@@ -459,16 +482,6 @@ window.EbayListingApiHelper = (() => {
       ? listingModel.ATTRIBUTES.attributeList
       : [];
     const aspectNames = attributeList.map(a => a.attributeName);
-
-    // ── TEMP DIAGNOSTIC (Phase 0a — remove before release) ───────────────────
-    // Dumps eBay's REAL attribute schema so we can verify the actual field names
-    // for required / selection-mode / allowed-values (the mapping currently
-    // GUESSES these). Copy this JSON into tests/fixtures/attributeList-*.json.
-    try {
-      console.log('[SS DEBUG attributeList] category schema for draft', draftId,
-        '\n' + JSON.stringify(attributeList, null, 2));
-    } catch (_) { /* circular/huge — ignore */ }
-    // ─────────────────────────────────────────────────────────────────────────
 
     return { draftId, draftCsrfValue, epsData, listingModel, aspectNames };
   }
@@ -803,6 +816,19 @@ window.EbayListingApiHelper = (() => {
     }
     if (!descHtml.trim()) descHtml = '<p>Quality product.</p>';
 
+    // Sanitize before eBay upload — DOMPurify strips script/event-handler/js: URI
+    // injection that could target buyers viewing the listing. Allowlist covers all
+    // formatting eBay accepts; inline style is kept for branded description templates.
+    if (typeof DOMPurify !== 'undefined') {
+      descHtml = DOMPurify.sanitize(descHtml, {
+        ALLOWED_TAGS: ['p','ul','ol','li','br','b','strong','i','em','u',
+                       'h1','h2','h3','h4','h5','h6','div','span',
+                       'table','thead','tbody','tr','th','td','hr'],
+        ALLOWED_ATTR: ['style'],
+      });
+      if (!descHtml.trim()) descHtml = '<p>Quality product.</p>';
+    }
+
     const basePrice = _cleanFloat(product.price) || 0.99;
     const hasRealVariants = product.hasVariants &&
                             Array.isArray(product.variants) &&
@@ -917,6 +943,7 @@ window.EbayListingApiHelper = (() => {
       prod_desc:       descHtml,
       prod_id:         sourceId,
       prod_qty:        1, // always 1 for dropshipping — never use supplier stock count
+      prod_condition:  resolveConditionId(product.condition),
       prod_variations,
       supplier:        product.supplier || product.marketplace || 'amazon',
       meta:            {
@@ -1073,6 +1100,7 @@ function _syncListingToDashboard(adapted, product, draftId) {
       const firstVar = adapted.prod_variations?.[0] || {};
       const listingData = {
         title:               adapted.prod_title,
+        original_title:      product.originalTitle || null,
         sku:                 firstVar.sku || adapted.prod_id || '',
         ebay_price:          firstVar.price || null,
         raw_supplier_price:  firstVar.raw_supplier_price || _cleanFloat(product.price) || null,
@@ -1088,35 +1116,66 @@ function _syncListingToDashboard(adapted, product, draftId) {
         status:              'draft',
         has_variations:      adapted.prod_variations.length > 1,
         variation_count:     adapted.prod_variations.length,
+        // Final description as sent to eBay (post-sanitization)
+        final_description:   adapted.prod_desc || null,
+        // Price breakdown for margin auditing
+        price_supplier:      _cleanFloat(product.price) || null,
+        price_breakdown:     product.priceBreakdown || firstVar.priceBreakdown || null,
+        price_tax_amount:    product.priceBreakdown?.taxAmount     || null,
+        price_tracking_fee:  product.priceBreakdown?.trackingFee   || null,
+        price_payment_fee:   product.priceBreakdown?.paymentFixedFee || null,
+        price_ebay_fee_pct:  product.priceBreakdown?.ebayFeePercent  || null,
+        price_promo_fee_pct: product.priceBreakdown?.promoFeePercent || null,
+        price_profit_pct:    product.priceBreakdown?.desiredProfit   || null,
+        price_markup_amount: product.priceBreakdown?.markupAmount    || null,
+        price_currency:      (product.priceBreakdown?.currency || product.currency || 'USD'),
         // Phase 7: source flags
         title_source:        product.title_source       || null,
         description_source:  product.description_source || null,
         price_source:        product.price_source       || null,
         sku_source:          product.sku_source         || null,
         // Per-variation detail for listing_variations table upsert in background
-        variations: adapted.prod_variations.map(v => ({
-          sku:               v.sku || '',
-          ebay_sku_encoded:  (window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(v.sku || '') : ''),
-          final_price:       v.price || 0,
-          raw_supplier_price: v.raw_supplier_price || 0,
-          currency:          product.currency || 'USD',
-          stock_quantity:    1,
-          variant_asin:      v.variant_asin || v.supplierVariantId || null,
-          parent_asin:       product.parentAsin || product.asin || null,
-          attributes:        v.attrs || {},
-          // Per-variant image if scraper resolved it; fall back to first product image (HTTPS only — skip base64 watermarks)
-          image_url:         [v.img, ...(adapted.prod_images || [])].find(u => u && u.startsWith('http')) || null,
-        })),
+        variations: (() => {
+          const dedupedVars = [];
+          const syncSeenCombos = new Set();
+          for (const v of adapted.prod_variations) {
+            const rawAttrs = v.attrs || {};
+            const normalizedCombo = Object.keys(rawAttrs).sort().reduce((acc, k) => {
+              acc[k.toLowerCase()] = String(rawAttrs[k].productName || rawAttrs[k]).trim().toLowerCase();
+              return acc;
+            }, {});
+            const comboKey = JSON.stringify(normalizedCombo);
+            if (syncSeenCombos.has(comboKey)) continue;
+            syncSeenCombos.add(comboKey);
+            dedupedVars.push(v);
+          }
+          return dedupedVars.map(v => ({
+            sku:               v.sku || '',
+            ebay_sku_encoded:  (window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(v.sku || '') : ''),
+            final_price:       v.price || 0,
+            raw_supplier_price: v.raw_supplier_price || 0,
+            currency:          product.currency || 'USD',
+            stock_quantity:    1,
+            variant_asin:      v.variant_asin || v.supplierVariantId || null,
+            parent_asin:       product.parentAsin || product.asin || null,
+            attributes:        v.attrs || {},
+            // Per-variant image if scraper resolved it; fall back to first product image (HTTPS only — skip base64 watermarks)
+            image_url:         [v.img, ...(adapted.prod_images || [])].find(u => u && u.startsWith('http')) || null,
+          }));
+        })(),
         ...(mainImage ? {
           amazon_data: { mainImage, imageUrl: mainImage, allImages: adapted.prod_images, source: 'extension', draftId }
         } : {})
       };
-      chrome.runtime.sendMessage({ action: 'SYNC_LISTING', payload: listingData }, (resp) => {
-        if (chrome.runtime.lastError) {
-          console.warn('[SS Sync] SYNC_LISTING failed:', chrome.runtime.lastError.message);
-          resolve({ success: false, error: chrome.runtime.lastError.message });
-          return;
-        }
+      const syncKey = `sync_intent_${draftId || Date.now()}`;
+      chrome.storage.local.set({ [syncKey]: listingData }, () => {
+        chrome.runtime.sendMessage({ action: 'SYNC_LISTING', payload: listingData, syncKey }, (resp) => {
+          chrome.storage.local.remove(syncKey);
+          if (chrome.runtime.lastError) {
+            console.warn('[SS Sync] SYNC_LISTING failed:', chrome.runtime.lastError.message);
+            resolve({ success: false, error: chrome.runtime.lastError.message });
+            return;
+          }
         if (resp && resp.success === false) {
           // Don't swallow — the listing went to eBay but the dashboard write
           // failed. Tell the user so they don't discover it weeks later.
@@ -1147,7 +1206,8 @@ function _syncListingToDashboard(adapted, product, draftId) {
         console.log('[SS Sync] Listing synced to dashboard.');
         resolve(resp || { success: true });
       });
-    } catch (err) {
+    });
+  } catch (err) {
       console.warn('[SS Sync] sync error:', err.message);
       resolve({ success: false, error: err.message });
     }
@@ -1204,11 +1264,17 @@ window.SellerSuitUploader = {
     }
 
     // 0d. Optional AI optimization (2.1/2.2) — opt-in via flags from panel.
+    // Preserve the original scraped title before any AI may overwrite it.
+    const originalTitle = product.title || '';
+    product = { ...product, originalTitle };
+
     if (product.useAiTitle) {
       console.log('[SS Uploader] Generating AI title...');
       try {
         const aiTitle = await api.aiGenerateTitle(product);
-        if (aiTitle) product = { ...product, title: aiTitle };
+        // Run the same noise/spam/length enforcement over the AI title so that
+        // supplier branding, spam phrases, and the 80-char limit are always applied.
+        if (aiTitle) product = { ...product, title: _enforceEbayTitle(aiTitle) };
       } catch (e) { console.warn('[SS AI] title gen failed:', e.message); }
     }
     if (product.useAiDescription) {
@@ -1217,6 +1283,31 @@ window.SellerSuitUploader = {
         const aiDesc = await api.aiGenerateDescription(product);
         if (aiDesc) product = { ...product, description: aiDesc, bulletPoints: [] };
       } catch (e) { console.warn('[SS AI] description gen failed:', e.message); }
+    }
+
+    // 0e. Pre-upload completeness gate — block partial scrapes before they
+    // create $0.99 / no-image / placeholder listings on eBay.
+    const _gatePrice  = _cleanFloat(product.price);
+    const _gateImages = Array.isArray(product.images) ? product.images : [];
+    const _gateTitle  = (product.title || '').trim();
+    const _gateErrors = [];
+    if (!_gatePrice || _gatePrice <= 0) {
+      _gateErrors.push('supplier price is missing or zero (could not be scraped)');
+    }
+    if (_gateImages.length === 0) {
+      _gateErrors.push('no product images were scraped');
+    }
+    if (!_gateTitle || _gateTitle.toLowerCase() === 'product') {
+      _gateErrors.push('product title is missing or could not be scraped');
+    }
+    if (_gateErrors.length > 0) {
+      const err = new Error(
+        `Cannot list this product — ${_gateErrors.join('; ')}. ` +
+        `Please refresh the supplier page and try again, or enter the missing data manually.`
+      );
+      err.isCompletenessBlock = true;
+      err.completenessErrors  = _gateErrors;
+      throw err;
     }
 
     const adapted = api.adaptProduct(product);
@@ -1238,7 +1329,7 @@ window.SellerSuitUploader = {
 
     // 2. Create listing draft (fetches eBay's listing page, parses inline JS)
     console.log('[SS Uploader] Creating listing draft...');
-    const [listingData, appData, parsedCsrf] = await api.createListing(adapted.prod_title, categoryId);
+    const [listingData, appData, parsedCsrf] = await api.createListing(adapted.prod_title, categoryId, adapted.prod_condition);
 
     // 3. Extract draftId, CSRF, epsData
     const { draftId, draftCsrfValue, epsData, listingModel, aspectNames } =

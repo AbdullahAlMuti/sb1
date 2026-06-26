@@ -1,0 +1,17 @@
+Quarantine Manifest
+
+1. b1_base64_fallback.js
+   - Source: apps/extension/background/message-router.js
+   - Reason: Synchronous byte-string concat loop stalled the worker thread. Replaced with FileReader.
+
+2. c4_stripe_webhook_fractured.ts
+   - Source: supabase/functions/stripe-webhook/index.ts
+   - Reason: Duplicated single-writer logic for stripe state. Replaced with unified syncStripeData calls.
+
+3. vite.config.amazon.js & vite.config.walmart.js
+   - Source: apps/extension/
+   - Reason: Aborted feature bundles. Replaced with single vite.config.js build.
+
+4. Orders.tsx
+   - Source: apps/web/src/pages/dashboard/Orders.tsx
+   - Reason: Duplicate of EbayOrders.tsx (consolidated).

@@ -17,6 +17,11 @@ interface ListingPayload {
   ebay_item_id?: string;
   status?: string;
 
+  // Supplier-neutral identity (covers Amazon, Walmart, future adapters)
+  supplier?: string;
+  supplier_id?: string;
+  supplier_url?: string;
+
   // Raw metadata blobs (for dashboard backfill/debug)
   amazon_data?: unknown;
   ebay_data?: unknown;
@@ -165,6 +170,19 @@ Deno.serve(async (req) => {
           existingListing = data;
         }
 
+        // Supplier-neutral dup-check — catches Walmart products (no ASIN/amazon_url)
+        // and any future adapters that populate supplier + supplier_id.
+        if (!existingListing && listing.supplier && listing.supplier_id) {
+          const { data } = await supabase
+            .from('listings')
+            .select('id, title, amazon_data, ebay_data')
+            .eq('user_id', user.id)
+            .eq('supplier', listing.supplier)
+            .eq('supplier_id', listing.supplier_id)
+            .maybeSingle();
+          existingListing = data;
+        }
+
         const draftId = (listing as any).draft_id || (listing as any).draftId || amazonData?.draftId || (listing as any).amazon_data?.draftId;
         if (!existingListing && draftId) {
           const { data } = await supabase
@@ -211,6 +229,11 @@ Deno.serve(async (req) => {
         
         if (listing.ebay_item_id) updateFields.ebay_item_id = listing.ebay_item_id;
         if (listing.status) updateFields.status = listing.status;
+
+        // Supplier-neutral identity columns
+        if (listing.supplier)     updateFields.supplier     = listing.supplier;
+        if (listing.supplier_id)  updateFields.supplier_id  = listing.supplier_id;
+        if (listing.supplier_url) updateFields.supplier_url = listing.supplier_url;
 
         // Merge JSONB blobs
         if ((listing as any).amazon_data || Object.keys(amazonData).length > 0) {
@@ -377,31 +400,22 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Deduct credits for successfully created listings
+      // Deduct credits atomically — FOR UPDATE locking prevents concurrent over-spend.
       if (creditsDeducted > 0) {
-        const { error: creditError } = await supabase.rpc('deduct_credits', {
-          user_id_param: user.id,
-          amount: creditsDeducted
+        const { error: creditError } = await supabase.rpc('deduct_credits_atomic', {
+          p_user_id: user.id,
+          p_amount:  creditsDeducted,
+          p_reason:  'listing sync',
+          p_metadata: { count: creditsDeducted },
         });
-        
-        // Fallback to direct update if RPC doesn't exist
+
         if (creditError) {
-          console.log('[sync-listing] RPC not available, using direct update');
-          const { data: currentProfile } = await supabase
-            .from('profiles')
-            .select('credits')
-            .eq('id', user.id)
-            .single();
-          
-          if (currentProfile) {
-            await supabase
-              .from('profiles')
-              .update({ credits: Math.max(0, (currentProfile.credits || 0) - creditsDeducted) })
-              .eq('id', user.id);
-          }
+          // SQLSTATE 23514 = insufficient_credits (defined in deduct_credits_atomic).
+          // Listings are already written; log the shortfall but don't fail the response.
+          console.warn(`[sync-listing] Credit deduction failed (${creditError.code}): ${creditError.message}`);
+        } else {
+          console.log(`[sync-listing] Deducted ${creditsDeducted} credits from user`);
         }
-        
-        console.log(`[sync-listing] Deducted ${creditsDeducted} credits from user`);
       }
 
       const response = { 

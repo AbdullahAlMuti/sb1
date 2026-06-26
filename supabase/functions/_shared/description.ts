@@ -206,10 +206,32 @@ export function renderSections(config: DescriptionConfig, aiJson: Record<string,
 }
 
 /**
+ * Strips XSS vectors from HTML before it is stored or sent to eBay.
+ * This is not a full DOM-based sanitizer, but eliminates the highest-risk
+ * injection patterns: script/style tags, event-handler attributes, and
+ * javascript: / data: URIs. Applied unconditionally regardless of exclusion rules.
+ */
+function stripXss(html: string): string {
+  // 1. Remove script blocks and their content.
+  let out = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  // 2. Remove style blocks.
+  out = out.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
+  // 3. Remove dangerous tags entirely (iframe, object, embed, form, input, svg, meta, link, base).
+  out = out.replace(/<\/?(?:iframe|object|embed|form|input|textarea|select|button|meta|link|base|svg|math)\b[^>]*>/gi, '');
+  // 4. Remove event-handler attributes (on*="..." or on*='...' or on*=...).
+  out = out.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+  // 5. Remove javascript: and data: URIs from href/src/action attributes.
+  out = out.replace(/(href|src|action|formaction)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*'|javascript:[^\s>]+)/gi, '');
+  out = out.replace(/(href|src|action|formaction)\s*=\s*(?:"data:[^"]*"|'data:[^']*'|data:[^\s>]+)/gi, '');
+  return out;
+}
+
+/**
  * Sanitizes and cleans the HTML/plaintext output according to exclusion rules.
  */
 export function sanitize(text: string, rules: ExclusionRules, outputFormat?: string): string {
-  let cleaned = text;
+  // Always strip XSS vectors first, regardless of other exclusion rules.
+  let cleaned = stripXss(text);
 
   // 1. Strip images
   if (rules.strip_images) {

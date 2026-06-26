@@ -174,7 +174,8 @@ export default function BulkLister() {
       .select('*')
       .eq('user_id', userId)
       .order('position', { ascending: true })
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .limit(500);
     if (error) {
       toast({ title: 'Failed to load bulk queue', description: error.message, variant: 'destructive' });
     } else {

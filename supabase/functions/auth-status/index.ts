@@ -1,10 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { resolveExtensionOrLegacyAuth, createServiceClient, corsHeaders } from '../_shared/extension-session.ts';
+import { resolveExtensionOrLegacyAuth, createServiceClient, extCorsHeaders } from '../_shared/extension-session.ts';
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: extCorsHeaders(req) });
   }
 
   try {
@@ -59,14 +59,14 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify(response),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...extCorsHeaders(req), 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('[auth-status] Error:', error instanceof Error ? error.message : error);
     return new Response(
       JSON.stringify({ success: false, error: 'Authentication failed' }),
-      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 401, headers: { ...extCorsHeaders(req), 'Content-Type': 'application/json' } }
     );
   }
 });

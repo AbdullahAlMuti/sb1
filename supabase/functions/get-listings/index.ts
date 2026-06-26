@@ -1,4 +1,4 @@
-import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient, corsHeaders } from '../_shared/extension-session.ts';
+import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient, extCorsHeaders } from '../_shared/extension-session.ts';
 
 function getSourceMarketplace(listing: any): string | null {
   if (!listing) return null;
@@ -44,7 +44,7 @@ function getSourceMarketplace(listing: any): string | null {
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: extCorsHeaders(req) });
   }
 
   try {
@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
       console.warn(`[get-listings] User ${userId} missing listing_access entitlement`);
       return new Response(
         JSON.stringify({ success: false, error: "Feature not entitled or subscription inactive" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 403, headers: { ...extCorsHeaders(req), "Content-Type": "application/json" } }
       );
     }
 
@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
       console.error('[get-listings] Query error:', listingsError);
       return new Response(
         JSON.stringify({ success: false, error: listingsError.message }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 500, headers: { ...extCorsHeaders(req), 'Content-Type': 'application/json' } }
       );
     }
 
@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
         limit,
         offset,
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...extCorsHeaders(req), 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
@@ -178,7 +178,7 @@ Deno.serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...extCorsHeaders(req), 'Content-Type': 'application/json' } }
     );
   }
 });

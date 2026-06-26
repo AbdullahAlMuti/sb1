@@ -1,10 +1,18 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveCorsHeaders } from "./cors.ts";
 
+// Static fallback headers (no origin) used by jsonResponse when no Request is available.
+// Extension background service workers don't send an Origin header so CORS is N/A there.
 export const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
+
+// Per-request CORS headers for browser clients (dashboard, extension popup).
+// Allows sellersuit.com, subdomains, vercel previews, and extension origins.
+export function extCorsHeaders(req: Request): Record<string, string> {
+  return resolveCorsHeaders(req, { extension: true });
+}
 
 export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 export const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -22,7 +30,7 @@ export function jsonResponse(body: JsonRecord, status = 200): Response {
 
 export function requireMethod(req: Request, allowed: string[]): Response | null {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: extCorsHeaders(req) });
   }
   if (!allowed.includes(req.method)) {
     return jsonResponse({ success: false, error: "Method not allowed" }, 405);

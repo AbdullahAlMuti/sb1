@@ -1,7 +1,7 @@
 import {
   addSeconds,
   ACCESS_TOKEN_TTL_SECONDS,
-  corsHeaders,
+  extCorsHeaders,
   createOpaqueToken,
   createServiceClient,
   getClientIp,
@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
       windowSeconds: 60,
     });
     if (!ipLimit.allowed) return rateLimitResponse(ipLimit, {
-      ...corsHeaders,
+      ...extCorsHeaders(req),
     });
 
     const body = await readJson(req);
@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
       windowSeconds: 300,
     });
     if (!tokenLimit.allowed) return rateLimitResponse(tokenLimit, {
-      ...corsHeaders,
+      ...extCorsHeaders(req),
     });
 
     const refreshTokenHash = await sha256(refreshToken);

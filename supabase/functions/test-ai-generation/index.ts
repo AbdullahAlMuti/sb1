@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { resolveExtensionOrLegacyAuth, createServiceClient } from "../_shared/extension-session.ts";
+import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from "../_shared/extension-session.ts";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 import { resolveCorsHeaders } from "../_shared/cors.ts";
 
@@ -27,6 +27,27 @@ serve(async (req) => {
       windowSeconds: 60,
     });
     if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
+
+    // Entitlement gate — this endpoint burns real LLM credits.
+    // Require at least one AI entitlement so free/expired accounts cannot use it.
+    const hasAccess = await requireFeatureEntitlement(
+      supabase, authContext.userId, authContext.workspaceId, 'description_generation'
+    );
+    if (!hasAccess) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Feature not available on your current plan' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Count against the shared daily LLM budget (2 calls per invocation)
+    const llmDailyLimit = await checkRateLimit(supabase, {
+      bucket: 'llm:daily',
+      key: authContext.userId,
+      limit: 200,
+      windowSeconds: 86400,
+    });
+    if (!llmDailyLimit.allowed) return rateLimitResponse(llmDailyLimit, corsHeaders);
 
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
     

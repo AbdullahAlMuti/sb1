@@ -18,7 +18,6 @@ const Register = lazy(() => import("./pages/auth/Register"));
 const VerifyEmail = lazy(() => import("./pages/auth/VerifyEmail"));
 const Dashboard = lazy(() => import("./pages/dashboard/Dashboard"));
 const Alerts = lazy(() => import("./pages/dashboard/Alerts"));
-const Orders = lazy(() => import("./pages/dashboard/Orders"));
 const EbayOrders = lazy(() => import("./pages/dashboard/EbayOrders"));
 const Listings = lazy(() => import("./pages/dashboard/Listings"));
 const NewListing = lazy(() => import("./pages/dashboard/NewListing"));
@@ -160,7 +159,7 @@ const EbayRoutes = () => (
       <Route path="orders" element={<EbayOrders />} />
       {/* Legacy generic-dashboard alias for eBay orders */}
       <Route path="ebay-orders" element={<Navigate to="../orders" replace />} />
-      <Route path="auto-orders" element={<Orders />} />
+      <Route path="auto-orders" element={<Navigate to="../orders" replace />} />
       <Route path="product-research" element={<ProductResearch />} />
       <Route path="must-sell" element={<MustSellItems />} />
       <Route path="profitable-products" element={<ProfitableProducts />} />

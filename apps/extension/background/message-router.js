@@ -114,14 +114,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Supplier pages (amazon/walmart) run content scripts that must not be
   // able to forge token syncs or logouts even if the page is compromised.
   if (
-    (request.action === 'SYNC_TOKEN' || request.action === 'LOGOUT_EXTENSION_SESSION' || request.action === 'LOGOUT') &&
+    (request.action === ExtensionConstants.ACTIONS.SYNC_TOKEN || request.action === ExtensionConstants.ACTIONS.LOGOUT_EXTENSION_SESSION || request.action === ExtensionConstants.ACTIONS.LOGOUT) &&
     !isTrustedDashboardSender(sender)
   ) {
     sendResponse({ success: false, error: 'Unauthorized sender' });
     return true;
   }
 
-  if (request.action === 'GET_EXTENSION_AUTH_STATE') {
+  if (request.action === ExtensionConstants.ACTIONS.GET_EXTENSION_AUTH_STATE) {
     AuthHelper.getRemoteConfig().then(config => {
       AuthHelper.getAuthToken().then(({ token, type, isValid, user }) => {
         sendResponse({ config, token, type, isValid, user });
@@ -130,7 +130,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === 'LOGOUT_EXTENSION_SESSION') {
+  if (request.action === ExtensionConstants.ACTIONS.LOGOUT_EXTENSION_SESSION) {
     (async () => {
       await AuthHelper.clearNewAuthSession();
       chrome.storage.local.remove(LOGOUT_STORAGE_KEYS, () => {
@@ -140,7 +140,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === 'START_PAIRING') {
+  if (request.action === ExtensionConstants.ACTIONS.START_PAIRING) {
     (async () => {
       try {
         const installId = (await chrome.storage.local.get('extensionInstallId')).extensionInstallId || crypto.randomUUID();
@@ -176,7 +176,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === 'POLL_PAIRING_STATUS') {
+  if (request.action === ExtensionConstants.ACTIONS.POLL_PAIRING_STATUS) {
     (async () => {
       try {
         const temp = await chrome.storage.local.get(['tempConnectToken', 'tempClientSecret']);
@@ -203,7 +203,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === 'REDEEM_PAIRING') {
+  if (request.action === ExtensionConstants.ACTIONS.REDEEM_PAIRING) {
     (async () => {
       try {
         const temp = await chrome.storage.local.get(['tempConnectToken', 'tempClientSecret']);
@@ -234,7 +234,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
           const bootstrapRes = await AuthHelper.callEdgeFunction('extension-bootstrap');
           if (bootstrapRes.data) {
-            await chrome.storage.local.set({ extensionBootstrapCache: bootstrapRes.data });
+            const bsUpdates = { extensionBootstrapCache: bootstrapRes.data };
+            // Seed calculatorValues from DB on first login — DB is the source of truth.
+            if (bootstrapRes.data.calculatorSettings) {
+              const cs = bootstrapRes.data.calculatorSettings;
+              bsUpdates.calculatorValues = {
+                'tax-percent':       cs.tax_percent          ?? 9,
+                'tracking-fee':      cs.tracking_fee         ?? 0.20,
+                'ebay-fee-percent':  cs.ebay_fee_percent     ?? 20,
+                'promo-fee-percent': cs.promotional_fee_percent ?? 10,
+                'desired-profit':    cs.desired_profit_percent  ?? 0,
+                'payment-fixed-fee': cs.payment_fixed_fee    ?? 0.30,
+              };
+            }
+            await chrome.storage.local.set(bsUpdates);
           }
 
           AuthHelper.verifyAuthStatus(true);
@@ -251,7 +264,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === 'LOGIN_SUCCESS') {
+  if (request.action === ExtensionConstants.ACTIONS.LOGIN_SUCCESS) {
     AuthHelper.verifyAuthStatus().then(success => {
       if (success) {
         if (typeof SyncUtils !== 'undefined') {
@@ -370,7 +383,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === 'SYNC_TOKEN') {
+  if (request.action === ExtensionConstants.ACTIONS.SYNC_TOKEN) {
     if (request.token) {
       (async () => {
         try {
@@ -412,7 +425,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   }
 
-  if (request.action === 'LOGOUT') {
+  if (request.action === ExtensionConstants.ACTIONS.LOGOUT) {
     (async () => {
       try {
         if (typeof stopEbayOrderSyncInterval === 'function') {
@@ -429,7 +442,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === 'CHECK_AUTH') {
+  if (request.action === ExtensionConstants.ACTIONS.CHECK_AUTH) {
     (async () => {
       const isAuth = await AuthHelper.verifyAuthStatus();
       if (isAuth) {
@@ -458,7 +471,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const isUnlocked = AuthHelper.isUnlocked();
   if (!isUnlocked) {
     AuthHelper.verifyAuthStatus().then(unlocked => {
-      if (!unlocked && request.action !== 'AI_REMOVE_BG' && request.action !== 'GENERATE_TITLE' && request.action !== 'GENERATE_DESCRIPTION') {
+      if (!unlocked && request.action !== ExtensionConstants.ACTIONS.AI_REMOVE_BG && request.action !== ExtensionConstants.ACTIONS.GENERATE_TITLE && request.action !== 'GENERATE_DESCRIPTION') {
         chrome.tabs.create({ url: urls.WEB_APP_DASHBOARD });
       }
       sendResponse({ success: false, error: "Please Log In to use the extension." });
@@ -466,7 +479,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === "AI_REMOVE_BG") {
+  if (request.action === ExtensionConstants.ACTIONS.AI_REMOVE_BG) {
     (async () => {
       try {
         const result = await chrome.storage.local.get(['replicateApiKey']);
@@ -540,7 +553,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Content scripts call this to discover their own tabId
     sendResponse({ tabId: sender.tab ? sender.tab.id : null });
     return true;
-  } else if (request.action === "START_OPTILIST") {
+  } else if (request.action === ExtensionConstants.ACTIONS.START_OPTILIST) {
     // Sync-only handler — listing is now handled by import_ebay
     (async () => {
       try {
@@ -623,6 +636,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         if (typeof postCreateListing === 'function') {
           const result = await postCreateListing(request.payload || {}, 'background');
+          if (request.syncKey) chrome.storage.local.remove(request.syncKey);
           sendResponse(result);
         }
       } catch (e) {
@@ -735,7 +749,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     });
     return true;
-  } else if (request.action === "GENERATE_TITLE") {
+  } else if (request.action === ExtensionConstants.ACTIONS.GENERATE_TITLE) {
     (async () => {
       try {
         const resp = await AuthHelper.callEdgeFunction('generate-titles', request.productData || {});
@@ -836,25 +850,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
         if (!response.ok) throw new Error('HTTP error ' + response.status);
         const blob = await response.blob();
-        if (typeof FileReader !== 'undefined') {
-          const reader = new FileReader();
-          reader.readAsDataURL(blob);
-          reader.onloadend = () => {
-            sendResponse({ success: true, base64: reader.result });
-          };
-          reader.onerror = () => {
-            sendResponse({ success: false, error: 'Failed to read blob' });
-          };
-        } else {
-          const buffer = await blob.arrayBuffer();
-          let binary = '';
-          const bytes = new Uint8Array(buffer);
-          for (let i = 0; i < bytes.byteLength; i++) {
-            binary += String.fromCharCode(bytes[i]);
-          }
-          const base64String = btoa(binary);
-          sendResponse({ success: true, base64: `data:${blob.type};base64,${base64String}` });
-        }
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => {
+          sendResponse({ success: true, base64: reader.result });
+        };
+        reader.onerror = () => {
+          sendResponse({ success: false, error: 'Failed to read blob' });
+        };
       } catch (err) {
         let errMsg = err.message || String(err);
         if (errMsg.includes('Failed to fetch') || errMsg === 'opaque_response') {
@@ -868,4 +871,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     })();
     return true;
   }
+  return false;
 });
+
+// A1: Reconcile orphaned syncs (e.g. tab closed before SYNC_LISTING reached SW)
+setTimeout(() => {
+  chrome.storage.local.get(null, (items) => {
+    for (const key of Object.keys(items)) {
+      if (key.startsWith('sync_intent_')) {
+        const payload = items[key];
+        if (typeof postCreateListing === 'function') {
+          console.log('[SS Sync] Reconciling orphaned listing:', key);
+          postCreateListing(payload, 'background')
+            .then(() => chrome.storage.local.remove(key))
+            .catch(e => console.error('[SS Sync] Reconcile failed for', key, e));
+        }
+      }
+    }
+  });
+}, 2000);

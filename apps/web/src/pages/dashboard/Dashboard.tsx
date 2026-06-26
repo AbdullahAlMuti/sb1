@@ -458,7 +458,7 @@ export default function Dashboard() {
         supabase.from('listings').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'active'),
         supabase.from('inventory_alerts').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'UNREAD'),
         supabase.from('listings').select('id, title, sku, amazon_asin, ebay_price, amazon_price, status, amazon_data').eq('user_id', user.id).order('ebay_price', { ascending: false }).limit(5),
-        supabase.from('listings').select('ebay_price, amazon_price, status').eq('user_id', user.id),
+        supabase.from('listings').select('ebay_price, amazon_price, status').eq('user_id', user.id).limit(1000),
         fetchAllOrdersInRange(dateRange.from, dateRange.to, 'id, ebay_order_id, order_status, total_amount, order_date, net_profit, add_fee, synced_at'),
         fetchAllOrdersInRange(previousRange.from, previousRange.to, 'id, ebay_order_id, order_status, total_amount, order_date'),
       ]);

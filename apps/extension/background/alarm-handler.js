@@ -28,6 +28,21 @@ async function syncSettings() {
         }
       }
 
+      // Sync calculator settings from DB — DB is authoritative when a row exists.
+      // Maps snake_case DB columns to the hyphen-cased keys the panel UI and pricing
+      // engine read from chrome.storage.local.calculatorValues.
+      if (data.calculatorSettings) {
+        const cs = data.calculatorSettings;
+        updates.calculatorValues = {
+          'tax-percent':       cs.tax_percent          ?? 9,
+          'tracking-fee':      cs.tracking_fee         ?? 0.20,
+          'ebay-fee-percent':  cs.ebay_fee_percent     ?? 20,
+          'promo-fee-percent': cs.promotional_fee_percent ?? 10,
+          'desired-profit':    cs.desired_profit_percent  ?? 0,
+          'payment-fixed-fee': cs.payment_fixed_fee    ?? 0.30,
+        };
+      }
+
       await chrome.storage.local.set(updates);
       console.log('🔄 SYNC: Bootstrap cache and settings updated.', updates);
       startEbayOrderSyncInterval();

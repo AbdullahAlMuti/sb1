@@ -1,6 +1,6 @@
 import {
   createSessionTokens,
-  corsHeaders,
+  extCorsHeaders,
   createServiceClient,
   getClientIp,
   getUserAgent,
@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
       windowSeconds: 60,
     });
     if (!ipLimit.allowed) return rateLimitResponse(ipLimit, {
-      ...corsHeaders,
+      ...extCorsHeaders(req),
     });
 
     const body = await readJson(req);
@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
       windowSeconds: 300,
     });
     if (!tokenLimit.allowed) return rateLimitResponse(tokenLimit, {
-      ...corsHeaders,
+      ...extCorsHeaders(req),
     });
 
     let redeemContext:

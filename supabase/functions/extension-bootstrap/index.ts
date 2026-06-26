@@ -62,6 +62,12 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
+    const { data: calcSettings } = await supabase
+      .from("calculator_settings")
+      .select("tax_percent, ebay_fee_percent, promotional_fee_percent, desired_profit_percent, tracking_fee, payment_fixed_fee")
+      .eq("user_id", context.session.user_id)
+      .maybeSingle();
+
     const { data: entitlements } = await supabase
       .from("feature_entitlements")
       .select("feature_key, enabled, limits, requirements")
@@ -164,6 +170,8 @@ Deno.serve(async (req) => {
       requiredActions,
       warnings,
       featureFlags: flags,
+      // Calculator settings from DB — extension maps these to chrome.storage calculatorValues
+      calculatorSettings: calcSettings ?? null,
       versionCompatibility: {
         compatible: true,
         minimumVersion: "1.3.1",

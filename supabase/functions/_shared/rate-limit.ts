@@ -48,84 +48,44 @@ export async function checkRateLimit(
   const key = options.key?.trim() || "unknown";
   const subjectHash = await sha256(`${options.bucket}:${key}`);
 
-  const { data: existing, error: selectError } = await supabase
-    .from("function_rate_limits")
-    .select("id, request_count")
-    .eq("bucket", options.bucket)
-    .eq("subject_hash", subjectHash)
-    .eq("window_start", windowStart)
-    .maybeSingle();
-
-  if (selectError) {
-    console.error("[rate-limit] select failed", selectError);
-    return {
-      allowed: false,
-      remaining: 0,
-      resetAt,
-      status: 503,
-      error: "Rate limit check unavailable",
-    };
-  }
-
-  if (existing) {
-    const currentCount = Number(existing.request_count ?? 0);
-    if (currentCount >= options.limit) {
-      return {
-        allowed: false,
-        remaining: 0,
-        resetAt,
-        status: 429,
-        error: "Rate limit exceeded",
-      };
-    }
-
-    const nextCount = currentCount + 1;
-    const { error: updateError } = await supabase
-      .from("function_rate_limits")
-      .update({ request_count: nextCount, expires_at: expiresAt })
-      .eq("id", existing.id);
-
-    if (updateError) {
-      console.error("[rate-limit] update failed", updateError);
-      return {
-        allowed: false,
-        remaining: 0,
-        resetAt,
-        status: 503,
-        error: "Rate limit check unavailable",
-      };
-    }
-
-    return {
-      allowed: true,
-      remaining: Math.max(0, options.limit - nextCount),
-      resetAt,
-      status: 200,
-    };
-  }
-
-  const { error: insertError } = await supabase.from("function_rate_limits").insert({
-    bucket: options.bucket,
-    subject_hash: subjectHash,
-    window_start: windowStart,
-    request_count: 1,
-    expires_at: expiresAt,
+  // Atomic INSERT … ON CONFLICT DO UPDATE avoids the read-then-write TOCTOU race
+  // that the previous SELECT→UPDATE pattern had under concurrent requests.
+  const { data, error } = await supabase.rpc("rate_limit_check", {
+    p_bucket:       options.bucket,
+    p_subject_hash: subjectHash,
+    p_window_start: windowStart,
+    p_expires_at:   expiresAt,
+    p_limit:        options.limit,
   });
 
-  if (insertError) {
-    console.error("[rate-limit] insert failed", insertError);
+  if (error) {
+    console.error("[rate-limit] atomic check failed", error);
     return {
       allowed: false,
       remaining: 0,
       resetAt,
       status: 503,
       error: "Rate limit check unavailable",
+    };
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  const count = Number(row?.request_count ?? 1);
+  const allowed = Boolean(row?.allowed ?? false);
+
+  if (!allowed) {
+    return {
+      allowed: false,
+      remaining: 0,
+      resetAt,
+      status: 429,
+      error: "Rate limit exceeded",
     };
   }
 
   return {
     allowed: true,
-    remaining: Math.max(0, options.limit - 1),
+    remaining: Math.max(0, options.limit - count),
     resetAt,
     status: 200,
   };

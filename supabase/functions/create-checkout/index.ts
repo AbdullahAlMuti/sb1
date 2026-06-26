@@ -57,17 +57,10 @@ async function resolveStripeCustomerId(
 ): Promise<string> {
   if (existingCustomerId) return existingCustomerId;
 
-  const customers = await stripe.customers.list({ email: userEmail, limit: 2 });
-  if (customers.data.length > 1) {
-    throw new Error("Multiple Stripe customers match this account. Contact support.");
-  }
-
-  const customer =
-    customers.data[0] ??
-    (await stripe.customers.create({
-      email: userEmail,
-      metadata: { user_id: userId },
-    }));
+  const customer = await stripe.customers.create({
+    email: userEmail,
+    metadata: { user_id: userId },
+  });
 
   await persistStripeCustomerId(supabaseAdmin, userId, customer.id);
   return customer.id;

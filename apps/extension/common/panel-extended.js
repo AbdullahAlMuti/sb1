@@ -374,14 +374,18 @@ async function _ssxRenderExtended(p) {
         variants.forEach(v => {
             const rawCost = _ssxCleanFloat(v.raw_supplier_price ?? v.price);
             if (!_ssxCleanFloat(v.finalPrice) && rawCost > 0) {
-                v.finalPrice = window.SSPricingEngine.calculatePrice(rawCost, pricingConfig);
-                variantsUpdated = true;
+                const { price, breakdown } = window.SSPricingEngine.calculatePriceWithBreakdown(rawCost, pricingConfig);
+                v.finalPrice     = price;
+                v.priceBreakdown = breakdown;
+                variantsUpdated  = true;
             }
         });
         const baseCost = _ssxCleanFloat(p.raw_supplier_price ?? p.price);
         if (!_ssxCleanFloat(p.finalPrice) && baseCost > 0) {
-            p.finalPrice = window.SSPricingEngine.calculatePrice(baseCost, pricingConfig);
-            variantsUpdated = true;
+            const { price, breakdown } = window.SSPricingEngine.calculatePriceWithBreakdown(baseCost, pricingConfig);
+            p.finalPrice     = price;
+            p.priceBreakdown = breakdown;
+            variantsUpdated  = true;
         }
     }
     if (variantsUpdated) {

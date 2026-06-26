@@ -76,7 +76,16 @@ serve(async (req) => {
       windowSeconds: 60,
     });
     if (!userLimit.allowed) return rateLimitResponse(userLimit, corsHeaders);
-    
+
+    // Global per-user daily LLM budget across all generate-* endpoints.
+    const llmDailyLimit = await checkRateLimit(supabase, {
+      bucket: 'llm:daily',
+      key: userId,
+      limit: 200,
+      windowSeconds: 86400,
+    });
+    if (!llmDailyLimit.allowed) return rateLimitResponse(llmDailyLimit, corsHeaders);
+
     // Verify feature entitlement
     const hasAccess = await requireFeatureEntitlement(supabase, userId, authContext.workspaceId, "title_generation");
     if (!hasAccess) {

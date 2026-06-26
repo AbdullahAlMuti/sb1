@@ -51,6 +51,45 @@ serve(async (req) => {
       );
     }
 
+    // SSRF guard: only allow https:// URLs or data: URIs. Block private IPs,
+    // metadata endpoints, and non-https schemes that could reach internal services.
+    const imageStr = String(image);
+    if (imageStr.startsWith('data:')) {
+      // data: URI — must be an image MIME type
+      if (!/^data:image\/(jpeg|jpg|png|gif|webp|avif);base64,/.test(imageStr)) {
+        return new Response(
+          JSON.stringify({ error: "Invalid image data URI — must be a base64-encoded image" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    } else {
+      // Must be https://
+      let parsed: URL;
+      try {
+        parsed = new URL(imageStr);
+      } catch {
+        return new Response(
+          JSON.stringify({ error: "Invalid image URL" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (parsed.protocol !== 'https:') {
+        return new Response(
+          JSON.stringify({ error: "Image URL must use HTTPS" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // Block private / loopback / link-local ranges and known metadata endpoints
+      const host = parsed.hostname.toLowerCase();
+      const blocked = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1|fd[0-9a-f]{2}:)/i;
+      if (blocked.test(host) || host === 'metadata.google.internal') {
+        return new Response(
+          JSON.stringify({ error: "Image URL host is not allowed" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       console.error("LOVABLE_API_KEY is not configured");

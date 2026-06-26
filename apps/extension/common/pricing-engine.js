@@ -49,5 +49,54 @@ window.SSPricingEngine = (() => {
     return Math.max(0.99, round2(calculatedPrice));
   }
 
-  return { calculatePrice, DEFAULTS };
+  /**
+   * Same as calculatePrice but also returns the full fee breakdown for audit/storage.
+   * @returns {{ price: number, breakdown: object }}
+   */
+  function calculatePriceWithBreakdown(supplierCost, settings) {
+    const cost = parseFloat(supplierCost);
+    if (isNaN(cost) || cost <= 0) {
+      return { price: 0.99, breakdown: { supplierCost: 0, finalPrice: 0.99, currency: 'USD' } };
+    }
+
+    const s = settings || {};
+    const taxPercent       = parseFloat(s.taxPercent !== undefined ? s.taxPercent : DEFAULTS.taxPercent);
+    const trackingFee      = parseFloat(s.trackingFee !== undefined ? s.trackingFee : DEFAULTS.trackingFee);
+    const ebayFeePercent   = parseFloat(s.ebayFeePercent !== undefined ? s.ebayFeePercent : DEFAULTS.ebayFeePercent);
+    const promoFeePercent  = parseFloat(s.promoFeePercent !== undefined ? s.promoFeePercent : DEFAULTS.promoFeePercent);
+    const desiredProfit    = parseFloat(s.desiredProfit !== undefined ? s.desiredProfit : DEFAULTS.desiredProfit);
+    const paymentFixedFee  = parseFloat(s.paymentFixedFee !== undefined ? s.paymentFixedFee : DEFAULTS.paymentFixedFee);
+
+    const taxAmount = round2(cost * (taxPercent / 100));
+    const baseCost  = cost + taxAmount + trackingFee + paymentFixedFee;
+    const totalPct  = (ebayFeePercent + promoFeePercent + desiredProfit) / 100;
+
+    let finalPrice;
+    let markupAmount;
+    if (totalPct >= 1) {
+      finalPrice   = round2(baseCost * 1.5);
+      markupAmount = round2(finalPrice - cost);
+    } else {
+      finalPrice   = Math.max(0.99, round2(baseCost / (1 - totalPct)));
+      markupAmount = round2(finalPrice - cost);
+    }
+
+    const breakdown = {
+      supplierCost,
+      taxPercent,
+      taxAmount,
+      trackingFee,
+      paymentFixedFee,
+      ebayFeePercent,
+      promoFeePercent,
+      desiredProfit,
+      markupAmount,
+      finalPrice,
+      currency:       s.currency || 'USD',
+    };
+
+    return { price: finalPrice, breakdown };
+  }
+
+  return { calculatePrice, calculatePriceWithBreakdown, DEFAULTS };
 })();
