@@ -70,13 +70,13 @@ verify_jwt = true
 
 # Public/auth alternatives. These handlers must enforce their own auth/signature/secret checks.
 [functions.stripe-webhook]
-verify_jwt = false # Stripe signs requests; no Supabase user JWT is available.
+verify_jwt = false # Stripe signs requests
 
 [functions.auth-otp]
-verify_jwt = false # Public OTP request/verify flow; handler applies OTP-specific rate limits.
+verify_jwt = false # Public OTP
 
 [functions.send-inventory-notification]
-verify_jwt = false # Internal service-to-service call guarded by X-Internal-Function-Secret.
+verify_jwt = false # Internal
 
 [functions.queue-worker]
 verify_jwt = false # Internal worker endpoint guarded by X-Internal-Function-Secret.

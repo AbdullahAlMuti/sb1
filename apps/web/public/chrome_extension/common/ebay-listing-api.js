@@ -31,13 +31,46 @@ function _getEbaySuffix() {
   return window.location.host.split('ebay').pop()?.replace('.', '') || 'com';
 }
 
+// Strips supplier-identifying phrases and brand names from a text or HTML string.
+// Used by both the title and description pipelines so the rules can't drift.
+// Patterns use [^.<\n]* stop guards so they match text nodes but never bleed
+// into HTML tag attributes (delimited by ").
+function _sanitizeSupplierText(text) {
+  return text
+    // Full-phrase removal: "sold/fulfilled/dispatched/shipped/sponsored by <name>"
+    .replace(/\b(sold|fulfilled|dispatched|shipped|sponsored)\s+by\b[^.<\n]*/gi, '')
+    // "Ships from Amazon" / "Shipped from Amazon warehouse"
+    .replace(/\bships?\s+from\s+(amazon|walmart|target|bestbuy|wayfair|homedepot|costco)[^.<\n]*/gi, '')
+    // "Visit the Amazon Store" / "Visit the Store"
+    .replace(/\bvisit\s+the\b[^.<\n]*\bstore\b[^.<\n]*/gi, '')
+    // Supplier private-label brand names
+    .replace(/\b(amazon\s*basics|amazon\s*brand|amazon\s*essentials|amazon\s*elements|amazon\s*commercial|amazoncommercial|amazonbasics)\b/gi, '')
+    // Shopping signals: "Amazon's Choice [for <category>]", "#1 Best Seller [in <category>]"
+    // The optional "for/in" clause is stripped only up to the next sentence boundary so that
+    // product names following the badge ("Amazon's Choice Wireless Headphones") are preserved.
+    .replace(/\bamazon'?s?\s+choice(?:\s+for\b[^.<\n]*)?/gi, '')
+    .replace(/#\s*\d+\s+best\s+seller(?:\s+in\b[^.<\n]*)?/gi, '')
+    .replace(/\bbest\s*seller\b/gi, '')
+    // Supplier domain names
+    .replace(/\b(amazon|walmart|target|bestbuy|wayfair|homedepot|costco)\.com\b/gi, '')
+    // Bare identifier keywords (safety net for fragments not caught by phrase rules above)
+    .replace(/\b(ASIN|UPC|ISBN|Sales?\s*Rank|Seller\s*Rank|Available\s*at|Fulfilled\s*by|Sold\s*by)\b/gi, '')
+    // URLs
+    .replace(/https?:\/\/[^\s<"]+/gi, '');
+}
+
+// Applies supplier-identifier sanitization to an HTML description string and
+// strips inline <img> tags that may carry supplier branding.
+function _sanitizeDescriptionHtml(html) {
+  return _sanitizeSupplierText(html).replace(/<img[^>]*>/gi, '');
+}
+
 // eBay hard-limits titles to 80 chars. Amazon titles routinely exceed this and
 // contain junk eBay rejects. Strip noise, collapse spaces, truncate at a word
 // boundary <= 80. (2.1 baseline — AI optimizer is the opt-in upgrade.)
 function _enforceEbayTitle(title) {
-  let t = String(title || '')
+  let t = _sanitizeSupplierText(String(title || ''))
     .replace(/\((?:pack of \d+|set of \d+)\)/ig, ' ')
-    .replace(/\b(amazon'?s? choice|best ?seller|amazon\.com|walmart\.com)\b/ig, ' ')
     .replace(/[|]/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
@@ -776,7 +809,7 @@ window.EbayListingApiHelper = (() => {
     const isHtml = product.description && (product.description.trim().startsWith('<') || product.description.includes('</'));
 
     if (isHtml) {
-      descHtml = product.description;
+      descHtml = _sanitizeDescriptionHtml(product.description);
     } else {
       if (bullets.length > 0) {
         descHtml += '<ul>' + bullets.map(b => `<li>${b}</li>`).join('') + '</ul>';
@@ -784,11 +817,7 @@ window.EbayListingApiHelper = (() => {
       if (product.description) {
         descHtml += `<p>${product.description}</p>`;
       }
-      descHtml = descHtml
-        .replace(/amazon\.com|walmart\.com/gi, '')
-        .replace(/\b(ASIN|UPC|ISBN|Seller Rank|Sales Rank|Sold by|Fulfilled by|Available at)\b/gi, '')
-        .replace(/https?:\/\/[^\s<"]+/gi, '')
-        .replace(/<img[^>]*>/gi, '');
+      descHtml = _sanitizeDescriptionHtml(descHtml);
     }
     if (!descHtml.trim()) descHtml = '<p>Quality product.</p>';
 

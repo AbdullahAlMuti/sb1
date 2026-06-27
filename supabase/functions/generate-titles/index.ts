@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from "../_shared/extension-session.ts";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
+import { validateUserPlan, deductUsage, createLimitExceededResponse } from "../_shared/plan-middleware.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,8 +27,11 @@ interface RankedTitle {
   title: string;
 }
 
-const DEFAULT_PROMPT = `You are an expert eBay SEO title copywriter.
-Generate ONE optimized, search-friendly eBay listing title for the product below.
+const TITLE_GENERATION_CREDIT_COST = 1;
+
+const DEFAULT_PROMPT = `Generate 3 distinct, keyword-optimized eBay titles (under 80 chars each).
+Return ONLY a JSON object exactly like this:
+{"titles":[{"rank":"best","title":"..."},{"rank":"recommended","title":"..."},{"rank":"powerful","title":"..."}]}`;
 
 PRODUCT DATA:
 Title: {title}
@@ -110,7 +114,8 @@ serve(async (req) => {
       );
     }
 
-
+    const creditCheck = await validateUserPlan(supabase, userId, "credit", TITLE_GENERATION_CREDIT_COST);
+    if (!creditCheck.allowed) return createLimitExceededResponse(creditCheck, corsHeaders);
 
     const rawBody = await req.json();
     console.log("[generate-titles] Received body:", JSON.stringify(rawBody));
@@ -427,6 +432,27 @@ serve(async (req) => {
     const apiName = "openai";
     const titlesArray = rankedTitles.map((t) => t.title);
 
+    const deducted = await deductUsage(supabase, userId, "credit", TITLE_GENERATION_CREDIT_COST, {
+      description: "AI title generation",
+      feature: "generate-titles",
+      provider: useDirectOpenAI ? "openai" : "lovable",
+      model,
+      title_count: rankedTitles.length,
+    });
+    if (!deducted) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Unable to deduct credits for this generation. Please try again.",
+          code: "CREDIT_DEDUCTION_FAILED",
+        }),
+        {
+          status: 402,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -451,10 +477,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to generate titles. Please try again.",
+        error: "Failed to generate titles. Please try again.",
       }),
       {
         status: 500,

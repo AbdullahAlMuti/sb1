@@ -569,92 +569,34 @@ export async function deductUsage(
   try {
     switch (action) {
       case 'credit':
-        // Deduct from profiles.credits
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('credits')
-          .eq('id', userId)
-          .single();
-        
-        if (profile) {
-          const newCredits = Math.max(0, (profile.credits ?? 0) - amount);
-          await supabase
-            .from('profiles')
-            .update({ credits: newCredits })
-            .eq('id', userId);
-
-          // Log transaction
-          await supabase.from('credit_transactions').insert({
-            user_id: userId,
-            amount: -amount,
-            balance_after: newCredits,
-            transaction_type: 'usage',
-            description: metadata?.description || 'AI credit usage',
-            metadata,
+        {
+          const { error } = await supabase.rpc('deduct_user_credits', {
+            p_user_id: userId,
+            p_amount: amount,
+            p_description: String(metadata?.description || 'AI credit usage'),
+            p_metadata: metadata ?? {},
           });
-
-          // Also update credits_used in user_plans
-          try {
-            const { data: upCredits } = await supabase
-              .from('user_plans')
-              .select('credits_used')
-              .eq('user_id', userId)
-              .single();
-            if (upCredits) {
-              await supabase
-                .from('user_plans')
-                .update({ credits_used: (upCredits.credits_used ?? 0) + amount })
-                .eq('user_id', userId);
-            }
-          } catch {
-            // Ignore if user_plans record doesn't exist
+          if (error) {
+            console.error('[plan-middleware] deduct_user_credits RPC error:', error);
+            return false;
           }
         }
         break;
 
       case 'order':
-        try {
-          const { data: orderData } = await supabase
-            .from('user_plans')
-            .select('orders_used')
-            .eq('user_id', userId)
-            .single();
-          if (orderData) {
-            await supabase
-              .from('user_plans')
-              .update({ orders_used: (orderData.orders_used ?? 0) + amount })
-              .eq('user_id', userId);
-          }
-        } catch {
-          // Ignore if user_plans record doesn't exist
-        }
-        break;
-
       case 'seo_title':
-        const { data: upTitle } = await supabase
-          .from('user_plans')
-          .select('seo_titles_used')
-          .eq('user_id', userId)
-          .single();
-        if (upTitle) {
-          await supabase
-            .from('user_plans')
-            .update({ seo_titles_used: (upTitle.seo_titles_used ?? 0) + amount })
-            .eq('user_id', userId);
-        }
-        break;
-
       case 'seo_description':
-        const { data: upDesc } = await supabase
-          .from('user_plans')
-          .select('seo_descriptions_used')
-          .eq('user_id', userId)
-          .single();
-        if (upDesc) {
-          await supabase
-            .from('user_plans')
-            .update({ seo_descriptions_used: (upDesc.seo_descriptions_used ?? 0) + amount })
-            .eq('user_id', userId);
+        {
+          const { error } = await supabase.rpc('increment_user_plan_usage', {
+            p_user_id: userId,
+            p_action: action,
+            p_amount: amount,
+            p_metadata: metadata ?? {},
+          });
+          if (error) {
+            console.error('[plan-middleware] increment_user_plan_usage RPC error:', error);
+            return false;
+          }
         }
         break;
 
@@ -662,19 +604,6 @@ export async function deductUsage(
         // Listings are counted dynamically, no deduction needed
         break;
     }
-
-    // Log usage
-    await supabase.from('usage_logs').insert({
-      user_id: userId,
-      action: action,
-      credits_used: action === 'credit' ? amount : 0,
-      metadata: {
-        ...metadata,
-        action_type: action,
-        amount,
-        timestamp: new Date().toISOString(),
-      },
-    });
 
     return true;
   } catch (error) {

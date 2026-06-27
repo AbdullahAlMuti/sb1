@@ -83,9 +83,23 @@ copyDir(SRC_DIR, DIST_DIR);
 fs.copyFileSync(path.join(SRC_DIR, 'manifest.prod.json'), path.join(DIST_DIR, 'manifest.json'));
 fs.copyFileSync(path.join(SRC_DIR, 'common', 'config.prod.js'), path.join(DIST_DIR, 'common', 'config.js'));
 
+// 4. Rewrite the dashboard bridge origin allowlist for production. The source
+// bridge intentionally keeps localhost for daily development; the Chrome Store
+// artifact must physically exclude local-only URLs.
+const bridgePath = path.join(DIST_DIR, 'content_scripts', 'bridge.js');
+let bridgeContents = fs.readFileSync(bridgePath, 'utf8');
+bridgeContents = bridgeContents.replace(
+  /const allowedOrigins = \[[\s\S]*?\];/,
+  `const allowedOrigins = [
+            'https://sellersuit.com',
+            'https://www.sellersuit.com'
+        ];`
+);
+fs.writeFileSync(bridgePath, bridgeContents);
+
 console.log(`✅ Production build ready in: ${DIST_DIR}`);
 
-// 4. Sync to web dashboard public assets
+// 5. Sync to web dashboard public assets
 const WEB_PUBLIC_DIR = path.resolve('../../apps/web/public/chrome_extension');
 if (fs.existsSync(WEB_PUBLIC_DIR)) {
   console.log('Syncing clean production build to web public assets...');
@@ -109,7 +123,7 @@ if (fs.existsSync(WEB_PUBLIC_DIR)) {
   copyFolderRecursive(DIST_DIR, WEB_PUBLIC_DIR);
   console.log(`✅ Synced to: ${WEB_PUBLIC_DIR}`);
 
-  // 5. Generate files.json listing all files in WEB_PUBLIC_DIR
+  // 6. Generate files.json listing all files in WEB_PUBLIC_DIR
   const fileList = [];
   function collectFiles(dir, baseDir) {
     const entries = fs.readdirSync(dir, { withFileTypes: true });

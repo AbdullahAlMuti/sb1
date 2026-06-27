@@ -193,10 +193,8 @@
         if (event.source !== window) return;
 
         const allowedOrigins = [
-            'https://sellersuit.com', 
-            'https://www.sellersuit.com', 
-            'http://localhost:3000', 
-            'http://localhost:3001'
+            'https://sellersuit.com',
+            'https://www.sellersuit.com'
         ];
         if (!allowedOrigins.includes(event.origin)) {
             return;

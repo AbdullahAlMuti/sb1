@@ -15,8 +15,11 @@
   "background/index.js",
   "background/listing-runner.js",
   "background/message-router.js",
+  "background/setup.js",
   "build/amazon.bundle.js",
   "build/amazon.bundle.js.map",
+  "build/background.bundle.js",
+  "build/background.bundle.js.map",
   "build/suppliers.bundle.js",
   "build/suppliers.bundle.js.map",
   "build/walmart.bundle.js",
@@ -61,7 +64,6 @@
   "common/variation-normalizer.js",
   "content_scripts/amazon-scraper-v2.js",
   "content_scripts/amazon-variant-scraper.js",
-  "content_scripts/amazon-xhrpatch.js",
   "content_scripts/amazon_fulfiller.js",
   "content_scripts/amazon_injector.js",
   "content_scripts/bridge.js",
@@ -84,7 +86,6 @@
   "popup.css",
   "popup.html",
   "popup.js",
-  "scratch_test_output.log",
   "sidepanel/freshness.js",
   "sidepanel/panel-main.js",
   "sidepanel/panel-store.js",
@@ -103,6 +104,7 @@
   "tests/adapt-product.test.js",
   "tests/amazon-scraper-v2.test.js",
   "tests/bulk-core.test.js",
+  "tests/description-sanitizer.test.js",
   "tests/description-template.test.js",
   "tests/freshness.test.js",
   "tests/helpers/load-global.js",
@@ -132,5 +134,6 @@
   "ui/panel.js",
   "ui/popup_fix.css",
   "ui/product-details-popup.css",
-  "ui/product-details-popup.html"
+  "ui/product-details-popup.html",
+  "vite.config.background.js"
 ]
