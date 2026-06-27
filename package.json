@@ -24,7 +24,8 @@
     "lint": "eslint .",
     "env:check:local": "node scripts/check-local-env.mjs",
     "security:static": "node scripts/static-security-checks.mjs",
-    "check:local": "npm run env:check:local && npm run security:static && npm run typecheck && npm run lint && npm run build",
+    "check:edge-functions": "node scripts/check-edge-functions.mjs",
+    "check:local": "npm run env:check:local && npm run security:static && npm run typecheck && npm run lint && npm run build && npm run check:edge-functions",
     "release:ready": "npm run check:local",
     "preview": "npm --workspace @sellersuit/web run preview"
   },
