@@ -26,15 +26,34 @@ interface RankedTitle {
   title: string;
 }
 
-const DEFAULT_PROMPT = `Generate 3 distinct, keyword-optimized eBay titles (under 80 chars each).
-Return ONLY a JSON object exactly like this:
-{"titles":[{"rank":"best","title":"..."},{"rank":"recommended","title":"..."},{"rank":"powerful","title":"..."}]}
+const DEFAULT_PROMPT = `You are an expert eBay SEO title copywriter.
+Generate ONE optimized, search-friendly eBay listing title for the product below.
 
-DATA:
+PRODUCT DATA:
 Title: {title}
 Brand: {brand}
 Category: {category}
-Bullet Points: {bulletPoints}`;
+
+OUTPUT CONTRACT:
+- Return ONLY a single valid JSON object. No markdown, no code fences, no commentary.
+- Exact shape:
+  {"title":"..."}
+
+TITLE RULES:
+- The title MUST NOT exceed 80 characters (including spaces). 80 is a hard limit.
+- Words MUST be separated by normal single spaces. NEVER concatenate words or remove spaces to fit more keywords.
+- Aim to use as much of the 80-character limit as the available keywords genuinely justify. Prefer longer, information-rich titles, but NEVER pad with filler, repeated words, or invented terms just to reach a length.
+- DO NOT include the brand name or any manufacturer/supplier/marketplace name.
+- Use the Category to decide which keywords matter most and order them accordingly (for example: compatibility first for parts/accessories; type, size, color, material for apparel; model and capacity for electronics).
+- Front-load the highest-intent search terms; least important details last.
+- Include only details supported by the source data: product type, key specs, model/type descriptor, size, color, material, quantity, compatibility, primary use.
+- Use natural Title Case. No ALL CAPS words, no emojis, no symbols (no !, *, |, /), no quotes.
+- No keyword stuffing, no repeated words, no comma spam. Read like a clean, scannable title.
+- Do NOT invent specs, sizes, or features not present in the source data.
+- Do NOT include prices, currency, condition tags like "NEW", URLs, or identifiers (ASIN/UPC/EAN/ISBN/GTIN).
+
+BEFORE RETURNING:
+- Count the characters. If over 80, shorten until it fits. Only then output the JSON.`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -191,15 +210,11 @@ serve(async (req) => {
       `[generate-titles] Using ${useDirectOpenAI ? "Direct OpenAI" : "Lovable AI Gateway"} with model: ${model}`,
     );
 
-    // Prepare data strings for prompt replacement
-    const bulletsStr = bulletPoints.join("\n- ");
-
     // Replace placeholders in prompt
     const prompt = promptTemplate
       .replace(/{title}/g, title)
       .replace(/{category}/g, category)
-      .replace(/{brand}/g, brand)
-      .replace(/{bulletPoints}/g, bulletsStr);
+      .replace(/{brand}/g, brand);
 
     let responseContent = "";
 
@@ -225,7 +240,7 @@ serve(async (req) => {
               {
                 role: "system",
                 content:
-                  `You are an expert eBay product title generator. You MUST follow ALL instructions in the user's prompt exactly. Do not add conversational filler. Always respond with valid JSON only, exactly matching the requested structure. You must generate EXACTLY ${titleCount} titles.\n\nCRITICAL CONSTRAINTS:\n1. EVERY title MUST be STRICTLY UNDER 80 CHARACTERS long including spaces.\n2. Count the characters before outputting. If it exceeds 80, you MUST shorten it.`,
+                  `You are an expert eBay SEO title copywriter. You MUST follow ALL instructions in the user's prompt exactly. Do not add conversational filler. Always respond with valid JSON only, exactly matching the requested shape of {"title":"..."}. Do not use markdown code blocks or wrapper backticks.\n\nCRITICAL CONSTRAINTS:\n1. The title MUST be STRICTLY UNDER 80 CHARACTERS long including spaces.\n2. Count the characters before outputting. If it exceeds 80, you MUST shorten it.`,
               },
               { role: "user", content: prompt }
             ],
@@ -296,7 +311,7 @@ serve(async (req) => {
               {
                 role: "system",
                 content:
-                  `You are an expert eBay product title generator. Always respond with valid JSON only, no markdown or code blocks. Just the raw JSON object. You must generate EXACTLY ${titleCount} titles.\n\nCRITICAL CONSTRAINTS:\n1. EVERY title MUST be STRICTLY UNDER 80 CHARACTERS long including spaces.\n2. Count the characters before outputting. If it exceeds 80, you MUST shorten it.`,
+                  `You are an expert eBay SEO title copywriter. Always respond with valid JSON only, exactly matching the shape {"title":"..."}. Do not use markdown code blocks or wrapper backticks.\n\nCRITICAL CONSTRAINTS:\n1. The title MUST be STRICTLY UNDER 80 CHARACTERS long including spaces.\n2. Count the characters before outputting. If it exceeds 80, you MUST shorten it.`,
               },
               { role: "user", content: prompt },
             ],
@@ -356,7 +371,13 @@ serve(async (req) => {
       const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
-        aiResponse = parsed.titles || [];
+        if (parsed.title) {
+          aiResponse = [{ rank: "best", title: parsed.title }];
+        } else if (Array.isArray(parsed.titles)) {
+          aiResponse = parsed.titles;
+        } else {
+          aiResponse = [];
+        }
         console.log("Parsed titles:", aiResponse);
       }
     } catch (parseError) {
@@ -365,14 +386,10 @@ serve(async (req) => {
 
       // Fallback titles if parsing fails
       const baseTitle = title || "Product";
-      aiResponse = Array.from({ length: titleCount }).map((_, i) => ({
-        rank: i === 0 ? "best" : i === 1 ? "recommended" : "powerful",
-        title: i === 0 
-          ? `${brand ? brand + " " : ""}${baseTitle} - Premium Quality Free Shipping`
-          : i === 1
-          ? `${baseTitle}${category ? " " + category : ""} Brand New Top Rated`
-          : `NEW ${baseTitle} ${brand ? brand : ""} Limited Stock Best Deal`,
-      }));
+      aiResponse = [{
+        rank: "best",
+        title: `${baseTitle} Premium Quality Details`
+      }];
     }
 
     // Process titles to strictly enforce 80 characters programmatically as a final failsafe

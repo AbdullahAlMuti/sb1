@@ -277,7 +277,6 @@ serve(async (req) => {
     // Insert above succeeded (not a duplicate) - we now own this event id.
     // If processing throws, the catch block releases the claim so Stripe retries.
     claimedEventId = event.id;
-
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;

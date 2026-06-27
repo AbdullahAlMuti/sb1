@@ -71,5 +71,5 @@ export function resolveNextStep(input: NextStepInput): string {
   const token = (input.planToken ?? '').trim();
   if (token) return `/checkout?plan=${encodeURIComponent(token)}`;
 
-  return '/billing';
+  return ROUTE_CHOOSE_PLAN;
 }

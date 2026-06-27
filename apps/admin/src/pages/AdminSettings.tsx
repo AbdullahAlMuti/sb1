@@ -8,6 +8,7 @@ import { Switch } from '@repo/ui/components/ui/switch';
 import { toast } from 'sonner';
 import { supabase } from '@repo/api-client/supabase/client';
 import AmazonAPISettings from '@/components/admin/AmazonAPISettings';
+import { PageHeader } from '@/core/ui/PageHeader';
 
 export default function AdminSettings() {
   const [settings, setSettings] = useState({
@@ -121,15 +122,8 @@ export default function AdminSettings() {
   return (
     <div className="space-y-8 max-w-4xl">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <h1 className="text-3xl font-display font-bold text-foreground">Platform Settings</h1>
-        <p className="text-muted-foreground mt-1">
-          Configure global platform settings and AI integrations
-        </p>
-      </motion.div>
+      <PageHeader title="Platform Settings" description="Configure global platform settings and AI integrations" icon={Settings} />
+
 
       {/* WhatsApp Settings */}
       <motion.div

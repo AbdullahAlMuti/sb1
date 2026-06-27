@@ -8,7 +8,6 @@ import { AdminTopbar } from "./AdminTopbar";
 export function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [provider, setProvider] = useState("all");
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950">
@@ -28,13 +27,9 @@ export function AdminLayout() {
       </div>
 
       <div className={cn("min-h-screen transition-[padding] duration-300 lg:pl-[260px]", collapsed && "lg:pl-[84px]")}>
-        <AdminTopbar
-          provider={provider}
-          onProviderChange={setProvider}
-          onOpenMobileSidebar={() => setMobileOpen(true)}
-        />
+        <AdminTopbar onOpenMobileSidebar={() => setMobileOpen(true)} />
         <main className="mx-auto w-full max-w-[1800px] px-4 py-5 sm:px-5 lg:px-6">
-          <Outlet context={{ provider }} />
+          <Outlet />
         </main>
       </div>
     </div>

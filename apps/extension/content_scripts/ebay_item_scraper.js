@@ -77,9 +77,9 @@ const STEAL_BTN_ID = 'ss-stealButton';
 const BUY_BOX_SELECTOR = '.vim [data-testid="x-buybox-cta"]';
 
 function injectStealButton() {
-  if (document.getElementById(STEAL_BTN_ID)) return;
+  if (document.getElementById(STEAL_BTN_ID)) return true;
   const anchor = document.querySelector(BUY_BOX_SELECTOR);
-  if (!anchor) return;
+  if (!anchor) return false;
   const a = document.createElement('a');
   a.id = STEAL_BTN_ID;
   a.href = '#';
@@ -96,8 +96,13 @@ function injectStealButton() {
     a.textContent = '✅ Stolen! Go to eBay listing form to paste.';
     setTimeout(() => { a.textContent = 'Steal Item Specifics'; }, 3000);
   });
+  return true;
 }
 
-// ── Periodic injection (page may load dynamically) ──────────────────────────
-setInterval(injectStealButton, 1500);
-setTimeout(injectStealButton, 1000);
+// ── One-shot injection: try immediately, watch with observer until the buybox appears ──
+if (!injectStealButton()) {
+  const _stealObs = new MutationObserver(function () {
+    if (injectStealButton()) _stealObs.disconnect();
+  });
+  _stealObs.observe(document.body, { childList: true, subtree: true });
+}

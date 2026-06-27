@@ -154,6 +154,15 @@
         if (tokenData) {
             setTimeout(() => syncTokenToExtension(tokenData), 500);
         }
+        try {
+            const templateId = localStorage.getItem('selected_listing_template_id');
+            if (templateId && chrome?.storage?.local) {
+                chrome.storage.local.set({ selectedListingTemplateId: templateId });
+                log('info', 'Initial template synced to extension', { templateId });
+            }
+        } catch (e) {
+            log('debug', 'Failed to perform initial template sync', e);
+        }
     }
 
     /**
@@ -217,6 +226,14 @@
             const tokenData = extractTokenData();
             if (tokenData) {
                 syncTokenToExtension(tokenData);
+            }
+        }
+
+        // Sync active listing template
+        if (data.type === 'SYNC_LISTING_TEMPLATE') {
+            log('info', 'Syncing listing template to extension:', data.templateId);
+            if (chrome?.storage?.local) {
+                chrome.storage.local.set({ selectedListingTemplateId: data.templateId });
             }
         }
 

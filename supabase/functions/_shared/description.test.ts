@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildPrompt, renderSections, sanitize } from "./description.ts";
+import { buildPrompt, renderSections, sanitize, ensureMinimumLength } from "./description.ts";
 import type { DescriptionConfig } from "./description.ts";
 
 const testConfig: DescriptionConfig = {
@@ -64,8 +64,8 @@ test("renderSections: generates correct HTML without nested block elements in p 
   const html = renderSections(testConfig, aiJson, testProduct);
 
   // Checks structure
-  assert.match(html, /<div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">/);
-  assert.match(html, /<h2 style="color: #333; margin: 15px 0;">Super Nike Shoes - Best on Amazon<\/h2>/);
+  assert.match(html, /<div>/);
+  assert.match(html, /<h2>Super Nike Shoes - Best on Amazon<\/h2>/);
   assert.match(html, /<p>Compelling hook for the shoes.<\/p>/);
   assert.match(html, /<li>Super light<\/li>/);
   assert.match(html, /<strong>Material<\/strong>/);
@@ -93,6 +93,9 @@ test("sanitize: strips unwanted elements according to exclusion rules", () => {
   `;
 
   const cleanHtml = sanitize(dirtyHtml, testConfig.exclusion_rules);
+
+  // Style attributes stripped
+  assert.doesNotMatch(cleanHtml, /style=/);
 
   // Supplier names stripped
   assert.doesNotMatch(cleanHtml, /Amazon/i);
@@ -122,4 +125,24 @@ test("sanitize: strips unwanted elements according to exclusion rules", () => {
   // Banned claims stripped
   assert.doesNotMatch(cleanHtml, /100% guaranteed/i);
   assert.doesNotMatch(cleanHtml, /lifetime warranty/i);
+});
+
+test("ensureMinimumLength: appends padding if plain text length is under 650 words", () => {
+  const shortDescription = "<div class='desc'><h3>My Product</h3><p>This is a short description.</p></div>";
+  const padded = ensureMinimumLength(shortDescription, "html_ebay_safe");
+  
+  const plainText = padded.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const words = plainText.split(/\s+/).filter(w => w.length > 0);
+  
+  assert.ok(words.length >= 650, `Expected word count >= 650, but got ${words.length}`);
+  assert.match(padded, /Quality Assurance/);
+  assert.match(padded, /We are dedicated to providing our customers/);
+});
+
+test("ensureMinimumLength: does not modify if plain text length is already over 650 words", () => {
+  const longText = Array(660).fill("word").join(" ");
+  const longDescription = `<div class='desc'><h3>My Product</h3><p>${longText}</p></div>`;
+  const result = ensureMinimumLength(longDescription, "html_ebay_safe");
+  
+  assert.equal(result, longDescription);
 });

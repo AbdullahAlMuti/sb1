@@ -188,7 +188,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
           const bootstrapRes = await AuthHelper.callEdgeFunction('extension-bootstrap');
           if (bootstrapRes.data) {
-            await chrome.storage.local.set({ extensionBootstrapCache: bootstrapRes.data });
+            const updates = { extensionBootstrapCache: bootstrapRes.data };
+            if (bootstrapRes.data.user?.selectedListingTemplateId) {
+              updates.selectedListingTemplateId = bootstrapRes.data.user.selectedListingTemplateId;
+            }
+            await chrome.storage.local.set(updates);
           }
 
           AuthHelper.verifyAuthStatus(true);
@@ -232,6 +236,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
         sendResponse({ ok: true });
       } catch (e) {
+        sendResponse({ ok: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
+  if (request.action === 'AUTO_LIST_NEW_TAB') {
+    (async () => {
+      try {
+        const tab = await chrome.tabs.create({ url: request.url, active: true });
+        await chrome.sidePanel.setOptions({
+          tabId: tab.id,
+          path: 'sidepanel/side-panel.html',
+          enabled: true
+        });
+        await chrome.sidePanel.open({ tabId: tab.id });
+        sendResponse({ ok: true, tabId: tab.id });
+      } catch (e) {
+        console.error('[Background] Failed to open side panel on new tab:', e);
         sendResponse({ ok: false, error: e.message });
       }
     })();

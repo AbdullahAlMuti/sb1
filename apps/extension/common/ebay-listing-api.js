@@ -903,9 +903,12 @@ window.EbayListingApiHelper = (() => {
         const varSku = v.sku || (window.SSSkuEngine
           ? window.SSSkuEngine.buildReadable(sourceId, attrs, window.SSSkuEngine.prefixFor(product.supplier))
           : (sourceId + (Object.values(attrs).map(a => a?.productName || '').join('-') || '')));
+        const ebayFinalPrice = _cleanFloat(v.ebayFinalPrice) || _cleanFloat(v.ebayPrice) || _cleanFloat(v.finalPrice);
+        const priceValue = ebayFinalPrice > 0 ? ebayFinalPrice : (_cleanFloat(v.price) || basePrice);
+        const supplierPrice = _cleanFloat(v.supplierPrice) || _cleanFloat(v.price) || basePrice;
         return {
-          price:             _cleanFloat(v.ebayPrice) || _cleanFloat(v.finalPrice) || _cleanFloat(v.price) || basePrice,
-          raw_supplier_price: _cleanFloat(v.price) || basePrice,
+          price:             priceValue,
+          raw_supplier_price: supplierPrice,
           sku:               varSku,
           attrs,
           img:               v.img || v.image || null, // scraper uses v.img
@@ -915,14 +918,16 @@ window.EbayListingApiHelper = (() => {
         };
       });
     } else {
-      const finalPrice = _cleanFloat(product.finalPrice) || basePrice;
+      const ebayFinalPrice = _cleanFloat(product.ebayFinalPrice) || _cleanFloat(product.finalPrice);
+      const finalPrice = ebayFinalPrice > 0 ? ebayFinalPrice : basePrice;
+      const supplierPrice = _cleanFloat(product.supplierPrice) || _cleanFloat(product.raw_supplier_price) || _cleanFloat(product.price) || basePrice;
       // User-edited SKU (panel ebaySku) wins; otherwise generate from sourceId.
       const sku = product.ebaySku || ((window.SSSkuEngine)
         ? window.SSSkuEngine.buildReadable(sourceId, {}, window.SSSkuEngine.prefixFor(product.supplier))
         : sourceId);
       prod_variations = [{
         price:              finalPrice,
-        raw_supplier_price: _cleanFloat(product.raw_supplier_price) || basePrice,
+        raw_supplier_price: supplierPrice,
         sku,
         variant_asin:       sourceId || null
       }];
@@ -1032,6 +1037,134 @@ window.EbayListingApiHelper = (() => {
     return null;
   }
 
+  async function getSelectedListingTemplate() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['selectedListingTemplateId'], (result) => {
+        const id = result.selectedListingTemplateId;
+        if (!id) {
+          resolve(null);
+          return;
+        }
+        const LISTING_TEMPLATES = [
+          {
+            id: 'default-professional',
+            htmlContent: `<div style="font-family: 'Segoe UI', Helvetica, Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; color: #1a202c; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+  <header style="text-align: center; border-bottom: 2px solid #3b82f6; padding-bottom: 16px; margin-bottom: 24px;">
+    <h1 style="color: #1e3a8a; font-size: 24px; margin: 0; font-weight: 700; line-height: 1.3;">{title}</h1>
+  </header>
+  
+  <section style="margin-bottom: 32px;">
+    <h2 style="color: #1e3a8a; font-size: 18px; font-weight: 600; border-left: 4px solid #3b82f6; padding-left: 10px; margin-bottom: 12px;">Product Description</h2>
+    <div style="line-height: 1.6; color: #4a5568; font-size: 15px;">
+      {description}
+    </div>
+  </section>
+  
+  <section style="margin-bottom: 32px;">
+    <h2 style="color: #1e3a8a; font-size: 18px; font-weight: 600; border-left: 4px solid #3b82f6; padding-left: 10px; margin-bottom: 12px;">Key Features</h2>
+    <div style="line-height: 1.6; color: #4a5568; font-size: 15px;">
+      {features}
+    </div>
+  </section>
+
+  <section style="margin-bottom: 32px;">
+    <h2 style="color: #1e3a8a; font-size: 18px; font-weight: 600; border-left: 4px solid #3b82f6; padding-left: 10px; margin-bottom: 12px;">Specifications</h2>
+    <div style="line-height: 1.6; color: #4a5568; font-size: 15px;">
+      {specifications}
+    </div>
+  </section>
+  
+  <footer style="margin-top: 36px; border-top: 1px solid #e2e8f0; padding-top: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #f1f5f9;">
+      <h3 style="color: #1e3a8a; font-size: 14px; margin: 0 0 8px 0; font-weight: 600; display: flex; items-center: center; gap: 6px;">
+        <span>📦</span> Shipping & Handling
+      </h3>
+      <p style="color: #64748b; font-size: 13px; margin: 0; line-height: 1.5;">Fast and free shipping on all orders. We package professionally and ship within 1 business day.</p>
+    </div>
+    <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #f1f5f9;">
+      <h3 style="color: #1e3a8a; font-size: 14px; margin: 0 0 8px 0; font-weight: 600; display: flex; items-center: center; gap: 6px;">
+        <span>🔄</span> 30-Day Returns Policy
+      </h3>
+      <p style="color: #64748b; font-size: 13px; margin: 0; line-height: 1.5;">Shop with confidence. If you're not completely satisfied, return the item within 30 days for a full refund.</p>
+    </div>
+  </footer>
+</div>`
+          }
+        ];
+        const template = LISTING_TEMPLATES.find(t => t.id === id);
+        resolve(template || null);
+      });
+    });
+  }
+
+  function compileTemplate(template, productData, coreDescription) {
+    if (!template || !template.htmlContent) {
+      return coreDescription;
+    }
+
+    let html = template.htmlContent;
+
+    const title = productData.title || '';
+    const brand = productData.brand || '';
+    const condition = productData.condition || 'New';
+
+    let featuresHtml = '';
+    const bullets = productData.bulletPoints || productData.features || [];
+    if (bullets.length > 0) {
+      featuresHtml = '<ul style="margin: 0; padding-left: 20px; line-height: 1.6;">' +
+        bullets.map(b => `<li>${b}</li>`).join('') +
+        '</ul>';
+    }
+
+    let specificationsHtml = '';
+    const specs = productData.specifications || {};
+    if (specs && Object.keys(specs).length > 0) {
+      specificationsHtml = '<table style="width: 100%; border-collapse: collapse; font-size: 14px;">' +
+        Object.entries(specs).map(([k, v]) => `<tr><td style="padding: 8px; border: 1px solid #ddd; width: 30%;"><strong>${k}</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${v}</td></tr>`).join('') +
+        '</table>';
+    }
+
+    const values = {
+      title,
+      brand,
+      condition,
+      description: coreDescription,
+      features: featuresHtml,
+      specifications: specificationsHtml,
+      shipping: '',
+      returns: ''
+    };
+
+    const sectionRegex = /<section[^>]*>([\s\S]*?)<\/section>/gi;
+    html = html.replace(sectionRegex, (match, content) => {
+      const foundPlaceholders = [...content.matchAll(/\{\{?(\w+)\}?\}/g)].map(m => m[1]);
+      const shouldRemove = foundPlaceholders.some(key => {
+        return values.hasOwnProperty(key) && !values[key];
+      });
+
+      if (shouldRemove) {
+        return '';
+      }
+      return match;
+    });
+
+    for (const [key, val] of Object.entries(values)) {
+      const regex = new RegExp(`\\{\\{?${key}\\}?\\}`, 'g');
+      html = html.replace(regex, val || '');
+    }
+
+    html = html.replace(/\{\{?\w+\}?\}/g, '');
+
+    // Existing sanitization rules
+    html = html
+      .replace(/https?:\/\/[^\s<"]+/gi, '')
+      .replace(/amazon\.com|walmart\.com/gi, '')
+      .replace(/\b(ASIN|UPC|ISBN|Seller Rank|Sales Rank|Sold by|Fulfilled by|Available at)\b/gi, '')
+      .replace(/<img[^>]*>/gi, '');
+
+    return html;
+  }
+
   async function aiGenerateDescription(product) {
     const data = {
       title:        product.title || '',
@@ -1040,7 +1173,16 @@ window.EbayListingApiHelper = (() => {
       description:  product.description || ''
     };
     const resp = await _aiGenerate('description', data);
-    return resp?.description || resp?.html || (resp?.success ? resp.result : null) || null;
+    let aiDesc = resp?.description || resp?.html || (resp?.success ? resp.result : null) || null;
+
+    if (aiDesc) {
+      const activeTemplate = await getSelectedListingTemplate();
+      if (activeTemplate) {
+        console.log('[EbayListingApiHelper] Applying template compiler to generated AI description');
+        aiDesc = compileTemplate(activeTemplate, product, aiDesc);
+      }
+    }
+    return aiDesc;
   }
 
   return {
@@ -1055,7 +1197,9 @@ window.EbayListingApiHelper = (() => {
     checkVero,
     checkDuplicate,
     aiGenerateTitle,
-    aiGenerateDescription
+    aiGenerateDescription,
+    compileTemplate,
+    getSelectedListingTemplate
   };
 })();
 
@@ -1174,10 +1318,62 @@ function _syncListingToDashboard(adapted, product, draftId) {
 
 window._syncListingToDashboard = _syncListingToDashboard;
 
+function validateProductPricing(product) {
+  const hasVariants = product.hasVariants &&
+                      Array.isArray(product.variants) &&
+                      product.variants.length > 1;
+                      
+  if (!hasVariants) {
+    const supplierPrice = _cleanFloat(product.ebayFinalPrice ? product.supplierPrice : null) || _cleanFloat(product.price) || 0;
+    const ebayFinalPrice = _cleanFloat(product.ebayFinalPrice) || _cleanFloat(product.finalPrice) || 0;
+    
+    if (!ebayFinalPrice || isNaN(ebayFinalPrice) || ebayFinalPrice <= 0) {
+      throw new Error('eBay Final Price is missing. Please calculate the final price before uploading.');
+    }
+    
+    const isManual = product.price_source === 'manual';
+    if (ebayFinalPrice === supplierPrice && !isManual) {
+      throw new Error('eBay Final Price is equal to the original Supplier Price. Please calculate your markup profit rules before listing.');
+    }
+  } else {
+    // Collect active variations exactly like adaptProduct does
+    const activeVariants = [];
+    (product.variants || []).forEach(v => {
+      if (v.isDeleted === true || v.deleted === true) return;
+      const hasAttrs = v.attrs && Object.keys(v.attrs).length > 0;
+      const hasSpecs = v.specs && Object.keys(v.specs).length > 0;
+      if (!hasAttrs && !hasSpecs) return;
+      if (v.inStock === false) return;
+      activeVariants.push(v);
+    });
+    
+    if (activeVariants.length === 0) {
+      throw new Error('No active variations found to upload.');
+    }
+    
+    activeVariants.forEach((v, idx) => {
+      const supplierPrice = _cleanFloat(v.ebayFinalPrice ? v.supplierPrice : null) || _cleanFloat(v.price) || 0;
+      const ebayFinalPrice = _cleanFloat(v.ebayFinalPrice) || _cleanFloat(v.ebayPrice) || _cleanFloat(v.finalPrice) || 0;
+      
+      if (!ebayFinalPrice || isNaN(ebayFinalPrice) || ebayFinalPrice <= 0) {
+        throw new Error(`eBay Final Price is missing for variation ${idx + 1}. Please calculate the final price before uploading.`);
+      }
+      
+      const isManual = v.price_source === 'manual' || product.price_source === 'manual';
+      if (ebayFinalPrice === supplierPrice && !isManual) {
+        throw new Error(`eBay Final Price is equal to the original Supplier Price for variation ${idx + 1} unless intentionally set.`);
+      }
+    });
+  }
+}
+
 window.SellerSuitUploader = {
   async run(product) {
     const api = window.EbayListingApiHelper;
     console.log('[SS Uploader] Starting programmatic upload for:', product.title?.substring(0, 60));
+
+    // Validate pricing before any action
+    validateProductPricing(product);
 
     // 0. Preflight: eBay auth check (1.1) — fail fast if logged out
     console.log('[SS Uploader] Checking eBay login...');
@@ -1235,6 +1431,20 @@ window.SellerSuitUploader = {
         const aiDesc = await api.aiGenerateDescription(product);
         if (aiDesc) product = { ...product, description: aiDesc, bulletPoints: [] };
       } catch (e) { console.warn('[SS AI] description gen failed:', e.message); }
+    } else {
+      const isHtml = product.description && (product.description.trim().startsWith('<') || product.description.includes('</'));
+      if (!isHtml) {
+        try {
+          const activeTemplate = await api.getSelectedListingTemplate();
+          if (activeTemplate) {
+            console.log('[SS Uploader] Applying active template to raw description');
+            product.description = api.compileTemplate(activeTemplate, product, product.description || '');
+            product.bulletPoints = [];
+          }
+        } catch (e) {
+          console.warn('[SS Uploader] Failed to apply template to raw description:', e);
+        }
+      }
     }
 
     const adapted = api.adaptProduct(product);

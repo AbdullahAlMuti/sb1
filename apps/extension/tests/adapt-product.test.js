@@ -219,3 +219,51 @@ describe('adaptProduct — robust price parsing', () => {
     assert.equal(out.prod_variations[1].raw_supplier_price, 13.00);
   });
 });
+
+describe('adaptProduct — supplierPrice and ebayFinalPrice separation', () => {
+  test('single variation maps ebayFinalPrice and supplierPrice correctly', () => {
+    const rawProd = {
+      ...AMAZON_SINGLE,
+      price: 19.99,
+      finalPrice: 31.86,
+      supplierPrice: 19.99,
+      ebayFinalPrice: 35.99
+    };
+    const out = loadAdapt()(rawProd);
+    assert.equal(out.prod_variations[0].price, 35.99); // ebayFinalPrice wins
+    assert.equal(out.prod_variations[0].raw_supplier_price, 19.99); // supplierPrice wins
+  });
+
+  test('variants map ebayFinalPrice and supplierPrice correctly', () => {
+    const rawProd = {
+      ...AMAZON_VARIATION,
+      variants: [
+        {
+          attrs: { Color: { productName: 'Red' } },
+          price: 12,
+          finalPrice: 20,
+          supplierPrice: 12,
+          ebayFinalPrice: 24.99,
+          img: 'https://img/red.jpg',
+          imgProp: 'Color',
+          supplierVariantId: 'ASIN-RED'
+        },
+        {
+          attrs: { Color: { productName: 'Blue' } },
+          price: 13,
+          finalPrice: 21,
+          supplierPrice: 13,
+          ebayFinalPrice: 25.99,
+          img: 'https://img/blue.jpg',
+          imgProp: 'Color',
+          supplierVariantId: 'ASIN-BLUE'
+        }
+      ]
+    };
+    const out = loadAdapt()(rawProd);
+    assert.equal(out.prod_variations[0].price, 24.99); // ebayFinalPrice wins
+    assert.equal(out.prod_variations[0].raw_supplier_price, 12); // supplierPrice wins
+    assert.equal(out.prod_variations[1].price, 25.99); // ebayFinalPrice wins
+    assert.equal(out.prod_variations[1].raw_supplier_price, 13); // supplierPrice wins
+  });
+});

@@ -186,6 +186,8 @@ async function _handleSidebarUpload() {
             description,
             images,
             ebaySku: sku,
+            supplierPrice: _ssxCleanFloat(p.price) || 0,
+            ebayFinalPrice: finalPrice || _ssxCleanFloat(p.finalPrice) || 0,
             finalPrice: finalPrice || p.finalPrice || 0,
             price_source: priceSource,
             title_source: titleSource,
@@ -193,6 +195,14 @@ async function _handleSidebarUpload() {
             sku_source: skuSource,
             useStoredWatermarkedImages: false
         };
+
+        if (Array.isArray(p.variants)) {
+            uploadProduct.variants = p.variants.map(v => ({
+                ...v,
+                supplierPrice: _ssxCleanFloat(v.price) || 0,
+                ebayFinalPrice: _ssxCleanFloat(v.ebayPrice) || _ssxCleanFloat(v.finalPrice) || 0
+            }));
+        }
 
         chrome.runtime.sendMessage({
             action: 'import_ebay',
@@ -580,6 +590,66 @@ async function showSidebarExtended(opts = {}) {
 
     const mainTitle = document.getElementById('ai-generated-title');
     if (mainTitle && p.title) { mainTitle.textContent = p.title; }
+
+    // Load and populate saved description
+    const descDisplay = document.getElementById('description-preview');
+    if (descDisplay) {
+        chrome.storage.local.get([
+            'selectedEbayDescription', 
+            'generatedDescription', 
+            'selectedDescriptionTimestamp'
+        ], async (result) => {
+            let draft = null;
+            if (window.SSListingDraft) {
+                try {
+                    draft = await window.SSListingDraft.getDraft();
+                } catch (e) {
+                    console.warn('[showSidebarExtended] Failed to get draft:', e);
+                }
+            }
+            
+            const scannedAt = p.lastScannedAt || p.scrapedAt || 0;
+            const storedDescFresh = !scannedAt || (result.selectedDescriptionTimestamp || 0) >= scannedAt;
+            const aiDescription = storedDescFresh ? (result.selectedEbayDescription || result.generatedDescription || '') : '';
+            const description = (draft && draft.description) || aiDescription || p.description || '';
+            
+            if (description) {
+                descDisplay.innerHTML = description;
+                descDisplay.classList.remove('description-empty-state');
+                
+                const copyBtn = document.getElementById('copy-description-btn');
+                if (copyBtn) {
+                    copyBtn.disabled = false;
+                    copyBtn.style.display = 'inline-flex';
+                }
+                
+                const descCounter = document.querySelector('.ss-desc-counter');
+                if (descCounter) {
+                    const currentText = descDisplay.innerText || '';
+                    descCounter.innerHTML = `${currentText.length} / 5000 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width: 12px; height: 12px; color: #22c55e;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+                }
+            } else {
+                if (!descDisplay.querySelector('.description-placeholder')) {
+                    descDisplay.innerHTML = `
+                        <div class="ss-desc-empty description-placeholder description-empty-state" contenteditable="false">
+                          <svg class="ss-empty-icon" viewBox="0 0 24 24" fill="none" stroke="var(--ss-green)" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                          <h4 class="ss-empty-title">No description yet</h4>
+                          <p class="ss-empty-subtitle">Click AI Write Description to generate.</p>
+                        </div>
+                    `;
+                }
+                const descCounter = document.querySelector('.ss-desc-counter');
+                if (descCounter) {
+                    descCounter.innerHTML = `0 / 5000 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width: 12px; height: 12px; color: #22c55e;"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+                }
+                const copyBtn = document.getElementById('copy-description-btn');
+                if (copyBtn) {
+                    copyBtn.disabled = true;
+                    copyBtn.style.display = 'none';
+                }
+            }
+        });
+    }
 
     const variations = p.variations || [];
     const varWrap = document.getElementById('ext-variations-wrap');

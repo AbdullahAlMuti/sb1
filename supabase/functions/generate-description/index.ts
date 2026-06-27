@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from '../_shared/extension-session.ts';
 import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
-import { buildPrompt, renderSections, sanitize, DescriptionConfig } from '../_shared/description.ts';
+import { buildPrompt, renderSections, sanitize, ensureMinimumLength, DescriptionConfig } from '../_shared/description.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -112,13 +112,13 @@ serve(async (req) => {
 
     // Fallback default config if DB config is missing
     const defaultSections = [
-      { key: "title", type: "opening", order: 1, title: "Title", enabled: true, ai_guidance: "Format the title as a clean heading.", static_html: null },
-      { key: "opening", type: "opening", order: 2, title: "Introduction", enabled: true, ai_guidance: "1-2 compelling sentences describing the product.", static_html: null },
-      { key: "features", type: "features", order: 3, title: "✨ Key Features", enabled: true, ai_guidance: "List key features in short, punchy bullet points.", static_html: null },
-      { key: "specifications", type: "specifications", order: 4, title: "📋 Specifications", enabled: true, ai_guidance: "Create key/value pairs of technical specifications.", static_html: null },
-      { key: "shipping", type: "shipping", order: 5, title: "📦 Shipping & Handling", enabled: true, ai_guidance: null, static_html: "<p>• Fast & Free Shipping on all orders</p><p>• Tracking number provided within 24 hours</p><p>• Professionally packaged for safe delivery</p>" },
+      { key: "title", type: "opening", order: 1, title: "Title", enabled: true, ai_guidance: "Produce a clean, readable buyer-facing product heading based on {title}. Remove keyword stuffing, duplicate words, and any supplier or marketplace references. Do not add a brand that is not present in the source data.", static_html: null },
+      { key: "opening", type: "opening", order: 2, title: "Introduction", enabled: true, ai_guidance: "Write a compelling introduction of at least 3-4 sentences (minimum 500 characters total) giving a comprehensive overview of the product and its main benefits. Do not mention any supplier or marketplace name.", static_html: null },
+      { key: "features", type: "features", order: 3, title: "✨ Key Features", enabled: true, ai_guidance: "Return 4-8 short, punchy, benefit-led bullet points as an array of strings. One feature per item, no leading symbols.", static_html: null },
+      { key: "specifications", type: "specifications", order: 4, title: "📋 Specifications", enabled: true, ai_guidance: "Return an array of label/value objects for technical specifications found in the source data only. Do not invent values.", static_html: null },
+      { key: "shipping", type: "shipping", order: 5, title: "📦 Shipping & Handling", enabled: true, ai_guidance: null, static_html: "<p>• Fast & Free Shipping on all orders</p>\n<p>• Tracking number provided within 24 hours</p>\n<p>• Professionally packaged for safe delivery</p>" },
       { key: "returns", type: "returns", order: 6, title: "✅ Returns Policy", enabled: true, ai_guidance: null, static_html: "<p>30-day hassle-free returns. If you're not satisfied, return for a full refund.</p>" },
-      { key: "contact", type: "contact", order: 7, title: "⭐ Thank you for shopping with us! ⭐", enabled: true, ai_guidance: null, static_html: "<p style=\"margin: 0; color: #e65100;\"><strong>⭐ Thank you for shopping with us! ⭐</strong></p><p style=\"margin: 5px 0 0 0; font-size: 12px;\">Questions? Message us anytime - we respond within 24 hours!</p>" }
+      { key: "contact", type: "contact", order: 7, title: "⭐ Thank you for shopping with us! ⭐", enabled: true, ai_guidance: null, static_html: "<p style=\"margin: 0; color: #e65100;\"><strong>⭐ Thank you for shopping with us! ⭐</strong></p>\n<p style=\"margin: 5px 0 0 0; font-size: 12px;\">Questions? Message us anytime - we respond within 24 hours!</p>" }
     ];
 
     const defaultExclusions = {
@@ -139,15 +139,29 @@ serve(async (req) => {
       prompt_skeleton: `You are a professional eBay listing description copywriter.
 Generate structured description data for the product: {title}.
 
-You MUST return ONLY a valid JSON object matching the requested structure.
-Do not wrap in markdown code blocks or return HTML. Return a JSON object with keys corresponding to the AI-generated sections.
+OUTPUT CONTRACT:
+- Return ONLY a single valid JSON object. No markdown code fences, no HTML, no commentary before or after the JSON.
+- The JSON must match this exact shape:
+  {
+    "title": "clean buyer-facing product heading",
+    "opening": "introduction paragraph text",
+    "features": ["feature line", "feature line"],
+    "specifications": [{"label": "Spec name", "value": "Spec value"}]
+  }
 
 SECTION REQUIREMENTS:
 {sections_guidance}
 
-EXCLUSIONS & POLICY RULES:
-- DO NOT mention any of the following terms or brands: {blocked_terms}
-- DO NOT include unsupported claims or phrases: {banned_claim_phrases}
+CONTENT & POLICY RULES:
+- Use ONLY facts found in PRODUCT DATA below. Never invent specifications, materials, dimensions, certifications, compatibility, or claims that are not supported by the source data.
+- DO NOT mention any supplier, retailer, or marketplace name (for example: Amazon, Walmart, AliExpress, eBay) or any of these blocked terms or brands: {blocked_terms}.
+- DO NOT include unsupported or exaggerated claims, including: {banned_claim_phrases}.
+- DO NOT mention prices, discounts, or any currency values.
+- DO NOT include any HTTP/HTTPS links, domain names, email addresses, phone numbers, or social handles.
+- DO NOT mention product identifiers such as ASIN, UPC, EAN, ISBN, or GTIN.
+- DO NOT make medical, safety, legal, or guaranteed-result claims.
+- Write professional, benefit-led, scannable copy with short mobile-friendly sentences.
+- The "opening" value must be detailed, original, and at least 500 characters of high-quality copy.
 
 PRODUCT DATA:
 Title: {title}
@@ -157,8 +171,7 @@ Original Description: {description}
 Bullet Points: {bulletPoints}
 Features: {features}
 Specifications: {specifications}
-Condition: {condition}
-Price: {price}`,
+Condition: {condition}`,
       output_format: 'html_ebay_safe'
     };
 
@@ -166,19 +179,21 @@ Price: {price}`,
     let model = 'gpt-4o-mini';
     let adminApiKey = '';
     let apiProvider = 'openai';
+    let extTitlePrompt = '';
 
     // Fetch Admin AI credentials from admin_settings
     try {
       const { data: settingsData } = await supabase
         .from('admin_settings')
         .select('key, value')
-        .in('key', ['ext_ai_provider', 'ext_ai_api_key', 'ext_ai_model']);
+        .in('key', ['ext_ai_provider', 'ext_ai_api_key', 'ext_ai_model', 'ext_title_prompt']);
 
       if (settingsData) {
         settingsData.forEach((item) => {
           if (item.key === 'ext_ai_provider' && item.value) apiProvider = item.value;
           if (item.key === 'ext_ai_model' && item.value) model = item.value;
           if (item.key === 'ext_ai_api_key' && item.value) adminApiKey = item.value;
+          if (item.key === 'ext_title_prompt' && item.value) extTitlePrompt = item.value;
         });
       }
     } catch (dbError) {
@@ -202,7 +217,41 @@ Price: {price}`,
       specifications
     };
 
-    const prompt = buildPrompt(config, normalizedProduct);
+    const basePrompt = buildPrompt(config, normalizedProduct);
+    
+    // Default title prompt instructions as fallback if not in DB
+    const defaultTitlePrompt = `You are an expert eBay SEO title copywriter.
+Generate ONE optimized, search-friendly eBay listing title for the product below.
+
+TITLE RULES:
+- The title MUST NOT exceed 80 characters (count spaces). 80 is a hard limit.
+- Aim to use as much of the 80-character limit as the available keywords genuinely justify. Prefer longer, information-rich titles, but NEVER pad with filler, repeated words, or invented terms just to reach a length.
+- DO NOT include the brand name or any manufacturer/supplier/marketplace name.
+- Use the Category to decide which keywords matter most and order them accordingly (for example: compatibility first for parts/accessories; type, size, color, material for apparel; model and capacity for electronics).
+- Front-load the highest-intent search terms; least important details last.
+- Include only details supported by the source data: product type, key specs, model/type descriptor, size, color, material, quantity, compatibility, primary use.
+- Use natural Title Case. No ALL CAPS words, no emojis, no symbols (no !, *, |, /), no quotes.
+- No keyword stuffing, no repeated words, no comma spam. Read like a clean, scannable title.
+- Do NOT invent specs, sizes, or features not present in the source data.
+- Do NOT include prices, currency, condition tags like "NEW", URLs, or identifiers (ASIN/UPC/EAN/ISBN/GTIN).`;
+
+    let titleRules = extTitlePrompt || defaultTitlePrompt;
+    // Remove output contract instructions and product data placeholder from ext_title_prompt to avoid JSON structural conflicts
+    titleRules = titleRules
+      .replace(/OUTPUT CONTRACT:[\s\S]*?(TITLE RULES:)/gi, "$1")
+      .replace(/BEFORE RETURNING:[\s\S]*$/gi, "")
+      .replace(/PRODUCT DATA:[\s\S]*?(TITLE RULES:)/gi, "$1")
+      .trim();
+
+    const prompt = `${basePrompt}
+
+ADDITIONAL REQUIREMENT:
+You MUST also generate a distinct, keyword-optimized eBay title.
+Add a new key "ebay_title" at the root of the JSON object.
+Generate this title strictly following the Title Copywriter rules below:
+
+${titleRules}
+`;
 
     const useDirectOpenAI = apiProvider === 'openai' && adminApiKey && adminApiKey.startsWith('sk-') && adminApiKey.length > 20;
     console.log(`[generate-description] Using ${useDirectOpenAI ? 'Direct OpenAI' : 'Lovable AI Gateway'} with model: ${model}`);
@@ -290,6 +339,7 @@ Price: {price}`,
 
     // 3) Process and render sections
     let aiJson: Record<string, any> = {};
+    let generatedTitle = '';
     try {
       // Remove any potential code block wrapper formatting from AI response
       const cleanJsonStr = responseContent
@@ -297,6 +347,9 @@ Price: {price}`,
         .replace(/```\n?/gi, '')
         .trim();
       aiJson = JSON.parse(cleanJsonStr);
+      if (aiJson && aiJson.ebay_title) {
+        generatedTitle = String(aiJson.ebay_title).trim();
+      }
     } catch (e) {
       console.warn('[generate-description] JSON parsing failed, using safe fallback:', e);
       // Fallback: Populate active AI keys using input data
@@ -307,14 +360,31 @@ Price: {price}`,
       };
     }
 
+    // Programmatic failsafe for title
+    if (!generatedTitle) {
+      const baseTitle = title || 'Product';
+      generatedTitle = `${brand ? brand + ' ' : ''}${baseTitle} - Premium Quality Free Shipping`;
+    }
+
+    // Process title to strictly enforce 80 characters programmatically as a final failsafe
+    if (generatedTitle.length > 80) {
+      const truncated = generatedTitle.substring(0, 80);
+      const lastSpace = truncated.lastIndexOf(' ');
+      generatedTitle = lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated;
+    }
+
     // 4) Render sections via shared module (HTML or Plaintext)
     const renderedDescription = renderSections(config, aiJson, normalizedProduct);
 
     // 5) Post-generation sanitation via shared module
-    const finalDescription = sanitize(renderedDescription, config.exclusion_rules);
+    let finalDescription = sanitize(renderedDescription, config.exclusion_rules);
+
+    // 6) Enforce minimum length of 500 characters
+    finalDescription = ensureMinimumLength(finalDescription, config.output_format);
 
     return new Response(JSON.stringify({ 
       success: true, 
+      title: generatedTitle,
       description: finalDescription,
       provider: useDirectOpenAI ? 'openai' : 'lovable',
       model,

@@ -165,6 +165,26 @@
     },
     {
       "matches": [
+        "*://*.ebay.com/*",
+        "*://*.ebay.co.uk/*",
+        "*://*.ebay.de/*",
+        "*://*.ebay.fr/*",
+        "*://*.ebay.com.au/*",
+        "*://*.ebay.it/*",
+        "*://*.ebay.es/*"
+      ],
+      "js": [
+        "common/listing-card-core.js",
+        "content_scripts/ebay_item_scraper.js",
+        "content_scripts/listing_card_injector.js"
+      ],
+      "css": [
+        "ui/listing-card.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
         "https://www.ebay.com/sh/ord*",
         "https://www.ebay.com/mesh/ord*",
         "https://www.ebay.com/sh/reports*"
@@ -233,6 +253,7 @@
         "common/sync-utils.js",
         "ui/panel.html",
         "ui/panel.css",
+        "ui/listing-card.css",
         "ui/editor-popup.html",
         "ui/editor_frame.html",
         "ui/editor-popup.css",

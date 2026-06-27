@@ -16,11 +16,9 @@
 // 11. message-router.js           - Registers the single main runtime.onMessage router layer
 // ═══════════════════════════════════════════════════════════
 
-import './setup.js';
-
 // Global helper functions to be shared across imported scripts
-window.getUrls = () => typeof window.ExtensionConfig !== 'undefined' ? window.ExtensionConfig.URLS : null;
-window.getApiKeys = () => typeof window.ExtensionConfig !== 'undefined' ? window.ExtensionConfig.API_KEYS : null;
+const getUrls = () => typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.URLS : null;
+const getApiKeys = () => typeof ExtensionConfig !== 'undefined' ? ExtensionConfig.API_KEYS : null;
 
 // Set on every SW init — lost on SW restart if only set in event listeners
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -79,21 +77,27 @@ if (chrome.storage && chrome.storage.session && typeof chrome.storage.session.se
   });
 }
 
-import '../common/config.js';
-import '../common/constants.js';
-import '../common/auth-helper.js';
-import '../common/performance.js';
-import '../common/message-handler.js';
-import '../common/retry-helper.js';
-import '../common/api-client.js';
-import '../common/sync-utils.js';
-import '../common/sku-engine.js';
-import '../common/ebay-image-helper.js';
-import '../common/ebay-listing-api.js';
-import './bulk-core.js';
-import './listing-runner.js';
-import './alarm-handler.js';
-import './message-router.js';
+if (typeof window === 'undefined') {
+  self.window = self;
+}
+
+importScripts(
+  '../common/config.js',
+  '../common/constants.js',
+  '../common/auth-helper.js',
+  '../common/performance.js',
+  '../common/message-handler.js',
+  '../common/retry-helper.js',
+  '../common/api-client.js',
+  '../common/sync-utils.js',
+  '../common/sku-engine.js',
+  '../common/ebay-image-helper.js',
+  '../common/ebay-listing-api.js',
+  'bulk-core.js',
+  'listing-runner.js',
+  'alarm-handler.js',
+  'message-router.js'
+);
 
 if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES?.DEBUG_MODE) {
   console.log('✅ Background Service Worker Entry Point Fully Initialized');

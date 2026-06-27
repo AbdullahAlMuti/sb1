@@ -8,6 +8,13 @@ const IGNORE_LIST = [
   'dist',
   'node_modules',
   '.git',
+  '.gitignore',
+  '.prettierrc',
+  'eslint.config.js',
+  'jsconfig.json',
+  'vite.config.js',
+  'vite.config.amazon.js',
+  'vite.config.walmart.js',
   'scripts',
   'manifest.dev.json',
   'manifest.prod.json',
@@ -16,6 +23,28 @@ const IGNORE_LIST = [
   'package-lock.json',
   'fix_ui.js'
 ];
+
+function copyFileSyncSafe(src, dest) {
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      fs.copyFileSync(src, dest);
+      return;
+    } catch (err) {
+      if (err.code === 'EBUSY' && retries > 1) {
+        retries--;
+        const limit = Date.now() + 100;
+        while (Date.now() < limit) {}
+      } else {
+        if (fs.existsSync(dest)) {
+          console.warn(`⚠️ Warning: Could not overwrite locked file ${dest}, using existing version.`);
+          return;
+        }
+        throw err;
+      }
+    }
+  }
+}
 
 function copyDir(src, dest) {
   if (!fs.existsSync(dest)) {
@@ -35,7 +64,7 @@ function copyDir(src, dest) {
     if (entry.isDirectory()) {
       copyDir(srcPath, destPath);
     } else {
-      fs.copyFileSync(srcPath, destPath);
+      copyFileSyncSafe(srcPath, destPath);
     }
   }
 }

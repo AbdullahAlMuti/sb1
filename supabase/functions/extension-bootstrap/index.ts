@@ -113,6 +113,15 @@ Deno.serve(async (req) => {
       metadata: { subscription_status: subscriptionStatus },
     });
 
+    // Fetch profile settings for listing template selection
+    const { data: profileSettings } = await supabase
+      .from("profiles")
+      .select("settings")
+      .eq("id", context.profile.id)
+      .maybeSingle();
+    const settings = (profileSettings?.settings as Record<string, unknown>) || {};
+    const selectedListingTemplateId = settings.selected_listing_template_id as string || 'default-professional';
+
     return jsonResponse({
       success: true,
       user: {
@@ -121,6 +130,7 @@ Deno.serve(async (req) => {
         fullName: context.profile.full_name,
         accountStatus: context.profile.account_status || (context.profile.is_active ? "Active" : "Suspended"),
         credits: context.profile.credits ?? 0,
+        selectedListingTemplateId,
       },
       workspace: {
         id: context.workspace.id,

@@ -129,7 +129,7 @@ export function renderSections(config: DescriptionConfig, aiJson: Record<string,
   }
 
   // HTML Rendering
-  let html = `<div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">\n`;
+  let html = `<div>\n`;
 
   for (const s of sortedSections) {
     if (!s.enabled) continue;
@@ -137,21 +137,21 @@ export function renderSections(config: DescriptionConfig, aiJson: Record<string,
     if (s.type === 'opening') {
       if (s.key === 'title') {
         const titleText = productData.title || 'Premium Product';
-        html += `  <h2 style="color: #333; margin: 15px 0;">${titleText}</h2>\n`;
+        html += `  <h2>${titleText}</h2>\n`;
       } else {
         const content = aiJson[s.key] || '';
         if (content) {
-          html += `  <div style="margin: 15px 0;">\n    <p>${content}</p>\n  </div>\n`;
+          html += `  <div>\n    <p>${content}</p>\n  </div>\n`;
         }
       }
     } else if (s.type === 'features') {
       const bullets = aiJson[s.key];
       if (Array.isArray(bullets) && bullets.length > 0) {
-        html += `  <div style="margin: 15px 0;">\n`;
+        html += `  <div>\n`;
         if (s.title) {
-          html += `    <h3 style="color: #0066c0; border-bottom: 2px solid #0066c0; padding-bottom: 5px; margin-bottom: 10px;">${s.title}</h3>\n`;
+          html += `    <h3>${s.title}</h3>\n`;
         }
-        html += `    <ul style="line-height: 1.8; margin-left: 20px;">\n`;
+        html += `    <ul>\n`;
         html += bullets.map((f: string) => `      <li>${f}</li>`).join('\n') + `\n`;
         html += `    </ul>\n  </div>\n`;
       }
@@ -164,36 +164,31 @@ export function renderSections(config: DescriptionConfig, aiJson: Record<string,
             const label = item.label || item.name || '';
             const value = item.value || item.val || '';
             if (label && value) {
-              rows += `      <tr><td style="padding: 8px; border: 1px solid #ddd; width: 30%;"><strong>${label}</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${value}</td></tr>\n`;
+              rows += `      <tr><td><strong>${label}</strong></td><td>${value}</td></tr>\n`;
             }
           }
         }
       } else if (specs && typeof specs === 'object') {
         for (const [key, val] of Object.entries(specs)) {
-          rows += `      <tr><td style="padding: 8px; border: 1px solid #ddd; width: 30%;"><strong>${key}</strong></td><td style="padding: 8px; border: 1px solid #ddd;">${val}</td></tr>\n`;
+          rows += `      <tr><td><strong>${key}</strong></td><td>${val}</td></tr>\n`;
         }
       }
 
       if (rows) {
-        html += `  <div style="margin: 15px 0;">\n`;
+        html += `  <div>\n`;
         if (s.title) {
-          html += `    <h3 style="color: #0066c0; border-bottom: 2px solid #0066c0; padding-bottom: 5px; margin-bottom: 10px;">${s.title}</h3>\n`;
+          html += `    <h3>${s.title}</h3>\n`;
         }
-        html += `    <table style="width: 100%; border-collapse: collapse;">\n`;
+        html += `    <table>\n`;
         html += rows;
         html += `    </table>\n  </div>\n`;
       }
     } else {
       const content = s.static_html || aiJson[s.key] || '';
       if (content) {
-        const titleColor = s.type === 'returns' ? '#2e7d32' : '#333';
-        const bgColor = s.type === 'returns' ? '#e8f5e9' : s.type === 'shipping' ? '#f5f5f5' : 'transparent';
-        const padding = bgColor !== 'transparent' ? '15px' : '0px';
-        const borderRadius = bgColor !== 'transparent' ? '5px' : '0px';
-
-        html += `  <div style="background: ${bgColor}; padding: ${padding}; margin: 15px 0; border-radius: ${borderRadius};">\n`;
+        html += `  <div>\n`;
         if (s.title && s.type !== 'contact') {
-          html += `    <h3 style="color: ${titleColor}; margin-top: 0; margin-bottom: 10px;">${s.title}</h3>\n`;
+          html += `    <h3>${s.title}</h3>\n`;
         }
         html += `    ${content}\n`;
         html += `  </div>\n`;
@@ -278,6 +273,64 @@ export function sanitize(text: string, rules: ExclusionRules): string {
   cleaned = cleaned.replace(/\s+/g, ' ');
   // Restore basic linebreaks if it was formatted, or make sure tags are preserved
   cleaned = cleaned.replace(/>\s+</g, '><').trim();
+ 
+  // 9. Strip all style attributes to enforce "no css"
+  cleaned = cleaned.replace(/\s*style="[^"]*"/gi, '');
 
   return cleaned;
+}
+
+/**
+ * Ensures that the plain text content of the final description is at least 500 characters.
+ * If it is shorter, it appends high-quality, professional eBay store policy and service details.
+ */
+export function ensureMinimumLength(description: string, outputFormat: 'html_ebay_safe' | 'plaintext'): string {
+  const getWordCount = (str: string) => {
+    const plainText = str.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    return plainText.split(/\s+/).filter(w => w.length > 0).length;
+  };
+
+  const currentWordCount = getWordCount(description);
+  if (currentWordCount >= 650) {
+    return description;
+  }
+
+  const deficit = 650 - currentWordCount;
+  console.log(`[description] Word count is ${currentWordCount} (under 650 limit). Padding by ${deficit} words...`);
+
+  const paddingPool = [
+    "We are dedicated to providing our customers with the highest quality products and an exceptional shopping experience. Every item in our selection is carefully sourced, inspected, and verified to ensure it meets our strict quality standards before it is prepared for shipment. We work closely with leading manufacturers and logistics partners to deliver reliable, high-performing merchandise that meets your expectations.",
+    "Our customer support team is always available to assist you with any questions, inquiries, or concerns you may have before or after making a purchase. We are committed to responding to all customer messages within 24 hours, providing prompt, courteous, and efficient service. Your satisfaction is our absolute top priority, and we are always happy to help resolve any issues to your complete satisfaction.",
+    "To maintain the optimal condition and longevity of your purchase, we recommend following standard care and maintenance guidelines. Keep products stored in a clean, dry environment away from extreme temperatures and moisture when not in use. Regular care and proper handling will ensure the product continues to perform reliably for a long time.",
+    "We appreciate your valued business and feedback. As an independent seller, we strive to earn your positive feedback and five-star ratings. If you feel that your purchase did not meet your expectations in any way, please reach out to us directly through messages before leaving feedback so we can immediately address and resolve any issues.",
+    "We ensure that our packaging procedures follow strict protective protocols. Every single order is wrapped securely using bubble wrap, robust cardboard packaging, and damage-resistant packing materials to cushion it during transit. Our fulfillment team monitors shipments closely to ensure smooth transition from processing to final delivery, protecting your investment from start to finish.",
+    "In addition to product quality, we prioritize environmental responsibility and sustainability. Our packaging materials are chosen with eco-friendly standards in mind, utilizing recyclable and biodegradable options whenever possible to reduce our carbon footprint. By supporting our store, you are contributing to a greener and more sustainable community of online shoppers.",
+    "Furthermore, our storage facilities are temperature-controlled and maintained to prevent any degradation of inventory. This ensures that every item shipped is in pristine, brand-new condition, free from environmental dust, moisture, or age wear. We continuously upgrade our facilities to guarantee the highest storage quality.",
+    "We also coordinate closely with international logistics carriers to expand our delivery coverage, ensuring that orders reach various regions safely. Every package is assigned a unique tracking number, enabling you to trace its transit journey in real-time. We guarantee that your items will arrive in a secure and timely manner."
+  ];
+
+  let padded = description.trim();
+  const closingDiv = "</div>";
+  let poolIndex = 0;
+
+  // Let's assemble the padding blocks
+  let paddingHtml = "\n  <div>\n    <h3>Quality Assurance & Seller Policies</h3>\n";
+  let paddingText = "\n\n=== Quality Assurance & Seller Policies ===\n";
+
+  while (getWordCount(padded) < 650) {
+    const nextParagraph = paddingPool[poolIndex % paddingPool.length];
+    paddingHtml += `    <p>${nextParagraph}</p>\n`;
+    paddingText += `${nextParagraph}\n\n`;
+    
+    if (outputFormat === 'plaintext') {
+      padded = description.trim() + paddingText;
+    } else {
+      const closing = description.trim().endsWith(closingDiv) ? closingDiv : "";
+      const base = description.trim().endsWith(closingDiv) ? description.trim().substring(0, description.trim().length - closingDiv.length) : description.trim();
+      padded = base + paddingHtml + "  </div>\n" + closing;
+    }
+    poolIndex++;
+  }
+
+  return padded;
 }

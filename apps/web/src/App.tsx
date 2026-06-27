@@ -33,6 +33,7 @@ import Checkout from "./pages/billing/Checkout";
 import PaymentCancelled from "./pages/billing/PaymentCancelled";
 import ChoosePlan from "./pages/billing/PaymentRequired";
 import Subscription from "./pages/dashboard/Subscription";
+import ListingTemplates from "./pages/dashboard/ListingTemplates";
 
 import ShopifyLayout from "./pages/integrations/shopify/ShopifyLayout";
 import ShopifyDashboard from "./pages/integrations/shopify/ShopifyDashboard";
@@ -162,6 +163,7 @@ const EbayRoutes = () => (
       <Route path="subscription" element={<Subscription />} />
       <Route path="billing" element={<Subscription />} />
       <Route path="settings" element={<DashboardSettings />} />
+      <Route path="templates" element={<ListingTemplates />} />
     </Route>
   </Routes>
 );
@@ -193,7 +195,7 @@ const App = () => (
 
                 {/* Canonical checkout entry: validates ?plan and starts a Stripe session */}
                 <Route path="/checkout" element={<Checkout />} />
-                <Route path="/billing" element={<Navigate to="/checkout?plan=trial" replace />} />
+                <Route path="/billing" element={<Navigate to="/choose-plan" replace />} />
                 {/* Canonical payment-result pages */}
                 <Route path="/payment-success" element={<CheckoutSuccess />} />
                 <Route path="/payment-cancelled" element={<PaymentCancelled />} />
@@ -230,6 +232,7 @@ const App = () => (
                 <Route path="/dashboard/profitable-products" element={<Navigate to="/dashboard/ebay/profitable-products" replace />} />
                 <Route path="/dashboard/product-research" element={<Navigate to="/dashboard/ebay/product-research" replace />} />
                 <Route path="/dashboard/settings" element={<Navigate to="/dashboard/ebay/settings" replace />} />
+                <Route path="/dashboard/templates" element={<Navigate to="/dashboard/ebay/templates" replace />} />
 
                 <Route path="/dashboard/ebay/*" element={<EbayRoutes />} />
                 <Route path="/dashboard/shopify/*" element={<ShopifyRoutes />} />

@@ -499,6 +499,7 @@ const AuthHelper = (() => {
           userPlan: result.user.plan,
           userCredits: result.user.credits,
           userEmail: result.user.email,
+          selectedListingTemplateId: result.user.selectedListingTemplateId || 'default-professional',
           authTimestamp: Date.now()
         });
 

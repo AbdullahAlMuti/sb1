@@ -146,7 +146,11 @@ const ExtensionConstants = (() => {
     api: '🌐'
   });
 
+  // 🌐 WEB APPLICATION BASE URL
+  const WEB_BASE_URL = 'https://sellersuit.com';
+
   return Object.freeze({
+    WEB_BASE_URL,
     STORAGE_KEYS,
     ACTIONS,
     AMAZON_SELECTORS,
