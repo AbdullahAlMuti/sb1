@@ -224,6 +224,8 @@ serve(async (req) => {
     logStep("User plan updated", { userId, planName: planData.name });
   };
 
+  let claimedEventId: string | null = null;
+
   try {
     logStep("Webhook received");
 
@@ -270,7 +272,13 @@ serve(async (req) => {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-      switch (event.type) {
+    }
+
+    // Insert above succeeded (not a duplicate) - we now own this event id.
+    // If processing throws, the catch block releases the claim so Stripe retries.
+    claimedEventId = event.id;
+
+    switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
         logStep("Checkout completed", { 
@@ -348,6 +356,15 @@ serve(async (req) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message: errorMessage });
+    // Release the idempotency claim so Stripe's retry can re-process this event.
+    if (claimedEventId) {
+      try {
+        await supabase.from("stripe_events").delete().eq("id", claimedEventId);
+        logStep("Released idempotency claim for retry", { id: claimedEventId });
+      } catch (releaseErr) {
+        logStep("Failed to release idempotency claim", { error: String(releaseErr) });
+      }
+    }
     await sendErrorAlert("Unhandled exception in Stripe webhook handler", {
       error: errorMessage,
       stack: error instanceof Error ? error.stack : undefined,
