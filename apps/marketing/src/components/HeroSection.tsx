@@ -1,74 +1,156 @@
-import { ArrowRight } from "lucide-react";
-import { motion } from "framer-motion";
+import { useState, useEffect, useRef } from "react";
+import { ArrowRight, Chrome } from "lucide-react";
+import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
 import { siteConfig } from "@/config/siteConfig";
 import { useReducedMotion } from "@/lib/useReducedMotion";
-import { CtaButton } from "@/components/primitives/CtaButton";
-import ExtensionSimulator from "@/components/ExtensionSimulator";
+import DashboardMockup from "@/components/DashboardMockup";
+
+const ROTATING_WORDS = ["one click.", "30 seconds.", "one workflow.", "auto-pilot."];
 
 const HeroSection = () => {
   const { hero } = siteConfig;
   const reduced = useReducedMotion();
+  const [wordIndex, setWordIndex] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const fadeProps = reduced
-    ? {}
-    : {
-        initial: { opacity: 0, y: 18 },
-        animate: { opacity: 1, y: 0 },
-        transition: { duration: 0.5, ease: [0.19, 1, 0.22, 1] as const },
-      };
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ["start end", "end start"],
+  });
+
+  const yTransform = useTransform(scrollYProgress, [0, 1], [40, -40]);
+  const scaleTransform = useTransform(scrollYProgress, [0, 1], [0.96, 1.04]);
+
+  const y = reduced ? 0 : yTransform;
+  const scale = reduced ? 1 : scaleTransform;
+
+  useEffect(() => {
+    if (reduced) return;
+    const t = setInterval(() => {
+      setWordIndex((i) => (i + 1) % ROTATING_WORDS.length);
+    }, 2200);
+    return () => clearInterval(t);
+  }, [reduced]);
+
+  const fadeUp = (delay = 0) =>
+    reduced
+      ? {}
+      : {
+          initial: { opacity: 0, y: 20 },
+          animate: { opacity: 1, y: 0 },
+          transition: { duration: 0.55, delay, ease: [0.19, 1, 0.22, 1] as const },
+        };
 
   return (
-    <section className="relative overflow-hidden border-b border-border bg-hero-gradient pt-12 sm:pt-16">
-      <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(to_right,hsl(var(--border))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border))_1px,transparent_1px)] bg-[size:56px_56px] opacity-[0.18]" />
-      <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-background to-transparent pointer-events-none" />
+    <section ref={containerRef} className="relative overflow-hidden bg-[#f7f8fa] pt-20 pb-0">
+      {/* Subtle dot grid */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle, #d1d5db 1px, transparent 1px)",
+          backgroundSize: "32px 32px",
+          opacity: 0.45,
+        }}
+      />
+      {/* Bottom fade */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#f7f8fa] to-transparent"
+      />
 
-      <div className="container relative px-4 pb-16 sm:pb-20">
-        <div className="grid items-center gap-10 lg:grid-cols-[0.9fr_1.1fr]">
-          <motion.div {...fadeProps} className="max-w-2xl text-left">
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm sm:text-sm">
-              <span className="h-2 w-2 rounded-full bg-success" />
-              {hero.eyebrow}
-            </div>
+      <div className="relative container mx-auto flex flex-col items-center px-4 text-center">
+        {/* ── Announcement badge ── */}
+        <motion.div {...fadeUp(0)} className="mb-6">
+          <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-1.5 text-sm font-medium text-gray-600 shadow-sm">
+            <span className="rounded-full bg-gray-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+              NEW
+            </span>
+            {hero.eyebrow}
+            <ArrowRight className="h-3.5 w-3.5 text-gray-400" />
+          </span>
+        </motion.div>
 
-            <h1 className="font-display text-4xl font-bold tracking-tight text-foreground sm:text-5xl lg:text-6xl text-balance">
-              {hero.titleLead} <span className="gradient-text">{hero.titleHighlight}</span>
-            </h1>
+        {/* ── Headline ── */}
+        <motion.h1
+          {...fadeUp(0.08)}
+          className="max-w-3xl text-5xl font-bold tracking-tight text-gray-900 sm:text-6xl lg:text-[4.25rem] leading-[1.1]"
+        >
+          List winning products
+          <br />
+          to eBay in{" "}
+          {/* Rotating word */}
+          <span className="relative inline-block min-w-[9rem] text-left align-bottom">
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={wordIndex}
+                initial={reduced ? {} : { opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduced ? {} : { opacity: 0, y: -14 }}
+                transition={{ duration: 0.28, ease: "easeInOut" }}
+                className="absolute left-0 text-gray-400"
+              >
+                {ROTATING_WORDS[wordIndex]}
+              </motion.span>
+            </AnimatePresence>
+            {/* invisible spacer keeps line height stable */}
+            <span aria-hidden className="invisible">
+              {ROTATING_WORDS.reduce((a, b) => (a.length >= b.length ? a : b))}
+            </span>
+          </span>
+        </motion.h1>
 
-            <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
-              {hero.subtitle}
-            </p>
+        {/* ── Subtitle ── */}
+        <motion.p
+          {...fadeUp(0.16)}
+          className="mt-5 max-w-xl text-base leading-7 text-gray-500 sm:text-lg"
+        >
+          {hero.subtitle}
+        </motion.p>
 
-            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-              <CtaButton cta={hero.primaryCta} size="xl" className="rounded-lg shadow-glow-primary">
-                {hero.primaryCta.label}
-                <ArrowRight className="h-4 w-4" />
-              </CtaButton>
-              <CtaButton cta={hero.secondaryCta} variant="outline" size="xl" className="rounded-lg" />
-            </div>
-
-            <dl className="mt-9 grid max-w-lg grid-cols-3 gap-4 border-t border-border pt-6">
-              {hero.stats.map((stat) => (
-                <div key={stat.label}>
-                  <dt className="font-display text-2xl font-bold text-foreground sm:text-3xl">{stat.value}</dt>
-                  <dd className="mt-1 text-xs text-muted-foreground sm:text-sm">{stat.label}</dd>
-                </div>
-              ))}
-            </dl>
-          </motion.div>
-
-          <motion.div
-            {...(reduced
-              ? {}
-              : {
-                  initial: { opacity: 0, scale: 0.96 },
-                  animate: { opacity: 1, scale: 1 },
-                  transition: { duration: 0.6, delay: 0.1, ease: [0.19, 1, 0.22, 1] as const },
-                })}
-            className="relative w-full"
+        {/* ── CTAs ── */}
+        <motion.div
+          {...fadeUp(0.24)}
+          className="mt-8 flex flex-col items-center gap-3 sm:flex-row"
+        >
+          <a
+            href={hero.secondaryCta.href}
+            className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
           >
-            <ExtensionSimulator />
+            {hero.secondaryCta.label}
+          </a>
+          <a
+            href={hero.primaryCta.href}
+            target={hero.primaryCta.external ? "_blank" : undefined}
+            rel={hero.primaryCta.external ? "noopener noreferrer" : undefined}
+            className="inline-flex items-center gap-2 rounded-full bg-gray-900 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800"
+          >
+            <Chrome className="h-4 w-4" />
+            {hero.primaryCta.label}
+            <ArrowRight className="h-4 w-4" />
+          </a>
+        </motion.div>
+
+        {/* ── Dashboard mockup ── */}
+        <motion.div
+          {...(reduced
+            ? {}
+            : {
+                initial: { opacity: 0, y: 40, scale: 0.97 },
+                animate: { opacity: 1, y: 0, scale: 1 },
+                transition: {
+                  duration: 0.75,
+                  delay: 0.35,
+                  ease: [0.19, 1, 0.22, 1] as const,
+                },
+              })}
+          className="mt-14 w-full max-w-5xl"
+        >
+          <motion.div style={{ y, scale }} className="w-full">
+            <DashboardMockup />
           </motion.div>
-        </div>
+        </motion.div>
       </div>
     </section>
   );
