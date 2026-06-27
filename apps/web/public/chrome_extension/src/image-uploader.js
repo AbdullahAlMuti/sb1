@@ -149,31 +149,46 @@ class ImageUploadSystem {
 
     async getStoredImages() {
         return new Promise((resolve) => {
-            chrome.storage.local.get(['watermarkedImages', 'imageUrls'], (result) => {
-                this.logger.info('═══════════════════════════════════════════════════════');
-                this.logger.info('🔍 Checking storage for images...');
-                this.logger.info('═══════════════════════════════════════════════════════');
-                this.logger.info('📦 Raw storage result keys:', Object.keys(result));
-                this.logger.info('📦 watermarkedImages present:', !!result.watermarkedImages);
-                this.logger.info('📦 imageUrls present:', !!result.imageUrls);
-                
-                if (result.watermarkedImages) {
-                    this.logger.info(`📸 watermarkedImages array length: ${result.watermarkedImages.length}`);
-                    if (result.watermarkedImages.length > 0) {
-                        this.logger.info(`📸 First image preview: ${result.watermarkedImages[0].substring(0, 100)}...`);
-                        this.logger.info(`📸 First image length: ${result.watermarkedImages[0].length} chars`);
-                        this.logger.info(`📸 First image is Data URL: ${result.watermarkedImages[0].startsWith('data:image')}`);
+            const getSessionStorage = () => {
+                if (chrome.storage && chrome.storage.session) {
+                    return new Promise((res) => {
+                        chrome.storage.session.get(['watermarkedImages'], (result) => {
+                            res(result?.watermarkedImages || null);
+                        });
+                    });
+                }
+                return Promise.resolve(null);
+            };
+
+            getSessionStorage().then((sessionImages) => {
+                chrome.storage.local.get(['watermarkedImages', 'imageUrls'], (result) => {
+                    this.logger.info('═══════════════════════════════════════════════════════');
+                    this.logger.info('🔍 Checking storage for images...');
+                    this.logger.info('═══════════════════════════════════════════════════════');
+                    
+                    const finalWatermarked = sessionImages || result.watermarkedImages;
+                    
+                    this.logger.info('📦 Raw storage result keys:', Object.keys(result));
+                    this.logger.info('📦 watermarkedImages present (session or local):', !!finalWatermarked);
+                    this.logger.info('📦 imageUrls present:', !!result.imageUrls);
+                    
+                    if (finalWatermarked) {
+                        this.logger.info(`📸 watermarkedImages array length: ${finalWatermarked.length}`);
+                        if (finalWatermarked.length > 0) {
+                            this.logger.info(`📸 First image preview: ${finalWatermarked[0].substring(0, 100)}...`);
+                            this.logger.info(`📸 First image length: ${finalWatermarked[0].length} chars`);
+                            this.logger.info(`📸 First image is Data URL: ${finalWatermarked[0].startsWith('data:image')}`);
+                        }
                     }
-                }
-                
-                if (result.imageUrls) {
-                    this.logger.info(`🌐 imageUrls array length: ${result.imageUrls.length}`);
-                }
-                
-                // Try watermarkedImages first, then fallback to imageUrls
-                let images = result.watermarkedImages || result.imageUrls || [];
-                this.logger.info(`📸 Total images array length: ${images.length}`);
-                this.logger.info(`📸 Images array type: ${Array.isArray(images) ? 'Array' : typeof images}`);
+                    
+                    if (result.imageUrls) {
+                        this.logger.info(`🌐 imageUrls array length: ${result.imageUrls.length}`);
+                    }
+                    
+                    // Try watermarkedImages first, then fallback to imageUrls
+                    let images = finalWatermarked || result.imageUrls || [];
+                    this.logger.info('📸 Total images array length:', images.length);
+                    this.logger.info('📸 Images array type:', Array.isArray(images) ? 'Array' : typeof images);
                 
                 // Filter and validate images
                 const validImages = images.filter((img, index) => {
@@ -253,63 +268,24 @@ class ImageUploadSystem {
 
     async convertImagesToFiles(images) {
         const files = [];
-        this.logger.info(`🔄 Converting ${images.length} images to files...`);
+        this.logger.info(`🔄 Converting ${images.length} images to files via unified gateway...`);
         
         for (let i = 0; i < images.length; i++) {
             try {
                 const image = images[i];
-                let file;
-                
-                if (image.startsWith('data:image/')) {
-                    // Handle data URL
-                    this.logger.info(`📸 Converting data URL image ${i + 1}...`);
-                    file = this.dataUrlToFile(image, `product_image_${i + 1}.jpg`);
-                } else if (image.startsWith('http')) {
-                    // Handle regular URL - fetch and convert
-                    this.logger.info(`🌐 Fetching URL image ${i + 1}: ${image.substring(0, 50)}...`);
-                    file = await this.urlToFile(image, `product_image_${i + 1}.jpg`);
-                } else {
-                    this.logger.warn(`⚠️ Unknown image format for image ${i + 1}, skipping`);
-                    continue;
-                }
-                
+                this.logger.info(`📸 Processing image ${i + 1}/${images.length} through unified gateway...`);
+                const file = await window.prepareImageForEbayUpload(image, i);
                 if (file) {
                     files.push(file);
-                    this.logger.info(`✅ Successfully converted image ${i + 1} (${file.size} bytes)`);
+                    this.logger.info(`✅ Successfully prepared image ${i + 1} (${file.size} bytes, type: ${file.type})`);
                 }
             } catch (error) {
-                this.logger.error(`❌ Failed to convert image ${i + 1} to file:`, error);
+                this.logger.error(`❌ Failed to prepare image ${i + 1}:`, error);
             }
         }
         
         this.logger.info(`✅ Converted ${files.length}/${images.length} images to files`);
         return files;
-    }
-
-    dataUrlToFile(dataUrl, filename) {
-        const arr = dataUrl.split(',');
-        const mime = arr[0].match(/:(.*?);/)[1];
-        const bstr = atob(arr[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) {
-            u8arr[n] = bstr.charCodeAt(n);
-        }
-        return new File([u8arr], filename, { type: mime });
-    }
-    
-    async urlToFile(url, filename) {
-        return new Promise((resolve) => {
-            chrome.runtime.sendMessage({ action: "FETCH_IMAGE_AS_BASE64", url: url }, (response) => {
-                if (response && response.success) {
-                    const file = this.dataUrlToFile(response.base64, filename);
-                    resolve(file);
-                } else {
-                    this.logger.error(`❌ Failed to fetch URL via background (${url}):`, response?.error);
-                    resolve(null);
-                }
-            });
-        });
     }
 
     async executeUploadStrategies(files) {
@@ -525,11 +501,20 @@ class ImageUploadSystem {
         this.logger.info('🗑️ Cleaning up images from Chrome storage (upload verified successful)...');
         chrome.storage.local.remove('watermarkedImages', () => {
             if (chrome.runtime.lastError) {
-                this.logger.error('Error cleaning up storage:', chrome.runtime.lastError);
+                this.logger.error('Error cleaning up local storage:', chrome.runtime.lastError);
             } else {
-                this.logger.info('✅ Storage cleanup successful.');
+                this.logger.info('✅ Local storage cleanup successful.');
             }
         });
+        if (chrome.storage && chrome.storage.session) {
+            chrome.storage.session.remove('watermarkedImages', () => {
+                if (chrome.runtime.lastError) {
+                    this.logger.error('Error cleaning up session storage:', chrome.runtime.lastError);
+                } else {
+                    this.logger.info('✅ Session storage cleanup successful.');
+                }
+            });
+        }
     }
 }
 

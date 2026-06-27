@@ -529,7 +529,11 @@ const SyncUtils = (() => {
   }
 
   async function getEbayOrdersCache() {
-    const result = await chrome.storage.local.get(['ebay_orders_cache_v1']);
+    const result = await chrome.storage.local.get(['ebay_orders_cache_v1', 'lastSyncTime']);
+    if (result.lastSyncTime && (Date.now() - result.lastSyncTime > 3600000)) {
+      await chrome.storage.local.remove(['ebay_orders_cache_v1', 'lastSyncTime']);
+      return null;
+    }
     return result['ebay_orders_cache_v1'] || null;
   }
 

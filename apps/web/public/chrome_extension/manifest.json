@@ -111,6 +111,7 @@
         "common/sku-engine.js",
         "common/variation-normalizer.js",
         "common/retry-helper.js",
+        "common/ebay-image-helper.js",
         "common/ebay-photo-uploader.js",
         "common/ebay-listing-api.js",
         "content_scripts/ebay_prelist.js"
@@ -128,6 +129,7 @@
         "common/sku-engine.js",
         "common/variation-normalizer.js",
         "common/retry-helper.js",
+        "common/ebay-image-helper.js",
         "common/ebay-photo-uploader.js",
         "common/ebay-listing-api.js",
         "content_scripts/ebay_bulkedit.js"
@@ -145,6 +147,7 @@
         "common/sku-engine.js",
         "common/images/core/image-schema.js",
         "common/images/core/image-cache.js",
+        "common/ebay-image-helper.js",
         "common/images/upload/ebay-image-uploader.js",
         "src/image-uploader.js"
       ],
@@ -186,6 +189,16 @@
         "common/config.js",
         "common/storage.js",
         "content_scripts/ebay_order_detail_scraper.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://www.ebay.com/sl/success*",
+        "*://www.ebay.com/lstng/success*"
+      ],
+      "js": [
+        "content_scripts/ebay_success.js"
       ],
       "run_at": "document_idle"
     },

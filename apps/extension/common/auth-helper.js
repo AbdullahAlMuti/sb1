@@ -19,6 +19,7 @@ const AuthHelper = (() => {
 
   let remoteConfigCache = null;
   let remoteConfigTimestamp = 0;
+  let remoteConfigPromise = null;
 
   function log(level, message, data = null) {
     if (!DEBUG && level === 'debug') return;
@@ -35,12 +36,17 @@ const AuthHelper = (() => {
       return remoteConfigCache;
     }
     
-    const defaults = {
-      extension_new_auth_enabled: false,
-      extension_legacy_fallback_enabled: true,
-      extension_pairing_fallback_enabled: true,
-      extension_auto_connect_enabled: false
-    };
+    if (remoteConfigPromise) {
+      return remoteConfigPromise;
+    }
+
+    remoteConfigPromise = (async () => {
+      const defaults = {
+        extension_new_auth_enabled: false,
+        extension_legacy_fallback_enabled: true,
+        extension_pairing_fallback_enabled: true,
+        extension_auto_connect_enabled: false
+      };
 
     try {
       // Try fetching from a safe public endpoint if it exists
@@ -76,9 +82,14 @@ const AuthHelper = (() => {
       extension_auto_connect_enabled: ExtensionConfig.FEATURES.EXTENSION_AUTO_CONNECT_ENABLED
     } : defaults;
 
-    remoteConfigCache = configDefaults;
-    remoteConfigTimestamp = Date.now();
-    return remoteConfigCache;
+      remoteConfigCache = configDefaults;
+      remoteConfigTimestamp = Date.now();
+      return remoteConfigCache;
+    })();
+
+    const result = await remoteConfigPromise;
+    remoteConfigPromise = null;
+    return result;
   }
 
   /**
@@ -233,7 +244,7 @@ const AuthHelper = (() => {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 7000);
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
       const response = await fetch(url, {
         method: 'POST',
         headers: {

@@ -27,7 +27,7 @@ const BULK_ALARM_RESUME = 'ss-bulk-resume';
 
 const SCRAPE_TIMEOUT_MS  = 90 * 1000;   // variant scrape clicks through options — give it room
 const UPLOAD_TIMEOUT_MS  = 5 * 60 * 1000;
-const LOCK_STALE_MS      = 8 * 60 * 1000;
+const LOCK_STALE_MS      = 5 * 60 * 1000;
 
 const bulkRuntime = {
   state: null,              // hydrated SSBulkCore state

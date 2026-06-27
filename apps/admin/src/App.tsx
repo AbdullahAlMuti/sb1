@@ -1,3 +1,4 @@
+import React, { Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "@repo/ui/components/ui/toaster";
@@ -29,33 +30,33 @@ import {
   Webhook,
 } from "lucide-react";
 
-import AdminLogin from "./pages/AdminLogin";
-import AdminDashboard from "./pages/AdminDashboard";
-import AdminUsers from "./pages/AdminUsers";
-import AdminNotices from "./pages/AdminNotices";
-import AdminBlog from "./pages/AdminBlog";
-import AdminBlogEditor from "./pages/AdminBlogEditor";
-import AdminAudit from "./pages/AdminAudit";
-import AdminSettings from "./pages/AdminSettings";
-import AdminUsage from "./pages/AdminUsage";
-import AdminRoles from "./pages/AdminRoles";
-import AdminPrompts from "./pages/AdminPrompts";
-import AdminAISettings from "./pages/AdminAISettings";
-import AdminDescriptionConfig from "./pages/AdminDescriptionConfig";
-import AdminBestSelling from "./pages/AdminBestSelling";
-import AdminMustSell from "./pages/AdminMustSell";
-import AdminExtension from "./pages/AdminExtension";
-import AdminExtensionControl from "./pages/AdminExtensionControl";
-import AdminProfitableProducts from "./pages/AdminProfitableProducts";
-import AdminModulePage from "./pages/AdminModulePage";
-import AdminShopifyApp from "./pages/AdminShopifyApp";
-import AdminEbayApp from "./pages/AdminEbayApp";
-import AdminIntegrationDetail from "./pages/AdminIntegrationDetail";
-import AdminPlans from "./pages/AdminPlans";
-import AdminPlanFeatures from "./pages/AdminPlanFeatures";
-import AdminPlanPrices from "./pages/AdminPlanPrices";
-import AdminSubscriptions from "./pages/AdminSubscriptions";
-import AdminCheckoutSessions from "./pages/AdminCheckoutSessions";
+const AdminLogin = React.lazy(() => import("./pages/AdminLogin"));
+const AdminDashboard = React.lazy(() => import("./pages/AdminDashboard"));
+const AdminUsers = React.lazy(() => import("./pages/AdminUsers"));
+const AdminNotices = React.lazy(() => import("./pages/AdminNotices"));
+const AdminBlog = React.lazy(() => import("./pages/AdminBlog"));
+const AdminBlogEditor = React.lazy(() => import("./pages/AdminBlogEditor"));
+const AdminAudit = React.lazy(() => import("./pages/AdminAudit"));
+const AdminSettings = React.lazy(() => import("./pages/AdminSettings"));
+const AdminUsage = React.lazy(() => import("./pages/AdminUsage"));
+const AdminRoles = React.lazy(() => import("./pages/AdminRoles"));
+const AdminPrompts = React.lazy(() => import("./pages/AdminPrompts"));
+const AdminAISettings = React.lazy(() => import("./pages/AdminAISettings"));
+const AdminDescriptionConfig = React.lazy(() => import("./pages/AdminDescriptionConfig"));
+const AdminBestSelling = React.lazy(() => import("./pages/AdminBestSelling"));
+const AdminMustSell = React.lazy(() => import("./pages/AdminMustSell"));
+const AdminExtension = React.lazy(() => import("./pages/AdminExtension"));
+const AdminExtensionControl = React.lazy(() => import("./pages/AdminExtensionControl"));
+const AdminProfitableProducts = React.lazy(() => import("./pages/AdminProfitableProducts"));
+const AdminModulePage = React.lazy(() => import("./pages/AdminModulePage"));
+const AdminShopifyApp = React.lazy(() => import("./pages/AdminShopifyApp"));
+const AdminEbayApp = React.lazy(() => import("./pages/AdminEbayApp"));
+const AdminIntegrationDetail = React.lazy(() => import("./pages/AdminIntegrationDetail"));
+const AdminPlans = React.lazy(() => import("./pages/AdminPlans"));
+const AdminPlanFeatures = React.lazy(() => import("./pages/AdminPlanFeatures"));
+const AdminPlanPrices = React.lazy(() => import("./pages/AdminPlanPrices"));
+const AdminSubscriptions = React.lazy(() => import("./pages/AdminSubscriptions"));
+const AdminCheckoutSessions = React.lazy(() => import("./pages/AdminCheckoutSessions"));
 
 const queryClient = new QueryClient();
 
@@ -137,19 +138,25 @@ const App = () => (
           <Sonner />
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <ErrorBoundary>
-              <Routes>
-                <Route path="/login" element={<AdminLogin />} />
-                <Route path="/auth" element={<AdminLogin />} />
-                <Route path="/admin/login" element={<AdminLogin />} />
-                <Route path="/" element={adminRouteElement}>
-                  {AdminRouteChildren()}
-                </Route>
-                <Route path="/admin" element={adminRouteElement}>
-                  {AdminRouteChildren()}
-                </Route>
-                <Route path="/dashboard" element={<Navigate to="/overview" replace />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
+              <Suspense fallback={
+                <div className="flex h-screen items-center justify-center bg-slate-50">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                </div>
+              }>
+                <Routes>
+                  <Route path="/login" element={<AdminLogin />} />
+                  <Route path="/auth" element={<AdminLogin />} />
+                  <Route path="/admin/login" element={<AdminLogin />} />
+                  <Route path="/" element={adminRouteElement}>
+                    {AdminRouteChildren()}
+                  </Route>
+                  <Route path="/admin" element={adminRouteElement}>
+                    {AdminRouteChildren()}
+                  </Route>
+                  <Route path="/dashboard" element={<Navigate to="/overview" replace />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
             </ErrorBoundary>
           </BrowserRouter>
         </TooltipProvider>

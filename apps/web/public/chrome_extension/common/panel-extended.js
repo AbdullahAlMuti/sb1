@@ -329,7 +329,7 @@ function _ssxRenderVariantRows(variants, p) {
 
 // ─── Reference-layout renderer (UI only — reuses live nodes/handlers) ─────────
 
-function _ssxRenderExtended(p) {
+async function _ssxRenderExtended(p) {
     if (!p) return;
     const variants = Array.isArray(p.variants) ? p.variants : [];
 
@@ -354,16 +354,33 @@ function _ssxRenderExtended(p) {
     // every supplier). Injectors stamp finalPrice at scan time on the Amazon
     // path; Walmart and future suppliers land here without it.
     if (window.SSPricingEngine) {
+        const storedCalc = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
+        const calcVals = storedCalc.calculatorValues || {};
+        const parseVal = (v, def) => {
+            if (v === null || v === undefined || v === '') return def;
+            const cleaned = String(v).replace(/[^\d.-]/g, '');
+            const n = parseFloat(cleaned);
+            return isNaN(n) ? def : n;
+        };
+        const pricingConfig = {
+            taxPercent:      parseVal(calcVals['tax-percent'],       9),
+            trackingFee:     parseVal(calcVals['tracking-fee'],      0.20),
+            ebayFeePercent:  parseVal(calcVals['ebay-fee-percent'],  20),
+            promoFeePercent: parseVal(calcVals['promo-fee-percent'], 10),
+            desiredProfit:   parseVal(calcVals['desired-profit'],    0),
+            paymentFixedFee: parseVal(calcVals['payment-fixed-fee'], 0.30)
+        };
+
         variants.forEach(v => {
             const rawCost = _ssxCleanFloat(v.raw_supplier_price ?? v.price);
             if (!_ssxCleanFloat(v.finalPrice) && rawCost > 0) {
-                v.finalPrice = window.SSPricingEngine.calculatePrice(rawCost, null);
+                v.finalPrice = window.SSPricingEngine.calculatePrice(rawCost, pricingConfig);
                 variantsUpdated = true;
             }
         });
         const baseCost = _ssxCleanFloat(p.raw_supplier_price ?? p.price);
         if (!_ssxCleanFloat(p.finalPrice) && baseCost > 0) {
-            p.finalPrice = window.SSPricingEngine.calculatePrice(baseCost, null);
+            p.finalPrice = window.SSPricingEngine.calculatePrice(baseCost, pricingConfig);
             variantsUpdated = true;
         }
     }
@@ -651,7 +668,7 @@ async function showSidebarExtended(opts = {}) {
         newBtn.addEventListener('click', _handleSidebarUpload);
     }
 
-    _ssxRenderExtended(p);
+    await _ssxRenderExtended(p);
 }
 
 // Explicit window exposure. Required: the bundler treeshakes side-effect-free

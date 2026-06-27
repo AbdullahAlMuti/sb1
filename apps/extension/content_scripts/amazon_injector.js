@@ -711,6 +711,28 @@ const scrapeProductDetails = () => {
         details.description = descriptionElement.innerText.trim();
     }
 
+    // --- Fallback: Extract from raw innerText if specs are missing ---
+    if (!details.weight || !details.dimensions || !details.brand) {
+        const text = document.body.innerText || '';
+        if (!details.weight) {
+            const weightMatch = text.match(/(?:Item\s+)?Weight\s*:?\s*([0-9.]+\s*(?:ounces|oz|pounds|lbs|g|kg))/i);
+            if (weightMatch) details.weight = weightMatch[1];
+        }
+        if (!details.dimensions) {
+            const dimMatch = text.match(/(?:Product\s+)?Dimensions\s*:?\s*([0-9.]+\s*x\s*[0-9.]+\s*x\s*[0-9.]+\s*(?:inches|in|cm|mm))/i);
+            if (dimMatch) details.dimensions = dimMatch[1];
+        }
+        if (!details.brand) {
+            const brandMatch = text.match(/Brand\s*:?\s*([A-Za-z0-9\s&.\-]+)/i);
+            if (brandMatch) {
+                const brandStr = brandMatch[1].trim();
+                if (brandStr.length > 0 && brandStr.length < 50) {
+                    details.brand = brandStr;
+                }
+            }
+        }
+    }
+
     return details;
 };
 
@@ -2754,9 +2776,12 @@ const addEventListenersToPanel = () => {
     const pasteDescriptionBtn = document.getElementById('paste-description-btn');
 
     let lastGeneratedDescription = '';
+    let activeGenerationToken = null;
 
     if (generateDescriptionBtn) {
         generateDescriptionBtn.addEventListener('click', async () => {
+            const currentToken = Date.now().toString();
+            activeGenerationToken = currentToken;
             const originalContent = generateDescriptionBtn.innerHTML;
             generateDescriptionBtn.disabled = true;
 
@@ -2820,6 +2845,11 @@ const addEventListenersToPanel = () => {
                 console.log('═══════════════════════════════════════════════════════');
                 console.log(bgResp);
                 console.log('═══════════════════════════════════════════════════════');
+
+                if (activeGenerationToken !== currentToken) {
+                    console.log('Discarding late description response for old context');
+                    return;
+                }
 
                 if (!bgResp?.success) {
                     throw new Error(bgResp?.error || 'Failed to generate description');

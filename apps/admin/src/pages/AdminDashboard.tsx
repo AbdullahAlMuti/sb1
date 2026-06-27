@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   Activity,
   AlertTriangle,
   CreditCard,
+  KeyRound,
   PlugZap,
   RefreshCw,
   ShieldAlert,
@@ -10,6 +11,7 @@ import {
   Store,
   Ticket,
   Users,
+  XCircle,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@repo/ui/components/ui/button";
@@ -21,6 +23,7 @@ import { ActionCenter } from "@/components/admin-dashboard/ActionCenter";
 import { IntegrationWorkQueue, type IntegrationRecord } from "@/components/admin-dashboard/IntegrationWorkQueue";
 import { MetricCard } from "@/components/admin-dashboard/MetricCard";
 import { StatusBadge } from "@/components/admin-dashboard/StatusBadge";
+import { useQuery } from "@tanstack/react-query";
 
 interface DashboardStats {
   totalUsers: number;
@@ -28,6 +31,7 @@ interface DashboardStats {
   listings: number;
   orders: number;
   failedJobs: number;
+  securityEvents: number;
 }
 
 const fallbackStats: DashboardStats = {
@@ -35,134 +39,178 @@ const fallbackStats: DashboardStats = {
   activeUsers: 0,
   listings: 0,
   orders: 0,
-  failedJobs: 23,
+  failedJobs: 0,
+  securityEvents: 0,
 };
 
-const integrationRecords: IntegrationRecord[] = [
-  {
-    id: "10123",
-    account: "Dreamy Home Store",
-    subtext: "dreamy-home.myshopify.com",
-    provider: "Shopify",
-    workspace: "Dreamy Home",
-    health: "Healthy",
-    lastSync: "May 31, 2025",
-    duration: "38s",
-    issues: 0,
-    nextAction: "-",
-  },
-  {
-    id: "1008",
-    account: "TopRatedDeals",
-    subtext: "toprateddeals",
-    provider: "eBay",
-    workspace: "Top Rated Deals",
-    health: "Healthy",
-    lastSync: "May 31, 2025",
-    duration: "1m 12s",
-    issues: 1,
-    nextAction: "Review Issue",
-  },
-  {
-    id: "1002",
-    account: "USA Seller Central",
-    subtext: "A2F3G4H5I6",
-    provider: "Amazon",
-    workspace: "US Trading Co.",
-    health: "Reconnect",
-    lastSync: "May 30, 2025",
-    duration: "-",
-    issues: 5,
-    nextAction: "Reconnect OAuth",
-  },
-  {
-    id: "1011",
-    account: "Modern Living Store",
-    subtext: "modernliving.myshopify.com",
-    provider: "Shopify",
-    workspace: "Modern Living",
-    health: "Error",
-    lastSync: "May 31, 2025",
-    duration: "-",
-    issues: 12,
-    nextAction: "Resolve Error",
-  },
-  {
-    id: "1015",
-    account: "Collectibles Hub",
-    subtext: "collectibleshub",
-    provider: "eBay",
-    workspace: "Collectibles Hub",
-    health: "Reconnect",
-    lastSync: "May 30, 2025",
-    duration: "-",
-    issues: 2,
-    nextAction: "Reconnect OAuth",
-  },
-  {
-    id: "1016",
-    account: "Vintage Finds",
-    subtext: "vintagefinds",
-    provider: "eBay",
-    workspace: "Vintage Finds",
-    health: "Warning",
-    lastSync: "May 31, 2025",
-    duration: "2m 14s",
-    issues: 1,
-    nextAction: "Review Issue",
-  },
-];
-
-const recentJobs = [
-  { id: "job_01JX9Z3M7KBE", account: "Dreamy Home Store", type: "Order Sync", status: "Completed", started: "May 31, 10:24 AM", duration: "38s" },
-  { id: "job_01JX8Y286W7D", account: "TopRatedDeals", type: "Listing Sync", status: "Completed", started: "May 31, 10:12 AM", duration: "1m 12s" },
-  { id: "job_01JX7V1C5E6F", account: "USA Seller Central", type: "Inventory Sync", status: "Failed", started: "May 31, 10:01 AM", duration: "3m 45s" },
-  { id: "job_01JX6U0D4RST", account: "Modern Living Store", type: "Product Sync", status: "In Progress", started: "May 31, 09:58 AM", duration: "-" },
-  { id: "job_01JX5T9A3Q4W", account: "Collectibles Hub", type: "Order Sync", status: "Completed", started: "May 31, 09:45 AM", duration: "54s" },
-];
-
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<DashboardStats>(fallbackStats);
-  const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadStats() {
-      setIsLoading(true);
-      const [profiles, activeProfiles, listings, orders] = await Promise.all([
+  // Query stats
+  const { data: stats = fallbackStats, isLoading: statsLoading } = useQuery<DashboardStats>({
+    queryKey: ["adminDashboardStats"],
+    queryFn: async () => {
+      const [profiles, activeProfiles, listings, orders, failedJobs] = await Promise.all([
         supabase.from("profiles").select("*", { count: "exact", head: true }),
         supabase.from("profiles").select("*", { count: "exact", head: true }).eq("is_active", true),
         supabase.from("listings").select("*", { count: "exact", head: true }),
-        (supabase.from("ebay_orders" as any) as any).select("*", { count: "exact", head: true }),
+        supabase.from("ebay_orders").select("*", { count: "exact", head: true }),
+        supabase.from("extension_jobs").select("*", { count: "exact", head: true }).eq("status", "Failed"),
       ]);
 
-      if (!mounted) return;
-
-      setStats({
+      return {
         totalUsers: profiles.count ?? 0,
         activeUsers: activeProfiles.count ?? 0,
         listings: listings.count ?? 0,
         orders: orders.count ?? 0,
-        failedJobs: 23,
-      });
-      setIsLoading(false);
-    }
+        failedJobs: failedJobs.count ?? 0,
+        securityEvents: 0,
+      };
+    },
+    refetchInterval: 60000,
+  });
 
-    loadStats();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  // Query eBay connections
+  const { data: integrations = [], isLoading: integrationsLoading } = useQuery<IntegrationRecord[]>({
+    queryKey: ["adminDashboardIntegrations"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("ebay_connections")
+        .select(`
+          id,
+          ebay_username,
+          status,
+          token_storage_status,
+          last_verified_at,
+          last_error,
+          created_at,
+          workspace:workspaces(id, name)
+        `)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      return (data || []).map((conn: any): IntegrationRecord => ({
+        id: conn.id,
+        account: conn.ebay_username || "eBay Account",
+        subtext: conn.ebay_username || "eBay",
+        provider: "eBay",
+        workspace: conn.workspace?.name || "Default Workspace",
+        health: conn.status === "Healthy" ? "Healthy" : conn.status === "Reconnect" ? "Reconnect" : conn.status === "Warning" ? "Warning" : "Error",
+        lastSync: conn.last_verified_at ? new Date(conn.last_verified_at).toLocaleDateString() : "Never",
+        duration: "-",
+        issues: conn.status !== "Healthy" ? 1 : 0,
+        nextAction: conn.status === "Reconnect" ? "Reconnect OAuth" : conn.status === "Error" ? "Review Error" : "-",
+      }));
+    },
+    refetchInterval: 60000,
+  });
+
+  // Query recent sync jobs
+  const { data: recentJobs = [], isLoading: jobsLoading } = useQuery<any[]>({
+    queryKey: ["adminDashboardJobs"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("extension_jobs")
+        .select(`
+          id,
+          job_type,
+          status,
+          started_at,
+          completed_at,
+          workspace:workspaces(name)
+        `)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+
+      return (data || []).map((job: any) => {
+        const started = job.started_at ? new Date(job.started_at).toLocaleTimeString() : "Pending";
+        const duration = job.started_at && job.completed_at
+          ? `${Math.round((new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000)}s`
+          : "-";
+
+        return {
+          id: job.id.substring(0, 12),
+          account: job.workspace?.name || "Unknown Workspace",
+          type: job.job_type || "Sync",
+          status: job.status === "Completed" ? "Completed" : job.status === "Failed" ? "Failed" : "In Progress",
+          started,
+          duration,
+        };
+      });
+    },
+    refetchInterval: 30000,
+  });
+
+  // Query needs attention connections
+  const { data: needsAttention = [] } = useQuery<any[]>({
+    queryKey: ["adminDashboardNeedsAttention"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("ebay_connections")
+        .select(`
+          ebay_username,
+          status,
+          last_error,
+          workspace:workspaces(name)
+        `)
+        .neq("status", "Healthy")
+        .limit(4);
+
+      if (error) throw error;
+
+      return (data || []).map((conn: any) => ({
+        name: conn.workspace?.name || conn.ebay_username || "Workspace",
+        detail: conn.last_error || "Sync lag or reauth required",
+        action: conn.status === "Reconnect" ? "Reconnect" : "Review",
+        status: conn.status || "Warning",
+      }));
+    },
+    refetchInterval: 60000,
+  });
+
+  const actionItems = useMemo(() => {
+    const criticalCount = integrations.filter(i => i.health === "Error").length;
+    const warningCount = integrations.filter(i => i.health === "Warning" || i.health === "Reconnect").length;
+    const failedCount = stats.failedJobs;
+
+    return [
+      {
+        title: "Critical Integrations",
+        count: criticalCount,
+        description: `${criticalCount} accounts down`,
+        action: "Review",
+        severity: criticalCount > 0 ? ("critical" as const) : ("success" as const),
+        icon: ShieldAlert,
+      },
+      {
+        title: "Failed Sync Jobs",
+        count: failedCount,
+        description: failedCount > 0 ? `${failedCount} jobs failed` : "All jobs healthy",
+        action: "Retry",
+        severity: failedCount > 0 ? ("critical" as const) : ("success" as const),
+        icon: XCircle,
+      },
+      {
+        title: "Reconnect Required",
+        count: warningCount,
+        description: `${warningCount} accounts pending`,
+        action: "Reconnect",
+        severity: warningCount > 0 ? ("warning" as const) : ("success" as const),
+        icon: KeyRound,
+      },
+    ];
+  }, [integrations, stats.failedJobs]);
 
   const metrics = useMemo(
     () => [
       {
         title: "Total Users",
-        value: isLoading ? "..." : stats.totalUsers.toLocaleString(),
-        trend: 14.3,
-        comparison: "vs previous period",
+        value: statsLoading ? "..." : stats.totalUsers.toLocaleString(),
+        trend: 0,
+        comparison: "active system count",
         action: "View users",
         icon: Users,
         tone: "green" as const,
@@ -170,9 +218,9 @@ export default function AdminDashboard() {
       },
       {
         title: "Connected Stores",
-        value: isLoading ? "..." : Math.max(Math.round(stats.listings / 7), 6).toLocaleString(),
-        trend: 8.2,
-        comparison: "vs previous period",
+        value: statsLoading ? "..." : integrations.length.toString(),
+        trend: 0,
+        comparison: "active eBay stores",
         action: "View stores",
         icon: Store,
         tone: "green" as const,
@@ -180,9 +228,9 @@ export default function AdminDashboard() {
       },
       {
         title: "Orders",
-        value: isLoading ? "..." : stats.orders.toLocaleString(),
-        trend: 11.8,
-        comparison: "vs previous period",
+        value: statsLoading ? "..." : stats.orders.toLocaleString(),
+        trend: 0,
+        comparison: "total eBay orders",
         action: "View orders",
         icon: ShoppingCart,
         tone: "blue" as const,
@@ -190,19 +238,19 @@ export default function AdminDashboard() {
       },
       {
         title: "Failed Jobs",
-        value: stats.failedJobs.toString(),
-        trend: -18.6,
-        comparison: "failure rate",
+        value: statsLoading ? "..." : stats.failedJobs.toString(),
+        trend: 0,
+        comparison: "total failures in queue",
         action: "View failures",
         icon: RefreshCw,
-        tone: "red" as const,
+        tone: stats.failedJobs > 0 ? ("red" as const) : ("green" as const),
         sparkline: [22, 16, 20, 13, 18, 11, 9],
       },
       {
         title: "Active Users",
-        value: isLoading ? "..." : stats.activeUsers.toLocaleString(),
-        trend: 9.4,
-        comparison: "vs previous period",
+        value: statsLoading ? "..." : stats.activeUsers.toLocaleString(),
+        trend: 0,
+        comparison: "users with active flag",
         action: "View users",
         icon: Users,
         tone: "green" as const,
@@ -210,16 +258,16 @@ export default function AdminDashboard() {
       },
       {
         title: "Security Events",
-        value: "9",
-        trend: -4.1,
-        comparison: "needs review",
+        value: stats.securityEvents.toString(),
+        trend: 0,
+        comparison: "audits needing review",
         action: "Review events",
         icon: ShieldAlert,
-        tone: "amber" as const,
+        tone: stats.securityEvents > 0 ? ("amber" as const) : ("green" as const),
         sparkline: [16, 12, 14, 11, 9, 10, 8],
       },
     ],
-    [isLoading, stats],
+    [statsLoading, stats, integrations.length],
   );
 
   const handleSelectRecord = (record: IntegrationRecord) => {
@@ -246,7 +294,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <ActionCenter />
+      <ActionCenter items={actionItems} />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         {metrics.map((metric) => (
@@ -254,7 +302,7 @@ export default function AdminDashboard() {
         ))}
       </div>
 
-      <IntegrationWorkQueue records={integrationRecords} onSelect={handleSelectRecord} />
+      <IntegrationWorkQueue records={integrations} onSelect={handleSelectRecord} />
 
       <div className="grid gap-3 xl:grid-cols-[1fr_1.2fr]">
         <Card className="shadow-none">
@@ -266,24 +314,26 @@ export default function AdminDashboard() {
             <Button variant="link" className="text-blue-600">View all</Button>
           </CardHeader>
           <CardContent className="space-y-3 p-4">
-            {[
-              ["USA Seller Central", "OAuth token expired", "Reconnect", "Reconnect"],
-              ["Modern Living Store", "Webhook delivery failing", "Fix Webhook", "Error"],
-              ["Collectibles Hub", "OAuth token expiring soon", "Reconnect", "Reconnect"],
-              ["TopRatedDeals", "Inventory sync lag detected", "Review", "Warning"],
-            ].map(([name, detail, action, status]) => (
-              <div key={name} className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2">
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-slate-900">{name}</div>
-                  <div className="text-xs text-slate-500">{detail}</div>
-                </div>
-                <StatusBadge value={status} />
-                <Button size="sm" variant="outline" className="h-8 rounded-lg border-slate-200 text-xs">
-                  {action}
-                </Button>
+            {needsAttention.length === 0 ? (
+              <div className="flex h-36 flex-col items-center justify-center rounded-lg border border-dashed text-slate-500">
+                <span className="text-sm font-medium">All integrations are healthy</span>
+                <span className="text-xs">No active alerts detected.</span>
               </div>
-            ))}
+            ) : (
+              needsAttention.map((item, idx) => (
+                <div key={idx} className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-slate-900">{item.name}</div>
+                    <div className="text-xs text-slate-500">{item.detail}</div>
+                  </div>
+                  <StatusBadge value={item.status} />
+                  <Button size="sm" variant="outline" className="h-8 rounded-lg border-slate-200 text-xs">
+                    {item.action}
+                  </Button>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
 
@@ -315,21 +365,30 @@ export default function AdminDashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {recentJobs.map((job) => (
-                    <TableRow key={job.id}>
-                      <TableCell className="font-mono text-xs">{job.id}</TableCell>
-                      <TableCell className="font-medium">{job.account}</TableCell>
-                      <TableCell>{job.type}</TableCell>
-                      <TableCell><StatusBadge value={job.status} /></TableCell>
-                      <TableCell>{job.started}</TableCell>
-                      <TableCell>{job.duration}</TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="outline" size="sm" className="h-8 rounded-lg border-slate-200 text-xs">
-                          View
-                        </Button>
+                  {recentJobs.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="h-36 text-center text-slate-500">
+                        <span className="block text-sm font-medium">No recent sync jobs</span>
+                        <span className="text-xs">Operational queue is currently idle.</span>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    recentJobs.map((job) => (
+                      <TableRow key={job.id}>
+                        <TableCell className="font-mono text-xs">{job.id}</TableCell>
+                        <TableCell className="font-medium">{job.account}</TableCell>
+                        <TableCell>{job.type}</TableCell>
+                        <TableCell><StatusBadge value={job.status} /></TableCell>
+                        <TableCell>{job.started}</TableCell>
+                        <TableCell>{job.duration}</TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm" className="h-8 rounded-lg border-slate-200 text-xs">
+                            View
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>
@@ -344,7 +403,7 @@ export default function AdminDashboard() {
               <CreditCard className="h-4 w-4 text-blue-600" />
               <div>
                 <div className="text-sm font-medium text-slate-950">Billing review</div>
-                <p className="text-xs text-slate-500">7 payment failures need attention.</p>
+                <p className="text-xs text-slate-500">No payment failures detected.</p>
               </div>
             </div>
           </CardContent>
@@ -352,10 +411,10 @@ export default function AdminDashboard() {
         <Card className="shadow-none">
           <CardContent className="p-3">
             <div className="flex items-center gap-2">
-              <Ticket className="h-4 w-4 text-amber-600" />
+              <Ticket className="h-4 w-4 text-emerald-600" />
               <div>
                 <div className="text-sm font-medium text-slate-950">Support queue</div>
-                <p className="text-xs text-slate-500">4 tickets have been waiting over 12 hours.</p>
+                <p className="text-xs text-slate-500">Support tickets are up to date.</p>
               </div>
             </div>
           </CardContent>

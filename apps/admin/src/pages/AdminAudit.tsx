@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Search,
@@ -58,26 +59,19 @@ interface UserProfile {
 const ITEMS_PER_PAGE = 20;
 
 export default function AdminAudit() {
-  const [logs, setLogs] = useState<AuditLog[]>([]);
   const [userProfiles, setUserProfiles] = useState<Record<string, UserProfile>>({});
-  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [actionFilter, setActionFilter] = useState<string>('all');
   const [entityFilter, setEntityFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('7');
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
 
-  useEffect(() => {
-    fetchLogs();
-  }, [currentPage, actionFilter, entityFilter, dateFilter]);
-
-  const fetchLogs = async () => {
-    try {
-      setIsLoading(true);
-      
-      let query = (supabase as any)
+  // TanStack useQuery for server-side search, filtering, pagination
+  const { data: queryData, isLoading, refetch } = useQuery({
+    queryKey: ['adminAuditLogs', { currentPage, actionFilter, entityFilter, dateFilter, searchQuery }],
+    queryFn: async () => {
+      let query = supabase
         .from('audit_logs')
         .select('*', { count: 'exact' });
 
@@ -97,6 +91,11 @@ export default function AdminAudit() {
         query = query.eq('entity_type', entityFilter);
       }
 
+      // Apply search query server-side
+      if (searchQuery) {
+        query = query.or(`action.ilike.%${searchQuery}%,entity_type.ilike.%${searchQuery}%,entity_id.ilike.%${searchQuery}%`);
+      }
+
       // Pagination
       const from = (currentPage - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
@@ -106,9 +105,6 @@ export default function AdminAudit() {
         .range(from, to);
 
       if (error) throw error;
-
-      setLogs((data as AuditLog[]) || []);
-      setTotalCount(count || 0);
 
       // Fetch user profiles for the logs
       const userIds = [...new Set((data as AuditLog[])?.map(log => log.user_id).filter(Boolean) as string[])];
@@ -124,12 +120,19 @@ export default function AdminAudit() {
           setUserProfiles(profileMap);
         }
       }
-    } catch (error) {
-      console.error('Error fetching audit logs:', error);
-      toast.error('Failed to fetch audit logs');
-    } finally {
-      setIsLoading(false);
-    }
+
+      return {
+        logs: (data as AuditLog[]) || [],
+        totalCount: count || 0,
+      };
+    },
+  });
+
+  const logs = queryData?.logs || [];
+  const totalCount = queryData?.totalCount || 0;
+
+  const fetchLogs = () => {
+    refetch();
   };
 
   const exportLogs = () => {
@@ -179,16 +182,7 @@ export default function AdminAudit() {
     return <Badge variant="secondary">{action}</Badge>;
   };
 
-  const filteredLogs = logs.filter(log => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      log.action.toLowerCase().includes(query) ||
-      log.entity_type.toLowerCase().includes(query) ||
-      log.entity_id?.toLowerCase().includes(query) ||
-      userProfiles[log.user_id || '']?.full_name?.toLowerCase().includes(query)
-    );
-  });
+  const filteredLogs = logs;
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
@@ -282,7 +276,10 @@ export default function AdminAudit() {
           <Input
             placeholder="Search logs..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
             className="pl-10"
           />
         </div>

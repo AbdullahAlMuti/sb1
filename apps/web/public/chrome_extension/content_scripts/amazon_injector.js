@@ -711,6 +711,28 @@ const scrapeProductDetails = () => {
         details.description = descriptionElement.innerText.trim();
     }
 
+    // --- Fallback: Extract from raw innerText if specs are missing ---
+    if (!details.weight || !details.dimensions || !details.brand) {
+        const text = document.body.innerText || '';
+        if (!details.weight) {
+            const weightMatch = text.match(/(?:Item\s+)?Weight\s*:?\s*([0-9.]+\s*(?:ounces|oz|pounds|lbs|g|kg))/i);
+            if (weightMatch) details.weight = weightMatch[1];
+        }
+        if (!details.dimensions) {
+            const dimMatch = text.match(/(?:Product\s+)?Dimensions\s*:?\s*([0-9.]+\s*x\s*[0-9.]+\s*x\s*[0-9.]+\s*(?:inches|in|cm|mm))/i);
+            if (dimMatch) details.dimensions = dimMatch[1];
+        }
+        if (!details.brand) {
+            const brandMatch = text.match(/Brand\s*:?\s*([A-Za-z0-9\s&.\-]+)/i);
+            if (brandMatch) {
+                const brandStr = brandMatch[1].trim();
+                if (brandStr.length > 0 && brandStr.length < 50) {
+                    details.brand = brandStr;
+                }
+            }
+        }
+    }
+
     return details;
 };
 
@@ -2379,12 +2401,30 @@ const storeWatermarkedImages = async () => {
     console.log(`🔍 storeWatermarkedImages: Total Data URLs collected: ${watermarkedDataUrls.length}`);
 
     if (watermarkedDataUrls.length > 0) {
+        // Quota safety limit: session storage limit is ~10MB.
+        // Base64 chars are roughly 1 byte.
+        const totalCharCount = watermarkedDataUrls.reduce((sum, url) => sum + url.length, 0);
+        console.log(`📊 storeWatermarkedImages: Estimated storage payload size: ${(totalCharCount / 1024 / 1024).toFixed(2)} MB`);
+        if (totalCharCount > 9.5 * 1024 * 1024) {
+            console.error(`❌ storeWatermarkedImages: Payload size of ${(totalCharCount / 1024 / 1024).toFixed(2)} MB exceeds the session storage quota (~10MB limit).`);
+            alert(`⚠️ Error: The total size of edited/watermarked images is too large (${(totalCharCount / 1024 / 1024).toFixed(2)} MB). Please remove some images or reduce their complexity before proceeding.`);
+            return;
+        }
+
         try {
-            await chrome.storage.local.set({ watermarkedImages: watermarkedDataUrls });
-            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome storage`);
+            await new Promise((resolve, reject) => {
+                chrome.storage.session.set({ watermarkedImages: watermarkedDataUrls }, () => {
+                    if (chrome.runtime.lastError) {
+                        reject(new Error(chrome.runtime.lastError.message));
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+            console.log(`✅ storeWatermarkedImages: Successfully stored ${watermarkedDataUrls.length} watermarked 1600x1600 images in Chrome session storage`);
 
             // Verify storage
-            const verification = await chrome.storage.local.get(['watermarkedImages']);
+            const verification = await chrome.storage.session.get(['watermarkedImages']);
             console.log(`🔍 storeWatermarkedImages: Storage verification - ${verification.watermarkedImages?.length || 0} images in storage`);
 
             // Additional verification - check if images are valid Data URLs
@@ -2400,6 +2440,7 @@ const storeWatermarkedImages = async () => {
             }
         } catch (error) {
             console.error('❌ storeWatermarkedImages: Failed to store images:', error);
+            alert(`⚠️ Error storing images in session storage: ${error.message || error}`);
         }
     } else {
         console.warn('⚠️ storeWatermarkedImages: No Data URLs found to store');
@@ -2412,7 +2453,7 @@ const deleteImageFromStorage = async (imageIndex, imgContainer, imageUrl) => {
         console.log(`Deleting image ${imageIndex + 1} from storage...`);
 
         // Get current stored images
-        const result = await chrome.storage.local.get(['watermarkedImages']);
+        const result = await chrome.storage.session.get(['watermarkedImages']);
         const storedImages = result.watermarkedImages || [];
 
         // Remove the specific image from storage
@@ -2420,8 +2461,16 @@ const deleteImageFromStorage = async (imageIndex, imgContainer, imageUrl) => {
             storedImages.splice(imageIndex, 1);
 
             // Update storage with remaining images
-            await chrome.storage.local.set({ watermarkedImages: storedImages });
-            console.log(`Image ${imageIndex + 1} deleted from storage. ${storedImages.length} images remaining.`);
+            await new Promise((resolve, reject) => {
+                chrome.storage.session.set({ watermarkedImages: storedImages }, () => {
+                    if (chrome.runtime.lastError) {
+                        reject(new Error(chrome.runtime.lastError.message));
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+            console.log(`Image ${imageIndex + 1} deleted from session storage. ${storedImages.length} images remaining.`);
         }
 
         // Also remove from currentProduct.images — the canonical list the upload
@@ -2727,9 +2776,12 @@ const addEventListenersToPanel = () => {
     const pasteDescriptionBtn = document.getElementById('paste-description-btn');
 
     let lastGeneratedDescription = '';
+    let activeGenerationToken = null;
 
     if (generateDescriptionBtn) {
         generateDescriptionBtn.addEventListener('click', async () => {
+            const currentToken = Date.now().toString();
+            activeGenerationToken = currentToken;
             const originalContent = generateDescriptionBtn.innerHTML;
             generateDescriptionBtn.disabled = true;
 
@@ -2793,6 +2845,11 @@ const addEventListenersToPanel = () => {
                 console.log('═══════════════════════════════════════════════════════');
                 console.log(bgResp);
                 console.log('═══════════════════════════════════════════════════════');
+
+                if (activeGenerationToken !== currentToken) {
+                    console.log('Discarding late description response for old context');
+                    return;
+                }
 
                 if (!bgResp?.success) {
                     throw new Error(bgResp?.error || 'Failed to generate description');
@@ -3172,7 +3229,7 @@ const addEventListenersToPanel = () => {
                         console.log('═══════════════════════════════════════════════════════');
                         console.log('🔍 Verifying image storage before navigation...');
                         console.log('═══════════════════════════════════════════════════════');
-                        const storageVerification = await chrome.storage.local.get(['watermarkedImages']);
+                        const storageVerification = await chrome.storage.session.get(['watermarkedImages']);
                         const storedImages = storageVerification.watermarkedImages || [];
                         console.log(`📸 Storage verification: Found ${storedImages.length} images in storage`);
 
@@ -3556,27 +3613,19 @@ const generateAiTitle = async (inputElement, rowElement, generateBtn, useBtn) =>
 
     if (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.FEATURES.DEBUG_MODE) console.log('🤖 AI Title Request Data (hidden in prod)', productData);
 
-    // Get API Key and Prompt from storage
-    const settings = await chrome.storage.local.get(['geminiApiKey', 'titleGenerationPrompt', 'geminiModel']);
-    const apiKey = settings.geminiApiKey;
+    // Title generation runs server-side via the /generate-titles edge function
+    // (see background/message-router.js GENERATE_TITLE), which authenticates with
+    // the user's saasToken, validates subscription access, and holds the Gemini
+    // key in Deno env. The client must NOT gate on a local geminiApiKey: that key
+    // lives in admin-only admin_settings, so standard users never receive it and
+    // were wrongly blocked. The optional prompt/model overrides are still read
+    // for admins who set them, but they are not required.
+    const settings = await chrome.storage.local.get(['titleGenerationPrompt', 'geminiModel']);
     const promptTemplate = settings.titleGenerationPrompt || 'Create an optimized eBay listing title for: {{title}}. Max 60 characters. No quotes.';
     const model = settings.geminiModel || 'gemini-1.5-flash'; // Default model
 
-    console.log('📝 Using Prompt Template:', promptTemplate);
-
-    if (!apiKey) {
-        inputElement.value = "Error: Missing API Key. Check Admin settings.";
-        generateBtn.textContent = 'No Key';
-        setTimeout(() => {
-            generateBtn.textContent = 'Generate';
-            generateBtn.disabled = false;
-        }, 2000);
-        return;
-    }
-
     chrome.runtime.sendMessage({
         action: "GENERATE_TITLE",
-        apiKey: apiKey,
         prompt: promptTemplate,
         productData: productData,
         model: model

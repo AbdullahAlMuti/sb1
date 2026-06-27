@@ -107,10 +107,10 @@
     }
 
     // 2. Persist to Storage (so it remembers across reloads)
-    // Logic from original: chrome.storage.local(watermarkedImages)
+    // Logic from original: chrome.storage.session(watermarkedImages)
     try {
       const STORAGE_KEY = 'watermarkedImages';
-      const result = await chrome.storage.local.get(STORAGE_KEY);
+      const result = await chrome.storage.session.get(STORAGE_KEY);
       const arr = Array.isArray(result[STORAGE_KEY]) ? result[STORAGE_KEY] : [];
 
       // Ensure array is big enough
@@ -120,10 +120,28 @@
       }
       arr[activeImageIndex] = dataUrl;
 
-      await chrome.storage.local.set({ [STORAGE_KEY]: arr });
-      console.log('✅ Saved to Local Storage');
+      // Quota safety limit: session storage limit is ~10MB.
+      const totalCharCount = arr.reduce((sum, item) => sum + (item ? item.length : 0), 0);
+      console.log(`📊 image_editor: Estimated storage payload size: ${(totalCharCount / 1024 / 1024).toFixed(2)} MB`);
+      if (totalCharCount > 9.5 * 1024 * 1024) {
+        console.error(`❌ image_editor: Payload size of ${(totalCharCount / 1024 / 1024).toFixed(2)} MB exceeds session storage quota.`);
+        alert(`⚠️ Error: Storing this edited image would exceed the session storage quota (~10MB limit). Please use a smaller image or reduce quality.`);
+        return;
+      }
+
+      await new Promise((resolve, reject) => {
+        chrome.storage.session.set({ [STORAGE_KEY]: arr }, () => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve();
+          }
+        });
+      });
+      console.log('✅ Saved to Session Storage');
     } catch (e) {
-      console.error('Failed to save to storage', e);
+      console.error('Failed to save to session storage', e);
+      alert(`⚠️ Error saving edited image to session storage: ${e.message || e}`);
     }
 
     // 3. Persist into currentProduct.images — the canonical image list that the
@@ -134,7 +152,24 @@
       const d = await chrome.storage.local.get('currentProduct');
       const p = d.currentProduct;
       if (p && Array.isArray(p.images) && activeImageIndex >= 0 && activeImageIndex < p.images.length) {
+        const originalUrl = p.images[activeImageIndex];
         p.images[activeImageIndex] = dataUrl;
+
+        // Propagate to matching variants
+        if (Array.isArray(p.variants)) {
+          let propagatedCount = 0;
+          p.variants.forEach(v => {
+            if (v.img === originalUrl || v.image === originalUrl) {
+              v.img = dataUrl;
+              v.image = dataUrl;
+              propagatedCount++;
+            }
+          });
+          if (propagatedCount > 0) {
+            console.log(`✅ Propagated edited image to ${propagatedCount} matching variants`);
+          }
+        }
+
         await chrome.storage.local.set({ currentProduct: p });
         console.log('✅ Edited image persisted to currentProduct.images[' + activeImageIndex + ']');
       }

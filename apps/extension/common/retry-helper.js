@@ -18,17 +18,25 @@ const RetryHelper = (() => {
     let lastError;
     
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // Add timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      
+      let abortListener;
+      if (options.signal) {
+        if (options.signal.aborted) {
+          controller.abort();
+        } else {
+          abortListener = () => controller.abort();
+          options.signal.addEventListener('abort', abortListener);
+        }
+      }
+      
       try {
-        // Add timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
-        
         const response = await fetch(url, {
           ...options,
           signal: controller.signal
         });
-        
-        clearTimeout(timeoutId);
         
         // If response is ok or it's a client error (4xx), don't retry
         if (response.ok || (response.status >= 400 && response.status < 500)) {
@@ -40,6 +48,14 @@ const RetryHelper = (() => {
         
       } catch (err) {
         lastError = err;
+        if (options.signal && options.signal.aborted) {
+          throw err;
+        }
+      } finally {
+        clearTimeout(timeoutId);
+        if (options.signal && abortListener) {
+          options.signal.removeEventListener('abort', abortListener);
+        }
       }
       
       // Don't wait after the last attempt

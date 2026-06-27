@@ -109,6 +109,12 @@
       "skillPath": "skills/supabase-postgres-best-practices/SKILL.md",
       "computedHash": "38fb49d3b57c46cba18b07a44254bd42c4c93903fda1d8cb683429615d32fec4"
     },
+    "transitions-dev": {
+      "source": "Jakubantalik/transitions.dev",
+      "sourceType": "github",
+      "skillPath": "skills/transitions-dev/SKILL.md",
+      "computedHash": "6c7381fd55f0f9e0464fe3eff0c465b020edb0ec39432767695e5120ff460c81"
+    },
     "vercel-react-best-practices": {
       "source": "vercel-labs/agent-skills",
       "sourceType": "github",

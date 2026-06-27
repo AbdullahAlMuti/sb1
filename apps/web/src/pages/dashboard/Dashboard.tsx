@@ -415,19 +415,18 @@ export default function Dashboard() {
       };
 
       const [
-        listingsResult, alertsResult, topListingsResult, allListingsResult,
+        listingsStatsResult, alertsResult, topListingsResult,
         currentEbayOrders, previousEbayOrders,
       ] = await Promise.all([
-        supabase.from('listings').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'active'),
+        (supabase.rpc as any)('get_dashboard_listings_stats', { p_user_id: user.id }),
         supabase.from('inventory_alerts').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'UNREAD'),
         supabase.from('listings').select('id, title, sku, amazon_asin, ebay_price, amazon_price, status, amazon_data').eq('user_id', user.id).order('ebay_price', { ascending: false }).limit(5),
-        supabase.from('listings').select('ebay_price, amazon_price, status').eq('user_id', user.id),
         fetchAllOrdersInRange(dateRange.from, dateRange.to, 'id, ebay_order_id, order_status, total_amount, order_date, net_profit, add_fee, synced_at'),
         fetchAllOrdersInRange(previousRange.from, previousRange.to, 'id, ebay_order_id, order_status, total_amount, order_date'),
       ]);
 
       const listings = topListingsResult.data || [];
-      const allListings = allListingsResult.data || [];
+      const listingsStats = (listingsStatsResult.data as any)?.[0] || { inventory_value: 0, total_cost: 0, active_listings_count: 0 };
 
       /* ── de-duplicate eBay rows ────────────────────────────────────────
          eBay sales-record CSVs get re-imported, leaving multiple identical
@@ -506,8 +505,8 @@ export default function Dashboard() {
         return !isCompleted && !isCancelled;
       });
 
-      const inventoryValue = allListings.reduce((acc, l) => acc + (Number(l.ebay_price) || 0), 0);
-      const totalCost = allListings.reduce((acc, l) => acc + (Number(l.amazon_price) || 0), 0);
+      const inventoryValue = Number(listingsStats.inventory_value) || 0;
+      const totalCost = Number(listingsStats.total_cost) || 0;
 
       const previousOrderRevenue = previousOrders.reduce((acc, o) => acc + o.revenue, 0);
       const previousTotalOrders = previousOrders.length;
@@ -551,7 +550,7 @@ export default function Dashboard() {
         orderRevenue: ebayOrdersRevenue, inventoryValue, totalCost,
         netProfit: realNetProfit, profitOrderCount: ordersWithProfit.length,
         completedOrders: completedEbayOrders.length, pendingOrders: pendingEbayOrders.length, cancelledOrders: cancelledEbayOrders.length,
-        unreadAlerts: alertsResult.count || 0, activeListings: listingsResult.count || 0,
+        unreadAlerts: alertsResult.count || 0, activeListings: Number(listingsStats.active_listings_count) || 0,
         revenueChange, ordersChange, previousOrderRevenue, lastSyncAt,
       });
 

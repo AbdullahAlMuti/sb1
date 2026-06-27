@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Search,
@@ -144,13 +145,10 @@ const getEffectiveRole = (roles: { role: string }[]): AppRole => {
 };
 
 export default function AdminUsers() {
-  const [users, setUsers] = useState<UserWithDetails[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterActive, setFilterActive] = useState<string>('all');
   const [filterRole, setFilterRole] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
   const [selectedUser, setSelectedUser] = useState<UserWithDetails | null>(null);
   const [showRoleDialog, setShowRoleDialog] = useState(false);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
@@ -181,64 +179,53 @@ export default function AdminUsers() {
   const [overrideReason, setOverrideReason] = useState('');
   const [isUpdatingOverride, setIsUpdatingOverride] = useState(false);
 
-  const fetchUsersCallback = useCallback(() => {
-    fetchUsers();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, filterActive, filterRole]);
-
-  useRealtimeSync(
-    [
-      { table: 'profiles', event: '*', callback: fetchUsersCallback },
-      { table: 'user_roles', event: '*', callback: fetchUsersCallback },
-    ],
-    [fetchUsersCallback]
-  );
-
-  useEffect(() => {
-    fetchUsers();
-    fetchPlans();
-  }, [currentPage, filterActive, filterRole]);
-
-  const fetchPlans = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('plans')
-        .select('id, name, display_name, credits_per_month')
-        .eq('is_active', true)
-        .order('price_monthly', { ascending: true });
-
-      if (error) throw error;
-      setPlans(data || []);
-    } catch (error) {
-      console.error('Error fetching plans:', error);
-    }
-  };
-
-  const fetchUsers = async () => {
-    try {
-      setIsLoading(true);
-      
+  // TanStack useQuery for server-side search, filtering, sorting, pagination
+  const { data: queryData, isLoading, refetch } = useQuery({
+    queryKey: ['adminUsers', { currentPage, filterActive, filterRole, searchQuery, sortField, sortDirection }],
+    queryFn: async () => {
       let query = supabase
         .from('profiles')
         .select('*', { count: 'exact' });
 
+      // Apply search query server-side
+      if (searchQuery) {
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(searchQuery);
+        if (isUuid) {
+          query = query.eq('id', searchQuery);
+        } else {
+          query = query.or(`email.ilike.%${searchQuery}%,full_name.ilike.%${searchQuery}%`);
+        }
+      }
+
+      // Apply active status filter server-side
       if (filterActive === 'active') {
         query = query.eq('is_active', true);
       } else if (filterActive === 'inactive') {
         query = query.eq('is_active', false);
       }
 
+      // Apply sorting server-side
+      let dbSortField = 'created_at';
+      if (sortField === 'name') dbSortField = 'full_name';
+      else if (sortField === 'credits') dbSortField = 'credits';
+      else if (sortField === 'id') dbSortField = 'id';
+
+      query = query.order(dbSortField, { ascending: sortDirection === 'asc' });
+
+      // Apply range/pagination server-side
       const from = (currentPage - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
+      query = query.range(from, to);
 
-      const { data: profiles, error, count } = await query
-        .order('created_at', { ascending: false })
-        .range(from, to);
+      const { data: profiles, error, count } = await query;
 
       if (error) throw error;
 
       const userIds = profiles?.map(p => p.id) || [];
-      
+      if (userIds.length === 0) {
+        return { users: [], totalCount: 0 };
+      }
+
       // Fetch roles, user_plans, and verification data in parallel
       const [rolesResult, userPlansResult, verificationResult] = await Promise.all([
         supabase
@@ -250,7 +237,6 @@ export default function AdminUsers() {
           .select('*')
           .in('user_id', userIds) as any,
         (async () => {
-          if (userIds.length === 0) return { verificationStatuses: {}, userEmails: {} };
           try {
             const { data: sessionData } = await supabase.auth.getSession();
             const { data: verificationData } = await supabase.functions.invoke('admin-get-users-verification', {
@@ -270,7 +256,6 @@ export default function AdminUsers() {
       ]);
 
       const rolesData = rolesResult.data || [];
-      // Cast user_plans result for extended schema
       interface UserPlanRow { id: string; user_id: string; status?: string; current_period_end?: string; admin_override_limits?: OverrideLimits | null }
       const userPlansData: UserPlanRow[] = (userPlansResult as any).data || [];
       const { verificationStatuses, userEmails } = verificationResult;
@@ -298,13 +283,48 @@ export default function AdminUsers() {
         );
       }
 
-      setUsers(filteredUsers);
-      setTotalCount(count || 0);
+      return {
+        users: filteredUsers,
+        totalCount: count || 0,
+      };
+    },
+  });
+
+  const users = queryData?.users || [];
+  const totalCount = queryData?.totalCount || 0;
+
+  const fetchUsers = useCallback(() => {
+    refetch();
+  }, [refetch]);
+
+  const fetchUsersCallback = useCallback(() => {
+    refetch();
+  }, [refetch]);
+
+  useRealtimeSync(
+    [
+      { table: 'profiles', event: '*', callback: fetchUsersCallback },
+      { table: 'user_roles', event: '*', callback: fetchUsersCallback },
+    ],
+    [fetchUsersCallback]
+  );
+
+  useEffect(() => {
+    fetchPlans();
+  }, []);
+
+  const fetchPlans = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('plans')
+        .select('id, name, display_name, credits_per_month')
+        .eq('is_active', true)
+        .order('price_monthly', { ascending: true });
+
+      if (error) throw error;
+      setPlans(data || []);
     } catch (error) {
-      console.error('Error fetching users:', error);
-      toast.error('Failed to fetch users');
-    } finally {
-      setIsLoading(false);
+      console.error('Error fetching plans:', error);
     }
   };
 
@@ -319,9 +339,7 @@ export default function AdminUsers() {
 
       if (error) throw error;
 
-      setUsers(users.map(u => 
-        u.id === userId ? { ...u, is_active: !isActive } : u
-      ));
+      refetch();
 
       toast.success(`User ${!isActive ? 'activated' : 'deactivated'} successfully`);
     } catch (error: any) {
@@ -414,9 +432,7 @@ export default function AdminUsers() {
       if (error) throw error;
 
       if (data.success) {
-        setUsers(users.map(u => 
-          u.id === userId ? { ...u, email_verified: true } : u
-        ));
+        refetch();
         toast.success('Email verified successfully');
       } else {
         throw new Error(data.error || 'Failed to verify email');
@@ -556,42 +572,8 @@ export default function AdminUsers() {
     }
   };
 
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = 
-      user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      generateUserId(user.id).toLowerCase().includes(searchQuery.toLowerCase());
-    
-    return matchesSearch;
-  });
-
-  // Sort users
-  const sortedUsers = [...filteredUsers].sort((a, b) => {
-    let comparison = 0;
-    switch (sortField) {
-      case 'id':
-        comparison = generateUserId(a.id).localeCompare(generateUserId(b.id));
-        break;
-      case 'name':
-        comparison = (a.full_name || '').localeCompare(b.full_name || '');
-        break;
-      case 'credits':
-        comparison = a.credits - b.credits;
-        break;
-      case 'status':
-        comparison = (a.is_active ? 1 : 0) - (b.is_active ? 1 : 0);
-        break;
-      case 'created_at':
-        comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-        break;
-      case 'last_login':
-        const aLogin = a.last_login ? new Date(a.last_login).getTime() : 0;
-        const bLogin = b.last_login ? new Date(b.last_login).getTime() : 0;
-        comparison = aLogin - bLogin;
-        break;
-    }
-    return sortDirection === 'asc' ? comparison : -comparison;
-  });
+  const filteredUsers = users;
+  const sortedUsers = users;
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
   const activeCount = users.filter(u => u.is_active).length;
@@ -680,9 +662,12 @@ export default function AdminUsers() {
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by ID"
+                placeholder="Search by ID, name, email..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="pl-9 h-9 text-sm"
               />
             </div>
