@@ -156,7 +156,7 @@ const StatusBadge = ({ status }: { status: string }) => {
 // ── Dashboard mockup ──────────────────────────────────────────────────────────
 const DashboardMockup = () => (
   <div
-    className="relative w-full rounded-xl border border-gray-200 bg-white shadow-[0_32px_80px_rgba(0,0,0,0.12)] overflow-hidden select-none pointer-events-none"
+    className="relative w-full rounded-xl border border-gray-200 bg-white overflow-hidden select-none pointer-events-none"
     style={{ aspectRatio: "16/9" }}
   >
     {/* Browser chrome */}
