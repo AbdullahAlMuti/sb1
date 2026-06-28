@@ -46,6 +46,7 @@ import {
 import { toast } from 'sonner';
 import { useRealtimePlans } from '@repo/api-client/hooks/useRealtimeSync';
 import { useAuth } from '@repo/auth/hooks/useAuth';
+import { mutateAdminPlanConfig } from '../lib/adminPlanConfig';
 import { PageHeader } from '@/core/ui/PageHeader';
 
 interface Plan {
@@ -255,12 +256,19 @@ export default function AdminPlans() {
       };
 
       if (editingPlan?.id) {
-        const { error } = await supabase.from('plans').update(planData).eq('id', editingPlan.id);
-        if (error) throw error;
+        await mutateAdminPlanConfig({
+          resource: 'plans',
+          action: 'update',
+          id: editingPlan.id,
+          payload: planData,
+        });
         toast.success('Plan updated successfully');
       } else {
-        const { error } = await supabase.from('plans').insert([planData]);
-        if (error) throw error;
+        await mutateAdminPlanConfig({
+          resource: 'plans',
+          action: 'create',
+          payload: planData,
+        });
         toast.success('Plan created successfully');
       }
 
@@ -278,8 +286,12 @@ export default function AdminPlans() {
   const handleDeactivatePlan = async () => {
     if (!deletingPlan) return;
     try {
-      const { error } = await supabase.from('plans').update({ is_active: false }).eq('id', deletingPlan.id);
-      if (error) throw error;
+      await mutateAdminPlanConfig({
+        resource: 'plans',
+        action: 'update',
+        id: deletingPlan.id,
+        payload: { is_active: false },
+      });
       setDeletingPlan(null);
       fetchPlans();
       toast.success('Plan deactivated. Existing subscribers are unaffected.');
@@ -292,11 +304,12 @@ export default function AdminPlans() {
   const handleArchivePlan = async () => {
     if (!archivingPlan) return;
     try {
-      const { error } = await supabase
-        .from('plans')
-        .update({ archived_at: new Date().toISOString(), is_public: false })
-        .eq('id', archivingPlan.id);
-      if (error) throw error;
+      await mutateAdminPlanConfig({
+        resource: 'plans',
+        action: 'update',
+        id: archivingPlan.id,
+        payload: { archived_at: new Date().toISOString(), is_public: false },
+      });
       setArchivingPlan(null);
       fetchPlans();
       toast.success('Plan archived and hidden from pricing page.');
@@ -308,8 +321,12 @@ export default function AdminPlans() {
 
   const togglePlanStatus = async (planId: string, isActive: boolean) => {
     try {
-      const { error } = await supabase.from('plans').update({ is_active: !isActive }).eq('id', planId);
-      if (error) throw error;
+      await mutateAdminPlanConfig({
+        resource: 'plans',
+        action: 'update',
+        id: planId,
+        payload: { is_active: !isActive },
+      });
       setPlans(plans.map(p => p.id === planId ? { ...p, is_active: !isActive } : p));
       toast.success(`Plan ${!isActive ? 'enabled' : 'disabled'}`);
     } catch (error) {

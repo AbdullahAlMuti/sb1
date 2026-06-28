@@ -32,6 +32,9 @@ verify_jwt = true
 [functions.admin-sync-stripe-plans]
 verify_jwt = true # Handler additionally requires the admin/super_admin role.
 
+[functions.admin-plan-config]
+verify_jwt = true # Handler additionally requires the admin/super_admin role.
+
 [functions.check-subscription-v2]
 verify_jwt = true
 

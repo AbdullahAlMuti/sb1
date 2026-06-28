@@ -18,8 +18,8 @@ Deno.serve(async (req) => {
     if (!isUserAdmin) throw new Error("Unauthorized");
 
     const body = await readJson(req);
-    const page = Math.max(1, parseInt(body.page) || 1);
-    const pageSize = Math.min(100, Math.max(1, parseInt(body.pageSize) || 50));
+    const page = Math.max(1, parseInt(String(body.page ?? "1"), 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(String(body.pageSize ?? "50"), 10) || 50));
     const offset = (page - 1) * pageSize;
     
     // Filters

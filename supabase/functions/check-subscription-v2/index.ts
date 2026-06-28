@@ -189,7 +189,7 @@ serve(async (req) => {
             limit: 10,
           });
           const paidTrialSession = sessions.data.find(
-            (s) => s.mode === "payment" && s.payment_status === "paid" && s.metadata?.plan_id,
+            (s: Stripe.Checkout.Session) => s.mode === "payment" && s.payment_status === "paid" && s.metadata?.plan_id,
           );
           if (paidTrialSession?.metadata?.plan_id) {
             const result = await activateTrial(supabaseServiceClient, stripe, {

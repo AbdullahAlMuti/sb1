@@ -18,6 +18,14 @@ const BlogPost = lazy(() => import("./pages/blog/BlogPost"));
 const PrivacyPolicy = lazy(() => import("./pages/legal/PrivacyPolicy"));
 const TermsOfService = lazy(() => import("./pages/legal/TermsOfService"));
 const RefundPolicy = lazy(() => import("./pages/legal/RefundPolicy"));
+const LimitedUseDisclosure = lazy(() => import("./pages/legal/LimitedUseDisclosure"));
+const PermissionsDisclosure = lazy(() => import("./pages/legal/PermissionsDisclosure"));
+const CookieAnalyticsPolicy = lazy(() => import("./pages/legal/CookieAnalyticsPolicy"));
+const DataDeletionPolicy = lazy(() => import("./pages/legal/DataDeletionPolicy"));
+const SecurityPolicy = lazy(() => import("./pages/legal/SecurityPolicy"));
+const ThirdPartyDisclaimer = lazy(() => import("./pages/legal/ThirdPartyDisclaimer"));
+const AIFeaturesPolicy = lazy(() => import("./pages/legal/AIFeaturesPolicy"));
+const AffiliateAdsDisclosure = lazy(() => import("./pages/legal/AffiliateAdsDisclosure"));
 const HowItWorks = lazy(() => import("./pages/HowItWorks"));
 const Features = lazy(() => import("./pages/Features"));
 const Calculator = lazy(() => import("./pages/Calculator"));
@@ -83,6 +91,18 @@ const App = () => (
                 <Route path="/terms" element={<TermsOfService />} />
                 <Route path="/terms-of-service" element={<TermsOfService />} />
                 <Route path="/refund" element={<RefundPolicy />} />
+                <Route path="/refund-policy" element={<RefundPolicy />} />
+                <Route path="/limited-use" element={<LimitedUseDisclosure />} />
+                <Route path="/chrome-limited-use" element={<LimitedUseDisclosure />} />
+                <Route path="/permissions" element={<PermissionsDisclosure />} />
+                <Route path="/extension-permissions" element={<PermissionsDisclosure />} />
+                <Route path="/cookies" element={<CookieAnalyticsPolicy />} />
+                <Route path="/cookie-policy" element={<CookieAnalyticsPolicy />} />
+                <Route path="/data-deletion" element={<DataDeletionPolicy />} />
+                <Route path="/security" element={<SecurityPolicy />} />
+                <Route path="/third-party-disclaimer" element={<ThirdPartyDisclaimer />} />
+                <Route path="/ai-policy" element={<AIFeaturesPolicy />} />
+                <Route path="/affiliate-ads-disclosure" element={<AffiliateAdsDisclosure />} />
 
                 <Route path="/auth" element={<AppRedirect />} />
                 <Route path="/register" element={<AppRedirect />} />

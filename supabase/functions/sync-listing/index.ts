@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { validateUserPlan } from '../_shared/plan-middleware.ts';
+import { enforceActiveSubscription, validateUserPlan } from '../_shared/plan-middleware.ts';
 import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
 
 const corsHeaders = {

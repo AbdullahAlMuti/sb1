@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from '../_shared/extension-session.ts';
 import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
 import { buildPrompt, renderSections, sanitize, ensureMinimumLength, DescriptionConfig } from '../_shared/description.ts';
+import { validateUserPlan, deductUsage, createLimitExceededResponse } from '../_shared/plan-middleware.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,6 +21,8 @@ interface DescriptionRequest {
   specifications?: Record<string, string>;
   condition?: string;
 }
+
+const DESCRIPTION_GENERATION_CREDIT_COST = 1;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -62,6 +65,9 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    const creditCheck = await validateUserPlan(supabase, userId, 'credit', DESCRIPTION_GENERATION_CREDIT_COST);
+    if (!creditCheck.allowed) return createLimitExceededResponse(creditCheck, corsHeaders);
 
     // 1) Fetch database-driven description config (global)
     const { data: configData, error: configError } = await supabase
@@ -382,6 +388,24 @@ ${titleRules}
     // 6) Enforce minimum length of 500 characters
     finalDescription = ensureMinimumLength(finalDescription, config.output_format);
 
+    const deducted = await deductUsage(supabase, userId, 'credit', DESCRIPTION_GENERATION_CREDIT_COST, {
+      description: 'AI description generation',
+      feature: 'generate-description',
+      provider: useDirectOpenAI ? 'openai' : 'lovable',
+      model,
+      length: finalDescription.length,
+    });
+    if (!deducted) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Unable to deduct credits for this generation. Please try again.',
+        code: 'CREDIT_DEDUCTION_FAILED',
+      }), {
+        status: 402,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     return new Response(JSON.stringify({ 
       success: true, 
       title: generatedTitle,
@@ -389,7 +413,7 @@ ${titleRules}
       provider: useDirectOpenAI ? 'openai' : 'lovable',
       model,
       length: finalDescription.length,
-      config_version: config.version
+      config_version: (config as DescriptionConfig & { version?: unknown }).version
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -398,7 +422,7 @@ ${titleRules}
     console.error('Error in generate-description function:', error);
     return new Response(JSON.stringify({ 
       success: false, 
-      error: error instanceof Error ? error.message : 'Failed to generate description.'
+      error: 'Failed to generate description. Please try again.'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

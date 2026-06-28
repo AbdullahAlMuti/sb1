@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
 } from '@repo/ui/components/ui/alert-dialog';
 import { toast } from 'sonner';
+import { mutateAdminPlanConfig } from '../lib/adminPlanConfig';
 import { PageHeader } from '@/core/ui/PageHeader';
 
 type Interval = 'monthly' | 'yearly' | 'one_time';
@@ -138,24 +139,37 @@ export default function AdminPlanPrices() {
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = editingPrice
-      ? await supabase.from('plan_prices').update(payload).eq('id', editingPrice.id)
-      : await supabase.from('plan_prices').insert({ ...payload });
-
-    if (error) { toast.error('Failed to save price: ' + error.message); }
-    else {
+    try {
+      await mutateAdminPlanConfig({
+        resource: 'plan_prices',
+        action: editingPrice ? 'update' : 'create',
+        id: editingPrice?.id,
+        payload,
+      });
       toast.success(editingPrice ? 'Price updated' : 'Price created');
       setDialogOpen(false);
       fetchPrices();
+    } catch (error) {
+      console.error('Failed to save price:', error);
+      toast.error('Failed to save price');
     }
     setIsSaving(false);
   };
 
   const handleDelete = async () => {
     if (!deletingPrice) return;
-    const { error } = await supabase.from('plan_prices').delete().eq('id', deletingPrice.id);
-    if (error) { toast.error('Failed to delete price'); }
-    else { toast.success('Price deleted'); fetchPrices(); }
+    try {
+      await mutateAdminPlanConfig({
+        resource: 'plan_prices',
+        action: 'delete',
+        id: deletingPrice.id,
+      });
+      toast.success('Price deleted');
+      fetchPrices();
+    } catch (error) {
+      console.error('Failed to delete price:', error);
+      toast.error('Failed to delete price');
+    }
     setDeletingPrice(null);
   };
 

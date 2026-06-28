@@ -28,6 +28,7 @@ import {
   AlertDialogTitle,
 } from '@repo/ui/components/ui/alert-dialog';
 import { toast } from 'sonner';
+import { mutateAdminPlanConfig } from '../lib/adminPlanConfig';
 import { PageHeader } from '@/core/ui/PageHeader';
 
 interface PlanFeature {
@@ -138,24 +139,37 @@ export default function AdminPlanFeatures() {
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = editingFeature
-      ? await supabase.from('plan_features').update(payload).eq('id', editingFeature.id)
-      : await supabase.from('plan_features').insert({ ...payload });
-
-    if (error) { toast.error('Failed to save feature'); }
-    else {
+    try {
+      await mutateAdminPlanConfig({
+        resource: 'plan_features',
+        action: editingFeature ? 'update' : 'create',
+        id: editingFeature?.id,
+        payload,
+      });
       toast.success(editingFeature ? 'Feature updated' : 'Feature created');
       setDialogOpen(false);
       fetchFeatures();
+    } catch (error) {
+      console.error('Failed to save feature:', error);
+      toast.error('Failed to save feature');
     }
     setIsSaving(false);
   };
 
   const handleDelete = async () => {
     if (!deletingFeature) return;
-    const { error } = await supabase.from('plan_features').delete().eq('id', deletingFeature.id);
-    if (error) { toast.error('Failed to delete feature'); }
-    else { toast.success('Feature deleted'); fetchFeatures(); }
+    try {
+      await mutateAdminPlanConfig({
+        resource: 'plan_features',
+        action: 'delete',
+        id: deletingFeature.id,
+      });
+      toast.success('Feature deleted');
+      fetchFeatures();
+    } catch (error) {
+      console.error('Failed to delete feature:', error);
+      toast.error('Failed to delete feature');
+    }
     setDeletingFeature(null);
   };
 

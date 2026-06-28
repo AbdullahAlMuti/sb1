@@ -149,7 +149,8 @@ Deno.serve(async (req) => {
     try {
       body = await req.json();
     } catch (e: any) {
-      await logSyncEvent(supabase, userId, 'error', 'backend_sync', 'payload_parse_failed', null, { error: e.message });
+      console.error("[sync-ebay-orders] Payload parse failed:", e.message);
+      await logSyncEvent(supabase, userId, 'error', 'backend_sync', 'payload_parse_failed', null, { error: 'invalid_json_body' });
       return new Response(
         JSON.stringify({ success: false, error: "Invalid JSON body" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -348,10 +349,10 @@ Deno.serve(async (req) => {
         }
       } catch (err: any) {
         console.error(`[sync-ebay-orders] Order ${order.ebay_order_id} failed:`, err.message);
-        errors.push(`${order.ebay_order_id}: ${err.message}`);
+        errors.push(`${order.ebay_order_id}: sync_failed`);
         skipped++;
         // Log individual upsert failure (using database category)
-        await logSyncEvent(supabase, userId, 'error', 'database', 'database_upsert_failed', { ebay_order_id: order.ebay_order_id }, { error: err.message });
+        await logSyncEvent(supabase, userId, 'error', 'database', 'database_upsert_failed', { ebay_order_id: order.ebay_order_id }, { error: 'order_upsert_failed' });
       }
     }
 
@@ -365,12 +366,12 @@ Deno.serve(async (req) => {
     );
 
   } catch (error: any) {
-    console.error("[sync-ebay-orders] Fatal error:", error.message);
+    console.error("[sync-ebay-orders] Fatal error:", error);
     // Since we might not have a reliable supabase client or userId if auth failed, 
     // we only log to DB if we successfully initialized them.
     // Auth failures themselves shouldn't normally log to ebay_sync_logs unless we want to.
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({ success: false, error: "Unable to sync eBay orders. Please try again." }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

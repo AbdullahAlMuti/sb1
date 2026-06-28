@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
 import { checkRateLimit, getClientIp, rateLimitResponse, sha256 } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
@@ -8,6 +8,15 @@ const corsHeaders = {
 };
 
 const ADMIN_PANEL_ROLES = new Set(["admin", "super_admin", "moderator", "staff"]);
+type SupabaseLike = {
+  from: (table: string) => any;
+  rpc: (fn: string, args?: Record<string, unknown>) => any;
+  auth: {
+    admin: {
+      getUserById: (userId: string) => any;
+    };
+  };
+};
 const USER_PANEL_ROLE_ERROR =
   "This account cannot be used from the user login panel. Please use the admin login page.";
 const ADMIN_PANEL_ROLE_ERROR =
@@ -49,7 +58,7 @@ async function hashOtp(userId: string, email: string, code: string): Promise<str
 // O(1) indexed lookup. The previous implementation paged through
 // auth.admin.listUsers (up to 20k users in memory) on every OTP request,
 // which breaks past ~20k users and scans the auth table on every login.
-async function findUserByEmail(supabaseAdmin: SupabaseClient, email: string) {
+async function findUserByEmail(supabaseAdmin: SupabaseLike, email: string) {
   // 1. Fast path: indexed lookup in public.profiles (kept in sync with auth.users).
   const { data: profile, error: profileErr } = await supabaseAdmin
     .from("profiles")
@@ -76,7 +85,7 @@ async function findUserByEmail(supabaseAdmin: SupabaseClient, email: string) {
   return null;
 }
 
-async function enforceAuthRateLimits(supabaseAdmin: SupabaseClient, req: Request, action: string, email: string) {
+async function enforceAuthRateLimits(supabaseAdmin: SupabaseLike, req: Request, action: string, email: string) {
   const ip = getClientIp(req);
   const ipLimit = await checkRateLimit(supabaseAdmin, {
     bucket: `auth-otp:${action}:ip`,
@@ -97,7 +106,7 @@ async function enforceAuthRateLimits(supabaseAdmin: SupabaseClient, req: Request
   return emailLimit;
 }
 
-async function storeOtpCode(supabaseAdmin: SupabaseClient, userId: string, email: string, verificationCode: string) {
+async function storeOtpCode(supabaseAdmin: SupabaseLike, userId: string, email: string, verificationCode: string) {
   const expiresAt = new Date(Date.now() + OTP_TTL_MS).toISOString();
   const codeHash = await hashOtp(userId, email, verificationCode);
 
@@ -208,7 +217,8 @@ serve(async (req) => {
         return jsonResponse({ error: "This account is inactive. Please contact support." }, 403);
       }
 
-      if (user.banned_until && new Date(user.banned_until) > new Date()) {
+      const bannedUntil = (user as typeof user & { banned_until?: string | null }).banned_until;
+      if (bannedUntil && new Date(bannedUntil) > new Date()) {
         return jsonResponse({ error: "This account is currently disabled. Please contact support." }, 403);
       }
 

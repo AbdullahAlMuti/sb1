@@ -51,8 +51,7 @@ export default function VisualPipeline() {
               </div>
               {[
                 { name: "Amazon", color: "border-orange-500/20 bg-orange-500/5 hover:border-orange-500/40" },
-                { name: "Walmart", color: "border-blue-500/20 bg-blue-500/5 hover:border-blue-500/40" },
-                { name: "AliExpress", color: "border-red-500/20 bg-red-500/5 hover:border-red-500/40" }
+                { name: "Walmart", color: "border-blue-500/20 bg-blue-500/5 hover:border-blue-500/40" }
               ].map((s) => (
                 <Reveal 
                   key={s.name} 

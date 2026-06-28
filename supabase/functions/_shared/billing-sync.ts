@@ -1,9 +1,12 @@
 import Stripe from "https://esm.sh/stripe@18.5.0";
-import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { activateTrial } from "./trial-activation.ts";
 
+type SupabaseLike = {
+  from: (table: string) => any;
+};
+
 export async function syncStripeData(
-  supabaseAdmin: SupabaseClient,
+  supabaseAdmin: SupabaseLike,
   stripe: Stripe,
   customerId: string
 ): Promise<{ success: boolean; error?: string }> {
@@ -192,7 +195,7 @@ export async function syncStripeData(
       });
 
       const paidTrialSession = sessions.data.find(
-        (s) => s.mode === "payment" && s.payment_status === "paid" && s.metadata?.plan_id
+        (s: Stripe.Checkout.Session) => s.mode === "payment" && s.payment_status === "paid" && s.metadata?.plan_id
       );
 
       if (paidTrialSession?.metadata?.plan_id) {

@@ -4,9 +4,13 @@
 // This module provides centralized plan validation for all edge functions.
 // NO hardcoded limits - everything comes from the database.
 
-import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { isWithinLimit } from "./billing.ts";
 export { isWithinLimit } from "./billing.ts";
+
+type SupabaseLike = {
+  from: (table: string) => any;
+  rpc?: (fn: string, args?: Record<string, unknown>) => any;
+};
 
 export type LimitAction =
   | 'credit'
@@ -67,7 +71,7 @@ export interface FullPlanStatus {
 }
 
 export async function verifySaaSAccess(
-  supabase: SupabaseClient,
+  supabase: SupabaseLike,
   userId: string
 ): Promise<{ allowed: boolean; reason?: string }> {
   // Check if the user is an admin or super admin first
@@ -110,7 +114,7 @@ export async function verifySaaSAccess(
 }
 
 export async function enforceActiveSubscription(
-  supabaseAdmin: SupabaseClient,
+  supabaseAdmin: SupabaseLike,
   userId: string
 ): Promise<Response | null> {
   const access = await verifySaaSAccess(supabaseAdmin, userId);
@@ -139,7 +143,7 @@ export interface Entitlement {
 }
 
 export async function getEntitlement(
-  supabase: SupabaseClient,
+  supabase: SupabaseLike,
   userId: string
 ): Promise<Entitlement> {
   const status = await getFullPlanStatus(supabase, userId);
@@ -200,7 +204,7 @@ export async function getEntitlement(
  * Fetches complete plan status for a user - use for dashboard/status checks
  */
 export async function getFullPlanStatus(
-  supabase: SupabaseClient,
+  supabase: SupabaseLike,
   userId: string
 ): Promise<FullPlanStatus | null> {
   try {
@@ -370,7 +374,7 @@ export async function getFullPlanStatus(
  * Returns 402 Payment Required compatible response if limit exceeded.
  */
 export async function validateUserPlan(
-  supabase: SupabaseClient,
+  supabase: SupabaseLike,
   userId: string,
   action: LimitAction,
   amount: number = 1
@@ -560,7 +564,7 @@ export async function validateUserPlan(
  * Deducts usage after a successful action. Call this AFTER the action succeeds.
  */
 export async function deductUsage(
-  supabase: SupabaseClient,
+  supabase: SupabaseLike,
   userId: string,
   action: LimitAction,
   amount: number = 1,
@@ -570,6 +574,10 @@ export async function deductUsage(
     switch (action) {
       case 'credit':
         {
+          if (!supabase.rpc) {
+            console.error('[plan-middleware] deduct_user_credits RPC unavailable on Supabase client');
+            return false;
+          }
           const { error } = await supabase.rpc('deduct_user_credits', {
             p_user_id: userId,
             p_amount: amount,
@@ -587,6 +595,10 @@ export async function deductUsage(
       case 'seo_title':
       case 'seo_description':
         {
+          if (!supabase.rpc) {
+            console.error('[plan-middleware] increment_user_plan_usage RPC unavailable on Supabase client');
+            return false;
+          }
           const { error } = await supabase.rpc('increment_user_plan_usage', {
             p_user_id: userId,
             p_action: action,

@@ -31,6 +31,10 @@ const filter = args.find((a) => !a.startsWith('--'));
 // ── Locate deno ──────────────────────────────────────────────────────────────
 
 function findDeno() {
+  if (process.env.DENO_BIN && existsSync(process.env.DENO_BIN)) {
+    return process.env.DENO_BIN;
+  }
+
   try {
     const result = spawnSync('deno', ['--version'], { encoding: 'utf8', timeout: 5000 });
     if (result.status === 0) return 'deno';
@@ -81,7 +85,7 @@ const results = { passed: [], failed: [] };
 
 for (const fn of functions) {
   const entrypoint = join(FUNCTIONS_DIR, fn, 'index.ts');
-  const denoArgs = ['check'];
+  const denoArgs = ['check', '--no-lock'];
   if (noCache) denoArgs.push('--no-check-cached');
   denoArgs.push(entrypoint);
 

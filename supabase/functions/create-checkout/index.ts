@@ -10,6 +10,7 @@ import {
 import { isTrialEligible } from "../_shared/billing.ts";
 
 type BillingInterval = "monthly" | "yearly";
+type SupabaseLike = { from: (table: string) => any };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PRICE_ID_RE = /^price_[a-zA-Z0-9]+$/;
@@ -31,7 +32,7 @@ async function readLimitedJson(req: Request, maxBytes = 4096): Promise<Record<st
 }
 
 async function persistStripeCustomerId(
-  supabaseAdmin: ReturnType<typeof createClient>,
+  supabaseAdmin: SupabaseLike,
   userId: string,
   customerId: string,
 ) {
@@ -50,7 +51,7 @@ async function persistStripeCustomerId(
 
 async function resolveStripeCustomerId(
   stripe: Stripe,
-  supabaseAdmin: ReturnType<typeof createClient>,
+  supabaseAdmin: SupabaseLike,
   userId: string,
   userEmail: string,
   existingCustomerId: string | null,
@@ -416,9 +417,10 @@ serve(async (req) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message: errorMessage });
-    return new Response(JSON.stringify({ error: errorMessage }), {
+    const isOriginError = errorMessage.includes("Origin");
+    return new Response(JSON.stringify({ error: isOriginError ? "Origin not allowed" : "Unable to create checkout session. Please try again." }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: errorMessage.includes("Origin") ? 403 : 500,
+      status: isOriginError ? 403 : 500,
     });
   }
 });

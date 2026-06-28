@@ -13,8 +13,10 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[CUSTOMER-PORTAL] ${step}${detailsStr}`);
 };
 
+type SupabaseLike = { from: (table: string) => any };
+
 async function persistStripeCustomerId(
-  supabaseAdmin: ReturnType<typeof createClient>,
+  supabaseAdmin: SupabaseLike,
   userId: string,
   customerId: string,
 ) {
@@ -33,7 +35,7 @@ async function persistStripeCustomerId(
 
 async function resolveCustomerId(
   stripe: Stripe,
-  supabaseAdmin: ReturnType<typeof createClient>,
+  supabaseAdmin: SupabaseLike,
   userId: string,
   userEmail: string,
   profileCustomerId: string | null,

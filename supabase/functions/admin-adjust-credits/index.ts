@@ -125,7 +125,10 @@ serve(async (req) => {
       .from("profiles")
       .update({ credits: newCredits })
       .eq("id", userId);
-    if (updErr) return json(500, { error: updErr.message });
+    if (updErr) {
+      console.error("admin-adjust-credits profile update failed", updErr);
+      return json(500, { error: "Unable to update credits" });
+    }
 
     const transactionType =
       action === "grant" ? "admin_grant" : action === "set" ? "admin_set" : "admin_reset";
@@ -174,6 +177,6 @@ serve(async (req) => {
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error("admin-adjust-credits error", message);
-    return json(500, { error: message });
+    return json(500, { error: "Unable to adjust credits" });
   }
 });

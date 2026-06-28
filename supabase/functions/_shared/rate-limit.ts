@@ -1,10 +1,12 @@
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-
 type RateLimitOptions = {
   bucket: string;
   key: string | null | undefined;
   limit: number;
   windowSeconds: number;
+};
+
+type SupabaseLike = {
+  from: (table: string) => any;
 };
 
 type RateLimitResult = {
@@ -37,7 +39,7 @@ export function getClientIp(req: Request): string {
 }
 
 export async function checkRateLimit(
-  supabase: SupabaseClient,
+  supabase: SupabaseLike,
   options: RateLimitOptions,
 ): Promise<RateLimitResult> {
   const windowMs = options.windowSeconds * 1000;

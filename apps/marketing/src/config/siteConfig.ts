@@ -42,7 +42,7 @@ export const siteConfig: SiteConfig = {
   },
 
   hero: {
-    eyebrow: "Amazon · Walmart · AliExpress → eBay",
+    eyebrow: "Amazon · Walmart → eBay",
     titleLead: "List winning products to eBay in",
     titleHighlight: "one click.",
     subtitle:
@@ -56,7 +56,7 @@ export const siteConfig: SiteConfig = {
     secondaryCta: { label: "See how it works", href: "/how-it-works", event: "cta_how_it_works_hero" },
     stats: [
       { value: "200+", label: "Listings per hour" },
-      { value: "3", label: "Supported suppliers" },
+      { value: "2", label: "Supported suppliers" },
       { value: "50k+", label: "Active resellers" },
     ],
   },
@@ -67,7 +67,6 @@ export const siteConfig: SiteConfig = {
     logos: [
       { name: "Amazon", src: "/logos/amazon.ico" },
       { name: "Walmart", src: "/logos/walmart.ico" },
-      { name: "AliExpress", src: "/logos/aliexpress.ico" },
       { name: "eBay", src: "/logos/ebay.ico" },
     ],
   },
@@ -81,7 +80,7 @@ export const siteConfig: SiteConfig = {
         icon: ScanSearch,
         title: "Scrape",
         description:
-          "Open any Amazon, Walmart, or AliExpress product. SellerSuit captures the title, images, variants, and price instantly.",
+          "Open any supported Amazon or Walmart product. SellerSuit captures the title, images, variants, and price instantly.",
       },
       {
         icon: Calculator,
@@ -108,7 +107,7 @@ export const siteConfig: SiteConfig = {
         icon: ScanSearch,
         title: "Supplier scraper",
         description:
-          "One-click capture of titles, images, variants, and pricing from Amazon, Walmart, and AliExpress product pages.",
+          "One-click capture of titles, images, variants, and pricing from supported Amazon and Walmart product pages.",
       },
       {
         icon: Tags,
@@ -259,7 +258,7 @@ export const siteConfig: SiteConfig = {
     items: [
       {
         q: "Which suppliers and marketplaces are supported?",
-        a: "SellerSuit scrapes from Amazon, Walmart, and AliExpress and auto-uploads to eBay. More marketplaces are on the roadmap.",
+        a: "SellerSuit scrapes from Amazon and Walmart and auto-uploads to eBay. More supplier sources may be added later.",
       },
       {
         q: "Do I need technical skills to use it?",
@@ -330,6 +329,11 @@ export const siteConfig: SiteConfig = {
           { label: "Privacy", href: "/privacy-policy" },
           { label: "Terms", href: "/terms-of-service" },
           { label: "Refunds", href: "/refund" },
+          { label: "Limited Use", href: "/limited-use" },
+          { label: "Permissions", href: "/permissions" },
+          { label: "Data Deletion", href: "/data-deletion" },
+          { label: "Cookie Policy", href: "/cookie-policy" },
+          { label: "Security", href: "/security" },
         ],
       },
     ],

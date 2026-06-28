@@ -31,7 +31,7 @@ const TITLE_GENERATION_CREDIT_COST = 1;
 
 const DEFAULT_PROMPT = `Generate 3 distinct, keyword-optimized eBay titles (under 80 chars each).
 Return ONLY a JSON object exactly like this:
-{"titles":[{"rank":"best","title":"..."},{"rank":"recommended","title":"..."},{"rank":"powerful","title":"..."}]}`;
+{"titles":[{"rank":"best","title":"..."},{"rank":"recommended","title":"..."},{"rank":"powerful","title":"..."}]}
 
 PRODUCT DATA:
 Title: {title}

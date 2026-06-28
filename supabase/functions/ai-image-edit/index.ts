@@ -134,7 +134,13 @@ serve(async (req) => {
     console.log("Successfully processed AI image edit");
 
     // Deduct 1 credit after confirmed success
-    await deductUsage(supabase, authContext.userId, 'credit', 1, { description: 'AI image edit' });
+    const deducted = await deductUsage(supabase, authContext.userId, 'credit', 1, { description: 'AI image edit', feature: 'ai-image-edit' });
+    if (!deducted) {
+      return new Response(
+        JSON.stringify({ error: "Unable to deduct credits for this generation. Please try again.", code: "CREDIT_DEDUCTION_FAILED" }),
+        { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     return new Response(
       JSON.stringify({
@@ -146,10 +152,9 @@ serve(async (req) => {
 
   } catch (error: unknown) {
     console.error("Error in ai-image-edit function:", error);
-    const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
     const status = error instanceof Error && /(authorization|auth token|session)/i.test(error.message) ? 401 : 500;
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: status === 401 ? "Authentication required" : "Image edit failed. Please try again." }),
       { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
