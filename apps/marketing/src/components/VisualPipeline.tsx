@@ -70,23 +70,23 @@ export default function VisualPipeline() {
                 <path d="M0 40 H100" stroke="currentColor" strokeWidth="1.5" className="text-border" strokeDasharray="4 4" />
                 
                 {/* Floating data pulses */}
-                <motion.circle 
-                  cx="0" cy="40" r="3.5" 
+                <motion.circle
+                  cx="0" cy="40" r="3.5"
                   className="fill-primary"
-                  animate={{ cx: [0, 100] }} 
-                  transition={{ ...floatTransition, delay: 0 }} 
+                  animate={{ x: [0, 100] }}
+                  transition={{ ...floatTransition, delay: 0 }}
                 />
-                <motion.circle 
-                  cx="0" cy="40" r="3.5" 
+                <motion.circle
+                  cx="0" cy="40" r="3.5"
                   className="fill-success"
-                  animate={{ cx: [0, 100] }} 
-                  transition={{ ...floatTransition, delay: 0.8 }} 
+                  animate={{ x: [0, 100] }}
+                  transition={{ ...floatTransition, delay: 0.8 }}
                 />
-                <motion.circle 
-                  cx="0" cy="40" r="3.5" 
+                <motion.circle
+                  cx="0" cy="40" r="3.5"
                   className="fill-amber-500"
-                  animate={{ cx: [0, 100] }} 
-                  transition={{ ...floatTransition, delay: 1.6 }} 
+                  animate={{ x: [0, 100] }}
+                  transition={{ ...floatTransition, delay: 1.6 }}
                 />
               </svg>
               <div className="absolute top-[8px] left-1/2 -translate-x-1/2 text-[9px] font-bold text-muted-foreground bg-secondary/80 px-1.5 py-0.5 rounded border border-border/40 select-none">
@@ -130,23 +130,23 @@ export default function VisualPipeline() {
                 <path d="M0 40 H100" stroke="currentColor" strokeWidth="1.5" className="text-border" strokeDasharray="4 4" />
                 
                 {/* Floating listed assets pulses */}
-                <motion.circle 
-                  cx="0" cy="40" r="3.5" 
+                <motion.circle
+                  cx="0" cy="40" r="3.5"
                   className="fill-success"
-                  animate={{ cx: [0, 100] }} 
-                  transition={{ ...floatTransition, delay: 0.3 }} 
+                  animate={{ x: [0, 100] }}
+                  transition={{ ...floatTransition, delay: 0.3 }}
                 />
-                <motion.circle 
-                  cx="0" cy="40" r="3.5" 
+                <motion.circle
+                  cx="0" cy="40" r="3.5"
                   className="fill-primary"
-                  animate={{ cx: [0, 100] }} 
-                  transition={{ ...floatTransition, delay: 1.1 }} 
+                  animate={{ x: [0, 100] }}
+                  transition={{ ...floatTransition, delay: 1.1 }}
                 />
-                <motion.circle 
-                  cx="0" cy="40" r="3.5" 
+                <motion.circle
+                  cx="0" cy="40" r="3.5"
                   className="fill-success"
-                  animate={{ cx: [0, 100] }} 
-                  transition={{ ...floatTransition, delay: 1.9 }} 
+                  animate={{ x: [0, 100] }}
+                  transition={{ ...floatTransition, delay: 1.9 }}
                 />
               </svg>
               <div className="absolute top-[8px] left-1/2 -translate-x-1/2 text-[9px] font-bold text-success bg-success/10 px-1.5 py-0.5 rounded border border-success/30 select-none">
