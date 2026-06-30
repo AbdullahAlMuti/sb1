@@ -33,9 +33,8 @@ export function useFeatureGate() {
   return context;
 }
 
-const flagToFeatureMap: Record<string, 'product-research' | 'best-selling' | 'profitable-products'> = {
+const flagToFeatureMap: Record<string, 'product-research' | 'profitable-products'> = {
   'ai_product_research': 'product-research',
-  'top_selling_products': 'best-selling',
   'profitable_products': 'profitable-products',
 };
 

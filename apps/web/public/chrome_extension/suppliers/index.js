@@ -10,3 +10,5 @@ import './core/supplier-adapter.js';
 import './core/registry.js';
 import './amazon/adapter.js';
 import './walmart/adapter.js';
+import './aliexpress/domains.generated.js';
+import './aliexpress/adapter.js';

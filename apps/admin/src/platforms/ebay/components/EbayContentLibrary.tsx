@@ -1,15 +1,14 @@
-import React, { useState } from "react";
-import { ChevronLeft, PackageCheck, Tags, TrendingUp } from "lucide-react";
+import { useState } from "react";
+import { ChevronLeft, PackageCheck, Tags } from "lucide-react";
 import { Button } from "@repo/ui/components/ui/button";
 
 // Curated catalog managers, rendered from the shared entity engine.
 import {
-  AdminBestSellingPage as AdminBestSelling,
   AdminMustSellPage as AdminMustSell,
   AdminProfitableProductsPage as AdminProfitableProducts,
 } from "@/modules/catalog";
 
-type ContentView = "best-selling" | "must-sell" | "profitable-products" | null;
+type ContentView = "must-sell" | "profitable-products" | null;
 
 export function EbayContentLibrary() {
   const [contentView, setContentView] = useState<ContentView>(null);
@@ -19,11 +18,7 @@ export function EbayContentLibrary() {
     let title = "";
     let description = "";
 
-    if (contentView === "best-selling") {
-      ActiveComponent = AdminBestSelling;
-      title = "Best Selling Items";
-      description = "Manage the 500 best selling eBay items shown to users";
-    } else if (contentView === "must-sell") {
+    if (contentView === "must-sell") {
       ActiveComponent = AdminMustSell;
       title = "Must Sell Items";
       description = "Manage trending eBay products for users. Drag to reorder.";
@@ -61,18 +56,6 @@ export function EbayContentLibrary() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <button
-          onClick={() => setContentView("best-selling")}
-          className="flex items-start gap-3 p-4 rounded-xl border border-border bg-card hover:border-primary/40 hover:bg-muted/20 transition-colors text-left group"
-        >
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 shrink-0 group-hover:bg-blue-100 transition-colors">
-            <TrendingUp className="h-4 w-4" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold">Best Selling Items</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Manage the top 500 best selling eBay items</p>
-          </div>
-        </button>
 
         <button
           onClick={() => setContentView("must-sell")}

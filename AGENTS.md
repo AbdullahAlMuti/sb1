@@ -44,6 +44,14 @@ This is a monorepo. See [`CLAUDE.md`](CLAUDE.md) for the full map. Key apps:
 
 ## 2. Working agreement
 
+- **Local-first feature rule.** Every new feature must be implemented and tested
+  against the local/dev environment first. For extension work, build and load
+  `apps/extension/dist/extension-dev`; for web/admin/backend work, use the local
+  servers and local or non-production backend targets. Only after the local/dev
+  flow works should the production build or generated production extension copy
+  be prepared. This is a permanent gate: use `npm run qa:local` before release
+  work, and keep root production scripts wired so local/dev verification runs
+  before production artifacts are created.
 - **Edit the extension in `apps/extension/` only.** `apps/web/public/chrome_extension/`
   is a generated copy — never edit it directly.
 - **Match surrounding code.** Follow existing naming, comment density, and idioms.
@@ -58,6 +66,7 @@ This is a monorepo. See [`CLAUDE.md`](CLAUDE.md) for the full map. Key apps:
 
 ```bash
 npm run dev          # web dev server (port 3001)
+npm run dev:local    # extension watcher + local marketing/web/admin servers
 npm run typecheck    # tsc --noEmit across apps
 npm run lint         # eslint
 npm run build        # build marketing + web + admin

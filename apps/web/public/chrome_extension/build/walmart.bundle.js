@@ -7242,7 +7242,8 @@
 		const MARKETPLACE_HOSTS = Object.freeze({
 			amazon: /^(?:[^.]+\.)?amazon\.(?:com|co\.uk|de|ca|com\.au)$/i,
 			walmart: /^(?:[^.]+\.)?walmart\.(?:com|ca)$/i,
-			ebay: /^(?:[^.]+\.)?ebay\.(?:com|co\.uk|de|fr|com\.au|it|es)$/i
+			ebay: /^(?:[^.]+\.)?ebay\.(?:com|co\.uk|de|fr|com\.au|it|es)$/i,
+			aliexpress: /^(?:[^.]+\.)?aliexpress\.(?:com|ru|us)$/i
 		});
 		const SEARCH_HOSTS = Object.freeze({
 			ebay: "www.ebay.com",
@@ -7981,6 +7982,167 @@
 					if (ts) insertAfter(ts.closest("section") || ts);
 				}
 			},
+			aliexpress: {
+				marketplace: "aliexpress",
+				matchListingPage() {
+					const p = location.pathname;
+					return p === "/" || p === "/index.html" || /^\/w\/wholesale-/i.test(p) || /^\/wholesale/i.test(p) || /^\/category\//i.test(p) || location.search.includes("SearchText=") || location.search.includes("searchText=") || location.search.includes("trafficChannel=main") || !!document.querySelector("a[href*=\"/item/\"]");
+				},
+				matchDetailPage() {
+					return /\/item\/\d+(?:\.html)?/i.test(location.pathname) || !!document.querySelector("[data-pl=\"product-title\"], h1");
+				},
+				findContainers() {
+					function normalizeHref(href) {
+						if (!href) return "";
+						try {
+							return new URL(href, location.origin || "https://www.aliexpress.com").href.split("?")[0];
+						} catch (_) {
+							return href.split("?")[0];
+						}
+					}
+					function uniqueProductLinkCount(el) {
+						if (!el?.querySelectorAll) return 0;
+						return new Set(Array.from(el.querySelectorAll("a[href*=\"/item/\"]")).map((link) => normalizeHref(link.getAttribute("href"))).filter(Boolean)).size;
+					}
+					function hasProductText(el) {
+						if (!el?.querySelectorAll) return false;
+						const text = safeText(el);
+						const hasTitleLink = Array.from(el.querySelectorAll("a[href*=\"/item/\"]")).some((link) => safeText(link).replace(/\s+/g, " ").trim().length > 12);
+						const hasCommerceText = /(?:BDT|US\s*\$|\$|€|£|sold|shipping|Choice|SuperDeals|AliExpress)/i.test(text);
+						return hasTitleLink || hasCommerceText;
+					}
+					function findProductCard(node) {
+						let current = node;
+						let best = null;
+						for (let depth = 0; current && depth < 8; depth += 1, current = current.parentElement) {
+							if (!current.querySelectorAll) continue;
+							if (uniqueProductLinkCount(current) > 4) break;
+							if (current.matches?.("[data-product-id], [data-item-id]") || hasProductText(current)) best = current;
+						}
+						return best || node.closest?.("[data-product-id], [data-item-id], [class*=\"product\"], [class*=\"item\"], li, div") || node;
+					}
+					const selectors = [
+						"[data-product-id]",
+						"[data-item-id]",
+						"a[href*=\"/item/\"][href*=\".html\"]",
+						"a[href*=\"/item/\"]"
+					];
+					const cards = /* @__PURE__ */ new Set();
+					selectors.forEach((selector) => {
+						document.querySelectorAll(selector).forEach((node) => {
+							const card = findProductCard(node);
+							if (card && card.querySelector && (card.matches?.("a[href*=\"/item/\"]") || card.querySelector("a[href*=\"/item/\"]"))) cards.add(card);
+						});
+					});
+					return Array.from(cards);
+				},
+				isMeaningfulProductTitle(text) {
+					const value = String(text || "").replace(/\s+/g, " ").trim();
+					if (value.length < 10) return false;
+					if (/^(aliexpress|choice|superdeals|ad|sponsored|free shipping)$/i.test(value)) return false;
+					if (/^(top selling on aliexpress|premium quality|best price in similar deals)$/i.test(value)) return false;
+					if (/^(?:BDT|US\s*\$|\$|€|£)\s*[\d,.]+/i.test(value)) return false;
+					return /[a-z0-9]/i.test(value);
+				},
+				readProductLinkTitle(link) {
+					if (!link) return "";
+					return [
+						safeText(link),
+						link.getAttribute("title"),
+						link.getAttribute("aria-label"),
+						link.querySelector("img[alt]")?.getAttribute("alt"),
+						link.querySelector("img[title]")?.getAttribute("title")
+					].map((value) => String(value || "").replace(/\s+/g, " ").trim()).find((value) => this.isMeaningfulProductTitle(value)) || "";
+				},
+				findProductTitleLink(el) {
+					return Array.from(el.querySelectorAll?.("a[href*=\"/item/\"]") || []).find((link) => this.readProductLinkTitle(link)) || null;
+				},
+				extract(el) {
+					const linkEl = this.findProductTitleLink(el) || el.querySelector("a[href*=\"/item/\"]") || el.closest?.("a[href*=\"/item/\"]");
+					const rawHref = linkEl ? linkEl.getAttribute("href") : "";
+					let url = "";
+					if (rawHref) try {
+						url = new URL(rawHref, location.origin || "https://www.aliexpress.com").href.split("?")[0];
+					} catch (_) {
+						url = rawHref.startsWith("http") ? rawHref.split("?")[0] : "https://www.aliexpress.com" + rawHref.split("?")[0];
+					}
+					const productId = (/\/item\/(\d+)(?:\.html)?/i.exec(url) || [])[1] || el.dataset.productId || el.dataset.itemId || "";
+					const titleEl = this.findProductTitleLink(el) || el.querySelector("[class*=\"title\"] a[href*=\"/item/\"]") || el.querySelector("[class*=\"title\"]") || el.querySelector("h1, h2, h3") || linkEl;
+					const title = this.readProductLinkTitle(titleEl) || (this.isMeaningfulProductTitle(safeText(titleEl)) ? safeText(titleEl) : "") || (this.isMeaningfulProductTitle(titleEl?.getAttribute?.("title")) ? titleEl.getAttribute("title") : "") || this.readProductLinkTitle(linkEl);
+					const imgEl = el.querySelector("img[src], img[data-src]");
+					const priceEl = el.querySelector("[class*=\"price\"]") || el.querySelector("[class*=\"sale\"]") || el.querySelector("[class*=\"amount\"]");
+					return {
+						supplier: "aliexpress",
+						productId,
+						title,
+						searchQuery: CardCore.cleanSearchQuery(title),
+						image: imgEl ? imgEl.src || imgEl.getAttribute("data-src") || "" : "",
+						url,
+						price: safeText(priceEl),
+						brand: "",
+						primeOrShipping: "",
+						idLabel: "Product ID",
+						stockQty: "",
+						upc: ""
+					};
+				},
+				extractFromDetailPage() {
+					let scraped = null;
+					try {
+						if (window.SSAliExpressScraper?.extractProductDocument) scraped = window.SSAliExpressScraper.extractProductDocument(document, location.href);
+					} catch (err) {
+						console.warn("[SellerSuit] AliExpress card scrape fallback:", err?.message || err);
+					}
+					const productId = scraped?.sourceId || scraped?.productId || (/\/item\/(\d+)(?:\.html)?/i.exec(location.pathname) || [])[1] || "";
+					const title = scraped?.title || safeText(document.querySelector("[data-pl=\"product-title\"]")) || safeText(document.querySelector("h1")) || document.querySelector("meta[property=\"og:title\"]")?.getAttribute("content") || "";
+					const image = scraped?.mainImage || Array.isArray(scraped?.images) && scraped.images[0] || document.querySelector("meta[property=\"og:image\"]")?.getAttribute("content") || document.querySelector("img[src*=\"alicdn\"]")?.src || "";
+					const price = scraped?.price ? [scraped.currency, scraped.price].filter(Boolean).join(" ") : safeText(document.querySelector("[class*=\"price\"]"));
+					const seller = scraped?.seller?.name || "";
+					const shipping = scraped?.shipping?.text || "";
+					const stockQty = Array.isArray(scraped?.variants) && scraped.variants.some((v) => v.quantity > 0) ? "In Stock" : "";
+					return {
+						supplier: "aliexpress",
+						productId,
+						idLabel: "Product ID",
+						title,
+						searchQuery: CardCore.cleanSearchQuery(title),
+						price,
+						currency: scraped?.currency || "",
+						image,
+						url: location.href.split("?")[0],
+						seller,
+						brand: seller,
+						primeOrShipping: shipping,
+						stockQty,
+						upc: ""
+					};
+				},
+				insertCard(container, wrapper) {
+					wrapper.style.display = "block";
+					wrapper.style.visibility = "visible";
+					wrapper.style.opacity = "1";
+					wrapper.style.position = "relative";
+					wrapper.style.zIndex = "2147483000";
+					container.appendChild(wrapper);
+				},
+				insertCardOnDetailPage(wrapper) {
+					function insertAfter(anchor) {
+						if (!anchor || !anchor.parentNode) return false;
+						anchor.parentNode.insertBefore(wrapper, anchor.nextSibling);
+						return true;
+					}
+					const title = document.querySelector("[data-pl=\"product-title\"]") || document.querySelector("[class*=\"title--wrap\"]") || document.querySelector("[class*=\"product-title\"]") || document.querySelector("h1");
+					if (insertAfter(title?.closest?.("[class*=\"title\"]") || title)) return;
+					const price = document.querySelector("[class*=\"price\"]");
+					if (insertAfter(price?.closest?.("[class*=\"price\"]") || price)) return;
+					const buyBox = document.querySelector("[class*=\"buy\"]") || document.querySelector("[class*=\"action\"]") || document.querySelector("main");
+					if (buyBox) {
+						buyBox.insertBefore(wrapper, buyBox.firstChild);
+						return;
+					}
+					document.body.prepend(wrapper);
+				}
+			},
 			ebay: {
 				marketplace: "ebay",
 				matchListingPage() {
@@ -8118,6 +8280,11 @@
 			status.style.display = "flex";
 			status.style.alignItems = "center";
 		}
+		async function sendRuntimeMessage(message) {
+			const response = await chrome.runtime.sendMessage(message);
+			if (response && response.ok === false) throw new Error(response.error || "Extension background rejected request");
+			return response;
+		}
 		async function handleUpload(wrapperEl, data) {
 			const supplierKey = getSupplierKey();
 			const config = supplierKey ? SUPPLIERS[supplierKey] : null;
@@ -8125,7 +8292,7 @@
 				setStatus(wrapperEl, "loading", "Opening Sidebar…");
 				try {
 					chrome.storage.local.set({ autoScanOnly: true });
-					chrome.runtime.sendMessage({ action: "OPEN_SIDE_PANEL" });
+					await sendRuntimeMessage({ action: "OPEN_SIDE_PANEL" });
 					setTimeout(() => {
 						chrome.runtime.sendMessage({ action: "DOM_READY_AUTO_SCAN" });
 					}, 100);
@@ -8137,12 +8304,17 @@
 			} else {
 				setStatus(wrapperEl, "loading", "Navigating…");
 				try {
-					await new Promise((r) => chrome.storage.local.set({ autoScanActive: true }, r));
 					let targetUrl = data.url || "";
 					if (targetUrl) targetUrl = targetUrl.includes("#") ? targetUrl.split("#")[0] + "#sellersuit_auto_list=true" : targetUrl + "#sellersuit_auto_list=true";
-					await chrome.runtime.sendMessage({
+					const isAliExpress = supplierKey === "aliexpress";
+					if (isAliExpress) {
+						await sendRuntimeMessage({ action: "OPEN_SIDE_PANEL" });
+						chrome.storage.local.set({ autoScanActive: true });
+					} else await new Promise((r) => chrome.storage.local.set({ autoScanActive: true }, r));
+					await sendRuntimeMessage({
 						action: "AUTO_LIST_NEW_TAB",
-						url: targetUrl
+						url: targetUrl,
+						skipSidePanelOpen: isAliExpress
 					});
 					setStatus(wrapperEl, "success", "Opening product page ✓");
 				} catch (e) {
@@ -8277,6 +8449,7 @@
 			wrapper.innerHTML = buildCardHTML(data);
 			wireCard(wrapper, data);
 			config.insertCardOnDetailPage(wrapper);
+			if (data.supplier === "aliexpress") document.getElementById("initial-list-button-container")?.remove();
 			if (data.supplier === "amazon") fetchAmazonQty(data.asin, wrapper);
 			if (!data.upc && data.supplier === "amazon") fetchProductPageData(data.url, data.asin, data.supplier, wrapper, data);
 		}

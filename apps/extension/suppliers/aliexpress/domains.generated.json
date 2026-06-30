@@ -1,0 +1,12 @@
+{
+  "generatedAt": "2026-06-28T00:00:00.000Z",
+  "source": "Checked-in SellerSuit AliExpress domain registry. Refresh with npm run discover:aliexpress.",
+  "domains": [
+    "aliexpress.com",
+    "aliexpress.ru",
+    "aliexpress.us"
+  ],
+  "imageHosts": [
+    "*.alicdn.com"
+  ]
+}

@@ -25,7 +25,6 @@ export const keys = {
   subscriptions: entity("subscriptions"),
   checkoutSessions: entity("checkout_sessions"),
   prompts: entity("prompts"),
-  catalogBestSelling: entity("best_selling_items"),
   catalogMustSell: entity("must_sell_items"),
   catalogProfitable: entity("profitable_products"),
   audit: entity("admin_audit_logs"),

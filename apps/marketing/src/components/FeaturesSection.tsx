@@ -24,9 +24,9 @@ const FeaturesSection = () => {
                 key={feature.title}
                 as="article"
                 delay={(index % 3) * 0.08}
-                className="group rounded-2xl border border-border bg-card p-6 shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-soft-lg"
+                className="group rounded-lg border border-border bg-card p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-soft-lg"
               >
-                <div className="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                <div className="mb-4 grid h-11 w-11 place-items-center rounded-lg bg-[#f6f5f4] text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
                   <Icon className="h-5 w-5" />
                 </div>
                 <h3 className="font-display text-lg font-semibold text-foreground">{feature.title}</h3>

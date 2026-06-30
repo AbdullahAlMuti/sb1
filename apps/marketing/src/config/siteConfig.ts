@@ -11,6 +11,36 @@ import {
 } from "lucide-react";
 import type { SiteConfig } from "./types";
 
+export const BRAND_LOGOS = {
+  amazon: { name: "Amazon", src: "/logos/amazon-icon.svg" },
+  walmart: { name: "Walmart", src: "/logos/walmart.svg" },
+  ebay: { name: "eBay", src: "/logos/ebay.svg" },
+  aliexpress: { name: "AliExpress", src: "/logos/aliexpress.svg" },
+  alibaba: { name: "Alibaba", src: "/logos/alibaba.svg" },
+  temu: { name: "Temu", src: "/logos/temu.svg" },
+  banggood: { name: "Banggood", src: "https://images.weserv.nl/?url=logo.clearbit.com/banggood.com" },
+  cjDropshipping: { name: "CJ Dropshipping", src: "/logos/cjdropshipping.ico" },
+  facebook: { name: "Facebook", src: "/logos/facebook.svg" },
+  shopify: { name: "Shopify", src: "/logos/shopify.svg" },
+  mercury: { name: "Mercury", src: "https://images.weserv.nl/?url=logo.clearbit.com/mercury.com" },
+  mercari: { name: "Mercari", src: "/logos/Mercari.jpeg" },
+  tiktok: { name: "TikTok", src: "/logos/tiktok.svg" },
+  etsy: { name: "Etsy", src: "/logos/etsy.svg" },
+};
+
+export const ACTIVE_SCROLLING_LOGOS = [
+  BRAND_LOGOS.amazon,
+  BRAND_LOGOS.walmart,
+  BRAND_LOGOS.ebay,
+  BRAND_LOGOS.aliexpress,
+  BRAND_LOGOS.alibaba,
+  BRAND_LOGOS.temu,
+  BRAND_LOGOS.cjDropshipping,
+  BRAND_LOGOS.mercari,
+  BRAND_LOGOS.tiktok,
+  BRAND_LOGOS.etsy,
+];
+
 /**
  * Single source of truth for all marketing copy, CTAs, and pricing.
  * Changing the homepage = editing this file. No marketing strings live in components.
@@ -65,9 +95,9 @@ export const siteConfig: SiteConfig = {
     heading: "Source from the suppliers you already use",
     proof: "Trusted by 50,000+ resellers",
     logos: [
-      { name: "Amazon", src: "/logos/amazon.ico" },
-      { name: "Walmart", src: "/logos/walmart.ico" },
-      { name: "eBay", src: "/logos/ebay.ico" },
+      BRAND_LOGOS.amazon,
+      BRAND_LOGOS.walmart,
+      BRAND_LOGOS.ebay,
     ],
   },
 
@@ -194,7 +224,7 @@ export const siteConfig: SiteConfig = {
           "250 auto-orders / mo",
           "500 AI credits / mo",
           "Price monitoring",
-          "Top-selling product research",
+          "Bulk lister",
         ],
         cta: { label: "Choose Starter", href: "/signup?plan=starter", event: "cta_plan_starter" },
       },
@@ -312,6 +342,7 @@ export const siteConfig: SiteConfig = {
         title: "Resources",
         links: [
           { label: "Blog", href: "/blog" },
+          { label: "eBay Fees Calculator", href: "/resources/ebay-fees-calculator" },
           { label: "Documentation", href: "/documentation" },
           { label: "Troubleshooting", href: "/documentation#troubleshooting" },
         ],

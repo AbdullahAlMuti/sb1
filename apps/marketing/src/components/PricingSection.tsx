@@ -56,7 +56,7 @@ const PricingSection = () => {
 
         {/* interval toggle */}
         <div className="mb-10 flex items-center justify-center">
-          <div className="inline-flex rounded-full border border-border bg-secondary/60 p-1">
+          <div className="inline-flex rounded-full border border-border bg-card p-1 shadow-soft-sm">
             {(["monthly", "yearly"] as const).map((opt) => (
               <button
                 key={opt}
@@ -67,7 +67,7 @@ const PricingSection = () => {
                 }}
                 className={cn(
                   "rounded-full px-5 py-2 text-sm font-medium capitalize transition-colors",
-                  interval === opt ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  interval === opt ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 {opt}
@@ -89,8 +89,8 @@ const PricingSection = () => {
                 as="article"
                 delay={index * 0.08}
                 className={cn(
-                  "relative flex flex-col rounded-2xl border bg-card p-6 shadow-sm",
-                  tier.highlighted ? "border-primary shadow-soft-lg md:-mt-3 md:mb-3" : "border-border",
+                  "relative flex flex-col rounded-lg border bg-card p-6 shadow-sm",
+                  tier.highlighted ? "border-primary bg-background shadow-soft-lg md:-mt-3 md:mb-3" : "border-border",
                 )}
               >
                 {tier.badge && (
@@ -100,7 +100,7 @@ const PricingSection = () => {
                 )}
 
                 <div className="mb-5">
-                  <div className="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary">
+                  <div className="mb-4 grid h-11 w-11 place-items-center rounded-lg bg-background text-primary shadow-soft-sm">
                     <Icon className="h-5 w-5" />
                   </div>
                   <h3 className="font-display text-xl font-semibold text-foreground">{tier.name}</h3>
@@ -137,7 +137,7 @@ const PricingSection = () => {
                     cta={ctaFor(tier)}
                     variant={tier.highlighted ? "default" : "outline"}
                     size="lg"
-                    className="w-full rounded-lg"
+                    className="w-full"
                     trackProps={{ plan: tier.slug, interval: tier.oneTime ? "one_time" : interval }}
                   />
                 </div>

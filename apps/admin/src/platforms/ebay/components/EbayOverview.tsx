@@ -62,14 +62,6 @@ export function EbayOverview() {
           </div>
 
           {/* Content Library Stats */}
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <TrendingUp className="h-4 w-4 text-blue-500" />
-              <span className="text-sm font-medium">Best Selling</span>
-            </div>
-            <div className="text-2xl font-bold">{overviewData?.bestSelling || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">Curated Items</p>
-          </div>
 
           <div className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-center gap-2 text-muted-foreground mb-2">

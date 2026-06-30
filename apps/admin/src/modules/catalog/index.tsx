@@ -1,18 +1,9 @@
-import { Package, PackageCheck, TrendingUp } from "lucide-react";
+import { Package, PackageCheck } from "lucide-react";
 import { EntityListPage } from "@/core/entity/EntityListPage";
 import { makeCatalogModule, type CatalogItem } from "./makeCatalogModule";
 
 const money = (n: unknown) => `$${Number(n ?? 0).toFixed(2)}`;
 
-/** Best-selling: the shared catalog shape, nothing extra. */
-export const bestSellingModule = makeCatalogModule({
-  key: "best_selling_items",
-  table: "best_selling_items",
-  singular: "Item",
-  label: "Best Selling",
-  description: "Curated best-selling eBay items shown to users.",
-  icon: TrendingUp,
-});
 
 /** Must-sell: adds profit + total_sold (both NOT NULL). */
 export const mustSellModule = makeCatalogModule({
@@ -59,9 +50,7 @@ export const profitableModule = makeCatalogModule({
   }),
 });
 
-export function AdminBestSellingPage({ hideHeader }: { hideHeader?: boolean } = {}) {
-  return <EntityListPage module={bestSellingModule} hideHeader={hideHeader} />;
-}
+
 export function AdminMustSellPage({ hideHeader }: { hideHeader?: boolean } = {}) {
   return <EntityListPage module={mustSellModule} hideHeader={hideHeader} />;
 }

@@ -3,58 +3,57 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Modern SaaS design system */
+/* Notion-inspired marketing design system */
 
 @layer base {
   :root {
-    /* ─── Light Mode ─── */
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    /* Warm paper canvas, near-black ink, and one structural blue action. */
+    --background: 30 10% 96%;           /* warm paper #f6f5f4 */
+    --foreground: 0 0% 0%;              /* ink #000000 */
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 240 3% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 240 3% 12%;
 
-    --primary: 221 83% 53%;
+    --primary: 208 100% 44%;            /* Notion blue #0075de */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 214 32% 95%;
-    --secondary-foreground: 222 36% 22%;
+    --secondary: 231 60% 32%;           /* deep indigo hero band #213183 */
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 214 30% 93%;
-    --muted-foreground: 215 16% 43%;
+    --muted: 30 10% 96%;
+    --muted-foreground: 30 4% 36%;      /* stone #615d59 */
 
-    --accent: 160 60% 42%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 0 0% 100%;
+    --accent-foreground: 0 0% 0%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 22% 88%;
-    --input: 214 22% 88%;
-    --ring: 221 83% 53%;
+    --border: 0 0% 90%;                /* hairline #e6e6e6 */
+    --input: 0 0% 90%;
+    --ring: 208 100% 44%;
 
     --radius: 0.5rem;
 
-    /* ─── Custom Design Tokens ─── */
-    --gradient-primary: linear-gradient(135deg, hsl(221, 83%, 53%) 0%, hsl(160, 60%, 42%) 100%);
-    --gradient-hero: linear-gradient(180deg, hsl(210, 40%, 98%) 0%, hsl(214, 32%, 95%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(210, 40%, 99%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(160, 60%, 42%) 0%, hsl(199, 89%, 48%) 100%);
-    --gradient-cta: linear-gradient(135deg, hsl(221, 83%, 53%) 0%, hsl(217, 91%, 60%) 100%);
-    
-    --shadow-sm: 0 1px 2px hsl(222 47% 11% / 0.04);
-    --shadow-md: 0 4px 6px -1px hsl(222 47% 11% / 0.07), 0 2px 4px -2px hsl(222 47% 11% / 0.05);
-    --shadow-lg: 0 10px 15px -3px hsl(222 47% 11% / 0.08), 0 4px 6px -4px hsl(222 47% 11% / 0.05);
-    --shadow-xl: 0 22px 45px -24px hsl(222 47% 11% / 0.38);
-    
-    --glow-primary: 0 8px 24px hsl(221 83% 53% / 0.18);
-    --glow-accent: 0 8px 24px hsl(160 60% 42% / 0.16);
-    
-    --glass-bg: hsl(0 0% 100% / 0.90);
-    --glass-border: hsl(214 22% 88% / 0.80);
+    --gradient-primary: linear-gradient(135deg, hsl(0, 0%, 0%) 0%, hsl(30, 4%, 19%) 100%);
+    --gradient-hero: linear-gradient(180deg, hsl(231, 60%, 32%) 0%, hsl(245, 51%, 23%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(0, 0%, 100%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(208, 100%, 44%) 0%, hsl(208, 100%, 36%) 100%);
+    --gradient-cta: linear-gradient(135deg, hsl(231, 60%, 32%) 0%, hsl(208, 100%, 36%) 100%);
+
+    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.03);
+    --shadow-md: 0 2px 8px hsl(0 0% 0% / 0.04);
+    --shadow-lg: 0 4px 18px hsl(0 0% 0% / 0.05);
+    --shadow-xl: 0 12px 42px hsl(0 0% 0% / 0.14);
+
+    --glow-primary: 0 1px 3px hsl(240 3% 12% / 0.05);
+    --glow-accent: 0 1px 3px hsl(240 3% 12% / 0.05);
+
+    --glass-bg: hsl(0 0% 100% / 0.86);
+    --glass-border: hsl(0 0% 90% / 0.72);
 
     /* Platform brand colors */
     --amazon-orange: 33 100% 50%;
@@ -66,12 +65,12 @@
     --info: 199 89% 48%;
 
     /* Premium/paywall tokens (used for "Get Pro Access" UI) */
-    --premium: 221 83% 53%;
+    --premium: 210 100% 40%;
     --premium-foreground: 0 0% 100%;
-    --premium-surface: 221 70% 96%;
-    --premium-surface-foreground: 222 47% 11%;
-    --premium-border: 221 35% 86%;
-    --premium-ring: 221 83% 53%;
+    --premium-surface: 240 11% 96%;
+    --premium-surface-foreground: 240 3% 12%;
+    --premium-border: 0 0% 88%;
+    --premium-ring: 211 100% 45%;
     --gradient-premium-card: linear-gradient(
       180deg,
       hsl(var(--premium-surface)) 0%,
@@ -80,90 +79,89 @@
     --glow-premium: 0 10px 30px -14px hsl(var(--premium) / 0.45);
 
     /* Text hierarchy */
-    --text-primary: 222 47% 11%;
-    --text-secondary: 215 20% 32%;
-    --text-muted: 215 16% 43%;
+    --text-primary: 0 0% 0%;
+    --text-secondary: 30 2% 18%;
+    --text-muted: 30 4% 36%;
 
-    --warm-bg: 210 40% 98%;
-    --warm-glow: 221 70% 93%;
-    --warm-accent: 221 83% 53%;
-    --warm-accent-soft: 221 70% 96%;
-    --warm-text: 222 47% 11%;
-    --warm-text-muted: 215 16% 43%;
-    --warm-border: 214 22% 88%;
-    --warm-cta: 221 83% 53%;
-    --warm-cta-hover: 221 83% 47%;
+    --warm-bg: 30 10% 96%;
+    --warm-glow: 273 76% 84%;
+    --warm-accent: 208 100% 44%;
+    --warm-accent-soft: 207 84% 66%;
+    --warm-text: 0 0% 0%;
+    --warm-text-muted: 30 4% 36%;
+    --warm-border: 0 0% 90%;
+    --warm-cta: 208 100% 44%;
+    --warm-cta-hover: 208 100% 36%;
     --warm-cta-text: 0 0% 100%;
-    --warm-star: 45 93% 47%;
-    --warm-trust: 152 69% 40%;
-    --warm-chrome: 20 10% 50%;
-    --warm-tab-bg: 214 32% 95%;
+    --warm-star: 319 100% 70%;
+    --warm-trust: 208 100% 44%;
+    --warm-chrome: 0 0% 48%;
+    --warm-tab-bg: 30 10% 96%;
     --warm-card: 0 0% 100%;
-    --warm-flow: 214 22% 82%;
-    --warm-badge: 221 70% 96%;
+    --warm-flow: 0 0% 88%;
+    --warm-badge: 240 11% 96%;
 
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 222 47% 11%;
-    --sidebar-primary: 221 83% 53%;
+    --sidebar-foreground: 240 3% 12%;
+    --sidebar-primary: 208 100% 44%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 214 32% 95%;
-    --sidebar-accent-foreground: 222 36% 22%;
-    --sidebar-border: 214 22% 90%;
-    --sidebar-ring: 221 83% 53%;
+    --sidebar-accent: 30 10% 96%;
+    --sidebar-accent-foreground: 240 3% 12%;
+    --sidebar-border: 0 0% 90%;
+    --sidebar-ring: 208 100% 44%;
   }
 
   .dark {
-    /* ─── Dark Mode ─── */
-    --background: 222 47% 8%;
-    --foreground: 210 20% 98%;
+    --background: 30 4% 10%;
+    --foreground: 0 0% 100%;
 
-    /* Cards - Elevated dark surfaces */
-    --card: 222 38% 12%;
-    --card-foreground: 210 20% 98%;
+    /* Cards - near-black tiles (#272729) */
+    --card: 240 4% 16%;
+    --card-foreground: 0 0% 100%;
 
-    --popover: 222 38% 12%;
-    --popover-foreground: 210 20% 98%;
+    --popover: 240 4% 16%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 217 91% 60%;
+    --primary: 207 84% 66%;
     --primary-foreground: 0 0% 100%;
 
     /* Secondary */
-    --secondary: 222 31% 16%;
-    --secondary-foreground: 210 15% 80%;
+    --secondary: 240 3% 17%;
+    --secondary-foreground: 0 0% 80%;  /* body-muted #cccccc */
 
     /* Muted */
-    --muted: 222 28% 17%;
-    --muted-foreground: 215 15% 55%;
+    --muted: 240 3% 17%;
+    --muted-foreground: 0 0% 80%;
 
     /* Accent */
-    --accent: 160 60% 45%;
+    --accent: 240 3% 17%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 62% 50%;
     --destructive-foreground: 0 0% 100%;
 
     /* Borders */
-    --border: 222 24% 21%;
-    --input: 222 24% 21%;
-    --ring: 217 91% 60%;
+    --border: 0 0% 24%;
+    --input: 0 0% 24%;
+    --ring: 211 100% 58%;
 
-    /* Custom tokens */
-    --gradient-primary: linear-gradient(135deg, hsl(217, 91%, 60%) 0%, hsl(160, 60%, 45%) 100%);
-    --gradient-hero: linear-gradient(180deg, hsl(222, 40%, 11%) 0%, hsl(222, 47%, 8%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(222, 38%, 14%) 0%, hsl(222, 38%, 11%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(160, 60%, 45%) 0%, hsl(199, 89%, 55%) 100%);
-    --gradient-cta: linear-gradient(135deg, hsl(217, 91%, 60%) 0%, hsl(199, 89%, 55%) 100%);
-    
-    --shadow-sm: 0 1px 2px hsl(222 47% 5% / 0.30);
-    --shadow-md: 0 4px 6px -1px hsl(222 47% 5% / 0.40);
-    --shadow-lg: 0 10px 15px -3px hsl(222 47% 5% / 0.50);
-    --shadow-xl: 0 20px 25px -5px hsl(222 47% 5% / 0.60);
-    
-    --glow-primary: 0 8px 28px hsl(217 91% 60% / 0.22);
-    --glow-accent: 0 8px 24px hsl(160 60% 45% / 0.18);
-    
-    --glass-bg: hsl(222 38% 12% / 0.82);
-    --glass-border: hsl(222 24% 22% / 0.55);
+    /* Custom tokens — flat paper surfaces and restrained blue actions */
+    --gradient-primary: linear-gradient(135deg, hsl(0, 0%, 100%) 0%, hsl(0, 0%, 100%) 100%);
+    --gradient-hero: linear-gradient(180deg, hsl(231, 60%, 32%) 0%, hsl(30, 4%, 10%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(240, 4%, 16%) 0%, hsl(240, 4%, 16%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(207, 84%, 66%) 0%, hsl(208, 100%, 44%) 100%);
+    --gradient-cta: linear-gradient(135deg, hsl(231, 60%, 32%) 0%, hsl(208, 100%, 44%) 100%);
+
+    --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.30);
+    --shadow-md: 0 1px 3px hsl(0 0% 0% / 0.40);
+    --shadow-lg: 0 2px 8px hsl(0 0% 0% / 0.50);
+    --shadow-xl: 0 5px 30px 0 hsl(0 0% 0% / 0.55);
+
+    --glow-primary: 0 1px 3px hsl(0 0% 0% / 0.40);
+    --glow-accent: 0 1px 3px hsl(0 0% 0% / 0.40);
+
+    --glass-bg: hsl(240 4% 16% / 0.82);
+    --glass-border: hsl(0 0% 24% / 0.55);
 
     /* Platform brand colors */
     --amazon-orange: 33 100% 50%;
@@ -174,12 +172,12 @@
     --warning: 38 92% 50%;
     --info: 199 89% 55%;
 
-    --premium: 217 91% 60%;
+    --premium: 211 100% 58%;
     --premium-foreground: 0 0% 100%;
-    --premium-surface: 222 30% 15%;
-    --premium-surface-foreground: 210 20% 98%;
-    --premium-border: 222 22% 24%;
-    --premium-ring: 217 91% 60%;
+    --premium-surface: 240 4% 16%;
+    --premium-surface-foreground: 0 0% 100%;
+    --premium-border: 0 0% 24%;
+    --premium-ring: 211 100% 58%;
     --gradient-premium-card: linear-gradient(
       180deg,
       hsl(var(--premium-surface)) 0%,
@@ -188,37 +186,36 @@
     --glow-premium: 0 12px 34px -16px hsl(var(--premium) / 0.35);
 
     /* Text hierarchy */
-    --text-primary: 210 20% 98%;
-    --text-secondary: 215 15% 65%;
-    --text-muted: 215 10% 50%;
+    --text-primary: 0 0% 100%;
+    --text-secondary: 0 0% 80%;
+    --text-muted: 0 0% 60%;
 
-    --warm-bg: 222 47% 8%;
-    --warm-glow: 217 45% 20%;
-    --warm-accent: 217 91% 60%;
-    --warm-accent-soft: 222 30% 15%;
-    --warm-text: 210 20% 98%;
-    --warm-text-muted: 215 15% 60%;
-    --warm-border: 222 24% 21%;
-    --warm-cta: 217 91% 60%;
-    --warm-cta-hover: 217 91% 66%;
+    --warm-bg: 240 4% 8%;
+    --warm-glow: 240 4% 16%;
+    --warm-accent: 207 84% 66%;
+    --warm-accent-soft: 240 4% 16%;
+    --warm-text: 0 0% 100%;
+    --warm-text-muted: 0 0% 80%;
+    --warm-border: 0 0% 24%;
+    --warm-cta: 207 84% 66%;
+    --warm-cta-hover: 207 84% 72%;
     --warm-cta-text: 0 0% 100%;
     --warm-star: 45 90% 55%;
-    --warm-trust: 152 65% 50%;
-    --warm-chrome: 215 15% 60%;
-    --warm-tab-bg: 222 31% 16%;
-    --warm-card: 222 38% 12%;
-    --warm-flow: 222 20% 35%;
-    --warm-badge: 222 30% 15%;
+    --warm-trust: 211 100% 58%;
+    --warm-chrome: 0 0% 60%;
+    --warm-tab-bg: 240 3% 17%;
+    --warm-card: 240 4% 16%;
+    --warm-flow: 0 0% 30%;
+    --warm-badge: 240 4% 16%;
 
-    /* Sidebar */
-    --sidebar-background: 222 47% 8%;
-    --sidebar-foreground: 210 20% 95%;
-    --sidebar-primary: 217 91% 60%;
+    --sidebar-background: 240 4% 8%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 211 100% 58%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 222 31% 16%;
-    --sidebar-accent-foreground: 210 15% 80%;
-    --sidebar-border: 222 24% 20%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-accent: 240 3% 17%;
+    --sidebar-accent-foreground: 0 0% 80%;
+    --sidebar-border: 0 0% 24%;
+    --sidebar-ring: 211 100% 58%;
   }
 }
 
@@ -233,14 +230,17 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    font-feature-settings: "cv11", "ss01";
-    font-variation-settings: "opsz" 32;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    letter-spacing: 0;
+    font-feature-settings: "cv05", "ss03";
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
-    @apply font-semibold tracking-tight;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    @apply font-bold;
+    letter-spacing: 0;
   }
 
   /* Focus styles for accessibility */
@@ -256,7 +256,7 @@
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--glass-border);
-    @apply rounded-xl;
+    @apply rounded-lg;
   }
 
   /* Gradient text */
@@ -275,27 +275,24 @@
     background-clip: text;
   }
 
-  /* Elevated card with shadow */
+  /* Elevated card with hairline border + slight paper lift. */
   .card-elevated {
-    @apply bg-card rounded-xl;
-    box-shadow: var(--shadow-md);
-    transition: box-shadow 0.2s ease, transform 0.2s ease;
+    @apply bg-card rounded-lg border border-border;
+    transition: border-color 0.2s ease, transform 0.15s ease;
   }
 
-  .card-elevated:hover {
-    box-shadow: var(--shadow-lg);
-    transform: translateY(-2px);
+  .card-elevated:active {
+    transform: scale(0.99);
   }
 
-  /* CTA button with glow */
+  /* CTA — flat pill; the system-wide micro-interaction is a scale press,
+     not a glow or lift. */
   .cta-glow {
-    box-shadow: var(--glow-primary);
-    transition: all 0.2s ease;
+    transition: transform 0.12s ease, background-color 0.2s ease;
   }
 
-  .cta-glow:hover {
-    box-shadow: 0 6px 30px hsl(var(--primary) / 0.35);
-    transform: translateY(-1px);
+  .cta-glow:active {
+    transform: scale(0.95);
   }
 
   /* Platform badges */
@@ -321,6 +318,11 @@
   .section-divider {
     @apply h-px w-full;
     background: linear-gradient(90deg, transparent, hsl(var(--border)), transparent);
+  }
+
+  .sticker-dot {
+    @apply pointer-events-none absolute rounded-full;
+    box-shadow: 0 6px 18px hsl(0 0% 0% / 0.08);
   }
 }
 
@@ -378,5 +380,25 @@
 
   .animate-marquee {
     animation: marquee 25s linear infinite;
+  }
+
+  .tracking-tight,
+  .tracking-\[-0\.01em\],
+  .tracking-\[-0\.022em\] {
+    letter-spacing: 0;
+  }
+
+  /* ── Notion-Home design tokens ── */
+  .font-serif-notion {
+    font-family: 'Source Serif 4', Georgia, serif;
+  }
+
+  /* Hover states for Notion-style CTA buttons */
+  .n-cta-dark:hover  { background: #34322d !important; }
+  .n-cta-ghost:hover { background: #f1f0ee !important; }
+
+  /* bg-cta-gradient used by old CTASection (kept for other pages) */
+  .bg-cta-gradient {
+    background: var(--gradient-cta);
   }
 }

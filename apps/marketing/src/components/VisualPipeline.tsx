@@ -5,9 +5,6 @@ import {
   Database, 
   Cpu, 
   ShoppingBag, 
-  ArrowRight, 
-  RefreshCw, 
-  Zap, 
   CheckCircle 
 } from "lucide-react";
 
@@ -22,7 +19,7 @@ export default function VisualPipeline() {
   } as const;
 
   return (
-    <section id="pipeline" className="scroll-mt-24 border-b border-border bg-secondary/35 py-20 sm:py-24 overflow-hidden">
+    <section id="pipeline" className="scroll-mt-24 border-b border-border bg-card py-20 sm:py-24 overflow-hidden">
       <div className="container px-4">
         <Reveal className="mx-auto mb-16 max-w-2xl text-center">
           <p className="text-sm font-semibold uppercase tracking-wide text-primary">
@@ -56,7 +53,7 @@ export default function VisualPipeline() {
                 <Reveal 
                   key={s.name} 
                   as="div" 
-                  className={`flex items-center gap-3 rounded-xl border p-3.5 bg-card shadow-sm transition-all hover:-translate-y-0.5 ${s.color}`}
+                  className={`flex items-center gap-3 rounded-lg border p-3.5 bg-background shadow-sm transition-all hover:-translate-y-0.5 ${s.color}`}
                 >
                   <Database className="h-4 w-4 text-muted-foreground" />
                   <span className="font-display text-xs font-semibold text-foreground">{s.name}</span>
@@ -89,7 +86,7 @@ export default function VisualPipeline() {
                   transition={{ ...floatTransition, delay: 1.6 }}
                 />
               </svg>
-              <div className="absolute top-[8px] left-1/2 -translate-x-1/2 text-[9px] font-bold text-muted-foreground bg-secondary/80 px-1.5 py-0.5 rounded border border-border/40 select-none">
+              <div className="absolute top-[8px] left-1/2 -translate-x-1/2 text-[9px] font-bold text-muted-foreground bg-card px-1.5 py-0.5 rounded border border-border/40 select-none">
                 Raw Data
               </div>
             </div>
@@ -100,10 +97,7 @@ export default function VisualPipeline() {
                 SellerSuit Engine
               </div>
               <Reveal as="div" className="relative group">
-                {/* Rotating accent border */}
-                <div className="absolute -inset-1.5 rounded-full bg-gradient-to-r from-primary to-success opacity-75 blur-md group-hover:opacity-100 transition duration-1000 group-hover:duration-200 animate-tilt" />
-                
-                <div className="relative h-24 w-24 rounded-full bg-card border-2 border-border shadow-soft-xl flex flex-col items-center justify-center p-3 text-center">
+                <div className="relative h-24 w-24 rounded-full bg-background border-2 border-border shadow-soft-lg flex flex-col items-center justify-center p-3 text-center">
                   <Cpu className="h-6 w-6 text-primary mb-1 animate-pulse" />
                   <span className="text-[10px] font-extrabold text-foreground tracking-tight">OPTIMIZING</span>
                   <div className="mt-0.5 flex gap-0.5">
@@ -162,10 +156,10 @@ export default function VisualPipeline() {
               <Reveal 
                 as="div" 
                 delay={0.2} 
-                className="rounded-xl border border-success/30 bg-card p-3.5 shadow-soft-lg flex flex-col justify-between hover:border-success/50 transition-all relative overflow-hidden"
+                className="rounded-lg border border-primary/30 bg-background p-3.5 shadow-soft-lg flex flex-col justify-between hover:border-primary/50 transition-all relative overflow-hidden"
               >
                 {/* Visual indicator of active synced state */}
-                <div className="absolute top-0 right-0 left-0 h-[2.5px] bg-success" />
+                <div className="absolute top-0 right-0 left-0 h-[2.5px] bg-primary" />
 
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5">
@@ -203,7 +197,7 @@ export default function VisualPipeline() {
               key={stat.metric} 
               as="div" 
               delay={idx * 0.08}
-              className="rounded-xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm shadow-sm"
+              className="rounded-lg border border-border/50 bg-background p-4 shadow-sm"
             >
               <div className="font-display text-xl font-bold text-primary">{stat.metric}</div>
               <div className="mt-1 text-xs text-muted-foreground">{stat.label}</div>

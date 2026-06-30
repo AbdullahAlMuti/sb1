@@ -16,6 +16,7 @@
     amazon: /^(?:[^.]+\.)?amazon\.(?:com|co\.uk|de|ca|com\.au)$/i,
     walmart: /^(?:[^.]+\.)?walmart\.(?:com|ca)$/i,
     ebay: /^(?:[^.]+\.)?ebay\.(?:com|co\.uk|de|fr|com\.au|it|es)$/i,
+    aliexpress: /^(?:[^.]+\.)?aliexpress\.(?:com|ru|us)$/i,
   });
 
   const SEARCH_HOSTS = Object.freeze({

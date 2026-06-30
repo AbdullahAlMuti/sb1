@@ -17,11 +17,16 @@
 /* 2. Wrapper container (placed directly in the host page DOM) */
 .sb1c-wrapper {
   display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
   margin: 5px 0 !important;
   width: 100% !important;
   max-width: 240px !important;
   min-width: 160px !important;
   box-sizing: border-box !important;
+  position: relative !important;
+  z-index: 2147483000 !important;
+  pointer-events: auto !important;
 }
 
 /* 3. Card root element */

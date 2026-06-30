@@ -39,8 +39,16 @@
     "https://sellersuit.com/*",
     "https://*.sellersuit.com/*",
     "http://localhost/*",
+    "http://127.0.0.1/*",
     "http://localhost:5173/*",
-    "https://ojxzssooylmydystjvdo.supabase.co/*"
+    "https://ojxzssooylmydystjvdo.supabase.co/*",
+    "*://aliexpress.com/*",
+    "*://*.aliexpress.com/*",
+    "*://aliexpress.ru/*",
+    "*://*.aliexpress.ru/*",
+    "*://aliexpress.us/*",
+    "*://*.aliexpress.us/*",
+    "*://*.alicdn.com/*"
   ],
   "background": {
     "service_worker": "build/background.bundle.js"
@@ -81,6 +89,24 @@
       ],
       "css": [
         "ui/panel.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://aliexpress.com/*",
+        "*://*.aliexpress.com/*",
+        "*://aliexpress.ru/*",
+        "*://*.aliexpress.ru/*",
+        "*://aliexpress.us/*",
+        "*://*.aliexpress.us/*"
+      ],
+      "js": [
+        "build/aliexpress.bundle.js"
+      ],
+      "css": [
+        "ui/panel.css",
+        "ui/listing-card.css"
       ],
       "run_at": "document_idle"
     },
@@ -205,6 +231,7 @@
         "https://*.sellersuit.com/*",
         "http://localhost/*",
         "http://localhost:5173/*",
+        "http://localhost:3000/*",
         "http://localhost:3001/*"
       ],
       "js": [
@@ -281,7 +308,14 @@
         "https://*.sellersuit.com/*",
         "http://localhost/*",
         "http://localhost:5173/*",
-        "http://localhost:3001/*"
+        "http://localhost:3000/*",
+        "http://localhost:3001/*",
+        "*://aliexpress.com/*",
+        "*://*.aliexpress.com/*",
+        "*://aliexpress.ru/*",
+        "*://*.aliexpress.ru/*",
+        "*://aliexpress.us/*",
+        "*://*.aliexpress.us/*"
       ]
     }
   ],

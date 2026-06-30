@@ -31,6 +31,7 @@ const Features = lazy(() => import("./pages/Features"));
 const Calculator = lazy(() => import("./pages/Calculator"));
 const Pricing = lazy(() => import("./pages/Pricing"));
 const FAQPage = lazy(() => import("./pages/FAQ"));
+const EbayFeesCalculator = lazy(() => import("./pages/resources/EbayFeesCalculator"));
 
 const queryClient = new QueryClient();
 const APP_ORIGIN = import.meta.env.VITE_APP_URL ?? "https://app.sellersuit.com";
@@ -78,6 +79,7 @@ const App = () => (
                 <Route path="/how-it-works" element={<HowItWorks />} />
                 <Route path="/features" element={<Features />} />
                 <Route path="/calculator" element={<Calculator />} />
+                <Route path="/resources/ebay-fees-calculator" element={<EbayFeesCalculator />} />
                 <Route path="/pricing" element={<Pricing />} />
                 <Route path="/faq" element={<FAQPage />} />
                 <Route path="/blog" element={<BlogIndex />} />

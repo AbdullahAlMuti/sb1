@@ -414,51 +414,7 @@ export type Database = {
           },
         ]
       }
-      best_selling_items: {
-        Row: {
-          category: string | null
-          country: string
-          created_at: string
-          created_by: string | null
-          ebay_url: string | null
-          id: string
-          image_url: string | null
-          is_active: boolean
-          price: number
-          sales_count: number
-          title: string
-          updated_at: string
-        }
-        Insert: {
-          category?: string | null
-          country?: string
-          created_at?: string
-          created_by?: string | null
-          ebay_url?: string | null
-          id?: string
-          image_url?: string | null
-          is_active?: boolean
-          price?: number
-          sales_count?: number
-          title: string
-          updated_at?: string
-        }
-        Update: {
-          category?: string | null
-          country?: string
-          created_at?: string
-          created_by?: string | null
-          ebay_url?: string | null
-          id?: string
-          image_url?: string | null
-          is_active?: boolean
-          price?: number
-          sales_count?: number
-          title?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
+
       blog_generation_settings: {
         Row: {
           affiliate_tag: string | null

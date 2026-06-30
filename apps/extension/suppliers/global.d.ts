@@ -21,6 +21,12 @@ declare global {
     };
     SSAmazonAdapter: any;
     SSWalmartAdapter: any;
+    SSAliExpressDomains: {
+      generatedAt: string;
+      domains: string[];
+      imageHosts: string[];
+    };
+    SSAliExpressAdapter: any;
     SSVariationNormalizer: {
       normalizeProduct(product: object, options?: object): object;
     };
@@ -32,6 +38,11 @@ declare global {
     SSWalmartScraper: {
       scrapeProduct(opts?: object): Promise<any>;
       scrapeVariants(opts?: object): Promise<any>;
+    };
+    SSAliExpressScraper: {
+      scrapeSingleProduct(opts?: object): Promise<any>;
+      scrapeProductWithVariants(opts?: object): Promise<any>;
+      extractProductDocument(doc?: Document, url?: string): object;
     };
   }
 }

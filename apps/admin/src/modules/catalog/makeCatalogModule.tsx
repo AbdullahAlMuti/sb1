@@ -5,8 +5,8 @@ import { type Column } from "@/core/ui/DataTable";
 import { type EntityModule, type FieldDef, type FormValues } from "@/core/entity/types";
 
 /**
- * The shape shared by the three operator-curated catalog tables
- * (best_selling_items, must_sell_items, profitable_products). Table-specific
+ * The shape shared by the two operator-curated catalog tables
+ * (must_sell_items, profitable_products). Table-specific
  * columns are layered on top via the factory's `extra*` options.
  */
 export interface CatalogItem {

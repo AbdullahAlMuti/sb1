@@ -93,3 +93,46 @@ Generate a professional, detailed markdown report inside the working directory a
 - [ ] Proposes a world-class auth + billing flow architecture for the project.
 - [ ] Provides a launch-readiness checklist.
 - [ ] Provides a final publication decision (Ready / Not Ready / Ready after fixes).
+
+## Follow-up — 2026-06-30T03:49:23+06:00
+
+Completely remove the Best-Selling feature/module from the entire SellerSuit application (frontend, backend, and database).
+
+Working directory: d:/eBay Software/2026sellersuit/sb1
+Integrity mode: development
+
+## Requirements
+
+### R1. Frontend Removal
+- Remove Best-Selling route/page (`/dashboard/ebay/best-selling`) from the user dashboard and admin dashboard.
+- Remove all navigation menu items, sidebar links, sidebar items, and redirects for Best-Selling in both user and admin panels.
+- Remove all related components (e.g. `BestSellingItems.tsx` and related state/hooks).
+- Ensure no broken routes, dead links, or console errors exist after removal.
+
+### R2. Backend & Feature Gate Removal
+- Remove the Best-Selling feature references from feature gates, plans, limits, and pricing.
+- Specifically, clean up the `top_selling_products` / `ebay_best_selling` feature mappings in code (e.g., `FeatureGate.tsx` mapping and any billing/subscription features).
+
+### R3. Database Migration & Schema Cleanup
+- Safely drop the `public.best_selling_items` table and all associated foreign keys, policies, and row-level security constraints.
+- Create a new sequential SQL migration file in `supabase/migrations` (e.g. named `20260630000000_remove_best_selling_items.sql` or similar sequence) to execute the table removal safely.
+- Clean up the typescript definitions of this table from `packages/types/src/supabase.ts`.
+
+### R4. Codebase Cleanup & Validation
+- Scan the workspace for "best-selling", "bestSelling", "BestSelling", "best_selling", "BEST_SELLING", and remove references (except in old documentation or changelogs).
+- Run linting (`npm run lint`), typecheck (`npm run typecheck`), and verify the build runs successfully (`npm run build`).
+
+## Acceptance Criteria
+
+### Build & Type Verification
+- [ ] Codebase linting passes with no errors (`npm run lint`).
+- [ ] Codebase typecheck passes with no errors (`npm run typecheck`).
+- [ ] Production build succeeds for all packages and applications (`npm run build`).
+
+### Navigation & Routing
+- [ ] Sidebar and navigation menus in both user dashboard and admin panel no longer list "Best Selling".
+- [ ] Attempting to visit `/dashboard/ebay/best-selling` or `/admin/best-selling` results in page-not-found or redirect.
+
+### Database Schema
+- [ ] Table `best_selling_items` is completely removed from the database via a new migration.
+- [ ] No database schema/type references to `best_selling_items` remain in `packages/types/src/supabase.ts`.

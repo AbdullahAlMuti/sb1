@@ -229,10 +229,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         const tabId = request.tabId || sender?.tab?.id;
         if (tabId) {
+          chrome.sidePanel.setOptions({
+            tabId,
+            path: 'sidepanel/side-panel.html',
+            enabled: true
+          }).catch(() => {});
           await chrome.sidePanel.open({ tabId });
         } else {
           const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-          if (tab) await chrome.sidePanel.open({ tabId: tab.id });
+          if (tab) {
+            chrome.sidePanel.setOptions({
+              tabId: tab.id,
+              path: 'sidepanel/side-panel.html',
+              enabled: true
+            }).catch(() => {});
+            await chrome.sidePanel.open({ tabId: tab.id });
+          }
         }
         sendResponse({ ok: true });
       } catch (e) {
@@ -251,7 +263,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           path: 'sidepanel/side-panel.html',
           enabled: true
         });
-        await chrome.sidePanel.open({ tabId: tab.id });
+        if (!request.skipSidePanelOpen) {
+          await chrome.sidePanel.open({ tabId: tab.id });
+        }
         sendResponse({ ok: true, tabId: tab.id });
       } catch (e) {
         console.error('[Background] Failed to open side panel on new tab:', e);

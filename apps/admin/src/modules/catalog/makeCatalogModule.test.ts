@@ -4,10 +4,10 @@ import { makeCatalogModule } from "./makeCatalogModule";
 
 describe("makeCatalogModule", () => {
   const base = makeCatalogModule({
-    key: "best_selling_items",
-    table: "best_selling_items",
+    key: "must_sell_items",
+    table: "must_sell_items",
     singular: "Item",
-    label: "Best Selling",
+    label: "Must Sell",
     description: "x",
     icon: Package,
   });

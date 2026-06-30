@@ -220,6 +220,55 @@ describe('adaptProduct — robust price parsing', () => {
   });
 });
 
+describe('adaptProduct — Amazon quick-import (injector Upload button) payload', () => {
+  // Mirrors the object amazon_injector.js builds for the quick-import path after
+  // the contract fix: finalPrice = calculated eBay price, supplierPrice = raw.
+  // Regression guard for the bug where only `price` was set (finalPrice
+  // undefined), which made validateProductPricing throw and dropped ALL fields.
+  const QUICK_IMPORT = {
+    title: 'Acme Widget Pro Wireless Bluetooth Headphones Over Ear Noise Cancelling Premium',
+    title_source: 'ai',
+    price: '19.99',          // raw supplier cost
+    finalPrice: '31.86',     // calculated eBay price
+    supplierPrice: '19.99',  // raw supplier cost
+    price_source: 'calculated',
+    asin: 'B08XYZ',
+    description: 'Great everyday product.',
+    ebaySku: 'AZS-B08XYZ',
+    supplier: 'amazon',
+    hasVariants: false,
+    variants: [],
+  };
+
+  test('title carried, sanitized and enforced to <= 80 chars', () => {
+    const out = loadAdapt()(QUICK_IMPORT);
+    assert.ok(out.prod_title.length > 0, 'title must not be empty');
+    assert.ok(out.prod_title.length <= 80, 'title must be <= 80 chars');
+  });
+
+  test('description carried (non-empty, not the placeholder)', () => {
+    const out = loadAdapt()(QUICK_IMPORT);
+    assert.ok(out.prod_desc && out.prod_desc.includes('Great everyday product.'));
+  });
+
+  test('eBay price is the calculated finalPrice, never the raw cost', () => {
+    const out = loadAdapt()(QUICK_IMPORT);
+    assert.equal(out.prod_variations[0].price, 31.86);
+    assert.notEqual(out.prod_variations[0].price, 19.99);
+    assert.equal(out.prod_variations[0].raw_supplier_price, 19.99);
+  });
+
+  test('SKU carried (user ebaySku wins) and base64-encodes to <= 50 chars', () => {
+    const out = loadAdapt()(QUICK_IMPORT);
+    const sku = out.prod_variations[0].sku;
+    assert.equal(sku, 'AZS-B08XYZ');
+    const win = makeWindow();
+    loadInto(win, 'common/sku-engine.js');
+    const encoded = win.SSSkuEngine.encodeForEbay(sku);
+    assert.ok(encoded.length > 0 && encoded.length <= 50, `encoded SKU must be 1..50 chars, got ${encoded.length}`);
+  });
+});
+
 describe('adaptProduct — supplierPrice and ebayFinalPrice separation', () => {
   test('single variation maps ebayFinalPrice and supplierPrice correctly', () => {
     const rawProd = {

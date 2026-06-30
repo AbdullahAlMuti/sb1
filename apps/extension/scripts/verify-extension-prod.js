@@ -19,6 +19,7 @@ const FORBIDDEN_FILES = [
   '.env',
   'manifest.dev.json',
   'manifest.prod.json',
+  'tests',
   '.git',
   'node_modules'
 ];

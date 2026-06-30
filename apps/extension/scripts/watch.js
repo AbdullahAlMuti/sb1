@@ -3,6 +3,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 
 const EXTENSION_DIR = path.resolve('.');
+const REPO_ROOT = path.resolve('../..');
 
 // Configs to watch
 const WATCH_IGNORES = [
@@ -16,10 +17,20 @@ const WATCH_IGNORES = [
 
 console.log('🚀 Starting SellerSuit Extension Watch & Dev Server...');
 
+const localServerChildren = [];
+if (process.env.SELLERSUIT_EXTENSION_ONLY !== 'true') {
+  console.log('🌐 Starting local SellerSuit apps: marketing:3000, web:3001, admin:3002...');
+  localServerChildren.push(spawnWatchProcess('npm', ['run', 'dev:marketing'], REPO_ROOT));
+  localServerChildren.push(spawnWatchProcess('npm', ['run', 'dev:web'], REPO_ROOT));
+  localServerChildren.push(spawnWatchProcess('npm', ['run', 'dev:admin'], REPO_ROOT));
+} else {
+  console.log('ℹ️ SELLERSUIT_EXTENSION_ONLY=true; skipping local app servers.');
+}
+
 // Helper to spawn child processes
-function spawnWatchProcess(command, args) {
+function spawnWatchProcess(command, args, cwd = EXTENSION_DIR) {
   const child = spawn(command, args, {
-    cwd: EXTENSION_DIR,
+    cwd,
     shell: true,
     stdio: 'inherit'
   });
@@ -33,7 +44,7 @@ function spawnWatchProcess(command, args) {
 
 // 1. Run initial prepare:dev to ensure a fresh, complete dev package exists
 console.log('📦 Running initial preparation...');
-const initialPrepare = spawnWatchProcess('node', ['scripts/prepare-extension-dev.js']);
+const initialPrepare = spawnWatchProcess('npm', ['run', 'prepare:dev']);
 
 initialPrepare.on('close', (code) => {
   if (code !== 0) {
@@ -45,8 +56,10 @@ initialPrepare.on('close', (code) => {
   const viteCore = spawnWatchProcess('npx', ['vite', 'build', '--watch']);
   const viteAmazon = spawnWatchProcess('npx', ['vite', 'build', '--config', 'vite.config.amazon.js', '--watch']);
   const viteWalmart = spawnWatchProcess('npx', ['vite', 'build', '--config', 'vite.config.walmart.js', '--watch']);
+  const viteAliExpress = spawnWatchProcess('npx', ['vite', 'build', '--config', 'vite.config.aliexpress.js', '--watch']);
+  const viteBackground = spawnWatchProcess('npx', ['vite', 'build', '--config', 'vite.config.background.js', '--watch']);
 
-  const children = [viteCore, viteAmazon, viteWalmart];
+  const children = [viteCore, viteAmazon, viteWalmart, viteAliExpress, viteBackground, ...localServerChildren];
 
   // Clean up children on exit
   function cleanup() {
@@ -83,7 +96,7 @@ initialPrepare.on('close', (code) => {
     syncPending = false;
     
     console.log(`🔄 Syncing changes (${files.length} files) to dist/extension-dev...`);
-    const syncProcess = spawn('node', ['scripts/prepare-extension-dev.js'], {
+    const syncProcess = spawn('npm', ['run', 'prepare:dev'], {
       cwd: EXTENSION_DIR,
       shell: true,
       stdio: 'ignore' // Quiet sync

@@ -16,6 +16,7 @@ const IGNORE_LIST = [
   'vite.config.js',
   'vite.config.amazon.js',
   'vite.config.walmart.js',
+  'vite.config.aliexpress.js',
   'scripts',
   'manifest.dev.json',
   'manifest.prod.json',
@@ -118,9 +119,9 @@ const ENV_PATH = fs.existsSync(ROOT_ENV_PATH) ? ROOT_ENV_PATH : path.resolve('..
 const env = loadEnvFile(ENV_PATH);
 const appUrl = env.APP_URL || 'http://localhost:3001';
 const marketingUrl = env.MARKETING_APP_URL || env.VITE_MARKETING_URL || 'http://localhost:3000';
-const supabaseUrl = env.SUPABASE_URL || env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
+const supabaseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL || 'http://127.0.0.1:54321';
 const supabaseAnonKey =
-  env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || 'local-anon-key';
+  env.VITE_SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || 'local-anon-key';
 const supabaseFunctionsUrl = `${supabaseUrl.replace(/\/$/, '')}/functions/v1`;
 
 const configPath = path.join(DIST_DIR, 'common', 'config.js');
@@ -151,5 +152,50 @@ constantsContents = constantsContents.replace(
   `const WEB_BASE_URL = '${marketingUrl}';`
 );
 fs.writeFileSync(constantsPath, constantsContents);
+
+// 6. Vite bundles the background service worker into a single file, including
+// common/config.js and common/constants.js at build time. The source defaults
+// are production-safe, so rewrite the generated dev bundle after copying.
+const backgroundBundlePath = path.join(DIST_DIR, 'build', 'background.bundle.js');
+if (fs.existsSync(backgroundBundlePath)) {
+  let backgroundContents = fs.readFileSync(backgroundBundlePath, 'utf8');
+  const jsString = (value) => JSON.stringify(value);
+
+  backgroundContents = backgroundContents.replace(
+    /const WEB_APP_DOMAIN = ".*?";/,
+    `const WEB_APP_DOMAIN = ${jsString(appUrl)};`
+  );
+  backgroundContents = backgroundContents.replace(
+    /SUPABASE_URL: ".*?",/,
+    `SUPABASE_URL: ${jsString(supabaseUrl)},`
+  );
+  backgroundContents = backgroundContents.replace(
+    /SUPABASE_FUNCTIONS: ".*?",/,
+    `SUPABASE_FUNCTIONS: ${jsString(supabaseFunctionsUrl)},`
+  );
+  backgroundContents = backgroundContents.replace(
+    /SUPABASE_ANON: ".*?"/,
+    `SUPABASE_ANON: ${jsString(supabaseAnonKey)}`
+  );
+  backgroundContents = backgroundContents.replace(
+    /WEB_BASE_URL: "https:\/\/sellersuit\.com"/,
+    `WEB_BASE_URL: ${jsString(marketingUrl)}`
+  );
+  backgroundContents = backgroundContents.replace(
+    /"https:\/\/sellersuit\.com"/g,
+    jsString(marketingUrl)
+  );
+  backgroundContents = backgroundContents.replace(/DEBUG_MODE: false/, 'DEBUG_MODE: true');
+  backgroundContents = backgroundContents.replace(
+    /EXTENSION_NEW_AUTH_ENABLED: true/,
+    'EXTENSION_NEW_AUTH_ENABLED: false'
+  );
+  backgroundContents = backgroundContents.replace(
+    /EXTENSION_LEGACY_FALLBACK_ENABLED: false/,
+    'EXTENSION_LEGACY_FALLBACK_ENABLED: true'
+  );
+
+  fs.writeFileSync(backgroundBundlePath, backgroundContents);
+}
 
 console.log(`✅ Development build ready in: ${DIST_DIR}`);

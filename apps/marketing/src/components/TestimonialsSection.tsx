@@ -1,55 +1,79 @@
-import { Quote, Star } from "lucide-react";
 import { siteConfig } from "@/config/siteConfig";
-import { Reveal } from "@/components/primitives/Reveal";
+
+const EXTRA_QUOTES = [
+  { name: "Michael Chen",     text: "I used to spend my whole morning listing. Now I scrape, price, and upload 40 products before my coffee's cold." },
+  { name: "Sarah Williams",   text: "The profit calculator stopped me from listing losers. I finally know my real margin before anything goes live." },
+  { name: "David Rodriguez",  text: "Bulk upload and the live dashboard let us run client stores at a scale that wasn't possible by hand." },
+  { name: "James Park",       text: "SellerSuit cut our listing time from 20 minutes to under a minute. The ROI was instant." },
+  { name: "Lisa Torres",      text: "The SKU engine alone was worth it. Orders now map back to suppliers automatically — no more spreadsheets." },
+  { name: "Alex Kim",         text: "I tried every eBay lister out there. SellerSuit is the only one that actually handles variants correctly." },
+];
 
 const TestimonialsSection = () => {
   const { testimonials } = siteConfig;
+  const hero = testimonials.items[0];
 
   return (
-    <section id="testimonials" className="scroll-mt-24 border-b border-border bg-background py-20 sm:py-24">
-      <div className="container px-4">
-        <Reveal className="mx-auto mb-14 max-w-2xl text-center">
-          <p className="text-sm font-semibold uppercase tracking-wide text-primary">{testimonials.eyebrow}</p>
-          <h2 className="mt-3 font-display text-3xl font-bold text-foreground sm:text-4xl text-balance">
-            {testimonials.heading}
-          </h2>
-        </Reveal>
+    <section style={{ maxWidth: 1180, margin: "0 auto", padding: "96px 26px 30px" }}>
+      <h2
+        style={{
+          fontFamily: "'Source Serif 4', Georgia, serif",
+          fontWeight: 600, fontSize: "clamp(32px, 4.5vw, 52px)",
+          lineHeight: 1.05, letterSpacing: "-.02em",
+          color: "#1f1d1a", margin: "0 0 46px", textAlign: "center",
+        }}
+      >
+        Trusted by sellers that ship.
+      </h2>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          {testimonials.items.map((testimonial, index) => (
-            <Reveal
-              key={testimonial.name}
-              as="article"
-              delay={index * 0.08}
-              className="flex flex-col rounded-2xl border border-border bg-card p-6 shadow-sm"
-            >
-              <div className="mb-4 flex items-center justify-between">
-                <Quote className="h-6 w-6 text-primary" />
-                {testimonial.stat && (
-                  <span className="rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">
-                    {testimonial.stat}
-                  </span>
-                )}
-              </div>
-              <p className="flex-1 text-sm leading-6 text-foreground">"{testimonial.quote}"</p>
-              <div className="mt-6 flex items-center gap-3 border-t border-border pt-4">
-                <div className="grid h-9 w-9 place-items-center rounded-full bg-secondary text-sm font-semibold text-foreground">
-                  {testimonial.avatar}
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-foreground">{testimonial.name}</p>
-                  <p className="text-xs text-muted-foreground">{testimonial.role}</p>
-                </div>
-                <div className="flex gap-0.5">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star key={i} className="h-3.5 w-3.5 fill-warning text-warning" />
-                  ))}
-                </div>
-              </div>
-            </Reveal>
-          ))}
+      {/* Hero dark testimonial */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", background: "#0a0913", borderRadius: 20, overflow: "hidden" }} className="n-testi-hero">
+        <div style={{ padding: 48, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#1e1c2e", border: "1px solid #2e2c42", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#c7c4d6" }}>
+              {hero.avatar}
+            </div>
+            <span style={{ fontSize: 15, fontWeight: 600, color: "#c7c4d6" }}>{hero.name}</span>
+          </div>
+          <div>
+            <p style={{ fontFamily: "'Source Serif 4', Georgia, serif", fontWeight: 500, fontSize: "clamp(20px, 2.5vw, 30px)", lineHeight: 1.32, letterSpacing: "-.01em", color: "#fff", margin: "34px 0 26px" }}>
+              "{hero.quote}"
+            </p>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "#7c79a0" }}>{hero.role}</span>
+          </div>
+        </div>
+        <div style={{ background: "#11101d", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 280, padding: 40 }}>
+          <span style={{ fontSize: 80, opacity: 0.6 }}>📦</span>
         </div>
       </div>
+
+      {/* Quote cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16, marginTop: 16 }}>
+        {EXTRA_QUOTES.map((q) => (
+          <div
+            key={q.name}
+            style={{
+              background: "#faf9f7", border: "1px solid #eeede9", borderRadius: 16,
+              padding: 26, minHeight: 160, display: "flex", flexDirection: "column",
+              justifyContent: "space-between", cursor: "default",
+              transition: "background .15s ease",
+            }}
+            onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = "#f4f3f1")}
+            onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = "#faf9f7")}
+          >
+            <p style={{ fontSize: 16, lineHeight: 1.42, color: "#1f1d1a", margin: 0, fontWeight: 500 }}>
+              {q.text}
+            </p>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "#8e8b83", marginTop: 18 }}>{q.name} →</span>
+          </div>
+        ))}
+      </div>
+
+      <style>{`
+        @media (max-width: 640px) {
+          .n-testi-hero { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
     </section>
   );
 };

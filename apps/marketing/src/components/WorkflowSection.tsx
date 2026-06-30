@@ -7,7 +7,7 @@ const WorkflowSection = () => {
   const { howItWorks } = siteConfig;
 
   return (
-    <section id="how-it-works" className="scroll-mt-24 border-b border-border bg-secondary/35 py-20 sm:py-24">
+    <section id="how-it-works" className="scroll-mt-24 border-b border-border bg-card py-20 sm:py-24">
       <div className="container px-4">
         <Reveal className="mx-auto mb-14 max-w-2xl text-center">
           <p className="text-sm font-semibold uppercase tracking-wide text-primary">{howItWorks.eyebrow}</p>
@@ -22,9 +22,9 @@ const WorkflowSection = () => {
             const Icon = step.icon;
             return (
               <Reveal key={step.title} as="article" delay={index * 0.1} className="relative">
-                <div className="h-full rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div className="h-full rounded-lg border border-border bg-background p-6 shadow-sm">
                   <div className="mb-5 flex items-center justify-between">
-                    <span className="grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary">
+                    <span className="grid h-11 w-11 place-items-center rounded-lg bg-white text-primary shadow-soft-sm">
                       <Icon className="h-5 w-5" />
                     </span>
                     <span className="font-display text-3xl font-bold text-muted-foreground/30">

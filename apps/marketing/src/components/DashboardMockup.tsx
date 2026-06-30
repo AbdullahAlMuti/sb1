@@ -83,8 +83,8 @@ const AreaChart = () => {
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-full">
       <defs>
         <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.25" />
-          <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+          <stop offset="0%" stopColor="#0075de" stopOpacity="0.22" />
+          <stop offset="100%" stopColor="#0075de" stopOpacity="0" />
         </linearGradient>
         <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.18" />
@@ -121,7 +121,7 @@ const AreaChart = () => {
       <motion.path
         d={toStroke(pts1)}
         fill="none"
-        stroke="#6366f1"
+        stroke="#0075de"
         strokeWidth="1.5"
         initial={{ pathLength: 0 }}
         animate={{ pathLength: 1 }}
@@ -171,13 +171,13 @@ const DashboardMockup = () => (
       {/* ── Sidebar ── */}
       <div className="flex w-[13%] flex-shrink-0 flex-col bg-gray-950 text-white px-2 py-2 text-[8px]">
         <div className="mb-3 flex items-center gap-1 font-semibold text-[9px] text-white">
-          <div className="h-4 w-4 rounded bg-indigo-500 flex items-center justify-center text-[6px] font-bold text-white">
+          <div className="h-4 w-4 rounded bg-[#0075de] flex items-center justify-center text-[6px] font-bold text-white">
             S
           </div>
           SellerSuit
         </div>
 
-        <button className="mb-2 rounded bg-indigo-600 px-2 py-1 text-[7px] font-semibold text-white text-left">
+        <button className="mb-2 rounded bg-[#0075de] px-2 py-1 text-[7px] font-semibold text-white text-left">
           + Quick List
         </button>
 
@@ -207,7 +207,7 @@ const DashboardMockup = () => (
           <div className="py-0.5">⚙ Settings</div>
           <div className="py-0.5">? Help</div>
           <div className="mt-1 flex items-center gap-1">
-            <div className="h-4 w-4 rounded-full bg-indigo-500 flex items-center justify-center text-[5px] font-bold text-white">
+            <div className="h-4 w-4 rounded-full bg-[#0075de] flex items-center justify-center text-[5px] font-bold text-white">
               M
             </div>
             <span className="text-gray-400">Muti</span>

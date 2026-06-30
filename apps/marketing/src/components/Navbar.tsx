@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
 import { Button } from "@repo/ui/components/ui/button";
-import { ThemeToggle } from "@repo/ui/theme/ThemeToggle";
 import SellerSuitLogo from "@repo/ui/brand/SellerSuitLogo";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@repo/ui/lib/utils";
@@ -32,10 +31,10 @@ const Navbar = () => {
   return (
     <nav
       className={cn(
-        "sticky top-0 z-50 border-b transition-all duration-200",
+        "sticky top-0 z-50 border-b transition-all duration-200 backdrop-blur-xl backdrop-saturate-150",
         isScrolled
-          ? "border-border bg-background/92 py-3 shadow-sm backdrop-blur-xl"
-          : "border-transparent bg-background/75 py-4 backdrop-blur-md",
+          ? "border-[#efeeeb] bg-white/90 py-3"
+          : "border-transparent bg-white/80 py-4",
       )}
     >
       <div className="container px-4">
@@ -49,17 +48,17 @@ const Navbar = () => {
             <SellerSuitLogo size="md" />
           </Link>
 
-          <div className="hidden items-center gap-1 md:flex">
+          <div className="hidden items-center gap-1 lg:flex">
             {nav.links.map((link) => (
               <Link
                 key={link.label}
                 to={link.href}
                 onClick={() => track(link.event, { href: link.href })}
                 className={cn(
-                  "rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-secondary hover:text-foreground",
+                  "rounded-full px-3 py-1.5 text-[13px] transition-colors hover:text-foreground",
                   isActive(link.href)
-                    ? "bg-secondary text-foreground font-semibold"
-                    : "text-muted-foreground",
+                    ? "bg-card text-foreground font-semibold shadow-soft-sm"
+                    : "text-muted-foreground font-normal",
                 )}
               >
                 {link.label}
@@ -67,8 +66,7 @@ const Navbar = () => {
             ))}
           </div>
 
-          <div className="hidden items-center gap-2 md:flex">
-            <ThemeToggle />
+          <div className="hidden items-center gap-2 lg:flex">
             <Button
               variant="ghost"
               size="sm"
@@ -86,7 +84,7 @@ const Navbar = () => {
 
           <button
             type="button"
-            className="rounded-md p-2 text-foreground md:hidden"
+            className="rounded-md p-2 text-foreground lg:hidden"
             onClick={() => setIsMobileMenuOpen((open) => !open)}
             aria-label="Toggle menu"
             aria-expanded={isMobileMenuOpen}
@@ -96,7 +94,7 @@ const Navbar = () => {
         </div>
 
         {isMobileMenuOpen && (
-          <div className="mt-3 border-t border-border py-3 md:hidden">
+          <div className="mt-3 rounded-lg border border-border bg-card p-3 shadow-soft-lg lg:hidden">
             <div className="grid gap-1">
               {nav.links.map((link) => (
                 <Link
@@ -107,9 +105,9 @@ const Navbar = () => {
                     setIsMobileMenuOpen(false);
                   }}
                   className={cn(
-                    "rounded-md px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-secondary hover:text-foreground",
+                    "rounded-md px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-muted hover:text-foreground",
                     isActive(link.href)
-                      ? "bg-secondary text-foreground font-semibold"
+                      ? "bg-muted text-foreground font-semibold"
                       : "text-muted-foreground",
                   )}
                 >
@@ -118,8 +116,7 @@ const Navbar = () => {
               ))}
             </div>
 
-            <div className="mt-3 grid grid-cols-[auto_1fr] items-center gap-2">
-              <ThemeToggle />
+            <div className="mt-3">
               <CtaButton cta={nav.primaryCta} size="sm" className="w-full" />
             </div>
           </div>

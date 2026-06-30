@@ -616,7 +616,11 @@ function _ssShowError(msg) {
     'border-radius:8px','font-family:sans-serif','font-size:13px',
     'max-width:360px','box-shadow:0 4px 16px rgba(0,0,0,.3)'
   ].join(';');
-  div.innerHTML = `<strong>SellerSuit upload failed:</strong><br>${msg}`;
+  const strong = document.createElement('strong');
+  strong.textContent = 'SellerSuit upload failed:';
+  div.appendChild(strong);
+  div.appendChild(document.createElement('br'));
+  div.appendChild(document.createTextNode(String(msg || 'Unknown error')));
   document.body.appendChild(div);
   setTimeout(() => div.remove(), 12000);
 }

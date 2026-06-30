@@ -49,7 +49,7 @@ const ProfitCalculator = () => {
     setValues((prev) => ({ ...prev, [key]: Number.isFinite(raw) ? raw : 0 }));
 
   return (
-    <section id="calculator" className="scroll-mt-24 border-b border-border bg-secondary/15 py-20 sm:py-24 text-left">
+    <section id="calculator" className="scroll-mt-24 border-b border-border bg-background py-20 sm:py-24 text-left">
       <div className="container px-4">
         <Reveal className="mx-auto mb-14 max-w-2xl text-center">
           <p className="text-sm font-semibold uppercase tracking-wide text-primary">{calculator.eyebrow}</p>
@@ -59,7 +59,7 @@ const ProfitCalculator = () => {
 
         <div className="mx-auto grid max-w-4xl gap-8 lg:grid-cols-[1.1fr_0.9fr]">
           {/* Inputs Section */}
-          <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8 flex flex-col justify-between">
+          <div className="rounded-lg border border-border bg-card p-6 shadow-sm sm:p-8 flex flex-col justify-between">
             <div className="space-y-6">
               {calculator.fields.map((field) => (
                 <div key={field.key} className="space-y-2">
@@ -73,7 +73,7 @@ const ProfitCalculator = () => {
                       {field.label}
                     </label>
                     
-                    <div className="inline-flex items-center rounded-lg border border-border bg-background px-2.5 py-1 text-sm font-bold tabular-nums text-foreground focus-within:ring-1 focus-within:ring-primary/40 focus-within:border-primary/40">
+                    <div className="inline-flex items-center rounded border border-border bg-background px-2.5 py-1 text-sm font-bold tabular-nums text-foreground focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/40">
                       <span className="text-muted-foreground/60 text-xs font-medium mr-0.5">{field.prefix}</span>
                       <input
                         id={`calc-${field.key}`}
@@ -98,7 +98,7 @@ const ProfitCalculator = () => {
                     max={field.max}
                     step={field.step}
                     onChange={(e) => update(field.key, parseFloat(e.target.value))}
-                    className="h-2 w-full cursor-pointer appearance-none rounded-full bg-secondary accent-primary"
+                    className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
                     aria-label={`${field.label} slider`}
                   />
                 </div>
@@ -113,7 +113,7 @@ const ProfitCalculator = () => {
 
           {/* Live Outcome Summary Panel */}
           <div
-            className={`flex flex-col justify-between rounded-2xl border p-6 shadow-soft-lg transition-all duration-300 sm:p-8 ${
+            className={`flex flex-col justify-between rounded-lg border p-6 shadow-soft-lg transition-all duration-300 sm:p-8 ${
               positive 
                 ? "border-success/30 bg-success/5 shadow-success/5" 
                 : "border-destructive/30 bg-destructive/5 shadow-destructive/5"
@@ -150,7 +150,7 @@ const ProfitCalculator = () => {
                     <span>Profit Margin</span>
                     <span className="font-bold text-foreground tabular-nums">{margin.toFixed(1)}%</span>
                   </div>
-                  <div className="h-2 w-full rounded-full bg-secondary/80 overflow-hidden">
+                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
                     <div 
                       className={`h-full transition-all duration-300 rounded-full ${positive ? 'bg-success' : 'bg-destructive'}`}
                       style={{ width: `${Math.min(Math.max(margin, 0), 100)}%` }}
@@ -164,7 +164,7 @@ const ProfitCalculator = () => {
                     <span>Return on Cost (ROI)</span>
                     <span className="font-bold text-foreground tabular-nums">{roi.toFixed(1)}%</span>
                   </div>
-                  <div className="h-2 w-full rounded-full bg-secondary/80 overflow-hidden">
+                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
                     <div 
                       className={`h-full transition-all duration-300 rounded-full ${positive ? 'bg-primary' : 'bg-destructive'}`}
                       style={{ width: `${Math.min(Math.max(roi, 0), 100)}%` }}

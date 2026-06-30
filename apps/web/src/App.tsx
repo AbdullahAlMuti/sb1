@@ -22,9 +22,9 @@ import NewListing from "./pages/dashboard/NewListing";
 import BulkLister from "./pages/dashboard/BulkLister";
 import ExtensionConnect from "./pages/dashboard/ExtensionConnect";
 import DashboardSettings from "./pages/dashboard/Settings";
+import EbayProfitCalculator from "./pages/dashboard/EbayProfitCalculator";
 import CalculatorSettings from "./pages/dashboard/CalculatorSettings";
 import ProfitableProducts from "./pages/dashboard/ProfitableProducts";
-import BestSellingItems from "./pages/dashboard/BestSellingItems";
 import MustSellItems from "./pages/dashboard/MustSellItems";
 import ProductResearch from "./pages/dashboard/ProductResearch";
 import ExtensionViewer from "./pages/extension/ExtensionViewer";
@@ -154,10 +154,12 @@ const EbayRoutes = () => (
       <Route path="ebay-orders" element={<Navigate to="../orders" replace />} />
       <Route path="auto-orders" element={<Orders />} />
       <Route path="product-research" element={<ProductResearch />} />
-      <Route path="best-selling" element={<BestSellingItems />} />
       <Route path="must-sell" element={<MustSellItems />} />
       <Route path="profitable-products" element={<ProfitableProducts />} />
-      <Route path="calculator" element={<CalculatorSettings />} />
+      <Route path="calculator" element={<EbayProfitCalculator />} />
+      {/* Supplier-wise pricing-rule config (feeds the extension overlay + backend sync).
+          Kept reachable by URL; not in the sidebar to avoid a duplicate nav entry. */}
+      <Route path="supplier-pricing" element={<CalculatorSettings />} />
       <Route path="extension" element={<ExtensionConnect />} />
       <Route path="alerts" element={<Alerts />} />
       <Route path="subscription" element={<Subscription />} />
@@ -227,7 +229,7 @@ const App = () => (
                 <Route path="/dashboard/billing" element={<Navigate to="/dashboard/ebay/billing" replace />} />
                 <Route path="/dashboard/extension" element={<Navigate to="/dashboard/ebay/extension" replace />} />
                 <Route path="/dashboard/calculator" element={<Navigate to="/dashboard/ebay/calculator" replace />} />
-                <Route path="/dashboard/best-selling" element={<Navigate to="/dashboard/ebay/best-selling" replace />} />
+                <Route path="/dashboard/best-selling" element={<Navigate to="/dashboard/ebay" replace />} />
                 <Route path="/dashboard/must-sell" element={<Navigate to="/dashboard/ebay/must-sell" replace />} />
                 <Route path="/dashboard/profitable-products" element={<Navigate to="/dashboard/ebay/profitable-products" replace />} />
                 <Route path="/dashboard/product-research" element={<Navigate to="/dashboard/ebay/product-research" replace />} />

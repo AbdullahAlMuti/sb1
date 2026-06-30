@@ -41,10 +41,13 @@ const UIHelper = (() => {
       warning: '⚠️'
     };
 
-    toast.innerHTML = `
-      <span class="toast-icon">${icons[type] || icons.info}</span>
-      <span class="toast-message">${message}</span>
-    `;
+    const icon = document.createElement('span');
+    icon.className = 'toast-icon';
+    icon.textContent = icons[type] || icons.info;
+    const text = document.createElement('span');
+    text.className = 'toast-message';
+    text.textContent = String(message || '');
+    toast.append(icon, text);
 
     // Add styles
     toast.style.cssText = `

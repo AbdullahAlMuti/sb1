@@ -264,6 +264,13 @@ describe('_cleanPriceText', () => {
     assert.deepEqual(_cleanPriceText('€999.00'), { price: 999.00, symbol: '€' });
   });
 
+  test('preserves regional dollar symbols before generic dollar fallback', () => {
+    const { _cleanPriceText } = loadInternals();
+    assert.deepEqual(_cleanPriceText('A$39.95'), { price: 39.95, symbol: 'A$' });
+    assert.deepEqual(_cleanPriceText('C$42.50'), { price: 42.50, symbol: 'C$' });
+    assert.deepEqual(_cleanPriceText('R$ 89,90'), { price: 89.90, symbol: 'R$' });
+  });
+
   test('parses suffixed currency values', () => {
     const { _cleanPriceText } = loadInternals();
     assert.deepEqual(_cleanPriceText('19.99 $'), { price: 19.99, symbol: '$' });
@@ -293,5 +300,20 @@ describe('_cleanPriceText', () => {
     assert.equal(_cleanPriceText(''), null);
     assert.equal(_cleanPriceText('no price here'), null);
     assert.equal(_cleanPriceText('$abc'), null);
+  });
+});
+
+describe('_normalizeBrandText', () => {
+  test('normalizes common Amazon byline formats', () => {
+    const { _normalizeBrandText } = loadInternals();
+    assert.equal(_normalizeBrandText('Brand: Acme'), 'Acme');
+    assert.equal(_normalizeBrandText('Visit the ATHMILE Store'), 'ATHMILE');
+    assert.equal(_normalizeBrandText('Shop the Example Store'), 'Example');
+  });
+
+  test('drops empty generic byline labels', () => {
+    const { _normalizeBrandText } = loadInternals();
+    assert.equal(_normalizeBrandText('Store'), '');
+    assert.equal(_normalizeBrandText('Brand'), '');
   });
 });

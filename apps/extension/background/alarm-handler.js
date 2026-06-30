@@ -85,6 +85,7 @@ async function syncSettings() {
 
 const ALARM_SYNC_ORDERS = 'ebay-order-sync';
 const ALARM_SYNC_SETTINGS = 'sync-settings';
+const ALARM_PRICING_SYNC = 'pricing-rules-sync';
 
 async function startEbayOrderSyncInterval() {
   const data = await chrome.storage.local.get(['ebaySyncInterval', 'ebaySyncEnabled']);
@@ -138,6 +139,10 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     }
   } else if (alarm.name === ALARM_SYNC_SETTINGS) {
     syncSettings();
+  } else if (alarm.name === ALARM_PRICING_SYNC) {
+    if (typeof SSPricingRuleSync !== 'undefined') {
+      SSPricingRuleSync.sync().catch(() => {});
+    }
   }
 });
 
@@ -154,6 +159,9 @@ chrome.runtime.onStartup.addListener(async () => {
       setTimeout(() => SyncUtils.triggerEbayOrderSync('startup'), 10000);
     }
     startEbayOrderSyncInterval();
+    if (typeof SSPricingRuleSync !== 'undefined') {
+      SSPricingRuleSync.sync().catch(() => {});
+    }
   }
 });
 
@@ -166,6 +174,9 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       setTimeout(() => SyncUtils.triggerEbayOrderSync('install'), 10000);
     }
     startEbayOrderSyncInterval();
+    if (typeof SSPricingRuleSync !== 'undefined') {
+      SSPricingRuleSync.sync().catch(() => {});
+    }
   }
 
   // First-install specific behavior
@@ -179,3 +190,6 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
 // Periodic settings sync via chrome.alarms
 chrome.alarms.create(ALARM_SYNC_SETTINGS, { periodInMinutes: 30 });
+
+// Periodic pricing rules sync — every 10 minutes
+chrome.alarms.create(ALARM_PRICING_SYNC, { periodInMinutes: 10 });

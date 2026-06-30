@@ -1,6 +1,7 @@
 import { Button, type ButtonProps } from "@repo/ui/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import type { MouseEvent, ReactNode } from "react";
+import { cn } from "@repo/ui/lib/utils";
 import type { CTA } from "@/config/types";
 import { track } from "@/lib/analytics";
 
@@ -9,6 +10,8 @@ interface CtaButtonProps extends Omit<ButtonProps, "onClick"> {
   trackProps?: Record<string, unknown>;
   children?: ReactNode;
 }
+
+const MARKETING_PILL = "min-h-11 rounded-full font-medium transition-transform active:scale-95";
 
 function smoothScrollTo(hash: string) {
   const el = document.querySelector(hash);
@@ -31,7 +34,7 @@ export function CtaButton({ cta, trackProps, children, ...buttonProps }: CtaButt
 
   if (cta.external) {
     return (
-      <Button asChild {...buttonProps}>
+      <Button asChild {...buttonProps} className={cn(MARKETING_PILL, buttonProps.className)}>
         <a
           href={cta.href}
           target="_blank"
@@ -55,7 +58,7 @@ export function CtaButton({ cta, trackProps, children, ...buttonProps }: CtaButt
   };
 
   return (
-    <Button onClick={handleClick} {...buttonProps}>
+    <Button onClick={handleClick} {...buttonProps} className={cn(MARKETING_PILL, buttonProps.className)}>
       {label}
     </Button>
   );

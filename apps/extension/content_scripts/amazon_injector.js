@@ -3327,18 +3327,32 @@ const addEventListenersToPanel = () => {
                         }
                         console.log('═══════════════════════════════════════════════════════');
 
-                        const finalPrice = exportData.sellPrice === 'No price' ? '0' : String(exportData.sellPrice);
+                        const sellPriceStr = exportData.sellPrice === 'No price' ? '0' : String(exportData.sellPrice);
                         const amazonPrice = exportData.amazonPrice === 'No price found' ? '0' : String(exportData.amazonPrice);
 
-                        // Build product same as sidebar Upload button — images stored separately
-                        // ebay_prelist.js will inject watermarkedImages from storage before run()
+                        // Build product same as sidebar Upload button — images stored separately,
+                        // ebay_prelist.js injects watermarkedImages from storage before run().
+                        //
+                        // CONTRACT: the uploader (validateProductPricing + adaptProduct in
+                        // common/ebay-listing-api.js) reads the CALCULATED eBay price from
+                        // `finalPrice`/`ebayFinalPrice` and the raw supplier cost from
+                        // `supplierPrice`/`price` — they must stay SEPARATE. This build used to
+                        // set only `price` (to the calculated value) and `amazonPrice`, leaving
+                        // `finalPrice` undefined. validateProductPricing then threw "eBay Final
+                        // Price is missing" and the upload aborted, so NONE of title/description/
+                        // price/SKU ever reached the eBay draft. Mirror the panel contract here.
                         const ebayProduct = {
                             title: selectedTitle,
-                            price: finalPrice,
+                            title_source: useSelectedTitle ? 'ai' : 'scraped',
+                            price: amazonPrice,          // raw supplier cost (convention: product.price = raw)
+                            finalPrice: sellPriceStr,    // calculated eBay sell price
+                            supplierPrice: amazonPrice,  // raw supplier cost — keeps raw != final explicit
+                            price_source: 'calculated',
                             images: [],
                             asin: exportData.asin || exportData.sku,
                             url: exportData.amazonLink || '',
                             description: productDetails.description || '',
+                            description_source: 'scraped',
                             specs: {
                                 ...(productDetails.brand      ? { Brand: productDetails.brand }           : {}),
                                 ...(productDetails.model      ? { 'Model Number': productDetails.model }  : {}),
@@ -3347,6 +3361,7 @@ const addEventListenersToPanel = () => {
                                 ...(productDetails.weight     ? { Weight: productDetails.weight }         : {}),
                             },
                             ebaySku: exportData.sku,
+                            sku_source: 'generated',
                             amazonPrice: amazonPrice,
                             useStoredWatermarkedImages: true,
                         };

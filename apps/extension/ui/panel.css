@@ -131,7 +131,8 @@ body.ss-panel-page {
   transform: translateY(-50%) translateX(0) scale(1.05);
 }
 
-.ss-panel-fab-icon {
+.ss-panel-fab-icon,
+.ss-panel-wrapper svg.ss-panel-fab-icon {
   display: block;
   width: 28px;
   height: 28px;

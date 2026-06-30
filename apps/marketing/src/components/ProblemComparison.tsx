@@ -26,7 +26,7 @@ export default function ProblemComparison() {
           <Reveal 
             as="article" 
             delay={0.05} 
-            className="flex flex-col rounded-2xl border border-destructive/20 bg-destructive/5 p-6 shadow-sm sm:p-8"
+            className="flex flex-col rounded-lg border border-destructive/20 bg-card p-6 shadow-sm sm:p-8"
           >
             <div>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-3 py-1 text-xs font-bold text-destructive">
@@ -59,11 +59,8 @@ export default function ProblemComparison() {
           <Reveal 
             as="article" 
             delay={0.15} 
-            className="flex flex-col rounded-2xl border border-success/30 bg-success/5 p-6 shadow-glow-primary sm:p-8 relative overflow-hidden"
+            className="relative flex flex-col overflow-hidden rounded-lg border border-primary/30 bg-card p-6 shadow-soft-lg sm:p-8"
           >
-            {/* Ambient background glow */}
-            <div className="absolute -right-24 -top-24 h-48 w-48 rounded-full bg-success/10 blur-3xl pointer-events-none" />
-
             <div>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-success/15 px-3 py-1 text-xs font-bold text-success">
                 <Check className="h-3.5 w-3.5" />

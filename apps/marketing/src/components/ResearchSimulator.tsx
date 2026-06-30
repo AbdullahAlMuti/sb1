@@ -185,7 +185,7 @@ export default function ResearchSimulator() {
     val.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
   return (
-    <section id="research-simulator" className="scroll-mt-24 border-b border-border bg-secondary/10 py-20 sm:py-24">
+    <section id="research-simulator" className="scroll-mt-24 border-b border-border bg-background py-20 sm:py-24">
       <div className="container px-4">
         <div className="mx-auto mb-12 max-w-2xl text-center">
           <p className="text-sm font-semibold uppercase tracking-wide text-primary">Market Intelligence</p>
@@ -198,7 +198,7 @@ export default function ResearchSimulator() {
         </div>
 
         <div className="mx-auto max-w-4xl">
-          <div className="rounded-2xl border border-border/80 bg-card p-6 shadow-soft-xl">
+          <div className="rounded-lg border border-border/80 bg-card p-6 shadow-soft-lg">
             {/* Search Input Box */}
             <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
@@ -209,13 +209,13 @@ export default function ResearchSimulator() {
                   value={query}
                   disabled={isLoading}
                   onChange={(e) => setQuery(e.target.value)}
-                  className="h-12 w-full rounded-xl border border-border bg-secondary/20 pl-11 pr-4 text-sm font-medium transition-all focus:border-primary/50 focus:bg-card focus:outline-none focus:ring-2 focus:ring-primary/25 text-foreground placeholder:text-muted-foreground"
+                  className="h-12 w-full rounded border border-border bg-background pl-11 pr-4 text-sm font-medium text-foreground transition-all placeholder:text-muted-foreground focus:border-primary/50 focus:bg-card focus:outline-none focus:ring-2 focus:ring-primary/25"
                 />
               </div>
               <button
                 type="submit"
                 disabled={isLoading}
-                className="h-12 shrink-0 flex items-center justify-center gap-2 rounded-xl bg-primary px-6 text-sm font-bold text-white hover:bg-primary/95 transition-all shadow-glow-primary active:scale-98"
+                className="h-12 shrink-0 flex items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-bold text-white transition-transform active:scale-95"
               >
                 <Database className="h-4 w-4" />
                 Analyze Market
@@ -292,7 +292,7 @@ export default function ResearchSimulator() {
                   >
                     {/* Metrics Cards */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="rounded-xl border border-border bg-secondary/10 p-4">
+                      <div className="rounded-lg border border-border bg-background p-4">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sell-Through</span>
                         <div className="mt-1 flex items-baseline gap-1.5">
                           <span className="font-display text-xl font-bold text-foreground">{results.sellThrough}</span>
@@ -302,21 +302,21 @@ export default function ResearchSimulator() {
                         </div>
                       </div>
 
-                      <div className="rounded-xl border border-border bg-secondary/10 p-4">
+                      <div className="rounded-lg border border-border bg-background p-4">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Avg Price</span>
                         <div className="mt-1">
                           <span className="font-display text-xl font-bold text-foreground">{formattedUSD(results.avgPrice)}</span>
                         </div>
                       </div>
 
-                      <div className="rounded-xl border border-border bg-secondary/10 p-4">
+                      <div className="rounded-lg border border-border bg-background p-4">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Listing Success</span>
                         <div className="mt-1">
                           <span className="font-display text-xl font-bold text-foreground">{results.successfulListings}</span>
                         </div>
                       </div>
 
-                      <div className="rounded-xl border border-border bg-secondary/10 p-4">
+                      <div className="rounded-lg border border-border bg-background p-4">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sales/Month</span>
                         <div className="mt-1">
                           <span className="font-display text-xl font-bold text-foreground">{formattedUSD(results.totalRevenue)}</span>
@@ -333,7 +333,7 @@ export default function ResearchSimulator() {
 
                       <div className="grid gap-4 md:grid-cols-2">
                         {results.competitors.map((item, index) => (
-                          <div key={index} className="rounded-xl border border-border/80 bg-card p-4 hover:border-primary/30 transition-all flex flex-col justify-between">
+                          <div key={index} className="rounded-lg border border-border/80 bg-card p-4 hover:border-primary/30 transition-all flex flex-col justify-between">
                             <div>
                               <div className="flex items-center justify-between mb-2">
                                 <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-bold text-primary">
@@ -363,7 +363,7 @@ export default function ResearchSimulator() {
 
                             <a
                               href="/signup"
-                              className="mt-4 w-full flex items-center justify-center gap-1.5 rounded-lg bg-secondary py-2 text-xs font-bold text-foreground hover:bg-primary hover:text-white transition-all"
+                              className="mt-4 w-full flex items-center justify-center gap-1.5 rounded-full bg-primary py-2 text-xs font-bold text-primary-foreground transition-transform active:scale-95"
                             >
                               List this item
                               <ArrowRight className="h-3 w-3" />
@@ -374,13 +374,13 @@ export default function ResearchSimulator() {
                     </div>
 
                     {/* Hot Keywords */}
-                    <div className="rounded-xl border border-border/60 bg-secondary/5 p-4">
+                    <div className="rounded-lg border border-border/60 bg-background p-4">
                       <h4 className="font-display text-sm font-bold text-foreground mb-3">Recommended eBay Title Keywords</h4>
                       <div className="grid gap-2 sm:grid-cols-3">
                         {results.keywords.map((kw, index) => (
                           <div key={index} className="flex justify-between items-center rounded-lg border border-border/40 bg-card px-3 py-2 text-xs">
                             <span className="font-medium text-foreground truncate max-w-[120px]">{kw.phrase}</span>
-                            <span className="rounded bg-secondary/80 px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">
+                            <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">
                               Vol: {kw.searchVolume.toLocaleString()}
                             </span>
                           </div>

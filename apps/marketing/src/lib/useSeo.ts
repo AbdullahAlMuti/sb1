@@ -15,6 +15,7 @@ export interface SeoInput {
   description?: string;
   canonical?: string;
   image?: string;
+  robots?: string;
   /** "website" | "article" */
   type?: string;
   /** JSON-LD objects to inject (Article, BreadcrumbList, FAQPage, ...). */
@@ -48,6 +49,7 @@ export function useSeo(input: SeoInput): void {
       description,
       canonical,
       image = `${SITE_URL}/logo.png`,
+      robots,
       type = "website",
       jsonLd = [],
     } = input;
@@ -66,6 +68,9 @@ export function useSeo(input: SeoInput): void {
     upsertMeta("name", "twitter:title", title);
     upsertMeta("name", "twitter:card", "summary_large_image");
     upsertMeta("name", "twitter:image", image);
+    if (robots) {
+      upsertMeta("name", "robots", robots);
+    }
     if (canonical) {
       upsertMeta("property", "og:url", canonical);
       upsertLink("canonical", canonical);

@@ -31,7 +31,8 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => 
 // panel is enabled per-tab, only on supplier domains the panel can act on.
 const SIDE_PANEL_DOMAINS = [
   'amazon.com', 'amazon.co.uk', 'amazon.de', 'amazon.ca', 'amazon.com.au',
-  'walmart.com', 'walmart.ca'
+  'walmart.com', 'walmart.ca',
+  'aliexpress.com', 'aliexpress.ru', 'aliexpress.us'
 ];
 
 function isSidePanelUrl(url) {

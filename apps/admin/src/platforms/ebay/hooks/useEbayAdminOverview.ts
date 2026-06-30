@@ -5,8 +5,7 @@ export function useEbayAdminOverview() {
   return useQuery({
     queryKey: ["ebay-admin-overview"],
     queryFn: async () => {
-      const [bestSellingCount, mustSellCount, profitableCount, settings, adminStats] = await Promise.all([
-        (supabase as any).from("best_selling_items").select("*", { count: "exact", head: true }),
+      const [mustSellCount, profitableCount, settings, adminStats] = await Promise.all([
         (supabase as any).from("must_sell_items").select("*", { count: "exact", head: true }),
         (supabase as any).from("profitable_products").select("*", { count: "exact", head: true }),
         (supabase as any).from("admin_settings").select("*").eq("key", "ebay_sync_settings").single(),
@@ -19,7 +18,6 @@ export function useEbayAdminOverview() {
       }
 
       return {
-        bestSelling: bestSellingCount.count || 0,
         mustSell: mustSellCount.count || 0,
         profitable: profitableCount.count || 0,
         syncEnabled: syncSettings?.enabled ?? false,

@@ -4386,13 +4386,26 @@
 			(async () => {
 				try {
 					const tabId = request.tabId || sender?.tab?.id;
-					if (tabId) await chrome.sidePanel.open({ tabId });
-					else {
+					if (tabId) {
+						chrome.sidePanel.setOptions({
+							tabId,
+							path: "sidepanel/side-panel.html",
+							enabled: true
+						}).catch(() => {});
+						await chrome.sidePanel.open({ tabId });
+					} else {
 						const [tab] = await chrome.tabs.query({
 							active: true,
 							currentWindow: true
 						});
-						if (tab) await chrome.sidePanel.open({ tabId: tab.id });
+						if (tab) {
+							chrome.sidePanel.setOptions({
+								tabId: tab.id,
+								path: "sidepanel/side-panel.html",
+								enabled: true
+							}).catch(() => {});
+							await chrome.sidePanel.open({ tabId: tab.id });
+						}
 					}
 					sendResponse({ ok: true });
 				} catch (e) {
@@ -4416,7 +4429,7 @@
 						path: "sidepanel/side-panel.html",
 						enabled: true
 					});
-					await chrome.sidePanel.open({ tabId: tab.id });
+					if (!request.skipSidePanelOpen) await chrome.sidePanel.open({ tabId: tab.id });
 					sendResponse({
 						ok: true,
 						tabId: tab.id
@@ -5055,7 +5068,10 @@
 		"amazon.ca",
 		"amazon.com.au",
 		"walmart.com",
-		"walmart.ca"
+		"walmart.ca",
+		"aliexpress.com",
+		"aliexpress.ru",
+		"aliexpress.us"
 	];
 	function isSidePanelUrl(url) {
 		if (!url) return false;

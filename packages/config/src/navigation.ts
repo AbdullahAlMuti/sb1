@@ -11,7 +11,6 @@ import {
   ClipboardList,
   ShieldCheck,
   Puzzle,
-  TrendingUp,
   Flame,
   Activity,
   Gem,
@@ -37,7 +36,6 @@ export type RouteKey =
   | 'orders'
   | 'extension'
   | 'product-research'
-  | 'best-selling'
   | 'must-sell'
   | 'profitable-products'
   | 'settings'
@@ -47,7 +45,6 @@ export type RouteKey =
   | 'admin-roles'
   | 'admin-usage'
   | 'admin-notices'
-  | 'admin-best-selling'
   | 'admin-must-sell'
   | 'admin-profitable-products'
   | 'admin-prompts'
@@ -68,7 +65,6 @@ export const ROUTE_PATHS: Record<RouteKey, string> = {
   'orders': '/dashboard/orders',
   'extension': '/dashboard/extension',
   'product-research': '/dashboard/product-research',
-  'best-selling': '/dashboard/best-selling',
   'must-sell': '/dashboard/must-sell',
   'profitable-products': '/dashboard/profitable-products',
   'settings': '/dashboard/settings',
@@ -79,7 +75,6 @@ export const ROUTE_PATHS: Record<RouteKey, string> = {
   'admin-roles': '/admin/roles',
   'admin-usage': '/admin/usage',
   'admin-notices': '/admin/notices',
-  'admin-best-selling': '/admin/best-selling',
   'admin-must-sell': '/admin/must-sell',
   'admin-profitable-products': '/admin/profitable-products',
   'admin-prompts': '/admin/prompts',
@@ -149,7 +144,6 @@ export const USER_NAV_SECTIONS: NavSectionConfig[] = [
     label: 'Advanced Tools',
     items: [
       { key: 'product-research', icon: Sparkles, label: 'AI Product Research' },
-      { key: 'best-selling', icon: TrendingUp, label: 'Best Selling Items' },
       { key: 'must-sell', icon: Flame, label: 'Must Sell Items' },
       { key: 'profitable-products', icon: Gem, label: 'Profitable Products' },
     ],
@@ -185,7 +179,6 @@ export const ADMIN_NAV_SECTIONS: NavSectionConfig[] = [
     label: 'Content',
     items: [
       { key: 'admin-notices', icon: Megaphone, label: 'Notices' },
-      { key: 'admin-best-selling', icon: TrendingUp, label: 'Best Selling Items' },
       { key: 'admin-must-sell', icon: Flame, label: 'Must Sell Items' },
       { key: 'admin-profitable-products', icon: Gem, label: 'Profitable Products' },
     ],

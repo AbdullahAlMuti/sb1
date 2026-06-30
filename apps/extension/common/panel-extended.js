@@ -154,11 +154,12 @@ async function _handleSidebarUpload() {
                 || (draftFinalPrice ? (draft.price_source || 'calculated') : 'calculated'));
 
         // AI description is stored under selectedEbayDescription by the
-        // description generator — prefer it over the scraped description.
+        // description generator. Prefer a fresh generated description over the
+        // scan-time draft, otherwise uploads can silently use scraped copy.
         const aiDescription = storedDescFresh ? (result.selectedEbayDescription || '') : '';
-        const description = (draft && draft.description) || aiDescription || p.description || '';
-        const descSource = (draft && draft.description) ? (draft.description_source || 'scraped')
-            : aiDescription ? 'ai'
+        const description = aiDescription || (draft && draft.description) || p.description || '';
+        const descSource = aiDescription ? 'ai'
+            : (draft && draft.description) ? (draft.description_source || 'scraped')
             : 'scraped';
 
         // currentProduct.images is canonical (carries edited/deleted images);
@@ -385,6 +386,7 @@ async function _ssxRenderExtended(p) {
             const rawCost = _ssxCleanFloat(v.raw_supplier_price ?? v.price);
             if (!_ssxCleanFloat(v.finalPrice) && rawCost > 0) {
                 v.finalPrice = window.SSPricingEngine.calculatePrice(rawCost, pricingConfig);
+                if (!_ssxCleanFloat(v.ebayPrice)) v.ebayPrice = v.finalPrice;
                 variantsUpdated = true;
             }
         });
@@ -611,7 +613,7 @@ async function showSidebarExtended(opts = {}) {
             const scannedAt = p.lastScannedAt || p.scrapedAt || 0;
             const storedDescFresh = !scannedAt || (result.selectedDescriptionTimestamp || 0) >= scannedAt;
             const aiDescription = storedDescFresh ? (result.selectedEbayDescription || result.generatedDescription || '') : '';
-            const description = (draft && draft.description) || aiDescription || p.description || '';
+            const description = aiDescription || (draft && draft.description) || p.description || '';
             
             if (description) {
                 descDisplay.innerHTML = description;

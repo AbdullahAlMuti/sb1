@@ -93,7 +93,10 @@ describe('SSListingCardCore marketplace and eBay URL matching', () => {
     assert.equal(core.getMarketplace('www.amazon.co.uk'), 'amazon');
     assert.equal(core.getMarketplace('www.walmart.ca'), 'walmart');
     assert.equal(core.getMarketplace('www.ebay.com.au'), 'ebay');
+    assert.equal(core.getMarketplace('www.aliexpress.com'), 'aliexpress');
+    assert.equal(core.getMarketplace('m.aliexpress.us'), 'aliexpress');
     assert.equal(core.getMarketplace('www.ebay.com.evil.test'), null);
+    assert.equal(core.getMarketplace('aliexpress.com.evil.test'), null);
   });
 
   test('extracts item IDs from both common eBay item URL forms', () => {
@@ -192,13 +195,51 @@ describe('listing card manifest wiring', () => {
     }
   });
 
-  test('Amazon and Walmart bundles load the core before the injector', () => {
-    for (const entry of ['src/content_scripts/amazon.js', 'src/content_scripts/walmart.js']) {
+  test('Amazon, Walmart, and AliExpress bundles load the core before the injector', () => {
+    for (const entry of ['src/content_scripts/amazon.js', 'src/content_scripts/walmart.js', 'src/content_scripts/aliexpress.js']) {
       const source = readFileSync(join(EXT_ROOT, entry), 'utf8');
       const coreIndex = source.indexOf('common/listing-card-core.js');
       const injectorIndex = source.indexOf('content_scripts/listing_card_injector.js');
       assert.ok(coreIndex >= 0, `${entry} must import the listing-card core`);
       assert.ok(coreIndex < injectorIndex, `${entry} must load core before injector`);
+    }
+  });
+
+  test('AliExpress card injector supports global and dynamic product-link pages', () => {
+    const source = readFileSync(join(EXT_ROOT, 'content_scripts/listing_card_injector.js'), 'utf8');
+    assert.ok(source.includes("p === '/'"), 'AliExpress must treat the global homepage as a listing surface');
+    assert.ok(
+      source.includes("document.querySelector('a[href*=\"/item/\"]')"),
+      'AliExpress must activate when dynamic pages render product links'
+    );
+    assert.ok(
+      source.includes('function findProductCard(node)'),
+      'AliExpress search cards must climb out of image-only wrappers'
+    );
+    assert.ok(
+      source.includes('isMeaningfulProductTitle(text)'),
+      'AliExpress search links must ignore generic AliExpress labels'
+    );
+    assert.ok(
+      source.includes('container.appendChild(wrapper)'),
+      'AliExpress card must attach to the stable product-card container'
+    );
+  });
+
+  test('AliExpress side panel and listing card CSS are wired', () => {
+    const background = readFileSync(join(EXT_ROOT, 'background/index.js'), 'utf8');
+    assert.ok(background.includes("'aliexpress.com'"), 'AliExpress .com must enable side panel');
+    assert.ok(background.includes("'aliexpress.ru'"), 'AliExpress .ru must enable side panel');
+    assert.ok(background.includes("'aliexpress.us'"), 'AliExpress .us must enable side panel');
+
+    for (const name of ['manifest.json', 'manifest.dev.json', 'manifest.prod.json']) {
+      const manifest = JSON.parse(readFileSync(join(EXT_ROOT, name), 'utf8'));
+      const block = manifest.content_scripts.find(entry =>
+        entry.js?.includes('build/aliexpress.bundle.js')
+      );
+      assert.ok(block, `${name} must include the AliExpress content-script block`);
+      assert.ok(block.css.includes('ui/panel.css'), `${name} must include panel CSS`);
+      assert.ok(block.css.includes('ui/listing-card.css'), `${name} must include listing-card CSS`);
     }
   });
 });

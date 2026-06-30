@@ -3,7 +3,6 @@ import { useSubscription } from './useSubscription';
 export type FeatureFlag =
   | 'bulk_lister'
   | 'price_monitoring'
-  | 'top_selling_products'
   | 'ai_product_research'
   | 'profitable_products'
   | 'priority_support';

@@ -18,7 +18,6 @@ import {
   ShieldCheck,
   ShoppingCart,
   Tags,
-  TrendingUp,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -44,7 +43,6 @@ import AdminAudit from "@/modules/ops/AuditPage";
 import AdminRoles from "@/pages/AdminRoles";
 import AdminSettings from "@/pages/AdminSettings";
 import {
-  AdminBestSellingPage as AdminBestSelling,
   AdminMustSellPage as AdminMustSell,
   AdminProfitableProductsPage as AdminProfitableProducts,
 } from "@/modules/catalog";
@@ -110,7 +108,6 @@ export const adminRoutes: AdminRouteDef[] = [
   { path: "blog/:id/edit", element: <AdminBlogEditor /> },
 
   // Catalog (operator-curated content shown to users)
-  { path: "best-selling", element: <AdminBestSelling />, label: "Best Selling", icon: TrendingUp, group: "Catalog" },
   { path: "must-sell", element: <AdminMustSell />, label: "Must Sell", icon: Package, group: "Catalog" },
   { path: "profitable-products", element: <AdminProfitableProducts />, label: "Profitable Products", icon: PackageCheck, group: "Catalog", redirectFrom: ["product-intelligence"] },
 
@@ -136,4 +133,4 @@ export const adminRoutes: AdminRouteDef[] = [
 ];
 
 /** Routes that no longer exist (scope cuts / removed aliases) → bounce to overview. */
-export const removedRoutes: string[] = ["workspaces", "reports", "payments", "credits"];
+export const removedRoutes: string[] = ["workspaces", "reports", "payments", "credits", "best-selling"];

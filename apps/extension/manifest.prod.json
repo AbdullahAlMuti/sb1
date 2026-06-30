@@ -38,7 +38,14 @@
     "https://script.google.com/*",
     "https://sellersuit.com/*",
     "https://*.sellersuit.com/*",
-    "https://ojxzssooylmydystjvdo.supabase.co/*"
+    "https://ojxzssooylmydystjvdo.supabase.co/*",
+    "*://aliexpress.com/*",
+    "*://*.aliexpress.com/*",
+    "*://aliexpress.ru/*",
+    "*://*.aliexpress.ru/*",
+    "*://aliexpress.us/*",
+    "*://*.aliexpress.us/*",
+    "*://*.alicdn.com/*"
   ],
   "background": {
     "service_worker": "build/background.bundle.js"
@@ -79,6 +86,24 @@
       ],
       "css": [
         "ui/panel.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://aliexpress.com/*",
+        "*://*.aliexpress.com/*",
+        "*://aliexpress.ru/*",
+        "*://*.aliexpress.ru/*",
+        "*://aliexpress.us/*",
+        "*://*.aliexpress.us/*"
+      ],
+      "js": [
+        "build/aliexpress.bundle.js"
+      ],
+      "css": [
+        "ui/panel.css",
+        "ui/listing-card.css"
       ],
       "run_at": "document_idle"
     },
@@ -268,7 +293,13 @@
         "*://*.walmart.com/*",
         "*://*.walmart.ca/*",
         "https://sellersuit.com/*",
-        "https://*.sellersuit.com/*"
+        "https://*.sellersuit.com/*",
+        "*://aliexpress.com/*",
+        "*://*.aliexpress.com/*",
+        "*://aliexpress.ru/*",
+        "*://*.aliexpress.ru/*",
+        "*://aliexpress.us/*",
+        "*://*.aliexpress.us/*"
       ]
     }
   ],

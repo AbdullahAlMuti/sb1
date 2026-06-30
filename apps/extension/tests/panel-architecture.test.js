@@ -237,6 +237,17 @@ describe('eBay upload stays supplier-neutral', () => {
     }
   });
 
+  test('upload paths preserve fresh AI description/title state', () => {
+    for (const f of ['sidepanel/panel-main.js', 'ui/panel.js', 'common/panel-extended.js']) {
+      const src = read(f);
+      assert.ok(src.includes('selectedEbayDescription'), `${f} must read generated description storage`);
+      assert.ok(src.includes('selectedDescriptionTimestamp'), `${f} must freshness-check generated description`);
+    }
+    const sidepanel = read('sidepanel/panel-main.js');
+    assert.ok(sidepanel.includes('selectedEbayTitle'), 'side panel upload must read generated AI title');
+    assert.ok(sidepanel.includes("description_source: descSource"), 'side panel upload must stamp description source');
+  });
+
   test('bulk runner reuses the single-item upload pipeline (no parallel uploader)', () => {
     const src = read('background/listing-runner.js');
     // Scrape goes through the supplier adapter seam, not the legacy flat scrape
@@ -250,5 +261,44 @@ describe('eBay upload stays supplier-neutral', () => {
     // DB rows are written post-upload by _syncListingToDashboard → SYNC_LISTING,
     // so the runner must not call create-listing before the eBay upload.
     assert.ok(!src.includes('syncToDatabase'), 'runner must not sync to DB before upload');
+  });
+});
+
+describe('dev extension AI generation wiring', () => {
+  test('dev build scripts align extension Supabase target with web/admin env first', () => {
+    const prepare = read('scripts/prepare-extension-dev.js');
+    const verify = read('scripts/verify-extension-dev.js');
+
+    for (const src of [prepare, verify]) {
+      assert.ok(
+        src.includes("env.VITE_SUPABASE_URL || env.SUPABASE_URL"),
+        'dev extension Supabase URL must prefer the web/admin Vite target'
+      );
+      assert.ok(
+        src.includes("env.VITE_SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY"),
+        'dev extension anon key must prefer the web/admin Vite key'
+      );
+    }
+  });
+
+  test('AI generation routes use AuthHelper instead of direct fetch', () => {
+    const src = read('background/message-router.js');
+    const aiRouteStart = src.indexOf('request.action === "GENERATE_TITLE"');
+    const aiRouteEnd = src.indexOf("request.action === 'START_FULFILLMENT'");
+
+    assert.notEqual(aiRouteStart, -1, 'message-router must keep GENERATE_TITLE route');
+    assert.notEqual(aiRouteEnd, -1, 'message-router must keep START_FULFILLMENT route');
+
+    const aiRoutes = src.slice(aiRouteStart, aiRouteEnd);
+    assert.ok(
+      aiRoutes.includes("AuthHelper.callEdgeFunction('generate-titles'"),
+      'title generation routes must use AuthHelper.callEdgeFunction'
+    );
+    assert.ok(
+      aiRoutes.includes("AuthHelper.callEdgeFunction('generate-description'"),
+      'description generation route must use AuthHelper.callEdgeFunction'
+    );
+    assert.ok(!aiRoutes.includes('fetch('), 'AI generation routes must not use direct fetch');
+    assert.ok(aiRoutes.includes('normalizeAiEdgeResult'), 'AI generation routes must normalize edge errors');
   });
 });

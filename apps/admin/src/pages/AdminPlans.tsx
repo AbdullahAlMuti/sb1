@@ -776,7 +776,7 @@ function PlanForm({
           className="font-mono text-xs"
         />
         {flagsError && <p className="text-xs text-destructive">{flagsError}</p>}
-        <p className="text-xs text-muted-foreground">Keys: bulk_lister, price_monitoring, top_selling_products, ai_product_research, profitable_products, priority_support</p>
+        <p className="text-xs text-muted-foreground">Keys: bulk_lister, price_monitoring, ai_product_research, profitable_products, priority_support</p>
       </div>
 
       {/* Toggles */}

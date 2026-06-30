@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 interface UpgradeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  feature: 'product-research' | 'best-selling' | 'profitable-products';
+  feature: 'product-research' | 'profitable-products';
 }
 
 const FEATURE_CONTENT = {
@@ -23,17 +23,6 @@ const FEATURE_CONTENT = {
       'Priority support + 1,500 credits per month'
     ],
     missingLine: 'Unlock full AI capabilities to analyze wireless earbuds, pet accessories, kitchen niches, and more.'
-  },
-  'best-selling': {
-    headline: 'Unlock All Best Selling Items',
-    subheadline: 'Gain access to the full, daily updated catalog of top-selling eBay products.',
-    bullets: [
-      'Browse all 1,400+ best selling items',
-      'Unlock advanced country filters and search tools',
-      'Export winning product details straight to the Bulk Lister',
-      'Direct supplier source matching and price tracking'
-    ],
-    missingLine: 'You are currently seeing only 2 out of 1,400+ best-selling items.'
   },
   'profitable-products': {
     headline: 'Unlock Curated Profitable Winners',
