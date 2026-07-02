@@ -8,18 +8,18 @@ interface TurnstileCaptchaProps {
 }
 
 export function TurnstileCaptcha({ onVerify, onError, onExpire }: TurnstileCaptchaProps) {
-  // PRODUCTION REQUIREMENT: set VITE_TURNSTILE_SITE_KEY (build-time). Without it this
-  // falls back to Cloudflare's always-pass TEST key — i.e. CAPTCHA is effectively off.
-  const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || '1x00000000000000000000AA';
+  // Only render captcha if VITE_TURNSTILE_SITE_KEY is explicitly configured.
+  // Otherwise, automatically bypass it to prevent showing the "for testing only" widget.
+  const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || '';
   const isDev = import.meta.env.DEV;
 
-  // Hook is called unconditionally (no rules-of-hooks violation); it only does
-  // anything in local dev, where we bypass the real challenge.
   useEffect(() => {
-    if (isDev) onVerify('dev-token-bypass');
-  }, [isDev, onVerify]);
+    if (isDev || !siteKey) {
+      onVerify(isDev ? 'dev-token-bypass' : 'no-captcha-bypass');
+    }
+  }, [isDev, siteKey, onVerify]);
 
-  if (isDev) return null;
+  if (isDev || !siteKey) return null;
 
   return (
     <div className="flex justify-center w-full my-4">
