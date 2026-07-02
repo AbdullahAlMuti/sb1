@@ -232,8 +232,8 @@
 			const finalPrice = extPrice > 0 ? extPrice : storedPrice || draftFinalPrice || 0;
 			const priceSource = extPrice > 0 && extPrice !== storedPrice ? "manual" : p.price_source || (draftFinalPrice ? draft.price_source || "calculated" : "calculated");
 			const aiDescription = storedDescFresh ? result.selectedEbayDescription || "" : "";
-			const description = draft && draft.description || aiDescription || p.description || "";
-			const descSource = draft && draft.description ? draft.description_source || "scraped" : aiDescription ? "ai" : "scraped";
+			const description = aiDescription || draft && draft.description || p.description || "";
+			const descSource = aiDescription ? "ai" : draft && draft.description ? draft.description_source || "scraped" : "scraped";
 			const images = Array.isArray(p.images) && p.images.length > 0 ? p.images : draft && draft.images || [];
 			console.log("[SS Upload] title_source:", titleSource, "| title:", finalTitle.slice(0, 60));
 			console.log("[SS Upload] price_source:", priceSource, "| finalPrice:", finalPrice);
@@ -434,6 +434,7 @@
 				const rawCost = _ssxCleanFloat(v.raw_supplier_price ?? v.price);
 				if (!_ssxCleanFloat(v.finalPrice) && rawCost > 0) {
 					v.finalPrice = window.SSPricingEngine.calculatePrice(rawCost, pricingConfig);
+					if (!_ssxCleanFloat(v.ebayPrice)) v.ebayPrice = v.finalPrice;
 					variantsUpdated = true;
 				}
 			});
@@ -452,7 +453,7 @@
 		_ssxText("ssx-head-title", p.title || "Product");
 		const supplierChip = document.getElementById("ssx-head-supplier");
 		if (supplierChip) {
-			const logo = supplierChip.querySelector("img");
+			const logo = supplierChip.querySelector("img, svg");
 			supplierChip.textContent = "";
 			if (logo) supplierChip.appendChild(logo);
 			supplierChip.appendChild(document.createTextNode(supplierMeta.displayName));
@@ -658,8 +659,7 @@
 				console.warn("[showSidebarExtended] Failed to get draft:", e);
 			}
 			const scannedAt = p.lastScannedAt || p.scrapedAt || 0;
-			const aiDescription = !scannedAt || (result.selectedDescriptionTimestamp || 0) >= scannedAt ? result.selectedEbayDescription || result.generatedDescription || "" : "";
-			const description = draft && draft.description || aiDescription || p.description || "";
+			const description = (!scannedAt || (result.selectedDescriptionTimestamp || 0) >= scannedAt ? result.selectedEbayDescription || result.generatedDescription || "" : "") || draft && draft.description || p.description || "";
 			if (description) {
 				descDisplay.innerHTML = description;
 				descDisplay.classList.remove("description-empty-state");
@@ -1838,10 +1838,13 @@
 					info: "ℹ️",
 					warning: "⚠️"
 				};
-				toast.innerHTML = `
-      <span class="toast-icon">${icons[type] || icons.info}</span>
-      <span class="toast-message">${message}</span>
-    `;
+				const icon = document.createElement("span");
+				icon.className = "toast-icon";
+				icon.textContent = icons[type] || icons.info;
+				const text = document.createElement("span");
+				text.className = "toast-message";
+				text.textContent = String(message || "");
+				toast.append(icon, text);
 				toast.style.cssText = `
       display: flex;
       align-items: center;
@@ -5348,7 +5351,7 @@
 			if (!str) return null;
 			let decoded = str.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
 			decoded = decoded.replace(/&#x([0-9a-fA-F]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d, 10)));
-			const match = decoded.match(/(\$|£|€|¥|A\$|C\$|₹|R\$)\s*(\d[\d.,\s]*\d|\d)|(\d[\d.,\s]*\d|\d)\s*(\$|£|€|¥|A\$|C\$|₹|R\$)/);
+			const match = decoded.match(/(A\$|C\$|R\$|\$|£|€|¥|₹)\s*(\d[\d.,\s]*\d|\d)|(\d[\d.,\s]*\d|\d)\s*(A\$|C\$|R\$|\$|£|€|¥|₹)/);
 			if (match) {
 				let rawNum = "";
 				let sym = "$";
@@ -5389,22 +5392,33 @@
 				const g = p && p.desktop_buybox_group_1;
 				if (g && g.length > 0) return g[0];
 			} catch (_) {}
-			const priceEl = document.querySelector(".priceToPay, #corePrice_feature_div .a-price, #price_inside_buybox, .apexPriceToPay, #priceblock_ourprice, #priceblock_dealprice");
-			if (priceEl) {
-				const sym = (priceEl.querySelector(".a-price-symbol")?.textContent || "$").trim();
-				const whole = (priceEl.querySelector(".a-price-whole")?.textContent || "").replace(/[^\d]/g, "");
-				const frac = (priceEl.querySelector(".a-price-fraction")?.textContent || "00").trim();
-				let price = parseFloat(`${whole || 0}.${frac}`);
-				if (!(price > 0)) {
-					const parsed = _cleanPriceText(priceEl.querySelector(".a-offscreen")?.textContent || priceEl.textContent || "");
-					if (parsed && parsed.price > 0) {
-						price = parsed.price;
-						return {
-							priceAmount: price,
-							currencySymbol: parsed.symbol || sym
-						};
-					}
-				}
+			const priceEls = Array.from(document.querySelectorAll([
+				".priceToPay",
+				".apexPriceToPay",
+				"#corePrice_feature_div .a-price",
+				"#corePriceDisplay_desktop_feature_div .a-price",
+				"#corePrice_desktop .a-price",
+				"#price_inside_buybox",
+				"#priceblock_ourprice",
+				"#priceblock_dealprice",
+				"#priceblock_saleprice",
+				"#priceblock_businessprice",
+				"#newBuyBoxPrice",
+				"#sns-base-price",
+				"#tp_price_block_total_price_ww .a-price",
+				".reinventPricePriceToPayMargin .a-price",
+				".a-price .a-offscreen"
+			].join(", ")));
+			for (const priceEl of priceEls) {
+				const sym = (priceEl.querySelector?.(".a-price-symbol")?.textContent || "$").trim();
+				const parsed = _cleanPriceText(priceEl.querySelector?.(".a-offscreen")?.textContent || priceEl.textContent || "");
+				if (parsed && parsed.price > 0) return {
+					priceAmount: parsed.price,
+					currencySymbol: parsed.symbol || sym
+				};
+				const whole = (priceEl.querySelector?.(".a-price-whole")?.textContent || "").replace(/[^\d]/g, "");
+				const frac = (priceEl.querySelector?.(".a-price-fraction")?.textContent || "00").trim().replace(/[^\d]/g, "").slice(0, 2);
+				const price = parseFloat(`${whole || 0}.${frac || "00"}`);
 				if (price > 0) return {
 					priceAmount: price,
 					currencySymbol: sym
@@ -5468,6 +5482,10 @@
 			out = out.replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d, 10)));
 			out = out.replace(/&(?:#(?:x[0-9a-fA-F]+|\d+)|[a-zA-Z]+);/gi, (m) => ents[m.toLowerCase()] ?? m);
 			return out;
+		}
+		function normalizeBrandText(text) {
+			const t = decodeText(String(text || "")).replace(/\s+/g, " ").replace(/^Brand\s*:\s*/i, "").replace(/^Visit\s+the\s+/i, "").replace(/^Shop\s+the\s+/i, "").replace(/\s+Store$/i, "").trim();
+			return /^(store|brand)$/i.test(t) ? "" : t;
 		}
 		async function getVariations(windowData, minQty, allowLowQty) {
 			const { variationData: t, jqueryData: p } = windowData;
@@ -5691,7 +5709,7 @@
 			const parentAsin = variationData && (variationData.parentAsin || currentAsin) || jqueryData && jqueryData.parentAsin || currentAsin;
 			const title = decodeText((jqueryData && jqueryData.title || variationData && variationData.title || document.querySelector("#productTitle")?.textContent.trim() || "").trim());
 			const brandEl = document.querySelector("#bylineInfo");
-			const brand = brandEl ? decodeText(brandEl.textContent.trim().replace(/^(Brand:|Visit the|Store)/i, "").trim()) : "";
+			const brand = brandEl ? normalizeBrandText(brandEl.textContent) : "";
 			const bulletPoints = Array.from(document.querySelectorAll("#feature-bullets li span.a-list-item")).map((el) => el.textContent.trim()).filter((t) => t.length > 5);
 			const descEl = document.querySelector("#productDescription");
 			const description = descEl ? descEl.textContent.trim().replace(/\s+/g, " ") : "";
@@ -5773,7 +5791,7 @@
 			const parentAsin = variationData && (variationData.parentAsin || asin) || jqueryData && jqueryData.parentAsin || asin;
 			const title = decodeText((jqueryData && jqueryData.title || variationData && variationData.title || document.querySelector("#productTitle")?.textContent.trim() || "").trim());
 			const brandEl = document.querySelector("#bylineInfo");
-			const brand = brandEl ? decodeText(brandEl.textContent.trim().replace(/^(Brand:|Visit the|Store)/i, "").trim()) : "";
+			const brand = brandEl ? normalizeBrandText(brandEl.textContent) : "";
 			const bulletPoints = Array.from(document.querySelectorAll("#feature-bullets li span.a-list-item")).map((el) => el.textContent.trim()).filter((t) => t.length > 5);
 			const descEl = document.querySelector("#productDescription");
 			const description = descEl ? descEl.textContent.trim().replace(/\s+/g, " ") : "";
@@ -5820,7 +5838,8 @@
 			_balanceBraces,
 			_prepareJson,
 			_parseWindowJson,
-			_cleanPriceText
+			_cleanPriceText,
+			normalizeBrandText
 		};
 	})();
 	//#endregion
@@ -6041,7 +6060,7 @@
 			if (!str) return null;
 			let decoded = str.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
 			decoded = decoded.replace(/&#x([0-9a-fA-F]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d, 10)));
-			const match = decoded.match(/(\$|£|€|¥|A\$|C\$|₹|R\$)\s*(\d[\d.,\s]*\d|\d)|(\d[\d.,\s]*\d|\d)\s*(\$|£|€|¥|A\$|C\$|₹|R\$)/);
+			const match = decoded.match(/(A\$|C\$|R\$|\$|£|€|¥|₹)\s*(\d[\d.,\s]*\d|\d)|(\d[\d.,\s]*\d|\d)\s*(A\$|C\$|R\$|\$|£|€|¥|₹)/);
 			if (match) {
 				let rawNum = "";
 				let sym = "$";
@@ -6083,22 +6102,33 @@
 					const g = p && p.desktop_buybox_group_1;
 					if (g && g.length > 0) return g[0];
 				} catch (_) {}
-				const priceEl = document.querySelector(".priceToPay, #corePrice_feature_div .a-price, #price_inside_buybox, .apexPriceToPay, #priceblock_ourprice, #priceblock_dealprice");
-				if (priceEl) {
-					const sym = (priceEl.querySelector(".a-price-symbol")?.textContent || "$").trim();
-					const whole = (priceEl.querySelector(".a-price-whole")?.textContent || "").replace(/[^\d]/g, "");
-					const frac = (priceEl.querySelector(".a-price-fraction")?.textContent || "00").trim();
-					let price = parseFloat(`${whole || 0}.${frac}`);
-					if (!(price > 0)) {
-						const parsed = _cleanPriceText(priceEl.querySelector(".a-offscreen")?.textContent || priceEl.textContent || "");
-						if (parsed && parsed.price > 0) {
-							price = parsed.price;
-							return {
-								priceAmount: price,
-								currencySymbol: parsed.symbol || sym
-							};
-						}
-					}
+				const priceEls = Array.from(document.querySelectorAll([
+					".priceToPay",
+					".apexPriceToPay",
+					"#corePrice_feature_div .a-price",
+					"#corePriceDisplay_desktop_feature_div .a-price",
+					"#corePrice_desktop .a-price",
+					"#price_inside_buybox",
+					"#priceblock_ourprice",
+					"#priceblock_dealprice",
+					"#priceblock_saleprice",
+					"#priceblock_businessprice",
+					"#newBuyBoxPrice",
+					"#sns-base-price",
+					"#tp_price_block_total_price_ww .a-price",
+					".reinventPricePriceToPayMargin .a-price",
+					".a-price .a-offscreen"
+				].join(", ")));
+				for (const priceEl of priceEls) {
+					const sym = (priceEl.querySelector?.(".a-price-symbol")?.textContent || "$").trim();
+					const parsed = _cleanPriceText(priceEl.querySelector?.(".a-offscreen")?.textContent || priceEl.textContent || "");
+					if (parsed && parsed.price > 0) return {
+						priceAmount: parsed.price,
+						currencySymbol: parsed.symbol || sym
+					};
+					const whole = (priceEl.querySelector?.(".a-price-whole")?.textContent || "").replace(/[^\d]/g, "");
+					const frac = (priceEl.querySelector?.(".a-price-fraction")?.textContent || "00").trim().replace(/[^\d]/g, "").slice(0, 2);
+					const price = parseFloat(`${whole || 0}.${frac || "00"}`);
 					if (price > 0) return {
 						priceAmount: price,
 						currencySymbol: sym
@@ -6171,6 +6201,35 @@
 			out = out.replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d, 10)));
 			out = out.replace(/&(?:#(?:x[0-9a-fA-F]+|\d+)|[a-zA-Z]+);/gi, (m) => ents[m.toLowerCase()] ?? m);
 			return out;
+		}
+		function _normalizeBrandText(text) {
+			const t = _decodeText(String(text || "")).replace(/\s+/g, " ").replace(/^Brand\s*:\s*/i, "").replace(/^Visit\s+the\s+/i, "").replace(/^Shop\s+the\s+/i, "").replace(/\s+Store$/i, "").trim();
+			return /^(store|brand)$/i.test(t) ? "" : t;
+		}
+		function _getRatingReviewFromDom() {
+			try {
+				const ratingText = document.querySelector("#acrPopover[title], .reviewCountTextLinkedHistogram[title], .a-icon-star .a-icon-alt")?.getAttribute("title") || document.querySelector("#acrPopover .a-icon-alt, .reviewCountTextLinkedHistogram .a-icon-alt")?.textContent || "";
+				const reviewText = document.querySelector("#acrCustomerReviewText")?.textContent || "";
+				const ratingMatch = String(ratingText).match(/(\d+(?:[.,]\d+)?)/);
+				const reviewMatch = String(reviewText).replace(/,/g, "").match(/(\d+)/);
+				return {
+					rating: ratingMatch ? parseFloat(ratingMatch[1].replace(",", ".")) : null,
+					reviewCount: reviewMatch ? parseInt(reviewMatch[1], 10) : null
+				};
+			} catch (_) {
+				return {
+					rating: null,
+					reviewCount: null
+				};
+			}
+		}
+		function _getShippingInfoDom() {
+			try {
+				const el = document.querySelector("#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE, #deliveryBlockMessage, #ddmDeliveryMessage, #mir-layout-DELIVERY_BLOCK");
+				return el ? _decodeText(el.textContent || "").replace(/\s+/g, " ").trim() : "";
+			} catch (_) {
+				return "";
+			}
 		}
 		/**
 		* Item specifics — full sweep across every detail table/bullet block Amazon
@@ -6256,16 +6315,23 @@
 			const currentAsin = document.querySelector("input#ASIN, input#asin")?.value || window.location.pathname.match(/\/(?:dp|gp\/aw\/d)\/([A-Z0-9]{10})/)?.[1] || "";
 			const title = _decodeText((document.querySelector("#productTitle")?.textContent || "").trim());
 			const brandEl = document.querySelector("#bylineInfo");
-			const brand = brandEl ? _decodeText(brandEl.textContent.trim().replace(/^(Brand:|Visit the|Store)/i, "").trim()) : "";
+			const brand = brandEl ? _normalizeBrandText(brandEl.textContent) : "";
 			const bulletPoints = Array.from(document.querySelectorAll("#feature-bullets li span.a-list-item")).map((el) => el.textContent.trim()).filter((t) => t.length > 5);
 			const descEl = document.querySelector("#productDescription");
+			const description = descEl ? descEl.textContent.trim().replace(/\s+/g, " ") : "";
+			const category = Array.from(document.querySelectorAll("#wayfinding-breadcrumbs_container li a, .a-breadcrumb a")).map((el) => el.textContent.trim()).filter(Boolean).join(" > ");
+			const ratingReviews = _getRatingReviewFromDom();
 			return {
 				currentAsin,
 				title,
 				brand,
 				bulletPoints,
-				description: descEl ? descEl.textContent.trim().replace(/\s+/g, " ") : "",
-				category: Array.from(document.querySelectorAll("#wayfinding-breadcrumbs_container li a, .a-breadcrumb a")).map((el) => el.textContent.trim()).filter(Boolean).join(" > ")
+				description,
+				category,
+				condition: "New",
+				shippingInfo: _getShippingInfoDom(),
+				rating: ratingReviews.rating,
+				reviewCount: ratingReviews.reviewCount
 			};
 		}
 		function _attrsForAsin(tw, asin) {
@@ -6511,6 +6577,10 @@
 				bulletPoints: base.bulletPoints,
 				description: base.description,
 				category: base.category,
+				condition: base.condition,
+				shippingInfo: base.shippingInfo,
+				rating: base.rating,
+				reviewCount: base.reviewCount,
 				specs,
 				inStock,
 				variants,
@@ -6580,6 +6650,10 @@
 				bulletPoints: base.bulletPoints,
 				description: base.description,
 				category: base.category,
+				condition: base.condition,
+				shippingInfo: base.shippingInfo,
+				rating: base.rating,
+				reviewCount: base.reviewCount,
 				specs,
 				inStock: _checkStock(),
 				variants: [selectedVariant],
@@ -6600,7 +6674,8 @@
 			_extractColorImages,
 			_cleanSpecPair,
 			_parseTwisterFields,
-			_cleanPriceText
+			_cleanPriceText,
+			_normalizeBrandText
 		};
 	})();
 	//#endregion
@@ -6972,7 +7047,15 @@
 					img.src = chrome.runtime.getURL(cleanPath);
 				}
 			});
-			if (!document.getElementById("sellersuit-panel-css")) {
+			if (!document.getElementById("sellersuit-panel-css")) try {
+				const cssUrl = chrome.runtime.getURL("ui/panel.css");
+				const cssText = await (await fetch(cssUrl)).text();
+				const style = document.createElement("style");
+				style.id = "sellersuit-panel-css";
+				style.textContent = cssText;
+				document.head.appendChild(style);
+			} catch (err) {
+				console.error("[SellerSuit] Failed to inject inline CSS:", err);
 				const cssLink = document.createElement("link");
 				cssLink.id = "sellersuit-panel-css";
 				cssLink.rel = "stylesheet";
@@ -8688,7 +8771,10 @@
                         <div style="text-align: left; padding: 15px;">
                             <strong style="color: #f59e0b; font-size: 14px;">⏳ Rate Limit Exceeded</strong>
                             <p style="margin: 10px 0; font-size: 13px; color: #374151;">
-                                Too many requests. Please wait a moment and try again.
+                                ${errorMessage.includes("OpenAI API key") || errorMessage.includes("Admin") ? errorMessage : "Too many requests. Please wait a moment and try again."}
+                            </p>
+                            <p style="font-size: 11px; color: #6b7280; margin: 5px 0 0 0;">
+                                💡 For unthrottled access, add your OpenAI API key in Admin → Extension Settings.
                             </p>
                         </div>
                     `;
@@ -8696,7 +8782,10 @@
                         <div style="text-align: left; padding: 15px;">
                             <strong style="color: #dc2626; font-size: 14px;">💳 AI Credits Exhausted</strong>
                             <p style="margin: 10px 0; font-size: 13px; color: #374151;">
-                                Your AI credits have been used up. Please add more credits to continue.
+                                ${errorMessage.includes("OpenAI API key") || errorMessage.includes("Admin") ? errorMessage : "Your AI credits have been used up. Please add more credits to continue."}
+                            </p>
+                            <p style="font-size: 11px; color: #6b7280; margin: 5px 0 0 0;">
+                                💡 Add your OpenAI API key in Admin → Extension Settings to bypass the AI gateway.
                             </p>
                         </div>
                     `;
@@ -8957,15 +9046,20 @@
 								}
 							}
 							console.log("═══════════════════════════════════════════════════════");
-							const finalPrice = exportData.sellPrice === "No price" ? "0" : String(exportData.sellPrice);
+							const sellPriceStr = exportData.sellPrice === "No price" ? "0" : String(exportData.sellPrice);
 							const amazonPrice = exportData.amazonPrice === "No price found" ? "0" : String(exportData.amazonPrice);
 							const ebayProduct = {
 								title: selectedTitle,
-								price: finalPrice,
+								title_source: useSelectedTitle ? "ai" : "scraped",
+								price: amazonPrice,
+								finalPrice: sellPriceStr,
+								supplierPrice: amazonPrice,
+								price_source: "calculated",
 								images: [],
 								asin: exportData.asin || exportData.sku,
 								url: exportData.amazonLink || "",
 								description: productDetails.description || "",
+								description_source: "scraped",
 								specs: {
 									...productDetails.brand ? { Brand: productDetails.brand } : {},
 									...productDetails.model ? { "Model Number": productDetails.model } : {},
@@ -8974,6 +9068,7 @@
 									...productDetails.weight ? { Weight: productDetails.weight } : {}
 								},
 								ebaySku: exportData.sku,
+								sku_source: "generated",
 								amazonPrice,
 								useStoredWatermarkedImages: true
 							};

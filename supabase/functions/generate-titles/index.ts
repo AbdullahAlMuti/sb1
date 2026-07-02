@@ -65,8 +65,6 @@ serve(async (req) => {
   }
 
   try {
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-
     // SECURITY: Authenticate user before processing
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
@@ -203,17 +201,17 @@ serve(async (req) => {
       model = "gpt-4o-mini";
     }
 
-    // Determine if we should use direct OpenAI or Lovable AI Gateway
-    // Use direct OpenAI if provider is 'openai' and a valid API key is provided
-    const useDirectOpenAI =
-      apiProvider === "openai" &&
-      adminApiKey &&
-      adminApiKey.startsWith("sk-") &&
-      adminApiKey.length > 20;
+    if (!adminApiKey || !adminApiKey.startsWith("sk-") || adminApiKey.length <= 20) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "OpenAI API key not configured. Add your key in Admin → Extension Settings (ext_ai_api_key).",
+        }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
-    console.log(
-      `[generate-titles] Using ${useDirectOpenAI ? "Direct OpenAI" : "Lovable AI Gateway"} with model: ${model}`,
-    );
+    console.log(`[generate-titles] Calling OpenAI with model: ${model}`);
 
     // Replace placeholders in prompt
     const prompt = promptTemplate
@@ -223,144 +221,44 @@ serve(async (req) => {
 
     let responseContent = "";
 
-    if (useDirectOpenAI) {
-      // Use admin's OpenAI API key directly
-      console.log(
-        "[generate-titles] Calling OpenAI directly with admin API key",
-      );
-
-      const response = await fetch(
-        "https://api.openai.com/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${adminApiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: model.startsWith("openai/")
-              ? model.replace("openai/", "")
-              : model,
-            messages: [
-              {
-                role: "system",
-                content:
-                  `You are an expert eBay SEO title copywriter. You MUST follow ALL instructions in the user's prompt exactly. Do not add conversational filler. Always respond with valid JSON only, exactly matching the requested shape of {"title":"..."}. Do not use markdown code blocks or wrapper backticks.\n\nCRITICAL CONSTRAINTS:\n1. The title MUST be STRICTLY UNDER 80 CHARACTERS long including spaces.\n2. Count the characters before outputting. If it exceeds 80, you MUST shorten it.`,
-              },
-              { role: "user", content: prompt }
-            ],
-            response_format: { type: "json_object" },
-            max_tokens: 800,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("OpenAI API error:", response.status, errorText);
-
-        if (response.status === 401) {
-          throw new Error(
-            "Invalid OpenAI API key. Please update your API key in Admin Settings.",
-          );
-        }
-        if (response.status === 429) {
-          return new Response(
-            JSON.stringify({
-              success: false,
-              error: "OpenAI rate limit exceeded. Please try again.",
-            }),
-            {
-              status: 429,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            },
-          );
-        }
-        throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      responseContent = data.choices?.[0]?.message?.content || "";
-    } else {
-      // Fallback to Lovable AI Gateway
-      if (!lovableApiKey) {
-        console.error("LOVABLE_API_KEY not configured and no admin OpenAI key");
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error:
-              "AI service not configured. Please add an OpenAI API key in Admin Settings.",
-          }),
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${adminApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: model.startsWith("openai/") ? model.replace("openai/", "") : model,
+        messages: [
           {
-            status: 500,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            role: "system",
+            content:
+              `You are an expert eBay SEO title copywriter. You MUST follow ALL instructions in the user's prompt exactly. Do not add conversational filler. Always respond with valid JSON only, exactly matching the requested shape of {"title":"..."}. Do not use markdown code blocks or wrapper backticks.\n\nCRITICAL CONSTRAINTS:\n1. The title MUST be STRICTLY UNDER 80 CHARACTERS long including spaces.\n2. Count the characters before outputting. If it exceeds 80, you MUST shorten it.`,
           },
+          { role: "user", content: prompt },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 800,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("OpenAI API error:", response.status, errorText);
+      if (response.status === 401) {
+        throw new Error("Invalid OpenAI API key. Please update ext_ai_api_key in Admin → Extension Settings.");
+      }
+      if (response.status === 429) {
+        return new Response(
+          JSON.stringify({ success: false, error: "OpenAI rate limit exceeded. Please wait a moment and try again." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-
-      console.log("[generate-titles] Using Lovable AI Gateway as fallback");
-
-      const gatewayModel = model.startsWith("gpt") ? `openai/${model}` : model;
-
-      const response = await fetch(
-        "https://ai.gateway.lovable.dev/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${lovableApiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: gatewayModel,
-            messages: [
-              {
-                role: "system",
-                content:
-                  `You are an expert eBay SEO title copywriter. Always respond with valid JSON only, exactly matching the shape {"title":"..."}. Do not use markdown code blocks or wrapper backticks.\n\nCRITICAL CONSTRAINTS:\n1. The title MUST be STRICTLY UNDER 80 CHARACTERS long including spaces.\n2. Count the characters before outputting. If it exceeds 80, you MUST shorten it.`,
-              },
-              { role: "user", content: prompt },
-            ],
-            response_format: { type: "json_object" },
-            max_tokens: 800,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Lovable AI Gateway error:", response.status, errorText);
-
-        if (response.status === 429) {
-          return new Response(
-            JSON.stringify({
-              success: false,
-              error: "Rate limit exceeded. Please try again in a moment.",
-            }),
-            {
-              status: 429,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            },
-          );
-        }
-        if (response.status === 402) {
-          return new Response(
-            JSON.stringify({
-              success: false,
-              error:
-                "AI credits exhausted. Please add an OpenAI API key in Admin Settings.",
-            }),
-            {
-              status: 402,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            },
-          );
-        }
-        throw new Error(`AI gateway error: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      responseContent = data.choices?.[0]?.message?.content || "";
+      throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
     }
+
+    const data = await response.json();
+    responseContent = data.choices?.[0]?.message?.content || "";
 
     console.log("AI response content:", responseContent);
 
@@ -432,25 +330,27 @@ serve(async (req) => {
     const apiName = "openai";
     const titlesArray = rankedTitles.map((t) => t.title);
 
-    const deducted = await deductUsage(supabase, userId, "credit", TITLE_GENERATION_CREDIT_COST, {
-      description: "AI title generation",
-      feature: "generate-titles",
-      provider: useDirectOpenAI ? "openai" : "lovable",
-      model,
-      title_count: rankedTitles.length,
-    });
-    if (!deducted) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Unable to deduct credits for this generation. Please try again.",
-          code: "CREDIT_DEDUCTION_FAILED",
-        }),
-        {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
-      );
+    if (creditCheck.planName !== 'admin') {
+      const deducted = await deductUsage(supabase, userId, "credit", TITLE_GENERATION_CREDIT_COST, {
+        description: "AI title generation",
+        feature: "generate-titles",
+        provider: "openai",
+        model,
+        title_count: rankedTitles.length,
+      });
+      if (!deducted) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Unable to deduct credits for this generation. Please try again.",
+            code: "CREDIT_DEDUCTION_FAILED",
+          }),
+          {
+            status: 402,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
+      }
     }
 
     return new Response(
@@ -464,7 +364,7 @@ serve(async (req) => {
           },
         ],
         titles: rankedTitles,
-        provider: useDirectOpenAI ? "openai" : "lovable",
+        provider: "openai",
         model,
         test,
       }),

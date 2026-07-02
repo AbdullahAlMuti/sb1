@@ -7,11 +7,29 @@ import { Label } from "@repo/ui/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@repo/ui/components/ui/select";
 import { Badge } from "@repo/ui/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@repo/ui/components/ui/tabs";
-import { Switch } from "@repo/ui/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@repo/api-client/supabase/client";
 import DOMPurify from "dompurify";
-import { Save, Key, Brain, Wand2, RefreshCw, FileText, Puzzle, Eye, EyeOff, Settings2, FlaskConical, Loader2, Copy, Check, Zap, CheckCircle, XCircle } from "lucide-react";
+import { Save, Key, Brain, Wand2, RefreshCw, FileText, Eye, EyeOff, FlaskConical, Loader2, Copy, Check, Zap, CheckCircle, XCircle, ShieldCheck, ClipboardList, Bot } from "lucide-react";
+import AdminExtensionControl from "./AdminExtensionControl";
+import AdminPromptsPage from "@/modules/content/prompts";
+import AdminDescriptionConfig from "./AdminDescriptionConfig";
+
+/* ─── Supabase Design Tokens ─── */
+const sb = {
+  primary: "#3ecf8e",
+  primaryDeep: "#24b47e",
+  ink: "#171717",
+  inkMute: "#707070",
+  inkFaint: "#b2b2b2",
+  canvas: "#ffffff",
+  canvasSoft: "#fafafa",
+  canvasNight: "#1c1c1c",
+  hairline: "#dfdfdf",
+  hairlineCool: "#ededed",
+  onPrimary: "#171717",
+  onDark: "#ffffff",
+} as const;
 
 interface ExtensionSettings {
   api_provider: string;
@@ -124,6 +142,66 @@ const SAMPLE_PRODUCT: TestProduct = {
   description: 'The most advanced iPhone ever with A17 Pro chip, 48MP camera system, and titanium design.',
   bulletPoints: '• A17 Pro chip for incredible performance\n• 48MP Main camera with advanced features\n• Titanium design with Action button\n• All-day battery life',
   specifications: 'Display: 6.7" Super Retina XDR\nStorage: 256GB\nChip: A17 Pro\nCamera: 48MP + 12MP + 12MP',
+};
+
+/* ─── Shared inline-style factories (Supabase design tokens) ─── */
+const sectionCard: React.CSSProperties = {
+  background: sb.canvas,
+  border: `1px solid ${sb.hairline}`,
+  borderRadius: 12,
+  padding: 0,
+  overflow: "hidden",
+};
+const sectionHeader: React.CSSProperties = {
+  padding: "24px 28px 16px",
+  borderBottom: `1px solid ${sb.hairlineCool}`,
+};
+const sectionBody: React.CSSProperties = {
+  padding: "24px 28px",
+};
+const primaryBtn: React.CSSProperties = {
+  background: sb.primary,
+  color: sb.onPrimary,
+  borderRadius: 6,
+  fontWeight: 500,
+  fontSize: 14,
+  border: "none",
+};
+const outlineBtn: React.CSSProperties = {
+  background: sb.canvas,
+  color: sb.ink,
+  borderRadius: 6,
+  fontWeight: 500,
+  fontSize: 14,
+  border: `1px solid ${sb.hairline}`,
+};
+const labelStyle: React.CSSProperties = {
+  color: sb.ink,
+  fontWeight: 500,
+  fontSize: 14,
+};
+const captionStyle: React.CSSProperties = {
+  color: sb.inkMute,
+  fontSize: 13,
+  lineHeight: 1.45,
+};
+const pillGreen: React.CSSProperties = {
+  background: sb.primary,
+  color: sb.onPrimary,
+  borderRadius: 9999,
+  fontWeight: 500,
+  fontSize: 12,
+  padding: "2px 10px",
+  border: "none",
+};
+const pillSoft: React.CSSProperties = {
+  background: sb.canvasSoft,
+  color: sb.ink,
+  borderRadius: 9999,
+  fontWeight: 400,
+  fontSize: 12,
+  padding: "2px 10px",
+  border: `1px solid ${sb.hairlineCool}`,
 };
 
 export default function AdminExtension() {
@@ -374,79 +452,97 @@ export default function AdminExtension() {
     });
   };
 
-  const getRankBadgeColor = (rank: string) => {
+  const getRankBadge = (rank: string): React.CSSProperties => {
     switch (rank) {
-      case 'best': return 'bg-green-500 text-white';
-      case 'recommended': return 'bg-blue-500 text-white';
-      case 'powerful': return 'bg-purple-500 text-white';
-      default: return 'bg-muted text-muted-foreground';
+      case 'best': return { ...pillGreen };
+      case 'recommended': return { ...pillSoft, background: "#e0f2fe", color: "#0369a1" };
+      case 'powerful': return { ...pillSoft, background: "#f3e8ff", color: "#7c3aed" };
+      default: return pillSoft;
     }
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <div style={{ borderColor: sb.hairline, borderBottomColor: sb.primary }} className="animate-spin rounded-full h-8 w-8 border-2"></div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center shadow-lg">
-          <Puzzle className="h-6 w-6 text-white" />
+    <div style={{ fontFamily: "Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif", width: "100%" }}>
+      {/* ── Page Header ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 32 }}>
+        <div style={{
+          width: 48, height: 48, borderRadius: 12,
+          background: sb.primary,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+        }}>
+          <Key style={{ width: 22, height: 22, color: sb.onPrimary }} />
         </div>
         <div>
-          <h1 className="text-2xl font-bold">Manage Extension</h1>
-          <p className="text-muted-foreground">Configure API keys and prompts for the Chrome extension</p>
+          <h1 style={{
+            fontSize: 28, fontWeight: 500, lineHeight: 1.2,
+            letterSpacing: -0.42, color: sb.ink, margin: 0,
+          }}>eBay Extension</h1>
+          <p style={{ ...captionStyle, marginTop: 2 }}>Configure API keys, prompts, and behavior for the Chrome extension</p>
         </div>
       </div>
 
+      {/* ── Tab Bar ── */}
       <Tabs defaultValue="api" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 max-w-3xl">
-          <TabsTrigger value="api" className="gap-2">
-            <Key className="h-4 w-4" />
-            API Config
-          </TabsTrigger>
-          <TabsTrigger value="title-prompt" className="gap-2">
-            <Wand2 className="h-4 w-4" />
-            Title Prompt
-          </TabsTrigger>
-          <TabsTrigger value="description-prompt" className="gap-2">
-            <FileText className="h-4 w-4" />
-            Description
-          </TabsTrigger>
-          <TabsTrigger value="settings" className="gap-2">
-            <Settings2 className="h-4 w-4" />
-            Settings
-          </TabsTrigger>
-          <TabsTrigger value="test" className="gap-2">
-            <FlaskConical className="h-4 w-4" />
-            Test
-          </TabsTrigger>
+        <TabsList
+          className="grid w-full grid-cols-2 sm:grid-cols-4 lg:grid-cols-6"
+          style={{
+            width: "100%",
+            height: "auto",
+            background: sb.canvasSoft,
+            border: `1px solid ${sb.hairlineCool}`,
+            borderRadius: 8,
+            padding: 4,
+            gap: 4,
+          }}
+        >
+          {[
+            { value: "api",    icon: Key,         label: "API Config" },
+            { value: "title-prompt",  icon: Wand2,       label: "Title Prompt" },
+            { value: "test",          icon: FlaskConical,label: "Test" },
+            { value: "control",       icon: ShieldCheck, label: "Control" },
+            { value: "prompts",       icon: Bot,         label: "Prompts" },
+            { value: "desc-config",   icon: ClipboardList, label: "Desc Config" },
+          ].map(({ value, icon: Icon, label }) => (
+            <TabsTrigger
+              key={value}
+              value={value}
+              className="gap-1.5 data-[state=active]:shadow-sm py-2"
+              style={{ borderRadius: 6, fontSize: 13, fontWeight: 500 }}
+            >
+              <Icon style={{ width: 15, height: 15 }} />
+              {label}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
-        <TabsContent value="api" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Brain className="h-5 w-5" />
-                AI Provider Settings
-              </CardTitle>
-              <CardDescription>
-                Configure AI provider and credentials for the Chrome extension
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
+        {/* ═══════════ API Config Tab ═══════════ */}
+        <TabsContent value="api" className="space-y-0">
+          <div style={sectionCard}>
+            <div style={sectionHeader}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Brain style={{ width: 20, height: 20, color: sb.primary }} />
+                <h2 style={{ fontSize: 18, fontWeight: 500, color: sb.ink, margin: 0 }}>AI Provider Settings</h2>
+              </div>
+              <p style={{ ...captionStyle, marginTop: 6 }}>Configure AI provider and credentials for the Chrome extension</p>
+            </div>
+            <div style={sectionBody}>
               <div className="grid gap-6 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="provider">AI Provider</Label>
+                  <Label htmlFor="provider" style={labelStyle}>AI Provider</Label>
                   <Select
                     value={settings.api_provider}
                     onValueChange={handleProviderChange}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger style={{ borderRadius: 6, borderColor: sb.hairline }}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -455,33 +551,33 @@ export default function AdminExtension() {
                           <div className="flex items-center gap-2">
                             {provider.label}
                             {provider.value === 'lovable' && (
-                              <Badge variant="secondary" className="ml-1">Free</Badge>
+                              <span style={pillGreen}>Free</span>
                             )}
                           </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
+                  <p style={captionStyle}>
                     {settings.api_provider === 'lovable'
-                      ? 'Uses built-in Lovable AI - no API key required'
+                      ? 'Uses built-in Lovable AI — no API key required'
                       : 'External provider requires API key'}
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="model">AI Model</Label>
+                  <Label htmlFor="model" style={labelStyle}>AI Model</Label>
                   <Select
                     value={settings.model}
                     onValueChange={(value) => setSettings({ ...settings, model: value })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger style={{ borderRadius: 6, borderColor: sb.hairline }}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {getModelsForProvider().map((model) => (
                         <SelectItem key={model} value={model}>
-                          {model}
+                          <span style={{ fontFamily: "ui-monospace, Menlo, Monaco, Consolas, monospace", fontSize: 13 }}>{model}</span>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -490,9 +586,9 @@ export default function AdminExtension() {
               </div>
 
               {settings.api_provider !== 'lovable' && (
-                <div className="space-y-3">
-                  <Label htmlFor="api_key">API Key</Label>
-                  <div className="flex gap-2">
+                <div className="space-y-3" style={{ marginTop: 24 }}>
+                  <Label htmlFor="api_key" style={labelStyle}>API Key</Label>
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <div className="relative flex-1">
                       <Input
                         id="api_key"
@@ -502,8 +598,14 @@ export default function AdminExtension() {
                           setSettings({ ...settings, api_key: e.target.value });
                           setApiKeyStatus('idle');
                         }}
-                        placeholder="Enter your API key..."
-                        className={`pr-10 ${apiKeyStatus === 'success' ? 'border-green-500' : apiKeyStatus === 'error' ? 'border-red-500' : ''}`}
+                        placeholder="Enter your API key…"
+                        style={{
+                          borderRadius: 6,
+                          borderColor: apiKeyStatus === 'success' ? sb.primary : apiKeyStatus === 'error' ? '#ff2201' : sb.hairline,
+                          paddingRight: 40,
+                          fontFamily: "ui-monospace, Menlo, Monaco, Consolas, monospace",
+                          fontSize: 13,
+                        }}
                       />
                       <Button
                         type="button"
@@ -515,357 +617,246 @@ export default function AdminExtension() {
                         {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
-                    <Button 
-                      variant="outline" 
-                      onClick={handleTestApiKey} 
+                    <Button
+                      variant="outline"
+                      onClick={handleTestApiKey}
                       disabled={testingApiKey || !settings.api_key}
-                      className={`min-w-[140px] ${apiKeyStatus === 'success' ? 'border-green-500 text-green-600' : apiKeyStatus === 'error' ? 'border-red-500 text-red-600' : ''}`}
+                      className="w-full sm:w-auto"
+                      style={{
+                        ...outlineBtn,
+                        minWidth: 140,
+                        ...(apiKeyStatus === 'success' ? { borderColor: sb.primary, color: sb.primaryDeep } : {}),
+                        ...(apiKeyStatus === 'error' ? { borderColor: '#ff2201', color: '#ff2201' } : {}),
+                      }}
                     >
                       {testingApiKey ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Testing...
-                        </>
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Testing…</>
                       ) : apiKeyStatus === 'success' ? (
-                        <>
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Valid
-                        </>
+                        <><CheckCircle className="h-4 w-4 mr-2" />Valid</>
                       ) : apiKeyStatus === 'error' ? (
-                        <>
-                          <XCircle className="h-4 w-4 mr-2" />
-                          Invalid
-                        </>
+                        <><XCircle className="h-4 w-4 mr-2" />Invalid</>
                       ) : (
-                        <>
-                          <Zap className="h-4 w-4 mr-2" />
-                          Test API Key
-                        </>
+                        <><Zap className="h-4 w-4 mr-2" />Test API Key</>
                       )}
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p style={captionStyle}>
                     Your API key is encrypted and stored securely. Test it before saving to verify it works.
                   </p>
                 </div>
               )}
 
-              <div className="flex gap-3">
-                <Button onClick={handleSave} disabled={saving}>
+              <div className="flex flex-col sm:flex-row gap-3" style={{ marginTop: 28 }}>
+                <Button onClick={handleSave} disabled={saving} style={primaryBtn} className="w-full sm:w-auto">
                   <Save className="h-4 w-4 mr-2" />
-                  {saving ? 'Saving...' : 'Save Settings'}
+                  {saving ? 'Saving…' : 'Save Settings'}
                 </Button>
-                <Button variant="outline" onClick={handleTestConnection} disabled={testing}>
+                <Button variant="outline" onClick={handleTestConnection} disabled={testing} style={outlineBtn} className="w-full sm:w-auto">
                   <RefreshCw className={`h-4 w-4 mr-2 ${testing ? 'animate-spin' : ''}`} />
-                  {testing ? 'Testing...' : 'Test Connection'}
+                  {testing ? 'Testing…' : 'Test Connection'}
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
-        <TabsContent value="title-prompt" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Wand2 className="h-5 w-5" />
-                Title Generation Prompt
-              </CardTitle>
-              <CardDescription>
-                Customize the prompt used by the extension to generate product titles
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+        {/* ═══════════ Title Prompt Tab ═══════════ */}
+        <TabsContent value="title-prompt" className="space-y-0">
+          <div style={sectionCard}>
+            <div style={sectionHeader}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Wand2 style={{ width: 20, height: 20, color: sb.primary }} />
+                <h2 style={{ fontSize: 18, fontWeight: 500, color: sb.ink, margin: 0 }}>Title Generation Prompt</h2>
+              </div>
+              <p style={{ ...captionStyle, marginTop: 6 }}>Customize the prompt used by the extension to generate product titles</p>
+            </div>
+            <div style={sectionBody}>
               <div className="space-y-2">
-                <Label htmlFor="title-prompt">Prompt Template</Label>
+                <Label htmlFor="title-prompt" style={labelStyle}>Prompt Template</Label>
                 <Textarea
                   id="title-prompt"
                   value={settings.title_prompt}
                   onChange={(e) => setSettings({ ...settings, title_prompt: e.target.value })}
                   rows={16}
-                  className="font-mono text-sm"
+                  style={{
+                    fontFamily: "ui-monospace, Menlo, Monaco, Consolas, monospace",
+                    fontSize: 14, lineHeight: 1.5,
+                    borderRadius: 6, borderColor: sb.hairline,
+                    background: sb.canvasSoft,
+                  }}
                 />
-                <div className="flex flex-wrap gap-2 mt-2">
-                  <Badge variant="outline">{'{title}'}</Badge>
-                  <Badge variant="outline">{'{description}'}</Badge>
-                  <Badge variant="outline">{'{category}'}</Badge>
-                  <Badge variant="outline">{'{price}'}</Badge>
-                  <Badge variant="outline">{'{brand}'}</Badge>
-                  <Badge variant="outline">{'{specifications}'}</Badge>
-                  <Badge variant="outline">{'{bulletPoints}'}</Badge>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {['{title}', '{description}', '{category}', '{price}', '{brand}', '{specifications}', '{bulletPoints}'].map(v => (
+                    <span key={v} style={pillSoft}>{v}</span>
+                  ))}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Use placeholders above to insert product data into your prompt
-                </p>
+                <p style={captionStyle}>Use placeholders above to insert product data into your prompt</p>
               </div>
 
-              <div className="flex gap-3">
-                <Button onClick={handleSave} disabled={saving}>
+              <div className="flex flex-col sm:flex-row gap-3" style={{ marginTop: 24 }}>
+                <Button onClick={handleSave} disabled={saving} style={primaryBtn} className="w-full sm:w-auto">
                   <Save className="h-4 w-4 mr-2" />
-                  {saving ? 'Saving...' : 'Save Prompt'}
+                  {saving ? 'Saving…' : 'Save Prompt'}
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => setSettings({ ...settings, title_prompt: DEFAULT_TITLE_PROMPT })}
+                  style={outlineBtn}
+                  className="w-full sm:w-auto"
                 >
                   Reset to Default
                 </Button>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
-        <TabsContent value="description-prompt" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Description Generation Prompt
-              </CardTitle>
-              <CardDescription>
-                Customize the prompt used by the extension to generate eBay descriptions
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="description-prompt">Prompt Template</Label>
-                <Textarea
-                  id="description-prompt"
-                  value={settings.description_prompt}
-                  onChange={(e) => setSettings({ ...settings, description_prompt: e.target.value })}
-                  rows={20}
-                  className="font-mono text-sm"
-                />
-                <div className="flex flex-wrap gap-2 mt-2">
-                  <Badge variant="outline">{'{title}'}</Badge>
-                  <Badge variant="outline">{'{description}'}</Badge>
-                  <Badge variant="outline">{'{brand}'}</Badge>
-                  <Badge variant="outline">{'{category}'}</Badge>
-                  <Badge variant="outline">{'{bulletPoints}'}</Badge>
-                  <Badge variant="outline">{'{features}'}</Badge>
-                  <Badge variant="outline">{'{specifications}'}</Badge>
-                  <Badge variant="outline">{'{condition}'}</Badge>
-                  <Badge variant="outline">{'{price}'}</Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Use placeholders above to insert Amazon product data into your prompt
-                </p>
-              </div>
 
-              <div className="flex gap-3">
-                <Button onClick={handleSave} disabled={saving}>
-                  <Save className="h-4 w-4 mr-2" />
-                  {saving ? 'Saving...' : 'Save Prompt'}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setSettings({ ...settings, description_prompt: DEFAULT_DESCRIPTION_PROMPT })}
-                >
-                  Reset to Default
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="settings" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings2 className="h-5 w-5" />
-                Extension Behavior Settings
-              </CardTitle>
-              <CardDescription>
-                Configure how the Chrome extension behaves when scraping and generating content
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label>Auto-Scrape on Page Load</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Automatically scrape product data when visiting Amazon pages
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.enable_auto_scrape}
-                  onCheckedChange={(checked) => setSettings({ ...settings, enable_auto_scrape: checked })}
-                />
-              </div>
-
-              <div className="grid gap-6 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="scrape_delay">Scrape Delay (ms)</Label>
-                  <Input
-                    id="scrape_delay"
-                    type="number"
-                    min={500}
-                    max={5000}
-                    value={settings.scrape_delay_ms}
-                    onChange={(e) => setSettings({ ...settings, scrape_delay_ms: parseInt(e.target.value) || 1000 })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Delay before auto-scraping (500-5000ms)
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="max_titles">Max Titles to Generate</Label>
-                  <Input
-                    id="max_titles"
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={settings.max_titles_count}
-                    onChange={(e) => setSettings({ ...settings, max_titles_count: parseInt(e.target.value) || 3 })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Number of title variations to generate (1-10)
-                  </p>
-                </div>
-              </div>
-
-              <Button onClick={handleSave} disabled={saving}>
-                <Save className="h-4 w-4 mr-2" />
-                {saving ? 'Saving...' : 'Save Settings'}
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="test" className="space-y-6">
+        {/* ═══════════ Test Tab ═══════════ */}
+        <TabsContent value="test" className="space-y-0">
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Sample Product Input */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FlaskConical className="h-5 w-5" />
-                  Sample Product Data
-                </CardTitle>
-                <CardDescription>
-                  Enter product data to test title and description generation
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="test-title">Product Title</Label>
-                  <Input
-                    id="test-title"
-                    value={testProduct.title}
-                    onChange={(e) => setTestProduct({ ...testProduct, title: e.target.value })}
-                  />
+            <div style={sectionCard}>
+              <div style={sectionHeader}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <FlaskConical style={{ width: 20, height: 20, color: sb.primary }} />
+                  <h2 style={{ fontSize: 18, fontWeight: 500, color: sb.ink, margin: 0 }}>Sample Product Data</h2>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
+                <p style={{ ...captionStyle, marginTop: 6 }}>Enter product data to test title and description generation</p>
+              </div>
+              <div style={sectionBody}>
+                <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="test-brand">Brand</Label>
+                    <Label htmlFor="test-title" style={labelStyle}>Product Title</Label>
                     <Input
-                      id="test-brand"
-                      value={testProduct.brand}
-                      onChange={(e) => setTestProduct({ ...testProduct, brand: e.target.value })}
+                      id="test-title"
+                      value={testProduct.title}
+                      onChange={(e) => setTestProduct({ ...testProduct, title: e.target.value })}
+                      style={{ borderRadius: 6, borderColor: sb.hairline }}
                     />
                   </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="test-brand" style={labelStyle}>Brand</Label>
+                      <Input
+                        id="test-brand"
+                        value={testProduct.brand}
+                        onChange={(e) => setTestProduct({ ...testProduct, brand: e.target.value })}
+                        style={{ borderRadius: 6, borderColor: sb.hairline }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="test-price" style={labelStyle}>Price</Label>
+                      <Input
+                        id="test-price"
+                        value={testProduct.price}
+                        onChange={(e) => setTestProduct({ ...testProduct, price: e.target.value })}
+                        style={{ borderRadius: 6, borderColor: sb.hairline }}
+                      />
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
-                    <Label htmlFor="test-price">Price</Label>
+                    <Label htmlFor="test-category" style={labelStyle}>Category</Label>
                     <Input
-                      id="test-price"
-                      value={testProduct.price}
-                      onChange={(e) => setTestProduct({ ...testProduct, price: e.target.value })}
+                      id="test-category"
+                      value={testProduct.category}
+                      onChange={(e) => setTestProduct({ ...testProduct, category: e.target.value })}
+                      style={{ borderRadius: 6, borderColor: sb.hairline }}
                     />
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="test-category">Category</Label>
-                  <Input
-                    id="test-category"
-                    value={testProduct.category}
-                    onChange={(e) => setTestProduct({ ...testProduct, category: e.target.value })}
-                  />
-                </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="test-description" style={labelStyle}>Description</Label>
+                    <Textarea
+                      id="test-description"
+                      value={testProduct.description}
+                      onChange={(e) => setTestProduct({ ...testProduct, description: e.target.value })}
+                      rows={3}
+                      style={{ borderRadius: 6, borderColor: sb.hairline }}
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="test-description">Description</Label>
-                  <Textarea
-                    id="test-description"
-                    value={testProduct.description}
-                    onChange={(e) => setTestProduct({ ...testProduct, description: e.target.value })}
-                    rows={3}
-                  />
-                </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="test-bullets" style={labelStyle}>Bullet Points</Label>
+                    <Textarea
+                      id="test-bullets"
+                      value={testProduct.bulletPoints}
+                      onChange={(e) => setTestProduct({ ...testProduct, bulletPoints: e.target.value })}
+                      rows={4}
+                      style={{ borderRadius: 6, borderColor: sb.hairline }}
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="test-bullets">Bullet Points</Label>
-                  <Textarea
-                    id="test-bullets"
-                    value={testProduct.bulletPoints}
-                    onChange={(e) => setTestProduct({ ...testProduct, bulletPoints: e.target.value })}
-                    rows={4}
-                  />
-                </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="test-specs" style={labelStyle}>Specifications</Label>
+                    <Textarea
+                      id="test-specs"
+                      value={testProduct.specifications}
+                      onChange={(e) => setTestProduct({ ...testProduct, specifications: e.target.value })}
+                      rows={4}
+                      style={{ borderRadius: 6, borderColor: sb.hairline }}
+                    />
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="test-specs">Specifications</Label>
-                  <Textarea
-                    id="test-specs"
-                    value={testProduct.specifications}
-                    onChange={(e) => setTestProduct({ ...testProduct, specifications: e.target.value })}
-                    rows={4}
-                  />
-                </div>
+                  <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                    <Button onClick={handleGenerateTitles} disabled={generatingTitles} style={primaryBtn} className="w-full sm:w-auto">
+                      {generatingTitles ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Wand2 className="h-4 w-4 mr-2" />
+                      )}
+                      Generate Titles
+                    </Button>
+                    <Button variant="outline" onClick={handleGenerateDescription} disabled={generatingDescription} style={outlineBtn} className="w-full sm:w-auto">
+                      {generatingDescription ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <FileText className="h-4 w-4 mr-2" />
+                      )}
+                      Generate Description
+                    </Button>
+                  </div>
 
-                <div className="flex gap-3 pt-2">
-                  <Button onClick={handleGenerateTitles} disabled={generatingTitles}>
-                    {generatingTitles ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Wand2 className="h-4 w-4 mr-2" />
-                    )}
-                    Generate Titles
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setTestProduct(SAMPLE_PRODUCT)}
+                    style={{ color: sb.inkMute, fontSize: 13 }}
+                  >
+                    Reset to Sample Data
                   </Button>
-                  <Button variant="outline" onClick={handleGenerateDescription} disabled={generatingDescription}>
-                    {generatingDescription ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <FileText className="h-4 w-4 mr-2" />
-                    )}
-                    Generate Description
-                  </Button>
                 </div>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setTestProduct(SAMPLE_PRODUCT)}
-                  className="text-muted-foreground"
-                >
-                  Reset to Sample Data
-                </Button>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
             {/* Generated Results */}
             <div className="space-y-6">
               {/* Generated Titles */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Wand2 className="h-5 w-5" />
-                    Generated Titles
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+              <div style={sectionCard}>
+                <div style={sectionHeader}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Wand2 style={{ width: 20, height: 20, color: sb.primary }} />
+                    <h2 style={{ fontSize: 18, fontWeight: 500, color: sb.ink, margin: 0 }}>Generated Titles</h2>
+                  </div>
+                </div>
+                <div style={sectionBody}>
                   {generatedTitles.length > 0 ? (
                     <div className="space-y-3">
                       {generatedTitles.map((item, index) => (
                         <div
                           key={index}
-                          className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg group"
+                          className="flex items-start gap-3 group"
+                          style={{
+                            padding: "12px 16px",
+                            background: sb.canvasSoft,
+                            borderRadius: 8,
+                            border: `1px solid ${sb.hairlineCool}`,
+                          }}
                         >
-                          <Badge className={getRankBadgeColor(item.rank)}>
-                            {item.rank}
-                          </Badge>
-                          <p className="flex-1 text-sm">{item.title}</p>
+                          <span style={getRankBadge(item.rank)}>{item.rank}</span>
+                          <p className="flex-1" style={{ fontSize: 14, color: sb.ink, margin: 0 }}>{item.title}</p>
                           <Button
                             variant="ghost"
                             size="icon"
@@ -873,59 +864,80 @@ export default function AdminExtension() {
                             onClick={() => copyToClipboard(item.title, index)}
                           >
                             {copiedIndex === index ? (
-                              <Check className="h-4 w-4 text-green-500" />
+                              <Check style={{ width: 16, height: 16, color: sb.primary }} />
                             ) : (
-                              <Copy className="h-4 w-4" />
+                              <Copy style={{ width: 16, height: 16, color: sb.inkMute }} />
                             )}
                           </Button>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center h-32 text-muted-foreground">
+                    <div className="flex items-center justify-center h-32" style={{ color: sb.inkFaint }}>
                       <p>Click "Generate Titles" to see results</p>
                     </div>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
 
               {/* Generated Description */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    Generated Description
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
+              <div style={sectionCard}>
+                <div style={sectionHeader}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <FileText style={{ width: 20, height: 20, color: sb.primary }} />
+                    <h2 style={{ fontSize: 18, fontWeight: 500, color: sb.ink, margin: 0 }}>Generated Description</h2>
+                  </div>
+                </div>
+                <div style={sectionBody}>
                   {generatedDescription ? (
                     <div className="space-y-3">
                       <div
-                        className="p-4 bg-muted/50 rounded-lg text-sm prose prose-sm max-w-none dark:prose-invert overflow-auto max-h-96"
+                        className="prose prose-sm max-w-none dark:prose-invert overflow-auto max-h-96"
+                        style={{
+                          padding: 16,
+                          background: sb.canvasNight,
+                          color: sb.onDark,
+                          borderRadius: 6,
+                          fontSize: 14,
+                        }}
                         dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(generatedDescription) }}
                       />
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => copyToClipboard(generatedDescription, -1)}
+                        style={outlineBtn}
                       >
                         {copiedIndex === -1 ? (
-                          <Check className="h-4 w-4 mr-2 text-green-500" />
+                          <Check style={{ width: 16, height: 16, color: sb.primary, marginRight: 8 }} />
                         ) : (
-                          <Copy className="h-4 w-4 mr-2" />
+                          <Copy style={{ width: 16, height: 16, marginRight: 8 }} />
                         )}
                         Copy HTML
                       </Button>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center h-32 text-muted-foreground">
+                    <div className="flex items-center justify-center h-32" style={{ color: sb.inkFaint }}>
                       <p>Click "Generate Description" to see results</p>
                     </div>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </div>
           </div>
+        </TabsContent>
+
+        {/* ═══════════ Embedded Sub-pages ═══════════ */}
+        <TabsContent value="control" className="space-y-6">
+          <AdminExtensionControl hideHeader />
+        </TabsContent>
+
+        <TabsContent value="prompts" className="space-y-6">
+          <AdminPromptsPage />
+        </TabsContent>
+
+        <TabsContent value="desc-config" className="space-y-6">
+          <AdminDescriptionConfig />
         </TabsContent>
       </Tabs>
     </div>

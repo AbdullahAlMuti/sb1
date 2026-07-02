@@ -111,6 +111,7 @@ export async function syncStripeData(
         const profileUpdate: Record<string, unknown> = {
           plan_id: planData.id,
           selected_plan_id: planData.id,
+          pending_plan_id: null,
           payment_status: "paid",
           subscription_status: "active",
           customer_id: customerId,

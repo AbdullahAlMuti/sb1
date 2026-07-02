@@ -10,6 +10,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@repo/ui/components/ui/dialog';
 import { Settings2, RefreshCw, XCircle, FilePlus, Loader2 } from 'lucide-react';
 
+/* ─── Supabase Design Tokens ─── */
+const sb = {
+  primary: "#3ecf8e",
+  primaryDeep: "#24b47e",
+  ink: "#171717",
+  inkMute: "#707070",
+  canvas: "#ffffff",
+  canvasSoft: "#fafafa",
+  hairline: "#dfdfdf",
+  hairlineCool: "#ededed",
+  onPrimary: "#171717",
+} as const;
+
 interface AdminActionsPanelProps {
   userId: string;
 }
@@ -28,7 +41,6 @@ export function AdminActionsPanel({ userId }: AdminActionsPanelProps) {
     toast.error(error.message || "Action failed");
   };
 
-  // Mutators
   const clearErrorMutation = useMutation({
     mutationFn: async (reason: string) => {
       const { data, error } = await (supabase as any).rpc('clear_user_sync_error', { p_user_id: userId, p_reason: reason });
@@ -66,25 +78,24 @@ export function AdminActionsPanel({ userId }: AdminActionsPanelProps) {
   });
 
   return (
-    <Card className="border-blue-200 bg-blue-50/10">
+    <Card style={{ background: sb.canvas, border: `1px solid ${sb.hairline}`, borderRadius: 12 }}>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2 text-blue-800">
-          <Settings2 className="h-4 w-4" />
+        <CardTitle className="text-base flex items-center gap-2" style={{ color: sb.ink, fontWeight: 500 }}>
+          <Settings2 style={{ width: 16, height: 16, color: sb.primary }} />
           Advanced Admin Actions
         </CardTitle>
-        <CardDescription>
+        <CardDescription style={{ fontSize: 12, color: sb.inkMute }}>
           Operational tools to resolve support issues. All actions require a reason and are permanently audited.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
           
           <ActionDialog 
             title="Clear Sync Error" 
             desc="Mark active sync errors as resolved. This does not delete the error history, just removes the stuck state."
             btnLabel="Clear Sync Error"
             icon={<XCircle className="h-4 w-4 mr-2" />}
-            variant="outline"
             onSubmit={(r) => clearErrorMutation.mutate(r)}
             isLoading={clearErrorMutation.isPending}
           />
@@ -94,7 +105,6 @@ export function AdminActionsPanel({ userId }: AdminActionsPanelProps) {
             desc="Force the sync state back to 'idle'. Does NOT delete orders. Use if extension is stuck syncing."
             btnLabel="Reset Sync State"
             icon={<RefreshCw className="h-4 w-4 mr-2" />}
-            variant="outline"
             onSubmit={(r) => resetSyncMutation.mutate(r)}
             isLoading={resetSyncMutation.isPending}
           />
@@ -104,7 +114,6 @@ export function AdminActionsPanel({ userId }: AdminActionsPanelProps) {
             desc="Signal the user's extension to trigger a full resync on their next session."
             btnLabel="Request Resync"
             icon={<RefreshCw className="h-4 w-4 mr-2" />}
-            variant="outline"
             onSubmit={(r) => requestResyncMutation.mutate(r)}
             isLoading={requestResyncMutation.isPending}
           />
@@ -121,7 +130,7 @@ export function AdminActionsPanel({ userId }: AdminActionsPanelProps) {
 }
 
 // Sub-components for dialogs
-function ActionDialog({ title, desc, btnLabel, icon, variant, onSubmit, isLoading }: any) {
+function ActionDialog({ title, desc, btnLabel, icon, onSubmit, isLoading }: any) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
 
@@ -135,20 +144,22 @@ function ActionDialog({ title, desc, btnLabel, icon, variant, onSubmit, isLoadin
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant={variant} className="w-full justify-start">{icon} {btnLabel}</Button>
+        <Button variant="outline" className="w-full justify-start text-xs h-9" style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>
+          {icon} {btnLabel}
+        </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent style={{ borderRadius: 12, borderColor: sb.hairline }}>
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{desc}</DialogDescription>
+          <DialogTitle style={{ fontSize: 18, fontWeight: 500, color: sb.ink }}>{title}</DialogTitle>
+          <DialogDescription style={{ fontSize: 13, color: sb.inkMute }}>{desc}</DialogDescription>
         </DialogHeader>
         <div className="space-y-2 py-4">
-          <Label>Audit Reason (Required)</Label>
-          <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="Why are you taking this action?" />
+          <Label style={{ fontSize: 14, fontWeight: 500, color: sb.ink }}>Audit Reason (Required)</Label>
+          <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="Why are you taking this action?" style={{ borderRadius: 6, borderColor: sb.hairline }} />
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!reason.trim() || isLoading}>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)} style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={!reason.trim() || isLoading} style={{ background: sb.primary, color: sb.onPrimary, borderRadius: 6 }}>
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} Confirm Action
           </Button>
         </DialogFooter>
@@ -172,19 +183,21 @@ function SupportNoteDialog({ onSubmit, isLoading }: any) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="w-full justify-start"><FilePlus className="h-4 w-4 mr-2" /> Add Support Note</Button>
+        <Button variant="outline" className="w-full justify-start text-xs h-9" style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>
+          <FilePlus className="h-4 w-4 mr-2" /> Add Support Note
+        </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent style={{ borderRadius: 12, borderColor: sb.hairline }}>
         <DialogHeader>
-          <DialogTitle>Add Support Note</DialogTitle>
-          <DialogDescription>Internal note visible only to admins.</DialogDescription>
+          <DialogTitle style={{ fontSize: 18, fontWeight: 500, color: sb.ink }}>Add Support Note</DialogTitle>
+          <DialogDescription style={{ fontSize: 13, color: sb.inkMute }}>Internal note visible only to admins.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label>Status</Label>
+            <Label style={{ fontSize: 14, fontWeight: 500, color: sb.ink }}>Status</Label>
             <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
+              <SelectTrigger style={{ borderRadius: 6, borderColor: sb.hairline }}><SelectValue /></SelectTrigger>
+              <SelectContent style={{ borderRadius: 6 }}>
                 <SelectItem value="open">Open / Investigating</SelectItem>
                 <SelectItem value="resolved">Resolved</SelectItem>
                 <SelectItem value="closed">Closed</SelectItem>
@@ -192,13 +205,13 @@ function SupportNoteDialog({ onSubmit, isLoading }: any) {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Note (Required)</Label>
-            <Input value={note} onChange={e => setNote(e.target.value)} placeholder="Details..." />
+            <Label style={{ fontSize: 14, fontWeight: 500, color: sb.ink }}>Note (Required)</Label>
+            <Input value={note} onChange={e => setNote(e.target.value)} placeholder="Details..." style={{ borderRadius: 6, borderColor: sb.hairline }} />
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!note.trim() || isLoading}>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)} style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={!note.trim() || isLoading} style={{ background: sb.primary, color: sb.onPrimary, borderRadius: 6 }}>
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} Save Note
           </Button>
         </DialogFooter>

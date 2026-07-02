@@ -33,11 +33,22 @@ const injectUI = async ({ fromSidebar = false, sidebarImages = [] } = {}) => {
     });
 
     if (!document.getElementById('sellersuit-panel-css')) {
-        const cssLink = document.createElement('link');
-        cssLink.id = 'sellersuit-panel-css';
-        cssLink.rel = 'stylesheet';
-        cssLink.href = chrome.runtime.getURL('ui/panel.css');
-        document.head.appendChild(cssLink);
+        try {
+            const cssUrl = chrome.runtime.getURL('ui/panel.css');
+            const cssResponse = await fetch(cssUrl);
+            const cssText = await cssResponse.text();
+            const style = document.createElement('style');
+            style.id = 'sellersuit-panel-css';
+            style.textContent = cssText;
+            document.head.appendChild(style);
+        } catch (err) {
+            console.error('[SellerSuit] Failed to inject inline CSS:', err);
+            const cssLink = document.createElement('link');
+            cssLink.id = 'sellersuit-panel-css';
+            cssLink.rel = 'stylesheet';
+            cssLink.href = chrome.runtime.getURL('ui/panel.css');
+            document.head.appendChild(cssLink);
+        }
     }
 
     // Inject the panel as the very first element inside the body tag

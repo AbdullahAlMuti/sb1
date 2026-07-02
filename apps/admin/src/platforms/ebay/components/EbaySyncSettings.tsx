@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@repo/ui/components/ui/card';
 import { Label } from '@repo/ui/components/ui/label';
@@ -10,177 +9,213 @@ import { toast } from '@repo/ui/components/ui/use-toast';
 import { Loader2, Save, RefreshCw } from 'lucide-react';
 import { supabase } from '@repo/api-client/supabase/client';
 
+/* ─── Supabase Design Tokens ─── */
+const sb = {
+  primary: "#3ecf8e",
+  ink: "#171717",
+  inkMute: "#707070",
+  canvas: "#ffffff",
+  canvasSoft: "#fafafa",
+  hairline: "#dfdfdf",
+  hairlineCool: "#ededed",
+  onPrimary: "#171717",
+} as const;
+
 export function EbaySyncSettings() {
-    const [loading, setLoading] = useState(false);
-    const [syncEnabled, setSyncEnabled] = useState(true);
-    const [syncDays, setSyncDays] = useState('90'); // Default to 90
-    const [customDays, setCustomDays] = useState('');
-    const [syncInterval, setSyncInterval] = useState('60'); // Minutes
+  const [loading, setLoading] = useState(false);
+  const [syncEnabled, setSyncEnabled] = useState(true);
+  const [syncDays, setSyncDays] = useState('90'); // Default to 90
+  const [customDays, setCustomDays] = useState('');
+  const [syncInterval, setSyncInterval] = useState('60'); // Minutes
 
-    // 1. Fetch Settings
-    useEffect(() => {
-        fetchSettings();
-    }, []);
+  // 1. Fetch Settings
+  useEffect(() => {
+    fetchSettings();
+  }, []);
 
-    const fetchSettings = async () => {
-        try {
-            setLoading(true);
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
+  const fetchSettings = async () => {
+    try {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-            const { data, error } = await supabase
-                .from('admin_settings') // Assuming singular user settings in admin_settings for now or user_settings table
-                .select('*')
-                .or(`key.eq.ebay_sync_enabled,key.eq.ebay_sync_days,key.eq.ebay_sync_interval`);
+      const { data, error } = await supabase
+        .from('admin_settings')
+        .select('*')
+        .or(`key.eq.ebay_sync_enabled,key.eq.ebay_sync_days,key.eq.ebay_sync_interval`);
 
-            if (error) throw error;
+      if (error) throw error;
 
-            if (data) {
-                data.forEach(setting => {
-                    if (setting.key === 'ebay_sync_enabled') setSyncEnabled(setting.value === 'true');
-                    if (setting.key === 'ebay_sync_days') {
-                        // Check if it's one of the presets
-                        const presets = ['1', '3', '7', '14', '30', '90', '365', '730', '1825'];
-                        if (presets.includes(setting.value)) {
-                            setSyncDays(setting.value);
-                        } else {
-                            setSyncDays('custom');
-                            setCustomDays(setting.value);
-                        }
-                    }
-                    if (setting.key === 'ebay_sync_interval') setSyncInterval(setting.value);
-                });
+      if (data) {
+        data.forEach(setting => {
+          if (setting.key === 'ebay_sync_enabled') setSyncEnabled(setting.value === 'true');
+          if (setting.key === 'ebay_sync_days') {
+            const presets = ['1', '3', '7', '14', '30', '90', '365', '730', '1825'];
+            if (presets.includes(setting.value)) {
+              setSyncDays(setting.value);
+            } else {
+              setSyncDays('custom');
+              setCustomDays(setting.value);
             }
-        } catch (error) {
-            console.error('Error fetching settings:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+          }
+          if (setting.key === 'ebay_sync_interval') setSyncInterval(setting.value);
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    // 2. Save Settings
-    const saveSettings = async () => {
-        try {
-            setLoading(true);
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
-                toast({ title: "Error", description: "You must be logged in to save settings.", variant: "destructive" });
-                return;
-            }
+  // 2. Save Settings
+  const saveSettings = async () => {
+    try {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({ title: "Error", description: "You must be logged in to save settings.", variant: "destructive" });
+        return;
+      }
 
-            const finalDays = syncDays === 'custom' ? customDays : syncDays;
+      const finalDays = syncDays === 'custom' ? customDays : syncDays;
 
-            const updates = [
-                { key: 'ebay_sync_enabled', value: String(syncEnabled) },
-                { key: 'ebay_sync_days', value: finalDays },
-                { key: 'ebay_sync_interval', value: syncInterval }
-            ];
+      const updates = [
+        { key: 'ebay_sync_enabled', value: String(syncEnabled) },
+        { key: 'ebay_sync_days', value: finalDays },
+        { key: 'ebay_sync_interval', value: syncInterval }
+      ];
 
-            // Assuming 'admin_settings' is the shared table, but typically user specifics go to user_settings.
-            // For this user's context (single tenant SaaS usually uses admin_settings for global param), I will stick to what I've seen.
-            // Actually, typically we use upsert.
+      const { error } = await supabase
+        .from('admin_settings')
+        .upsert(updates.map(u => ({ ...u, updated_at: new Date().toISOString() })), { onConflict: 'key' });
 
-            const { error } = await supabase
-                .from('admin_settings')
-                .upsert(updates.map(u => ({ ...u, updated_at: new Date().toISOString() })), { onConflict: 'key' });
+      if (error) throw error;
 
-            if (error) throw error;
+      toast({ title: "Settings Saved", description: "Extension will update on next sync." });
 
-            toast({ title: "Settings Saved", description: "Extension will update on next sync." });
+      // Notify Extension
+      window.postMessage({ type: 'REFRESH_EXTENSION_TOKEN' }, window.location.origin);
 
-            // Notify Extension
-            window.postMessage({ type: 'REFRESH_EXTENSION_TOKEN' }, window.location.origin);
+    } catch (error: any) {
+      toast({ title: "Error Saving", description: error.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        } catch (error: any) {
-            toast({ title: "Error Saving", description: error.message, variant: "destructive" });
-        } finally {
-            setLoading(false);
-        }
-    };
+  return (
+    <Card style={{
+      background: sb.canvas,
+      border: `1px solid ${sb.hairline}`,
+      borderRadius: 12,
+      padding: 0,
+      overflow: "hidden",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+    }}>
+      <CardHeader style={{
+        padding: "24px 28px 16px",
+        borderBottom: `1px solid ${sb.hairlineCool}`,
+      }}>
+        <CardTitle className="flex items-center gap-2" style={{ fontSize: 18, fontWeight: 500, color: sb.ink }}>
+          <RefreshCw style={{ width: 18, height: 18, color: sb.primary }} />
+          eBay Sync Configuration
+        </CardTitle>
+        <CardDescription style={{ fontSize: 13, color: sb.inkMute }}>
+          Configure how the extension syncs your orders.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6" style={{ padding: "24px 28px" }}>
+        {/* Toggle */}
+        <div className="flex items-center justify-between" style={{
+          padding: "16px 20px",
+          borderRadius: 8,
+          background: sb.canvasSoft,
+          border: `1px solid ${sb.hairlineCool}`,
+        }}>
+          <div className="space-y-0.5">
+            <Label style={{ fontSize: 14, fontWeight: 500, color: sb.ink }}>Automatic Sync</Label>
+            <p style={{ fontSize: 12, color: sb.inkMute }}>Enable or disable background syncing.</p>
+          </div>
+          <Switch checked={syncEnabled} onCheckedChange={setSyncEnabled} />
+        </div>
 
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                    <RefreshCw className="h-5 w-5" />
-                    eBay Sync Configuration
-                </CardTitle>
-                <CardDescription>
-                    Configure how the extension syncs your orders.
-                </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
+        {/* Sync History (Days) */}
+        <div className="space-y-2">
+          <Label style={{ fontSize: 14, fontWeight: 500, color: sb.ink }}>Sync History (Lookback Period)</Label>
+          <div className="flex gap-4">
+            <Select value={syncDays} onValueChange={setSyncDays}>
+              <SelectTrigger className="w-[180px]" style={{ borderRadius: 6, borderColor: sb.hairline }}>
+                <SelectValue placeholder="Select days" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">Last 24 Hours</SelectItem>
+                <SelectItem value="3">Last 3 Days</SelectItem>
+                <SelectItem value="7">Last 7 Days</SelectItem>
+                <SelectItem value="14">Last 14 Days</SelectItem>
+                <SelectItem value="30">Last 30 Days</SelectItem>
+                <SelectItem value="90">Last 90 Days</SelectItem>
+                <SelectItem value="365">Last 1 Year</SelectItem>
+                <SelectItem value="730">Last 2 Years</SelectItem>
+                <SelectItem value="1825">Last 5 Years (All Time)</SelectItem>
+                <SelectItem value="custom">Custom...</SelectItem>
+              </SelectContent>
+            </Select>
 
-                {/* Toggle */}
-                <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                        <Label>Automatic Sync</Label>
-                        <p className="text-sm text-muted-foreground">Enable or disable background syncing.</p>
-                    </div>
-                    <Switch checked={syncEnabled} onCheckedChange={setSyncEnabled} />
-                </div>
+            {syncDays === 'custom' && (
+              <Input
+                type="number"
+                placeholder="Enter days"
+                value={customDays}
+                onChange={(e) => setCustomDays(e.target.value)}
+                className="w-[120px]"
+                style={{ borderRadius: 6, borderColor: sb.hairline }}
+              />
+            )}
+          </div>
+          <p style={{ fontSize: 12, color: sb.inkMute }}>How far back to check for orders. Larger ranges take longer.</p>
+        </div>
 
-                {/* Sync History (Days) */}
-                <div className="space-y-2">
-                    <Label>Sync History (Lookback Period)</Label>
-                    <div className="flex gap-4">
-                        <Select value={syncDays} onValueChange={setSyncDays}>
-                            <SelectTrigger className="w-[180px]">
-                                <SelectValue placeholder="Select days" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="1">Last 24 Hours</SelectItem>
-                                <SelectItem value="3">Last 3 Days</SelectItem>
-                                <SelectItem value="7">Last 7 Days</SelectItem>
-                                <SelectItem value="14">Last 14 Days</SelectItem>
-                                <SelectItem value="30">Last 30 Days</SelectItem>
-                                <SelectItem value="365">Last 1 Year</SelectItem>
-                                <SelectItem value="730">Last 2 Years</SelectItem>
-                                <SelectItem value="1825">Last 5 Years (All Time)</SelectItem>
-                                <SelectItem value="custom">Custom...</SelectItem>
-                            </SelectContent>
-                        </Select>
+        {/* Sync Interval */}
+        <div className="space-y-2">
+          <Label style={{ fontSize: 14, fontWeight: 500, color: sb.ink }}>Sync Frequency</Label>
+          <Select value={syncInterval} onValueChange={setSyncInterval}>
+            <SelectTrigger style={{ borderRadius: 6, borderColor: sb.hairline }}>
+              <SelectValue placeholder="Select frequency" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="30">Every 30 Minutes</SelectItem>
+              <SelectItem value="60">Every 1 Hour</SelectItem>
+              <SelectItem value="120">Every 2 Hours</SelectItem>
+              <SelectItem value="360">Every 6 Hours</SelectItem>
+              <SelectItem value="600">Every 10 Hours</SelectItem>
+              <SelectItem value="720">Every 12 Hours</SelectItem>
+              <SelectItem value="1440">Every 24 Hours</SelectItem>
+            </SelectContent>
+          </Select>
+          <p style={{ fontSize: 12, color: sb.inkMute }}>How often the extension checks for new orders automatically.</p>
+        </div>
 
-                        {syncDays === 'custom' && (
-                            <Input
-                                type="number"
-                                placeholder="Enter days"
-                                value={customDays}
-                                onChange={(e) => setCustomDays(e.target.value)}
-                                className="w-[120px]"
-                            />
-                        )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">How far back to check for orders. Larger ranges take longer.</p>
-                </div>
-
-                {/* Sync Interval */}
-                <div className="space-y-2">
-                    <Label>Sync Frequency</Label>
-                    <Select value={syncInterval} onValueChange={setSyncInterval}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select frequency" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="30">Every 30 Minutes</SelectItem>
-                            <SelectItem value="60">Every 1 Hour</SelectItem>
-                            <SelectItem value="120">Every 2 Hours</SelectItem>
-                            <SelectItem value="360">Every 6 Hours</SelectItem>
-                            <SelectItem value="600">Every 10 Hours</SelectItem>
-                            <SelectItem value="720">Every 12 Hours</SelectItem>
-                            <SelectItem value="1440">Every 24 Hours</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">How often the extension checks for new orders automatically.</p>
-                </div>
-
-                <Button onClick={saveSettings} disabled={loading} className="w-full sm:w-auto">
-                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    <Save className="mr-2 h-4 w-4" />
-                    Save Settings
-                </Button>
-
-            </CardContent>
-        </Card>
-    );
+        <div className="pt-2">
+          <Button
+            onClick={saveSettings}
+            disabled={loading}
+            className="w-full sm:w-auto"
+            style={{
+              background: sb.primary,
+              color: sb.onPrimary,
+              borderRadius: 6,
+              fontWeight: 500,
+              fontSize: 14,
+              border: "none",
+            }}
+          >
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Save className="mr-2 h-4 w-4" />
+            Save Settings
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }

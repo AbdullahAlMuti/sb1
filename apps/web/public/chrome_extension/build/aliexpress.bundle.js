@@ -232,8 +232,8 @@
 			const finalPrice = extPrice > 0 ? extPrice : storedPrice || draftFinalPrice || 0;
 			const priceSource = extPrice > 0 && extPrice !== storedPrice ? "manual" : p.price_source || (draftFinalPrice ? draft.price_source || "calculated" : "calculated");
 			const aiDescription = storedDescFresh ? result.selectedEbayDescription || "" : "";
-			const description = draft && draft.description || aiDescription || p.description || "";
-			const descSource = draft && draft.description ? draft.description_source || "scraped" : aiDescription ? "ai" : "scraped";
+			const description = aiDescription || draft && draft.description || p.description || "";
+			const descSource = aiDescription ? "ai" : draft && draft.description ? draft.description_source || "scraped" : "scraped";
 			const images = Array.isArray(p.images) && p.images.length > 0 ? p.images : draft && draft.images || [];
 			console.log("[SS Upload] title_source:", titleSource, "| title:", finalTitle.slice(0, 60));
 			console.log("[SS Upload] price_source:", priceSource, "| finalPrice:", finalPrice);
@@ -434,6 +434,7 @@
 				const rawCost = _ssxCleanFloat(v.raw_supplier_price ?? v.price);
 				if (!_ssxCleanFloat(v.finalPrice) && rawCost > 0) {
 					v.finalPrice = window.SSPricingEngine.calculatePrice(rawCost, pricingConfig);
+					if (!_ssxCleanFloat(v.ebayPrice)) v.ebayPrice = v.finalPrice;
 					variantsUpdated = true;
 				}
 			});
@@ -452,7 +453,7 @@
 		_ssxText("ssx-head-title", p.title || "Product");
 		const supplierChip = document.getElementById("ssx-head-supplier");
 		if (supplierChip) {
-			const logo = supplierChip.querySelector("img");
+			const logo = supplierChip.querySelector("img, svg");
 			supplierChip.textContent = "";
 			if (logo) supplierChip.appendChild(logo);
 			supplierChip.appendChild(document.createTextNode(supplierMeta.displayName));
@@ -658,8 +659,7 @@
 				console.warn("[showSidebarExtended] Failed to get draft:", e);
 			}
 			const scannedAt = p.lastScannedAt || p.scrapedAt || 0;
-			const aiDescription = !scannedAt || (result.selectedDescriptionTimestamp || 0) >= scannedAt ? result.selectedEbayDescription || result.generatedDescription || "" : "";
-			const description = draft && draft.description || aiDescription || p.description || "";
+			const description = (!scannedAt || (result.selectedDescriptionTimestamp || 0) >= scannedAt ? result.selectedEbayDescription || result.generatedDescription || "" : "") || draft && draft.description || p.description || "";
 			if (description) {
 				descDisplay.innerHTML = description;
 				descDisplay.classList.remove("description-empty-state");
@@ -1838,10 +1838,13 @@
 					info: "ℹ️",
 					warning: "⚠️"
 				};
-				toast.innerHTML = `
-      <span class="toast-icon">${icons[type] || icons.info}</span>
-      <span class="toast-message">${message}</span>
-    `;
+				const icon = document.createElement("span");
+				icon.className = "toast-icon";
+				icon.textContent = icons[type] || icons.info;
+				const text = document.createElement("span");
+				text.className = "toast-message";
+				text.textContent = String(message || "");
+				toast.append(icon, text);
 				toast.style.cssText = `
       display: flex;
       align-items: center;
@@ -5008,7 +5011,15 @@
 				const src = img.getAttribute("src");
 				if (src && src.startsWith("../")) img.src = chrome.runtime.getURL(src.replace(/^\.\.\//, ""));
 			});
-			if (!document.getElementById("sellersuit-panel-css")) {
+			if (!document.getElementById("sellersuit-panel-css")) try {
+				const cssUrl = chrome.runtime.getURL("ui/panel.css");
+				const cssText = await (await fetch(cssUrl)).text();
+				const style = document.createElement("style");
+				style.id = "sellersuit-panel-css";
+				style.textContent = cssText;
+				document.head.appendChild(style);
+			} catch (err) {
+				console.error("[SellerSuit] Failed to inject inline CSS:", err);
 				const cssLink = document.createElement("link");
 				cssLink.id = "sellersuit-panel-css";
 				cssLink.rel = "stylesheet";

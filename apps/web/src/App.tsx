@@ -11,6 +11,7 @@ import { AuthProvider, useAuth } from "@repo/auth/hooks/useAuth";
 import { ProtectedRoute } from "@repo/auth/ProtectedRoute";
 
 import Auth from "./pages/auth/Auth";
+import AuthCallback from "./pages/auth/AuthCallback";
 import Register from "./pages/auth/Register";
 import VerifyEmail from "./pages/auth/VerifyEmail";
 import Dashboard from "./pages/dashboard/Dashboard";
@@ -191,6 +192,7 @@ const App = () => (
                 <Route path="/terms-of-service" element={<MarketingRedirect />} />
                 <Route path="/refund" element={<MarketingRedirect />} />
                 <Route path="/auth" element={<Auth />} />
+                <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/signup" element={<Register />} />
                 {/* Legacy alias → canonical /signup (preserves ?plan + nav state) */}
                 <Route path="/register" element={<RedirectPreserve to="/signup" />} />

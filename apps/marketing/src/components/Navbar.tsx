@@ -31,10 +31,10 @@ const Navbar = () => {
   return (
     <nav
       className={cn(
-        "sticky top-0 z-50 border-b transition-all duration-200 backdrop-blur-xl backdrop-saturate-150",
+        "sticky top-0 z-50 border-b transition-all duration-300 ease-in-out backdrop-blur-md backdrop-saturate-150",
         isScrolled
-          ? "border-[#efeeeb] bg-white/90 py-3"
-          : "border-transparent bg-white/80 py-4",
+          ? "border-black/[0.06] bg-white/70 shadow-[0_2px_12px_-5px_rgba(0,0,0,0.05)] py-2.5"
+          : "border-transparent bg-white/40 py-4",
       )}
     >
       <div className="container px-4">

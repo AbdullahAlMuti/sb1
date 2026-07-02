@@ -227,7 +227,7 @@ export default function AdminDescriptionConfig() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-6">
+    <div className="space-y-6 w-full max-w-none p-4 md:p-6">
       <PageHeader
         title="Description Config"
         description="Centrally control the structure, prompt templates, and sanitization rules for all generated eBay descriptions."

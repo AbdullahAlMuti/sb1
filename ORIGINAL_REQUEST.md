@@ -136,3 +136,59 @@ Integrity mode: development
 ### Database Schema
 - [ ] Table `best_selling_items` is completely removed from the database via a new migration.
 - [ ] No database schema/type references to `best_selling_items` remain in `packages/types/src/supabase.ts`.
+
+## Follow-up — 2026-07-01T01:42:04Z
+
+Fix all 12 security, auth, and billing bottlenecks documented in `auth_billing_audit_report.md` following the remediation plan in `auth_billing_remediation_plan.md` to achieve 100% production readiness.
+
+Working directory: d:/eBay Software/2026sellersuit/sb1
+Integrity mode: development
+
+## Requirements
+
+### R1. Phase 1 — Security & Hardening (Critical / High)
+1. **Lock down `create_listing_with_variations` RPC**: Create a new database migration that revokes execute permissions from `public, anon, authenticated` and grants to `service_role` only. Add an internal verification check in the function body `IF auth.uid() IS NOT NULL AND auth.uid() <> p_user_id THEN RAISE EXCEPTION ...`. Verify that the edge function `create-listing` uses the service role key to invoke this function.
+2. **Block billing-column writes on `profiles`**: Add a database trigger `BEFORE UPDATE ON public.profiles` that prevents non-service-role callers from modifying `credits`, `payment_status`, `subscription_status`, `role`, or other billing-critical columns.
+3. **Revoke EXECUTE on metadata-leaking getters**: Revoke execution permission on functions `is_user_blocked(uuid)`, `is_subscription_expired(uuid)`, `get_user_plan_name(uuid)` from `public, anon, authenticated` unless authenticated own-user calls are required.
+4. **Add missing SELECT RLS policies**: Enable RLS and add select policies for `extension_sessions` (read own sessions) and `app_feature_flags` (read flags).
+5. **Extension AI gate for non-admin users**: Modify the Chrome extension so standard (non-admin) paid users can generate titles. Route title generation requests through the `/generate-titles` edge function via background `message-router` rather than requesting Gemini directly from the client.
+
+### R2. Phase 2 — Billing & Checkout Loop (Critical / High)
+1. **Reduce cache TTL when access is `'none'`**: In `packages/auth/src/hooks/useSubscription.tsx`, reduce the cache TTL to 10 seconds (instead of 5 minutes) when the subscription status is `'none'`. Adjust the polling interval so unpaid or newly checking users poll every 10s.
+2. **Clear stale plan token after payment / cancel**:
+   - In `stripe-webhook`, when a subscription completes or activates, set `pending_plan_id = NULL` on the profile.
+   - In `Checkout.tsx`, prevent double-charge loop by using a short-lived `sessionStorage` flag to prevent starting a second checkout session when one is already in flight.
+   - In `PaymentCancelled.tsx` and `CheckoutSuccess.tsx`, handle clearing of plan tokens and sessionStorage flags properly.
+3. **Atomic upsert for `user_plans`**: Replace `select` then `insert/update` statements with atomic upserts (`.upsert(..., { onConflict: 'user_id' })`) in the stripe-webhook and check-subscription edge functions.
+
+### R3. Phase 3 — Auth UX & Routing (High / Medium)
+1. **Fix password reset flow**: Add support for a `'reset'` mode in `apps/web/src/pages/auth/Auth.tsx`. Render the new password form when reset mode is active, call `supabase.auth.updateUser({ password })` and redirect to login upon success.
+2. **Carry plan intent through auth navigation**: Pass `location.search` parameters (like `?plan=pro`) through router links when toggling between `/auth` (login) and `/signup` (register) pages.
+3. **Consolidate split-brain dashboard routes**: Alias generic dashboard page routes so they navigate to the canonical `/dashboard/ebay/<page>` sub-routes when `SHOPIFY_ENABLED === false`.
+4. **Remove dead onboarding routing**: Remove the dead `/onboarding` routing from `resolveNextStep.ts` and `ProtectedRoute.tsx` since the onboarding flow has been retired.
+
+### R4. Phase 4 — UX Polish (Low)
+1. **Auto-skip goal selection**: If `SHOPIFY_ENABLED` is false, default to `selectedGoal='ebay'` and skip the initial goal selection step during registration.
+2. **Fix "Start free" copy**: Update the navbar CTA text from "Start Free" to "Start $1 Trial" to match the paid trial billing model.
+
+## Acceptance Criteria
+
+### Security
+- [ ] Direct SQL call to `create_listing_with_variations` using a user JWT returns a `42501` forbidden error.
+- [ ] User profile updates attempting to modify billing columns are rejected with `42501`.
+- [ ] Active sessions and feature flags populate correctly in the dashboard under the user's role.
+
+### Billing & Checkout
+- [ ] Newly paid users have their dashboard unlocked within 10 seconds of checkout completion without requiring a manual refresh.
+- [ ] Reloading `/payment-success` or hitting `/dashboard` mid-webhook does not trigger a second Stripe session.
+- [ ] Concurrency collisions on subscription updates are handled without throwing `23505` duplicate key errors.
+
+### Auth & Navigation
+- [ ] Password reset links lead to a functional password update screen and complete successfully.
+- [ ] Plan URL parameters (`?plan=pro`) are preserved when switching between login and registration forms.
+- [ ] The app routes active/trial users directly to `/dashboard/ebay` without stranding them at a dead `/onboarding` page.
+- [ ] Goal selection is auto-skipped during signup when Shopify is disabled.
+
+### Verification
+- [ ] Pre-release gate checks (`npm run check:local`) complete successfully across marketing, web, and admin workspaces.
+- [ ] Auth package unit tests (`npm run test` in `packages/auth`) pass.

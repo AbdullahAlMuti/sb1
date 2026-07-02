@@ -674,17 +674,18 @@ export async function requireFeatureEntitlement(
     return false;
   }
 
-  // Enforce active paid subscription for non-admins
+  // Admin users get access to all features — no plan or subscription required
   const { data: roleRows } = await supabase.from("user_roles").select("role").eq("user_id", userId);
   const isAdminUser = (roleRows || []).some(
     (r: any) => r.role === "admin" || r.role === "super_admin" || r.role === "moderator"
   );
-  if (!isAdminUser) {
-    const isPaid = profile?.payment_status === "paid" || profile?.payment_status === "succeeded";
-    const isSubscriptionActive = profile?.subscription_status === "active" || profile?.subscription_status === "trialing";
-    if (!profile?.selected_plan_id || !isPaid || !isSubscriptionActive) {
-      return false;
-    }
+  if (isAdminUser) return true;
+
+  // Enforce active paid subscription for non-admins
+  const isPaid = profile?.payment_status === "paid" || profile?.payment_status === "succeeded";
+  const isSubscriptionActive = profile?.subscription_status === "active" || profile?.subscription_status === "trialing";
+  if (!profile?.selected_plan_id || !isPaid || !isSubscriptionActive) {
+    return false;
   }
 
   let planId: string | null = null;

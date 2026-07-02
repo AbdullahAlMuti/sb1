@@ -30,6 +30,8 @@ declare global {
     SSVariationNormalizer: {
       normalizeProduct(product: object, options?: object): object;
     };
+    SSPricingCore: any;
+    SSSupplierDetector: any;
 
     // Legacy scraper globals the adapters delegate to (defined in content_scripts/)
     SsAmazonVariantScraper: any;

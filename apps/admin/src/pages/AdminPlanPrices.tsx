@@ -28,7 +28,19 @@ import {
 } from '@repo/ui/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { mutateAdminPlanConfig } from '../lib/adminPlanConfig';
-import { PageHeader } from '@/core/ui/PageHeader';
+
+/* ─── Supabase Design Tokens ─── */
+const sb = {
+  primary: "#3ecf8e",
+  primaryDeep: "#24b47e",
+  ink: "#171717",
+  inkMute: "#707070",
+  canvas: "#ffffff",
+  canvasSoft: "#fafafa",
+  hairline: "#dfdfdf",
+  hairlineCool: "#ededed",
+  onPrimary: "#171717",
+} as const;
 
 type Interval = 'monthly' | 'yearly' | 'one_time';
 
@@ -177,60 +189,66 @@ export default function AdminPlanPrices() {
     new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Link to="/plans">
-          <Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button>
-        </Link>
-        <div className="flex-1">
-          <PageHeader
-            title="Plan Prices"
-            description={`${planName} — normalized price rows per interval`}
-            actions={<Button onClick={openCreate}><Plus className="h-4 w-4 mr-2" />Add Price</Button>}
-          />
+    <div className="space-y-6" style={{ fontFamily: "Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Link to="/plans">
+            <Button variant="ghost" size="icon" style={{ borderRadius: 6, color: sb.ink }}><ArrowLeft className="h-4 w-4" /></Button>
+          </Link>
+          <div>
+            <h2 style={{ fontSize: 22, fontWeight: 500, letterSpacing: -0.42, color: sb.ink }} className="tracking-tight">Plan Prices</h2>
+            <p style={{ fontSize: 13, color: sb.inkMute }} className="mt-0.5">{planName} — normalized price rows per interval</p>
+          </div>
         </div>
+        <Button onClick={openCreate} style={{ background: sb.primary, color: sb.onPrimary, borderRadius: 6, fontWeight: 500 }} className="gap-1.5">
+          <Plus className="h-4 w-4" /> Add Price
+        </Button>
       </div>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Price Rows</CardTitle>
+      <Card style={{ background: sb.canvas, border: `1px solid ${sb.hairline}`, borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 2px 0 rgb(0 0 0 / 0.05)" }}>
+        <CardHeader className="pb-2" style={{ background: sb.canvasSoft, borderBottom: `1px solid ${sb.hairlineCool}`, padding: "16px 20px" }}>
+          <CardTitle style={{ fontSize: 14, color: sb.ink, fontWeight: 500 }}>Price Rows</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent style={{ padding: 0 }}>
           {isLoading ? (
-            <div className="flex justify-center py-8">
-              <RefreshCw className="h-7 w-7 animate-spin text-muted-foreground" />
+            <div className="flex justify-center py-16">
+              <RefreshCw className="h-8 w-8 animate-spin" style={{ color: sb.primary }} />
             </div>
           ) : prices.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">No prices yet. Add the first one.</p>
+            <p className="text-center py-16 text-sm" style={{ color: sb.inkMute }}>No prices yet. Add the first one.</p>
           ) : (
             <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-muted-foreground border-b">
-                  <th className="pb-2 font-medium">Interval</th>
-                  <th className="pb-2 font-medium">Currency</th>
-                  <th className="pb-2 font-medium">Amount</th>
-                  <th className="pb-2 font-medium">Compare At</th>
-                  <th className="pb-2 font-medium">Stripe Price ID</th>
-                  <th className="pb-2 font-medium">Status</th>
-                  <th className="pb-2" />
+              <thead style={{ background: sb.canvasSoft }}>
+                <tr className="text-left text-muted-foreground border-b" style={{ borderBottom: `1px solid ${sb.hairline}` }}>
+                  <th className="py-2.5 px-4 font-medium" style={{ color: sb.ink }}>Interval</th>
+                  <th className="py-2.5 px-4 font-medium" style={{ color: sb.ink }}>Currency</th>
+                  <th className="py-2.5 px-4 font-medium" style={{ color: sb.ink }}>Amount</th>
+                  <th className="py-2.5 px-4 font-medium" style={{ color: sb.ink }}>Compare At</th>
+                  <th className="py-2.5 px-4 font-medium" style={{ color: sb.ink }}>Stripe Price ID</th>
+                  <th className="py-2.5 px-4 font-medium" style={{ color: sb.ink }}>Status</th>
+                  <th className="py-2.5 px-4 text-right" style={{ color: sb.ink }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {prices.map((p) => (
-                  <tr key={p.id} className="border-b last:border-0 hover:bg-muted/30">
-                    <td className="py-2 pr-4 font-medium">{INTERVAL_LABELS[p.interval]}</td>
-                    <td className="py-2 pr-4 uppercase">{p.currency}</td>
-                    <td className="py-2 pr-4">{fmt(p.amount, p.currency)}</td>
-                    <td className="py-2 pr-4">{p.compare_at_amount != null ? fmt(p.compare_at_amount, p.currency) : '—'}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">{p.stripe_price_id ?? '—'}</td>
-                    <td className="py-2 pr-4">
-                      <Badge variant={p.is_active ? 'default' : 'secondary'}>{p.is_active ? 'Active' : 'Inactive'}</Badge>
+                  <tr key={p.id} className="border-b last:border-0 hover:bg-muted/10" style={{ borderBottom: `1px solid ${sb.hairlineCool}` }}>
+                    <td className="py-3 px-4 font-medium" style={{ color: sb.ink }}>{INTERVAL_LABELS[p.interval]}</td>
+                    <td className="py-3 px-4 uppercase" style={{ color: sb.ink }}>{p.currency}</td>
+                    <td className="py-3 px-4" style={{ color: sb.ink, fontWeight: 500 }}>{fmt(p.amount, p.currency)}</td>
+                    <td className="py-3 px-4" style={{ color: sb.inkMute }}>{p.compare_at_amount != null ? fmt(p.compare_at_amount, p.currency) : '—'}</td>
+                    <td className="py-3 px-4 font-mono text-xs" style={{ color: sb.ink }}>{p.stripe_price_id ?? '—'}</td>
+                    <td className="py-3 px-4">
+                      {p.is_active ? (
+                        <Badge style={{ background: sb.primary, color: sb.onPrimary, borderRadius: 6 }}>Active</Badge>
+                      ) : (
+                        <Badge variant="secondary" style={{ borderRadius: 6 }}>Inactive</Badge>
+                      )}
                     </td>
-                    <td className="py-2 flex gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(p)}>
-                        <Edit2 className="h-3.5 w-3.5" />
+                    <td className="py-3 px-4 flex gap-1 justify-end">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" style={{ borderRadius: 6 }} onClick={() => openEdit(p)}>
+                        <Edit2 className="h-3.5 w-3.5" style={{ color: sb.ink }} />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeletingPrice(p)}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-650" style={{ borderRadius: 6 }} onClick={() => setDeletingPrice(p)}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </td>
@@ -244,17 +262,18 @@ export default function AdminPlanPrices() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" style={{ borderRadius: 12, borderColor: sb.hairline }}>
           <DialogHeader>
-            <DialogTitle>{editingPrice ? 'Edit Price' : 'Add Price'}</DialogTitle>
+            <DialogTitle style={{ fontSize: 18, fontWeight: 500, color: sb.ink }}>{editingPrice ? 'Edit Price' : 'Add Price'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-3 py-2">
             <div className="space-y-1">
-              <Label>Interval</Label>
+              <Label style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Interval</Label>
               <select
                 className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
                 value={form.interval}
                 onChange={(e) => setForm({ ...form, interval: e.target.value as Interval })}
+                style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}
               >
                 <option value="monthly">Monthly</option>
                 <option value="yearly">Yearly</option>
@@ -263,30 +282,30 @@ export default function AdminPlanPrices() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Currency</Label>
-                <Input value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} placeholder="usd" />
+                <Label style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Currency</Label>
+                <Input value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} placeholder="usd" style={{ borderRadius: 6, borderColor: sb.hairline }} />
               </div>
               <div className="space-y-1">
-                <Label>Amount ($)</Label>
-                <Input type="number" step="0.01" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0.00" />
+                <Label style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Amount ($)</Label>
+                <Input type="number" step="0.01" min="0" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="0.00" style={{ borderRadius: 6, borderColor: sb.hairline }} />
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Compare-at Amount (optional)</Label>
-              <Input type="number" step="0.01" min="0" value={form.compare_at_amount} onChange={(e) => setForm({ ...form, compare_at_amount: e.target.value })} placeholder="Strikethrough price" />
+              <Label style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Compare-at Amount (optional)</Label>
+              <Input type="number" step="0.01" min="0" value={form.compare_at_amount} onChange={(e) => setForm({ ...form, compare_at_amount: e.target.value })} placeholder="Strikethrough price" style={{ borderRadius: 6, borderColor: sb.hairline }} />
             </div>
             <div className="space-y-1">
-              <Label>Stripe Price ID</Label>
-              <Input value={form.stripe_price_id} onChange={(e) => setForm({ ...form, stripe_price_id: e.target.value })} placeholder="price_..." className="font-mono text-sm" />
+              <Label style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Stripe Price ID</Label>
+              <Input value={form.stripe_price_id} onChange={(e) => setForm({ ...form, stripe_price_id: e.target.value })} placeholder="price_..." className="font-mono text-sm" style={{ borderRadius: 6, borderColor: sb.hairline }} />
             </div>
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 pt-2">
               <Switch checked={form.is_active} onCheckedChange={(v) => setForm({ ...form, is_active: v })} id="price_active" />
-              <Label htmlFor="price_active">Active</Label>
+              <Label htmlFor="price_active" style={{ fontSize: 13, color: sb.ink }}>Active</Label>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDialogOpen(false)} style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>Cancel</Button>
+            <Button onClick={handleSave} disabled={isSaving} style={{ background: sb.primary, color: sb.onPrimary, borderRadius: 6, fontWeight: 500 }}>
               {isSaving ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Saving...</> : 'Save'}
             </Button>
           </DialogFooter>
@@ -295,16 +314,16 @@ export default function AdminPlanPrices() {
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deletingPrice} onOpenChange={() => setDeletingPrice(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent style={{ borderRadius: 12, borderColor: sb.hairline }}>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Price</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle style={{ color: sb.ink }}>Delete Price</AlertDialogTitle>
+            <AlertDialogDescription style={{ color: sb.inkMute }}>
               Delete this {INTERVAL_LABELS[deletingPrice?.interval ?? 'monthly']} price row? This won't affect the Stripe price — it only removes the local record.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">Delete</AlertDialogAction>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} style={{ background: "#ff2201", color: "#ffffff", borderRadius: 6 }}>Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

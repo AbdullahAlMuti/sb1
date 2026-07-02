@@ -68,6 +68,7 @@ export interface FullPlanStatus {
   usage: UserUsage;
   adminOverride?: Record<string, number>;
   subscriptionEnd?: string;
+  isAdmin?: boolean;
 }
 
 export async function verifySaaSAccess(
@@ -362,6 +363,7 @@ export async function getFullPlanStatus(
       },
       adminOverride: userPlan?.admin_override_limits ?? undefined,
       subscriptionEnd: userPlan?.current_period_end ?? undefined,
+      isAdmin,
     };
   } catch (error) {
     console.error('[plan-middleware] getFullPlanStatus error:', error);
@@ -392,6 +394,20 @@ export async function validateUserPlan(
       isTrial: false,
       planName: 'none',
       planDisplayName: 'No Plan',
+    };
+  }
+
+  // Admin users bypass all plan and credit limits
+  if (status.isAdmin) {
+    return {
+      allowed: true,
+      current: 0,
+      limit: -1,
+      isBlocked: false,
+      isExpired: false,
+      isTrial: false,
+      planName: 'admin',
+      planDisplayName: 'Admin',
     };
   }
 

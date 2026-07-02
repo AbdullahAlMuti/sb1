@@ -747,7 +747,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         const fn = request.kind === 'description' ? 'generate-description-v2' : 'generate-titles';
-        const resp = await AuthHelper.callEdgeFunction(fn, request.productData || {});
+        const timeout = request.kind === 'description' ? 90000 : 60000;
+        const resp = await AuthHelper.callEdgeFunction(fn, request.productData || {}, { timeout });
         if (resp.error) { sendResponse({ success: false, error: resp.error }); return; }
         sendResponse(resp.data || { success: false, error: 'No data' });
       } catch (e) {
@@ -813,7 +814,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         const result = normalizeAiEdgeResult(
           'generate-titles',
-          await AuthHelper.callEdgeFunction('generate-titles', request.productData || {})
+          await AuthHelper.callEdgeFunction('generate-titles', request.productData || {}, { timeout: 60000 })
         );
         const title = getFirstGeneratedTitle(result);
         if (result.success && title) {
@@ -841,7 +842,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         sendResponse(normalizeAiEdgeResult(
           'generate-titles',
-          await AuthHelper.callEdgeFunction('generate-titles', request.productData || {})
+          await AuthHelper.callEdgeFunction('generate-titles', request.productData || {}, { timeout: 60000 })
         ));
       } catch (e) {
         sendResponse({
@@ -857,7 +858,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         sendResponse(normalizeAiEdgeResult(
           'generate-description',
-          await AuthHelper.callEdgeFunction('generate-description', request.productData || {})
+          await AuthHelper.callEdgeFunction('generate-description', request.productData || {}, { timeout: 90000 })
         ));
       } catch (e) {
         sendResponse({

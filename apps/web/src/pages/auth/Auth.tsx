@@ -217,7 +217,16 @@ export default function Auth() {
     setIsSubmitting(true);
     try {
       // The recovery link established a session, so updateUser sets the new
-      // password for the authenticated (recovering) user.
+      // password for the authenticated (recovering) user. Under PKCE the code
+      // exchange only succeeds in the browser that requested the reset — if no
+      // session exists here, the link expired or was opened elsewhere.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('This reset link has expired or was opened in a different browser. Please request a new reset email.');
+        navigate('/auth', { replace: true });
+        switchMode('forgot-password');
+        return;
+      }
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
       toast.success('Password updated. Please sign in with your new password.');
@@ -308,7 +317,8 @@ export default function Auth() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/dashboard`
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: { prompt: 'select_account' }
         }
       });
       if (error) throw error;

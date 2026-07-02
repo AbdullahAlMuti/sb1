@@ -1,8 +1,5 @@
 import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Download, Settings } from "lucide-react";
-import { Badge } from "@repo/ui/components/ui/badge";
-import { Button } from "@repo/ui/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@repo/ui/components/ui/tabs";
 import { cn } from "@repo/ui/lib/utils";
 import { PlatformDefinition } from "../types";
@@ -24,41 +21,9 @@ export function PlatformDashboardLayout({ platform }: PlatformDashboardLayoutPro
 
   const activeTabConfig = platform.tabs.find((t) => t.id === activeTab);
   const ActiveComponent = activeTabConfig?.component || (() => null);
-  const PlatformIcon = platform.icon;
 
   return (
     <div className="flex h-full flex-col bg-muted/20">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-6 py-5 border-b border-border bg-card">
-        <div className="flex items-center gap-4">
-          <div className={cn("flex h-11 w-11 items-center justify-center rounded-lg border", platform.colorTheme.iconBg, platform.colorTheme.iconText, platform.colorTheme.iconBorder)}>
-            <PlatformIcon className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold tracking-tight">{platform.name} App</h1>
-              <Badge
-                variant="outline"
-                className={cn("px-1.5 py-0 text-[10px] hover:bg-transparent", platform.colorTheme.badgeBg, platform.colorTheme.badgeText, platform.colorTheme.badgeBorder)}
-              >
-                Active
-              </Badge>
-            </div>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Manage your {platform.name} integration, global sync settings, curated content, and extension health.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" className="h-9 text-xs font-medium bg-card">
-            <Download className="mr-2 h-3.5 w-3.5" /> Export Report
-          </Button>
-          <Button className={cn("h-9 text-xs font-medium text-white border-transparent", platform.colorTheme.primaryButton)}>
-            <Settings className="mr-2 h-3.5 w-3.5" /> {platform.name} App Settings
-          </Button>
-        </div>
-      </div>
-
       {/* Tabs Selector */}
       <div className="px-6 border-b border-border bg-card">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -67,7 +32,12 @@ export function PlatformDashboardLayout({ platform }: PlatformDashboardLayoutPro
               <TabsTrigger
                 key={tab.id}
                 value={tab.id}
-                className="relative h-12 rounded-none border-b-2 border-transparent bg-transparent px-0 pb-3 pt-3 font-medium text-muted-foreground shadow-none transition-none data-[state=active]:border-primary data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                className={cn(
+                  "relative h-12 rounded-none border-b-2 border-transparent bg-transparent px-0 pb-3 pt-3 font-medium text-muted-foreground shadow-none transition-none",
+                  platform.id === 'ebay' 
+                    ? "data-[state=active]:border-[#3ecf8e] data-[state=active]:text-[#171717]" 
+                    : "data-[state=active]:border-primary data-[state=active]:text-foreground"
+                )}
               >
                 <tab.icon className="mr-2 h-4 w-4" />
                 {tab.label}

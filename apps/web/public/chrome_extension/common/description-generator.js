@@ -308,11 +308,17 @@ const DescriptionGenerator = (() => {
   async function handleGenerateDescription() {
     if (isGenerating) return;
 
-    // Check authentication first
-    const isAuthenticated = await AuthHelper.isAuthenticated();
-    if (!isAuthenticated) {
-      AuthHelper.promptLogin();
-      return;
+    // Client-side auth gate. Guard the reference: if AuthHelper isn't loaded in
+    // this context, don't hard-throw "AuthHelper is not defined" — the actual
+    // generation goes through the background GENERATE_DESCRIPTION route (see
+    // generateDescription → chrome.runtime.sendMessage), which authenticates via
+    // saasToken. Skipping the gate degrades gracefully instead of crashing.
+    if (typeof AuthHelper !== 'undefined' && AuthHelper) {
+      const isAuthenticated = await AuthHelper.isAuthenticated();
+      if (!isAuthenticated) {
+        AuthHelper.promptLogin();
+        return;
+      }
     }
 
     const generateBtn = document.getElementById('generate-description-btn');

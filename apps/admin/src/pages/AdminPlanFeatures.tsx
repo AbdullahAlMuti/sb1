@@ -29,7 +29,19 @@ import {
 } from '@repo/ui/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { mutateAdminPlanConfig } from '../lib/adminPlanConfig';
-import { PageHeader } from '@/core/ui/PageHeader';
+
+/* ─── Supabase Design Tokens ─── */
+const sb = {
+  primary: "#3ecf8e",
+  primaryDeep: "#24b47e",
+  ink: "#171717",
+  inkMute: "#707070",
+  canvas: "#ffffff",
+  canvasSoft: "#fafafa",
+  hairline: "#dfdfdf",
+  hairlineCool: "#ededed",
+  onPrimary: "#171717",
+} as const;
 
 interface PlanFeature {
   id: string;
@@ -180,68 +192,64 @@ export default function AdminPlanFeatures() {
   }, {});
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Link to="/plans">
-          <Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button>
-        </Link>
-        <div className="flex-1">
-          <PageHeader
-            title="Plan Features"
-            description={`${planName} — feature rows shown on pricing page`}
-            actions={<Button onClick={openCreate}><Plus className="h-4 w-4 mr-2" />Add Feature</Button>}
-          />
+    <div className="space-y-6" style={{ fontFamily: "Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Link to="/plans">
+            <Button variant="ghost" size="icon" style={{ borderRadius: 6, color: sb.ink }}><ArrowLeft className="h-4 w-4" /></Button>
+          </Link>
+          <div>
+            <h2 style={{ fontSize: 22, fontWeight: 500, letterSpacing: -0.42, color: sb.ink }} className="tracking-tight">Plan Features</h2>
+            <p style={{ fontSize: 13, color: sb.inkMute }} className="mt-0.5">{planName} — feature rows shown on pricing page</p>
+          </div>
         </div>
+        <Button onClick={openCreate} style={{ background: sb.primary, color: sb.onPrimary, borderRadius: 6, fontWeight: 500 }} className="gap-1.5">
+          <Plus className="h-4 w-4" /> Add Feature
+        </Button>
       </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-16">
-          <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+          <RefreshCw className="h-8 w-8 animate-spin" style={{ color: sb.primary }} />
         </div>
       ) : features.length === 0 ? (
-        <Card>
+        <Card style={{ background: sb.canvas, border: `1px solid ${sb.hairline}`, borderRadius: 12 }}>
           <CardContent className="py-16 text-center">
-            <p className="text-muted-foreground">No features yet. Add the first one.</p>
+            <p style={{ color: sb.inkMute }}>No features yet. Add the first one.</p>
           </CardContent>
         </Card>
       ) : (
         Object.entries(groups).map(([group, rows]) => (
-          <Card key={group}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base text-muted-foreground uppercase tracking-wider">{group}</CardTitle>
+          <Card key={group} style={{ background: sb.canvas, border: `1px solid ${sb.hairline}`, borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 2px 0 rgb(0 0 0 / 0.05)" }}>
+            <CardHeader className="pb-2" style={{ background: sb.canvasSoft, borderBottom: `1px solid ${sb.hairlineCool}`, padding: "16px 20px" }}>
+              <CardTitle style={{ fontSize: 13, color: sb.inkMute, fontWeight: 600 }} className="uppercase tracking-wider">{group}</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent style={{ padding: 0 }}>
               <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-muted-foreground border-b">
-                    <th className="pb-2 font-medium">Title</th>
-                    <th className="pb-2 font-medium">Value</th>
-                    <th className="pb-2 font-medium">Included</th>
-                    <th className="pb-2 font-medium">Highlighted</th>
-                    <th className="pb-2 font-medium">Order</th>
-                    <th className="pb-2" />
-                  </tr>
-                </thead>
                 <tbody>
                   {rows.map((f) => (
-                    <tr key={f.id} className="border-b last:border-0 hover:bg-muted/30">
-                      <td className="py-2 pr-4">
-                        <span className="font-medium">{f.title}</span>
-                        {f.description && <p className="text-xs text-muted-foreground mt-0.5">{f.description}</p>}
+                    <tr key={f.id} className="border-b last:border-0 hover:bg-muted/10" style={{ borderBottom: `1px solid ${sb.hairlineCool}` }}>
+                      <td className="py-3 px-4 min-w-[200px]">
+                        <span style={{ fontWeight: 500, fontSize: 14, color: sb.ink }}>{f.title}</span>
+                        {f.description && <p style={{ fontSize: 12, color: sb.inkMute }} className="mt-0.5">{f.description}</p>}
                       </td>
-                      <td className="py-2 pr-4">{f.display_value ?? '—'}</td>
-                      <td className="py-2 pr-4">
-                        <Badge variant={f.included ? 'default' : 'secondary'}>{f.included ? 'Yes' : 'No'}</Badge>
+                      <td className="py-3 px-4 text-xs font-mono" style={{ color: sb.ink }}>{f.display_value ?? '—'}</td>
+                      <td className="py-3 px-4">
+                        {f.included ? (
+                          <Badge style={{ background: sb.primary, color: sb.onPrimary, borderRadius: 6 }}>Yes</Badge>
+                        ) : (
+                          <Badge variant="secondary" style={{ borderRadius: 6 }}>No</Badge>
+                        )}
                       </td>
-                      <td className="py-2 pr-4">
+                      <td className="py-3 px-4">
                         {f.is_highlighted && <Star className="h-4 w-4 text-amber-500 fill-amber-500" />}
                       </td>
-                      <td className="py-2 pr-4">{f.sort_order}</td>
-                      <td className="py-2 flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(f)}>
-                          <Edit2 className="h-3.5 w-3.5" />
+                      <td className="py-3 px-4 text-xs font-mono" style={{ color: sb.inkMute }}>{f.sort_order}</td>
+                      <td className="py-3 px-4 flex gap-1 justify-end">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" style={{ borderRadius: 6 }} onClick={() => openEdit(f)}>
+                          <Edit2 className="h-3.5 w-3.5" style={{ color: sb.ink }} />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeletingFeature(f)}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-650" style={{ borderRadius: 6 }} onClick={() => setDeletingFeature(f)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </td>
@@ -256,51 +264,51 @@ export default function AdminPlanFeatures() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg" style={{ borderRadius: 12, borderColor: sb.hairline }}>
           <DialogHeader>
-            <DialogTitle>{editingFeature ? 'Edit Feature' : 'Add Feature'}</DialogTitle>
+            <DialogTitle style={{ fontSize: 18, fontWeight: 500, color: sb.ink }}>{editingFeature ? 'Edit Feature' : 'Add Feature'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-3 py-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label>Group</Label>
-                <Input value={form.group_name} onChange={(e) => setForm({ ...form, group_name: e.target.value })} placeholder="e.g., Listings, Orders" />
+                <Label style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Group</Label>
+                <Input value={form.group_name} onChange={(e) => setForm({ ...form, group_name: e.target.value })} placeholder="e.g., Listings, Orders" style={{ borderRadius: 6, borderColor: sb.hairline }} />
               </div>
               <div className="space-y-1">
-                <Label>Sort Order</Label>
-                <Input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: parseInt(e.target.value) || 0 })} />
+                <Label style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Sort Order</Label>
+                <Input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: parseInt(e.target.value) || 0 })} style={{ borderRadius: 6, borderColor: sb.hairline }} />
               </div>
             </div>
             <div className="space-y-1">
-              <Label>Title *</Label>
-              <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g., Active listings" />
+              <Label style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Title *</Label>
+              <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g., Active listings" style={{ borderRadius: 6, borderColor: sb.hairline }} />
             </div>
             <div className="space-y-1">
-              <Label>Display Value</Label>
-              <Input value={form.display_value} onChange={(e) => setForm({ ...form, display_value: e.target.value })} placeholder="e.g., 500, Unlimited, 5 accounts" />
+              <Label style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Display Value</Label>
+              <Input value={form.display_value} onChange={(e) => setForm({ ...form, display_value: e.target.value })} placeholder="e.g., 500, Unlimited, 5 accounts" style={{ borderRadius: 6, borderColor: sb.hairline }} />
             </div>
             <div className="space-y-1">
-              <Label>Description</Label>
-              <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Optional short description" />
+              <Label style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Description</Label>
+              <Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Optional short description" style={{ borderRadius: 6, borderColor: sb.hairline }} />
             </div>
             <div className="space-y-1">
-              <Label>Tooltip</Label>
-              <Input value={form.tooltip} onChange={(e) => setForm({ ...form, tooltip: e.target.value })} placeholder="Shown on hover" />
+              <Label style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Tooltip</Label>
+              <Input value={form.tooltip} onChange={(e) => setForm({ ...form, tooltip: e.target.value })} placeholder="Shown on hover" style={{ borderRadius: 6, borderColor: sb.hairline }} />
             </div>
-            <div className="flex gap-6 pt-1">
+            <div className="flex gap-6 pt-2">
               <div className="flex items-center gap-2">
                 <Switch checked={form.included} onCheckedChange={(v) => setForm({ ...form, included: v })} id="included" />
-                <Label htmlFor="included">Included</Label>
+                <Label htmlFor="included" style={{ fontSize: 13, color: sb.ink }}>Included</Label>
               </div>
               <div className="flex items-center gap-2">
                 <Switch checked={form.is_highlighted} onCheckedChange={(v) => setForm({ ...form, is_highlighted: v })} id="highlighted" />
-                <Label htmlFor="highlighted">Highlighted (shown in card)</Label>
+                <Label htmlFor="highlighted" style={{ fontSize: 13, color: sb.ink }}>Highlighted (shown in card)</Label>
               </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDialogOpen(false)} style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>Cancel</Button>
+            <Button onClick={handleSave} disabled={isSaving} style={{ background: sb.primary, color: sb.onPrimary, borderRadius: 6, fontWeight: 500 }}>
               {isSaving ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Saving...</> : 'Save'}
             </Button>
           </DialogFooter>
@@ -309,16 +317,16 @@ export default function AdminPlanFeatures() {
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deletingFeature} onOpenChange={() => setDeletingFeature(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent style={{ borderRadius: 12, borderColor: sb.hairline }}>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Feature</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle style={{ color: sb.ink }}>Delete Feature</AlertDialogTitle>
+            <AlertDialogDescription style={{ color: sb.inkMute }}>
               Delete "{deletingFeature?.title}"? This will remove it from the pricing page immediately.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">Delete</AlertDialogAction>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} style={{ background: "#ff2201", color: "#ffffff", borderRadius: 6 }}>Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

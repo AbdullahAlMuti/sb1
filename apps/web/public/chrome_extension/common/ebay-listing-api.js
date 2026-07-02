@@ -1473,6 +1473,22 @@ window.SellerSuitUploader = {
       api.extractListingDraft(listingData, appData, parsedCsrf);
     console.log('[SS Uploader] Draft ID:', draftId, '— uploading images + fields...');
 
+    // Verification log — the final mapped fields immediately before they are
+    // sent to eBay. Makes title/description/price/SKU observable per upload so
+    // a missing/wrong field is caught here instead of on the live listing.
+    const _v0 = (adapted.prod_variations && adapted.prod_variations[0]) || {};
+    console.log('[SS Uploader] FINAL PAYLOAD →', {
+      title:            adapted.prod_title,
+      titleLen:         (adapted.prod_title || '').length,
+      descriptionLen:   (adapted.prod_desc || '').length,
+      descriptionHead:  (adapted.prod_desc || '').slice(0, 80),
+      price:            _v0.price,
+      rawSupplierPrice: _v0.raw_supplier_price,
+      sku:              _v0.sku,
+      skuEncoded:       window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(_v0.sku || '') : _v0.sku,
+      variations:       adapted.prod_variations.length
+    });
+
     // 4. Upload main product images to EPS + save base listing payload
     await api.updateListing(draftId, draftCsrfValue, epsData, listingModel, adapted);
     console.log('[SS Uploader] Listing saved.');

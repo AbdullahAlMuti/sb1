@@ -8,6 +8,8 @@
 
 import './core/supplier-adapter.js';
 import './core/registry.js';
+import './core/pricing-core.js';
+import './core/supplier-detector.js';
 import './amazon/adapter.js';
 import './walmart/adapter.js';
 import './aliexpress/domains.generated.js';

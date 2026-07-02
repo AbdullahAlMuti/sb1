@@ -1,20 +1,15 @@
 import { type ReactNode } from "react";
 import {
   Activity,
-  Bot,
   ClipboardList,
-  CreditCard,
   Gauge,
   ListChecks,
   Megaphone,
   ToggleLeft,
   Webhook,
   Newspaper,
-  Package,
-  PackageCheck,
   PlugZap,
   Receipt,
-  Settings,
   ShieldCheck,
   ShoppingCart,
   Tags,
@@ -31,21 +26,12 @@ import AdminPlanPrices from "@/pages/AdminPlanPrices";
 import AdminSubscriptions from "@/modules/billing/subscriptions";
 import AdminCheckoutSessions from "@/modules/billing/checkout-sessions";
 import AdminCoupons from "@/modules/billing/coupons";
-import AdminAISettings from "@/pages/AdminAISettings";
-import AdminDescriptionConfig from "@/pages/AdminDescriptionConfig";
-import AdminPrompts from "@/modules/content/prompts";
 import AdminExtension from "@/pages/AdminExtension";
-import AdminExtensionControl from "@/pages/AdminExtensionControl";
 import AdminBlog from "@/pages/AdminBlog";
 import AdminBlogEditor from "@/pages/AdminBlogEditor";
 import AdminNotices from "@/modules/content/notices";
 import AdminAudit from "@/modules/ops/AuditPage";
 import AdminRoles from "@/pages/AdminRoles";
-import AdminSettings from "@/pages/AdminSettings";
-import {
-  AdminMustSellPage as AdminMustSell,
-  AdminProfitableProductsPage as AdminProfitableProducts,
-} from "@/modules/catalog";
 import QueuesPage from "@/modules/ops/QueuesPage";
 import SystemHealthPage from "@/modules/ops/SystemHealthPage";
 import FeatureFlagsPage from "@/modules/ops/FeatureFlagsPage";
@@ -56,7 +42,7 @@ import { PlatformDashboardLayout } from "@/platforms/components/PlatformDashboar
 export type AdminAccess = "admin" | "super_admin";
 
 /** Nav group ordering for the sidebar. */
-export const NAV_GROUPS = ["Overview", "Customers", "Billing", "Platform", "Catalog", "Operations", "System"] as const;
+export const NAV_GROUPS = ["Overview", "Customers", "Billing", "Platform", "Operations", "System"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
 
 export interface AdminRouteDef {
@@ -98,18 +84,18 @@ export const adminRoutes: AdminRouteDef[] = [
   { path: "billing/stripe-events", element: <StripeEventsPage />, label: "Stripe Events", icon: Webhook, group: "Billing" },
 
   // Platform
-  { path: "ai", element: <AdminAISettings />, label: "AI / Automation", icon: Bot, group: "Platform", redirectFrom: ["ai-settings"] },
-  { path: "description-config", element: <AdminDescriptionConfig />, label: "Description Config", icon: ClipboardList, group: "Platform" },
-  { path: "prompts", element: <AdminPrompts />, label: "Prompts", icon: Bot, group: "Platform", redirectFrom: ["automation"] },
-  { path: "extension", element: <AdminExtension />, label: "Extension Setup", icon: PlugZap, group: "Platform" },
-  { path: "extension-control", element: <AdminExtensionControl />, label: "Extension Control", icon: ShieldCheck, group: "Platform" },
-  { path: "blog", element: <AdminBlog />, label: "Blog", icon: Newspaper, group: "Platform" },
+  {
+    path: "extension",
+    element: <AdminExtension />,
+    label: "eBay Extension",
+    icon: PlugZap,
+    group: "Platform",
+    redirectFrom: ["ai", "ai-settings", "extension-control", "prompts", "automation", "description-config"],
+  },
+  { path: "blog", element: <AdminBlog />, label: "Blog", icon: Newspaper, group: "System" },
   { path: "blog/new", element: <AdminBlogEditor /> },
   { path: "blog/:id/edit", element: <AdminBlogEditor /> },
 
-  // Catalog (operator-curated content shown to users)
-  { path: "must-sell", element: <AdminMustSell />, label: "Must Sell", icon: Package, group: "Catalog" },
-  { path: "profitable-products", element: <AdminProfitableProducts />, label: "Profitable Products", icon: PackageCheck, group: "Catalog", redirectFrom: ["product-intelligence"] },
 
   // Operations
   { path: "ops/queues", element: <QueuesPage />, label: "Queues", icon: ListChecks, group: "Operations" },
@@ -120,7 +106,6 @@ export const adminRoutes: AdminRouteDef[] = [
   { path: "notices", element: <AdminNotices />, label: "Notices", icon: Megaphone, group: "System", redirectFrom: ["notifications"] },
   { path: "audit-logs", element: <AdminAudit />, label: "Audit Logs", icon: ClipboardList, group: "System", redirectFrom: ["audit"] },
   { path: "roles", element: <AdminRoles />, label: "Roles", icon: ShieldCheck, group: "System", access: "super_admin" },
-  { path: "settings", element: <AdminSettings />, label: "Settings", icon: Settings, group: "System" },
 
   // Marketplace platforms (eBay; Shopify when enabled) — generated from the registry.
   ...platformRegistry.map<AdminRouteDef>((platform) => ({
@@ -133,4 +118,4 @@ export const adminRoutes: AdminRouteDef[] = [
 ];
 
 /** Routes that no longer exist (scope cuts / removed aliases) → bounce to overview. */
-export const removedRoutes: string[] = ["workspaces", "reports", "payments", "credits", "best-selling"];
+export const removedRoutes: string[] = ["workspaces", "reports", "payments", "credits", "best-selling", "must-sell", "profitable-products", "product-intelligence", "settings"];

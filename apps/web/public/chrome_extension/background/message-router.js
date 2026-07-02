@@ -30,9 +30,11 @@ function cleanPrice(price) {
 function detectSupplier(product) {
   if (!product) return 'amazon';
   if (product.supplier === 'walmart') return 'walmart';
+  if (product.supplier === 'aliexpress') return 'aliexpress';
   if (product.supplier === 'amazon') return 'amazon';
   const url = product.url || product.amazonUrl || '';
   if (url.includes('walmart.')) return 'walmart';
+  if (url.includes('aliexpress.')) return 'aliexpress';
   return 'amazon';
 }
 
@@ -67,6 +69,67 @@ function createLogger(prefix) {
 
 const authLog = createLogger('Auth');
 const syncLog = createLogger('Sync');
+
+function formatAiGenerationError(functionName, error, status) {
+  const raw = (error || '').toString().trim();
+  const label = functionName === 'generate-description' ? 'Description generation' : 'Title generation';
+
+  if (status === 0) {
+    return `${label} backend is unreachable. ${raw || 'Please check the extension backend target and network connection.'}`;
+  }
+  if (status === 401) return raw || 'Session expired. Please log in again.';
+  if (status === 402) return raw || 'AI credits exhausted. Please add credits to continue.';
+  if (status === 429) return raw || 'Rate limit exceeded. Please wait a moment and try again.';
+  if (status && status >= 500) return raw || `${label} service is temporarily unavailable.`;
+  return raw || `${label} failed.`;
+}
+
+function normalizeAiEdgeResult(functionName, edgeResult) {
+  if (!edgeResult) {
+    return {
+      success: false,
+      error: formatAiGenerationError(functionName, 'No response from AI backend.', 0),
+      status: 0
+    };
+  }
+
+  if (edgeResult.error) {
+    return {
+      success: false,
+      error: formatAiGenerationError(functionName, edgeResult.error, edgeResult.status),
+      status: edgeResult.status
+    };
+  }
+
+  const data = edgeResult.data;
+  if (!data || typeof data !== 'object') {
+    return {
+      success: false,
+      error: formatAiGenerationError(functionName, 'Invalid AI backend response.', edgeResult.status),
+      status: edgeResult.status
+    };
+  }
+
+  if (data.success === false || data.error) {
+    return {
+      ...data,
+      success: false,
+      error: formatAiGenerationError(functionName, data.error, edgeResult.status),
+      status: edgeResult.status
+    };
+  }
+
+  return { ...data, success: true, status: edgeResult.status };
+}
+
+function getFirstGeneratedTitle(result) {
+  if (!result) return '';
+  if (typeof result.title === 'string') return result.title.trim();
+  if (!Array.isArray(result.titles) || result.titles.length === 0) return '';
+  const first = result.titles[0];
+  if (typeof first === 'string') return first.trim();
+  return (first?.title || '').toString().trim();
+}
 
 // getUrls and getApiKeys are declared globally in background/index.js
 
@@ -217,6 +280,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
         if (typeof startEbayOrderSyncInterval === 'function') {
           startEbayOrderSyncInterval();
+        }
+        if (typeof SSPricingRuleSync !== 'undefined') {
+          SSPricingRuleSync.sync(true).catch(() => {});
         }
       }
       sendResponse({ success });
@@ -383,6 +449,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             if (typeof startEbayOrderSyncInterval === 'function') {
               startEbayOrderSyncInterval();
             }
+            if (typeof SSPricingRuleSync !== 'undefined') {
+              SSPricingRuleSync.sync(true).catch(() => {});
+            }
           }
           sendResponse({ success: true, verified });
         } catch (err) {
@@ -534,6 +603,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               supplier: request.supplier,
               url: request.productURL
             });
+
+            // Pricing drift check — fire-and-forget; does not block the listing.
+            // Logs to console and audit log if the client price has drifted from
+            // the server-computed price (stale rule or rounding mismatch).
+            if (request.finalPrice && typeof SSPricingRuleSync !== 'undefined') {
+              SSPricingRuleSync.getRuleForSupplier(detectedSup).then(async cachedRule => {
+                if (!cachedRule) return;
+                try {
+                  const { token, isValid } = await AuthHelper.getAuthToken();
+                  if (!token || !isValid) return;
+                  const urls = getUrls();
+                  const apiKeys = getApiKeys();
+                  if (!urls || !apiKeys) return;
+                  await fetch(`${urls.SUPABASE_FUNCTIONS}/pricing-verify`, {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${token}`,
+                      'apikey': apiKeys.SUPABASE_ANON || '',
+                      'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                      supplierKey: detectedSup,
+                      supplierPrice: cleanPrice(request.amazonPrice || request.supplierPrice),
+                      shippingCost: 0,
+                      clientFinalPrice: cleanPrice(request.finalPrice),
+                      clientRuleVersion: cachedRule.ruleVersion || 0
+                    })
+                  });
+                } catch (_) {}
+              }).catch(() => {});
+            }
             const parsedEbayPrice = cleanPrice(request.finalPrice);
             const parsedSupplierPrice = cleanPrice(request.amazonPrice || request.supplierPrice);
 
@@ -647,7 +747,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         const fn = request.kind === 'description' ? 'generate-description-v2' : 'generate-titles';
-        const resp = await AuthHelper.callEdgeFunction(fn, request.productData || {});
+        const timeout = request.kind === 'description' ? 90000 : 60000;
+        const resp = await AuthHelper.callEdgeFunction(fn, request.productData || {}, { timeout });
         if (resp.error) { sendResponse({ success: false, error: resp.error }); return; }
         sendResponse(resp.data || { success: false, error: 'No data' });
       } catch (e) {
@@ -711,55 +812,60 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === "GENERATE_TITLE") {
     (async () => {
       try {
-        const tokenData = await chrome.storage.local.get(['saasToken']);
-        if (!tokenData.saasToken) throw new Error("Please log in.");
-        const resp = await fetch(`${urls.SUPABASE_FUNCTIONS}/generate-titles`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': apiKeys.SUPABASE_ANON, 'Authorization': `Bearer ${tokenData.saasToken}` },
-          body: JSON.stringify(request.productData)
-        });
-        const json = await resp.json();
-        if (json.success && Array.isArray(json.titles) && json.titles.length) {
-          sendResponse({ success: true, title: json.titles[0].title || json.titles[0] });
+        const result = normalizeAiEdgeResult(
+          'generate-titles',
+          await AuthHelper.callEdgeFunction('generate-titles', request.productData || {}, { timeout: 60000 })
+        );
+        const title = getFirstGeneratedTitle(result);
+        if (result.success && title) {
+          sendResponse({ ...result, success: true, title });
         } else {
           // Always respond on failure so the content script surfaces the error
           // instead of receiving an undefined response.
-          sendResponse({ success: false, error: json.error || 'Title generation failed' });
+          sendResponse({
+            ...result,
+            success: false,
+            error: result.error || 'No title returned.'
+          });
         }
       } catch (e) {
-        sendResponse({ success: false, error: e.message });
+        sendResponse({
+          success: false,
+          error: formatAiGenerationError('generate-titles', e?.message, 0),
+          status: 0
+        });
       }
     })();
     return true;
   } else if (request.action === "GENERATE_AI_TITLES") {
     (async () => {
       try {
-        const tokenData = await chrome.storage.local.get(['saasToken']);
-        const resp = await fetch(`${urls.SUPABASE_FUNCTIONS}/generate-titles`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': apiKeys.SUPABASE_ANON, 'Authorization': `Bearer ${tokenData.saasToken}` },
-          body: JSON.stringify(request.productData)
-        });
-        const json = await resp.json();
-        sendResponse(json);
+        sendResponse(normalizeAiEdgeResult(
+          'generate-titles',
+          await AuthHelper.callEdgeFunction('generate-titles', request.productData || {}, { timeout: 60000 })
+        ));
       } catch (e) {
-        sendResponse({ success: false, error: e.message });
+        sendResponse({
+          success: false,
+          error: formatAiGenerationError('generate-titles', e?.message, 0),
+          status: 0
+        });
       }
     })();
     return true;
   } else if (request.action === "GENERATE_DESCRIPTION") {
     (async () => {
       try {
-        const tokenData = await chrome.storage.local.get(['saasToken']);
-        const resp = await fetch(`${urls.SUPABASE_FUNCTIONS}/generate-description`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': apiKeys.SUPABASE_ANON, 'Authorization': `Bearer ${tokenData.saasToken}` },
-          body: JSON.stringify(request.productData)
-        });
-        const json = await resp.json();
-        sendResponse(json);
+        sendResponse(normalizeAiEdgeResult(
+          'generate-description',
+          await AuthHelper.callEdgeFunction('generate-description', request.productData || {}, { timeout: 90000 })
+        ));
       } catch (e) {
-        sendResponse({ success: false, error: e.message });
+        sendResponse({
+          success: false,
+          error: formatAiGenerationError('generate-description', e?.message, 0),
+          status: 0
+        });
       }
     })();
     return true;

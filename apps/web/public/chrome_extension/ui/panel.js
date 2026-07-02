@@ -617,11 +617,15 @@ async function generateAITitles() {
   const titleCount = titleCountSelect ? parseInt(titleCountSelect.value, 10) : 3;
 
   try {
-    // Check authentication first
-    const isAuthenticated = await AuthHelper.isAuthenticated();
-    if (!isAuthenticated) {
-      AuthHelper.promptLogin();
-      return;
+    // Check authentication first. Guard the reference so a context missing
+    // AuthHelper doesn't crash here (panel.html loads auth-helper.js, but this
+    // keeps the generate path resilient to load-order/bundling drift).
+    if (typeof AuthHelper !== 'undefined' && AuthHelper) {
+      const isAuthenticated = await AuthHelper.isAuthenticated();
+      if (!isAuthenticated) {
+        AuthHelper.promptLogin();
+        return;
+      }
     }
 
     // Update button state
@@ -677,6 +681,7 @@ async function generateAITitles() {
       count: titleCount
     });
 
+    if (typeof AuthHelper === 'undefined') throw new Error('AuthHelper not loaded — auth-helper.js must execute before panel.js');
     const { data: result, error } = await AuthHelper.callEdgeFunction('generate-titles', {
       title: productData.title || productData.productTitle,
       category: productData.category || '',
@@ -1124,7 +1129,13 @@ function initActionButtons() {
       optiListBtn.disabled = true;
       optiListBtn.textContent = 'Processing...';
       try {
-        const selected = await chrome.storage.local.get(['selectedEbayTitle', 'currentProduct', 'snipedData']);
+        const selected = await chrome.storage.local.get([
+          'selectedEbayTitle',
+          'selectedEbayDescription',
+          'selectedDescriptionTimestamp',
+          'currentProduct',
+          'snipedData'
+        ]);
         const selectedTitle = selected.selectedEbayTitle;
         const storedProduct = selected.currentProduct || selected.snipedData || {};
 
@@ -1164,11 +1175,17 @@ function initActionButtons() {
         const supplierPrice = (scrapedData?.price || storedProduct.price || '').toString().trim();
         const sourceId = scrapedData?.sourceId || storedProduct.sourceId ||
                          scrapedData?.asin || storedProduct.asin || storedProduct.ASIN || '';
+        const scannedAt = scrapedData?.lastScannedAt || scrapedData?.scrapedAt ||
+                          storedProduct.lastScannedAt || storedProduct.scrapedAt || 0;
+        const selectedDescFresh = !scannedAt || (selected.selectedDescriptionTimestamp || 0) >= scannedAt;
+        const selectedDescription = selectedDescFresh ? (selected.selectedEbayDescription || '') : '';
 
         let ebayProduct = {
           ...storedProduct,
           ...(scrapedData || {}),
           title: selectedTitle,
+          description: selectedDescription || scrapedData?.description || storedProduct.description || '',
+          description_source: selectedDescription ? 'ai' : (scrapedData?.description_source || storedProduct.description_source || 'scraped'),
           ebaySku: sku,
           // price = raw supplier price; the eBay sell price goes in finalPrice.
           // Writing the sell price into price corrupted supplier-price tracking
@@ -1321,7 +1338,11 @@ function generateSKU() {
     const skuInput = document.getElementById('sku-input');
 
     if (skuInput) {
-      skuInput.value = sourceId ? `${prefix}-${sourceId}` : '';
+      skuInput.value = sourceId
+        ? (window.SSSkuEngine
+          ? window.SSSkuEngine.buildReadable(sourceId, {}, prefix)
+          : `${prefix}-${String(sourceId).toUpperCase().replace(/[^A-Z0-9]/g, '')}`)
+        : '';
     }
   });
 }

@@ -19,8 +19,8 @@
 import './setup.js';
 
 // Global helper functions to be shared across imported scripts
-window.getUrls = () => typeof window.ExtensionConfig !== 'undefined' ? window.ExtensionConfig.URLS : null;
-window.getApiKeys = () => typeof window.ExtensionConfig !== 'undefined' ? window.ExtensionConfig.API_KEYS : null;
+globalThis.getUrls = () => typeof globalThis.ExtensionConfig !== 'undefined' ? globalThis.ExtensionConfig.URLS : null;
+globalThis.getApiKeys = () => typeof globalThis.ExtensionConfig !== 'undefined' ? globalThis.ExtensionConfig.API_KEYS : null;
 
 // Set on every SW init — lost on SW restart if only set in event listeners
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -88,6 +88,7 @@ import '../common/message-handler.js';
 import '../common/retry-helper.js';
 import '../common/api-client.js';
 import '../common/sync-utils.js';
+import '../common/pricing-rule-sync.js';
 import '../common/sku-engine.js';
 import '../common/ebay-image-helper.js';
 import '../common/ebay-listing-api.js';

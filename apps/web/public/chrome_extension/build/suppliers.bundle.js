@@ -119,6 +119,174 @@
 		};
 	})();
 	//#endregion
+	//#region suppliers/core/pricing-core.js
+	window.SSPricingCore = (() => {
+		"use strict";
+		const VALID_ROUNDING_RULES = new Set([
+			"NONE",
+			"END_99",
+			"END_95",
+			"END_49",
+			"ROUND_UP"
+		]);
+		/**
+		* Convert a decimal price value to integer cents.
+		* Throws on NaN, negative, or non-finite input.
+		* @param {number|string} value  e.g. 19.99 → 1999
+		* @returns {number} integer cents
+		*/
+		function parseToIntCents(value) {
+			const n = typeof value === "string" ? parseFloat(value) : Number(value);
+			if (!isFinite(n)) throw new RangeError(`parseToIntCents: non-finite value "${value}"`);
+			if (n < 0) throw new RangeError(`parseToIntCents: negative value "${value}"`);
+			return Math.round(n * 100);
+		}
+		/**
+		* Convert integer cents back to a 2-decimal display string.
+		* Only call at output boundaries, never during computation.
+		* @param {number} cents  integer
+		* @returns {string}  e.g. 1999 → "19.99"
+		*/
+		function centsToDisplay(cents) {
+			return (cents / 100).toFixed(2);
+		}
+		/**
+		* Apply a rounding rule to an integer-cent value.
+		* Guarantee: result is always >= cents (never reduces the price).
+		*
+		* END_99 / END_95 / END_49:
+		*   Find the smallest value >= cents whose last-two digits equal the target.
+		* ROUND_UP:
+		*   Ceil to the next whole unit (already-whole stays).
+		* NONE:
+		*   Return unchanged.
+		*
+		* @param {number} cents  integer >= 0
+		* @param {string} rule   one of VALID_ROUNDING_RULES
+		* @returns {number} integer >= cents
+		*/
+		function applyRoundingRule(cents, rule) {
+			if (!VALID_ROUNDING_RULES.has(rule)) throw new TypeError(`Unknown rounding rule: "${rule}"`);
+			if (rule === "NONE") return cents;
+			if (rule === "ROUND_UP") return cents % 100 === 0 ? cents : Math.ceil(cents / 100) * 100;
+			const t = {
+				END_99: 99,
+				END_95: 95,
+				END_49: 49
+			}[rule];
+			const candidate = Math.floor(cents / 100) * 100 + t;
+			return candidate >= cents ? candidate : candidate + 100;
+		}
+		/**
+		* Calculate the full eBay selling-price breakdown for one product.
+		*
+		* Formula (additive, all in cents):
+		*   baseCost      = supplierPrice + shippingCost + shippingBuffer + fixedHandlingFee
+		*   marketplaceFee= baseCost * marketplaceFeePercent / 100
+		*   currencyBuffer= baseCost * currencyBufferPercent / 100
+		*   targetProfit  = max(baseCost * profitMarginPercent / 100, minimumProfit)
+		*   rawFinal      = baseCost + marketplaceFee + currencyBuffer + targetProfit
+		*   finalPrice    = applyRoundingRule(rawFinal, roundingRule)
+		*   realizedProfit= finalPrice - baseCost - marketplaceFee - currencyBuffer
+		*
+		* Note: realizedProfit >= targetProfit because rounding never goes down.
+		*
+		* @param {object} rule              from user_pricing_settings row
+		* @param {number|string} supplierPriceDec  decimal USD (e.g. 19.99)
+		* @param {number|string} shippingCostDec   decimal USD (e.g. 4.99) — 0 if free shipping
+		* @returns {object} full breakdown (all price fields as display strings)
+		*/
+		function calculatePrice(rule, supplierPriceDec, shippingCostDec) {
+			const sp = parseToIntCents(supplierPriceDec);
+			const sc = parseToIntCents(shippingCostDec);
+			const sb = parseToIntCents(rule.shippingBuffer ?? 0);
+			const fh = parseToIntCents(rule.fixedHandlingFee ?? 0);
+			const baseCost = sp + sc + sb + fh;
+			if (baseCost <= 0) throw new RangeError("calculatePrice: baseCost must be positive");
+			const mktFee = Math.round(baseCost * (rule.marketplaceFeePercent ?? 0) / 100);
+			const fxBuf = Math.round(baseCost * (rule.currencyBufferPercent ?? 0) / 100);
+			const tgtProfit = Math.max(Math.round(baseCost * (rule.profitMarginPercent ?? 0) / 100), parseToIntCents(rule.minimumProfit ?? 0));
+			const rawFinal = baseCost + mktFee + fxBuf + tgtProfit;
+			const finalCents = applyRoundingRule(rawFinal, rule.roundingRule ?? "NONE");
+			const realizedProfit = finalCents - baseCost - mktFee - fxBuf;
+			const marginPct = finalCents > 0 ? realizedProfit / finalCents * 100 : 0;
+			return {
+				finalPrice: centsToDisplay(finalCents),
+				supplierPrice: centsToDisplay(sp),
+				shippingCost: centsToDisplay(sc),
+				shippingBuffer: centsToDisplay(sb),
+				fixedHandlingFee: centsToDisplay(fh),
+				baseCost: centsToDisplay(baseCost),
+				marketplaceFee: centsToDisplay(mktFee),
+				currencyBuffer: centsToDisplay(fxBuf),
+				profit: centsToDisplay(realizedProfit),
+				marginPercent: parseFloat(marginPct.toFixed(2)),
+				roundingRule: rule.roundingRule ?? "NONE",
+				supplierKey: rule.supplierKey ?? null,
+				ruleVersion: rule.ruleVersion ?? null,
+				breakdown: {
+					spCents: sp,
+					scCents: sc,
+					sbCents: sb,
+					fhCents: fh,
+					baseCost,
+					mktFee,
+					fxBuf,
+					tgtProfit,
+					rawFinal,
+					finalCents
+				}
+			};
+		}
+		return {
+			parseToIntCents,
+			centsToDisplay,
+			applyRoundingRule,
+			calculatePrice
+		};
+	})();
+	//#endregion
+	//#region suppliers/core/supplier-detector.js
+	window.SSSupplierDetector = (() => {
+		"use strict";
+		/**
+		* Detect the supplier for a given URL.
+		* Delegates to SSSupplierRegistry adapters (subdomain-safe, case-insensitive).
+		*
+		* @param {string} url  full URL (e.g. location.href)
+		* @returns {{ supplierId: string, displayName: string } | null}
+		*/
+		function detectSupplierFromUrl(url) {
+			if (!url) return null;
+			try {
+				const adapter = window.SSSupplierRegistry && window.SSSupplierRegistry.match(url);
+				if (!adapter) return null;
+				return {
+					supplierId: adapter.supplierId,
+					displayName: adapter.displayName
+				};
+			} catch (_) {
+				return null;
+			}
+		}
+		/**
+		* Convenience: detect from the current page URL.
+		* Only valid in a content script or page context (not service worker).
+		* @returns {{ supplierId: string, displayName: string } | null}
+		*/
+		function detectCurrentPage() {
+			try {
+				return detectSupplierFromUrl(window.location.href);
+			} catch (_) {
+				return null;
+			}
+		}
+		return {
+			detectSupplierFromUrl,
+			detectCurrentPage
+		};
+	})();
+	//#endregion
 	//#region suppliers/amazon/adapter.js
 	window.SSAmazonAdapter = (() => {
 		"use strict";

@@ -681,6 +681,7 @@ async function generateAITitles() {
       count: titleCount
     });
 
+    if (typeof AuthHelper === 'undefined') throw new Error('AuthHelper not loaded — auth-helper.js must execute before panel.js');
     const { data: result, error } = await AuthHelper.callEdgeFunction('generate-titles', {
       title: productData.title || productData.productTitle,
       category: productData.category || '',

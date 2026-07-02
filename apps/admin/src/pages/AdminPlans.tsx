@@ -31,7 +31,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@repo/ui/components/ui/dialog';
 import {
   AlertDialog,
@@ -47,7 +46,19 @@ import { toast } from 'sonner';
 import { useRealtimePlans } from '@repo/api-client/hooks/useRealtimeSync';
 import { useAuth } from '@repo/auth/hooks/useAuth';
 import { mutateAdminPlanConfig } from '../lib/adminPlanConfig';
-import { PageHeader } from '@/core/ui/PageHeader';
+
+/* ─── Supabase Design Tokens ─── */
+const sb = {
+  primary: "#3ecf8e",
+  primaryDeep: "#24b47e",
+  ink: "#171717",
+  inkMute: "#707070",
+  canvas: "#ffffff",
+  canvasSoft: "#fafafa",
+  hairline: "#dfdfdf",
+  hairlineCool: "#ededed",
+  onPrimary: "#171717",
+} as const;
 
 interface Plan {
   id: string;
@@ -73,7 +84,6 @@ interface Plan {
   max_seo_titles: number;
   max_seo_descriptions: number;
   order_reset_frequency: string;
-  // New fields
   slug: string | null;
   short_description: string | null;
   long_description: string | null;
@@ -114,7 +124,6 @@ interface PlanFormData {
   max_seo_titles: number;
   max_seo_descriptions: number;
   order_reset_frequency: string;
-  // New fields
   slug: string;
   short_description: string;
   long_description: string;
@@ -180,7 +189,6 @@ export default function AdminPlans() {
         max_seo_titles: (p as any).max_seo_titles ?? 0,
         max_seo_descriptions: (p as any).max_seo_descriptions ?? 0,
         order_reset_frequency: (p as any).order_reset_frequency ?? 'monthly',
-        // New fields
         slug: (p as any).slug ?? null,
         short_description: (p as any).short_description ?? null,
         long_description: (p as any).long_description ?? null,
@@ -243,7 +251,6 @@ export default function AdminPlans() {
         max_seo_titles: formData.max_seo_titles,
         max_seo_descriptions: formData.max_seo_descriptions,
         order_reset_frequency: formData.order_reset_frequency,
-        // New fields
         slug: formData.slug.trim() || null,
         short_description: formData.short_description.trim() || null,
         long_description: formData.long_description.trim() || null,
@@ -253,28 +260,19 @@ export default function AdminPlans() {
         is_public: formData.is_public,
         trial_requires_card: formData.trial_requires_card,
         stripe_product_id: formData.stripe_product_id.trim() || null,
+        updated_at: new Date().toISOString(),
       };
 
-      if (editingPlan?.id) {
-        await mutateAdminPlanConfig({
-          resource: 'plans',
-          action: 'update',
-          id: editingPlan.id,
-          payload: planData,
-        });
-        toast.success('Plan updated successfully');
-      } else {
-        await mutateAdminPlanConfig({
-          resource: 'plans',
-          action: 'create',
-          payload: planData,
-        });
-        toast.success('Plan created successfully');
-      }
+      await mutateAdminPlanConfig({
+        resource: 'plans',
+        action: editingPlan ? 'update' : 'create',
+        id: editingPlan?.id,
+        payload: planData,
+      });
 
       setIsDialogOpen(false);
-      setEditingPlan(null);
       fetchPlans();
+      toast.success(editingPlan ? 'Plan updated successfully' : 'Plan created successfully');
     } catch (error) {
       console.error('Error saving plan:', error);
       toast.error('Failed to save plan');
@@ -292,9 +290,9 @@ export default function AdminPlans() {
         id: deletingPlan.id,
         payload: { is_active: false },
       });
+      setPlans(plans.map(p => p.id === deletingPlan.id ? { ...p, is_active: false } : p));
       setDeletingPlan(null);
-      fetchPlans();
-      toast.success('Plan deactivated. Existing subscribers are unaffected.');
+      toast.success('Plan deactivated');
     } catch (error) {
       console.error('Error deactivating plan:', error);
       toast.error('Failed to deactivate plan');
@@ -340,23 +338,37 @@ export default function AdminPlans() {
   const totalMRR = plans.reduce((sum, p) => sum + (p.price_monthly * getUserCount(p.id)), 0);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <PageHeader
-        title="Plan Management"
-        description="Configure pricing tiers and subscription features"
-        icon={CreditCard}
-        actions={
-          <Button onClick={() => { setEditingPlan(null); setIsDialogOpen(true); }}>
-            <Plus className="h-5 w-5 mr-2" />Add Plan
-          </Button>
-        }
-      />
+    <div className="space-y-6" style={{ fontFamily: "Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
+      {/* Manually rendered page header matching Extension redone layout */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+        <div className="flex items-center gap-4">
+          <div style={{
+            width: 48, height: 48, borderRadius: 12,
+            background: sb.primary,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+          }}>
+            <CreditCard style={{ width: 22, height: 22, color: sb.onPrimary }} />
+          </div>
+          <div>
+            <h1 style={{ fontSize: 24, fontWeight: 500, letterSpacing: -0.42, color: sb.ink }} className="tracking-tight">Plan Management</h1>
+            <p style={{ fontSize: 13, color: sb.inkMute }} className="mt-0.5">Configure pricing tiers and subscription features</p>
+          </div>
+        </div>
+        <Button
+          onClick={() => { setEditingPlan(null); setIsDialogOpen(true); }}
+          style={{ background: sb.primary, color: sb.onPrimary, borderRadius: 6, fontWeight: 500 }}
+          className="gap-1.5"
+        >
+          <Plus className="h-4 w-4" /> Add Plan
+        </Button>
+      </div>
+
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" style={{ borderRadius: 12, borderColor: sb.hairline }}>
           <DialogHeader>
-            <DialogTitle>{editingPlan ? 'Edit Plan' : 'Create New Plan'}</DialogTitle>
-            <DialogDescription>Configure the plan details and pricing</DialogDescription>
+            <DialogTitle style={{ fontSize: 18, fontWeight: 500, color: sb.ink }}>{editingPlan ? 'Edit Plan' : 'Create New Plan'}</DialogTitle>
+            <DialogDescription style={{ fontSize: 13, color: sb.inkMute }}>Configure the plan details and pricing</DialogDescription>
           </DialogHeader>
           <PlanForm
             plan={editingPlan}
@@ -367,54 +379,54 @@ export default function AdminPlans() {
         </DialogContent>
       </Dialog>
 
-      {/* Stats */}
+      {/* Stats row with manual cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
+        {[
+          { title: "Total Plans", value: plans.length, icon: Package, color: sb.primary },
+          { title: "Subscribed Users", value: totalUsers, icon: Users, color: sb.primaryDeep },
+          { title: "Estimated MRR", value: `$${totalMRR.toFixed(2)}`, icon: DollarSign, color: "#ffdb13" },
+        ].map((stat, i) => {
+          const Icon = stat.icon;
+          return (
+            <div
+              key={i}
+              style={{
+                background: sb.canvas,
+                border: `1px solid ${sb.hairline}`,
+                borderRadius: 12,
+                padding: "20px 24px",
+                boxShadow: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+              }}
+              className="flex items-center justify-between"
+            >
               <div>
-                <p className="text-sm text-muted-foreground">Total Plans</p>
-                <p className="text-3xl font-bold">{plans.length}</p>
+                <p style={{ fontSize: 13, color: sb.inkMute, margin: 0 }}>{stat.title}</p>
+                <p style={{ fontSize: 26, fontWeight: 600, color: sb.ink, margin: "4px 0 0 0" }}>{stat.value}</p>
               </div>
-              <Package className="h-8 w-8 text-primary" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Subscribed Users</p>
-                <p className="text-3xl font-bold">{totalUsers}</p>
+              <div style={{
+                width: 42, height: 42, borderRadius: 10,
+                background: sb.canvasSoft,
+                border: `1px solid ${sb.hairlineCool}`,
+                display: "flex", alignItems: "center", justifyItems: "center", justifyContent: "center"
+              }}>
+                <Icon style={{ width: 20, height: 20, color: stat.color }} />
               </div>
-              <Users className="h-8 w-8 text-emerald-500" />
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Estimated MRR</p>
-                <p className="text-3xl font-bold">${totalMRR.toFixed(2)}</p>
-              </div>
-              <DollarSign className="h-8 w-8 text-amber-500" />
-            </div>
-          </CardContent>
-        </Card>
+          );
+        })}
       </div>
 
       {/* Plans Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {isLoading ? (
           <div className="col-span-full text-center py-12">
-            <RefreshCw className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
-            <p className="text-muted-foreground mt-2">Loading plans...</p>
+            <RefreshCw className="h-8 w-8 animate-spin mx-auto" style={{ color: sb.primary }} />
+            <p style={{ color: sb.inkMute }} className="mt-2 text-sm">Loading plans...</p>
           </div>
         ) : plans.length === 0 ? (
           <div className="col-span-full text-center py-12">
-            <Package className="h-12 w-12 mx-auto text-muted-foreground/50" />
-            <p className="text-muted-foreground mt-2">No plans created yet</p>
+            <Package className="h-12 w-12 mx-auto" style={{ color: sb.inkMute }} />
+            <p style={{ color: sb.inkMute }} className="mt-2 text-sm">No plans created yet</p>
           </div>
         ) : (
           plans.map((plan, index) => (
@@ -422,133 +434,148 @@ export default function AdminPlans() {
               key={plan.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
+              transition={{ delay: index * 0.05 }}
             >
-              <Card className={`relative ${!plan.is_active ? 'opacity-60' : ''} ${plan.archived_at ? 'border-dashed opacity-50' : ''} ${plan.is_popular ? 'border-primary' : ''}`}>
+              <Card
+                style={{
+                  background: sb.canvas,
+                  border: `1px solid ${plan.is_popular ? sb.primary : sb.hairline}`,
+                  borderRadius: 12,
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+                  position: "relative"
+                }}
+                className={`relative flex flex-col justify-between h-full ${!plan.is_active ? 'opacity-60' : ''} ${plan.archived_at ? 'border-dashed opacity-50' : ''}`}
+              >
                 {plan.badge_text && !plan.archived_at && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <Badge className="bg-gradient-to-r from-primary to-accent">{plan.badge_text}</Badge>
+                    <Badge style={{ background: sb.primary, color: sb.onPrimary, borderRadius: 6 }}>{plan.badge_text}</Badge>
                   </div>
                 )}
                 {plan.archived_at && (
                   <div className="absolute -top-3 right-4">
-                    <Badge variant="outline"><Archive className="h-3 w-3 mr-1" />Archived</Badge>
+                    <Badge variant="outline" style={{ borderRadius: 6 }}><Archive className="h-3 w-3 mr-1" />Archived</Badge>
                   </div>
                 )}
                 {plan.is_trial && !plan.archived_at && (
                   <div className="absolute -top-3 right-4">
-                    <Badge variant="secondary">TRIAL</Badge>
+                    <Badge variant="secondary" style={{ borderRadius: 6 }}>TRIAL</Badge>
                   </div>
                 )}
 
-                <CardHeader className="pb-2">
+                <CardHeader className="pb-2" style={{ borderBottom: `1px solid ${sb.hairlineCool}` }}>
                   <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-lg">{plan.display_name}</CardTitle>
-                      <p className="text-xs text-muted-foreground">{plan.slug ?? plan.name}</p>
+                    <div className="min-w-0 flex-1">
+                      <CardTitle style={{ fontSize: 16, fontWeight: 500, color: sb.ink }} className="truncate">{plan.display_name}</CardTitle>
+                      <p style={{ fontSize: 11, color: sb.inkMute }} className="font-mono truncate">{plan.slug ?? plan.name}</p>
                       {plan.short_description && (
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{plan.short_description}</p>
+                        <p style={{ fontSize: 12, color: sb.inkMute }} className="mt-1 line-clamp-1">{plan.short_description}</p>
                       )}
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 shrink-0 ml-2">
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8"
+                        style={{ borderRadius: 6 }}
                         onClick={() => { setEditingPlan(plan); setIsDialogOpen(true); }}
                       >
-                        <Edit2 className="h-4 w-4" />
+                        <Edit2 className="h-4 w-4" style={{ color: sb.ink }} />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8"
+                        style={{ borderRadius: 6 }}
                         onClick={() => togglePlanStatus(plan.id, plan.is_active)}
                       >
                         {plan.is_active ? (
-                          <X className="h-4 w-4 text-destructive" />
+                          <X className="h-4 w-4 text-red-500" />
                         ) : (
-                          <Check className="h-4 w-4 text-success" />
+                          <Check className="h-4 w-4 text-emerald-500" />
                         )}
                       </Button>
                     </div>
                   </div>
                 </CardHeader>
 
-                <CardContent className="space-y-4">
-                  <div>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-3xl font-bold">${plan.price_monthly}</span>
-                      <span className="text-muted-foreground">/mo</span>
+                <CardContent className="space-y-4 pt-4 flex-1 flex flex-col justify-between">
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex items-baseline gap-1">
+                        <span style={{ fontSize: 26, fontWeight: 600, color: sb.ink }}>${plan.price_monthly}</span>
+                        <span style={{ color: sb.inkMute, fontSize: 13 }}>/mo</span>
+                      </div>
+                      <p style={{ fontSize: 12, color: sb.inkMute }}>${plan.price_yearly}/year</p>
                     </div>
-                    <p className="text-sm text-muted-foreground">${plan.price_yearly}/year</p>
+
+                    <div className="space-y-2 text-xs" style={{ color: sb.ink }}>
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-3.5 w-3.5" style={{ color: sb.primary }} />
+                        <span>{plan.credits_per_month} AI credits/mo</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Package className="h-3.5 w-3.5" style={{ color: sb.primaryDeep }} />
+                        <span>{plan.max_listings === -1 ? 'Unlimited' : plan.max_listings} listings</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <ShoppingCart className="h-3.5 w-3.5" style={{ color: "#ffdb13" }} />
+                        <span>{plan.max_auto_orders === -1 ? 'Unlimited' : plan.max_auto_orders} auto-orders/day</span>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-primary" />
-                      <span>{plan.credits_per_month} AI credits/mo</span>
+                  <div className="space-y-3 pt-3 border-t" style={{ borderColor: sb.hairlineCool }}>
+                    {/* Sub-page links */}
+                    <div className="flex gap-2">
+                      <Link to={`/plans/${plan.id}/features`} className="flex-1">
+                        <Button variant="outline" size="sm" className="w-full text-xs h-8" style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>
+                          <List className="h-3 w-3 mr-1.5" />Features
+                        </Button>
+                      </Link>
+                      <Link to={`/plans/${plan.id}/prices`} className="flex-1">
+                        <Button variant="outline" size="sm" className="w-full text-xs h-8" style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>
+                          <CreditCard className="h-3 w-3 mr-1.5" />Prices
+                        </Button>
+                      </Link>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Package className="h-4 w-4 text-blue-500" />
-                      <span>{plan.max_listings === -1 ? 'Unlimited' : plan.max_listings} listings</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <ShoppingCart className="h-4 w-4 text-amber-500" />
-                      <span>{plan.max_auto_orders === -1 ? 'Unlimited' : plan.max_auto_orders} auto-orders/day</span>
-                    </div>
-                  </div>
 
-                  {/* Sub-page links */}
-                  <div className="flex gap-2">
-                    <Link to={`/plans/${plan.id}/features`} className="flex-1">
-                      <Button variant="outline" size="sm" className="w-full">
-                        <List className="h-3.5 w-3.5 mr-1.5" />Features
-                      </Button>
-                    </Link>
-                    <Link to={`/plans/${plan.id}/prices`} className="flex-1">
-                      <Button variant="outline" size="sm" className="w-full">
-                        <CreditCard className="h-3.5 w-3.5 mr-1.5" />Prices
-                      </Button>
-                    </Link>
-                  </div>
-
-                  <div className="pt-2 border-t border-border">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Subscribers</span>
-                      <Badge variant="secondary">{getUserCount(plan.id)}</Badge>
+                    <div className="flex items-center justify-between text-xs pt-1">
+                      <span style={{ color: sb.inkMute }}>Subscribers</span>
+                      <Badge variant="secondary" style={{ borderRadius: 6 }}>{getUserCount(plan.id)}</Badge>
                     </div>
                     {!plan.is_public && (
-                      <p className="text-xs text-muted-foreground mt-1">Hidden from pricing page</p>
+                      <p style={{ fontSize: 11, color: sb.inkMute }} className="mt-1 text-center italic">Hidden from pricing page</p>
+                    )}
+
+                    {!plan.is_active && (
+                      <div className="text-center pt-1">
+                        <Badge variant="destructive" style={{ borderRadius: 6 }}>DISABLED</Badge>
+                      </div>
+                    )}
+
+                    {plan.is_active && !plan.archived_at && (
+                      <div className="flex gap-2 pt-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 text-xs h-8 text-slate-500 hover:text-red-500"
+                          style={{ borderRadius: 6, borderColor: sb.hairline }}
+                          onClick={() => setDeletingPlan(plan)}
+                        >
+                          <X className="h-3.5 w-3.5 mr-1" />Deactivate
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 text-xs h-8 text-slate-500 hover:text-amber-600"
+                          style={{ borderRadius: 6, borderColor: sb.hairline }}
+                          onClick={() => setArchivingPlan(plan)}
+                        >
+                          <Archive className="h-3.5 w-3.5 mr-1" />Archive
+                        </Button>
+                      </div>
                     )}
                   </div>
-
-                  {!plan.is_active && (
-                    <div className="text-center">
-                      <Badge variant="destructive">DISABLED</Badge>
-                    </div>
-                  )}
-
-                  {plan.is_active && !plan.archived_at && (
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeletingPlan(plan)}
-                      >
-                        <X className="h-4 w-4 mr-1" />Deactivate
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 text-muted-foreground hover:text-amber-600"
-                        onClick={() => setArchivingPlan(plan)}
-                      >
-                        <Archive className="h-4 w-4 mr-1" />Archive
-                      </Button>
-                    </div>
-                  )}
                 </CardContent>
               </Card>
             </motion.div>
@@ -558,35 +585,35 @@ export default function AdminPlans() {
 
       {/* Deactivate Confirmation */}
       <AlertDialog open={!!deletingPlan} onOpenChange={() => setDeletingPlan(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent style={{ borderRadius: 12, borderColor: sb.hairline }}>
           <AlertDialogHeader>
-            <AlertDialogTitle>Deactivate Plan</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle style={{ color: sb.ink }}>Deactivate Plan</AlertDialogTitle>
+            <AlertDialogDescription style={{ color: sb.inkMute }}>
               Deactivate "{deletingPlan?.display_name}"? It will no longer appear on the pricing page.
               Existing subscribers keep access until their period ends. Plans are never deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeactivatePlan}>Deactivate</AlertDialogAction>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeactivatePlan} style={{ background: sb.primary, color: sb.onPrimary, borderRadius: 6 }}>Deactivate</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {/* Archive Confirmation */}
       <AlertDialog open={!!archivingPlan} onOpenChange={() => setArchivingPlan(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent style={{ borderRadius: 12, borderColor: sb.hairline }}>
           <AlertDialogHeader>
-            <AlertDialogTitle>Archive Plan</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle style={{ color: sb.ink }}>Archive Plan</AlertDialogTitle>
+            <AlertDialogDescription style={{ color: sb.inkMute }}>
               Archive "{archivingPlan?.display_name}"? This sets archived_at and hides it from the public pricing page.
               The plan record is preserved and existing subscribers are unaffected.
               You can unarchive by editing and clearing the archived_at field.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleArchivePlan} className="bg-amber-600 text-white hover:bg-amber-700">
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleArchivePlan} style={{ background: "#f59e0b", color: sb.onPrimary, borderRadius: 6 }}>
               Archive
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -596,7 +623,7 @@ export default function AdminPlans() {
   );
 }
 
-// Plan Form Component
+// Plan Form Component styled with Supabase Tokens
 function PlanForm({
   plan,
   onSave,
@@ -631,7 +658,6 @@ function PlanForm({
     max_seo_titles: plan?.max_seo_titles ?? 0,
     max_seo_descriptions: plan?.max_seo_descriptions ?? 0,
     order_reset_frequency: plan?.order_reset_frequency ?? 'monthly',
-    // New fields
     slug: plan?.slug || '',
     short_description: plan?.short_description || '',
     long_description: plan?.long_description || '',
@@ -650,111 +676,111 @@ function PlanForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4" style={{ fontFamily: "Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="name">Internal Name</Label>
-          <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g., starter" required />
+          <Label htmlFor="name" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Internal Name</Label>
+          <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g., starter" required style={{ borderRadius: 6, borderColor: sb.hairline }} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="display_name">Display Name</Label>
-          <Input id="display_name" value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} placeholder="e.g., Starter Plan" required />
+          <Label htmlFor="display_name" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Display Name</Label>
+          <Input id="display_name" value={formData.display_name} onChange={(e) => setFormData({ ...formData, display_name: e.target.value })} placeholder="e.g., Starter Plan" required style={{ borderRadius: 6, borderColor: sb.hairline }} />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="slug">Slug (URL-safe)</Label>
-          <Input id="slug" value={formData.slug} onChange={(e) => setFormData({ ...formData, slug: e.target.value })} placeholder="e.g., starter" />
+          <Label htmlFor="slug" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Slug (URL-safe)</Label>
+          <Input id="slug" value={formData.slug} onChange={(e) => setFormData({ ...formData, slug: e.target.value })} placeholder="e.g., starter" style={{ borderRadius: 6, borderColor: sb.hairline }} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="badge_text">Badge Text</Label>
-          <Input id="badge_text" value={formData.badge_text} onChange={(e) => setFormData({ ...formData, badge_text: e.target.value })} placeholder="e.g., Most Popular, Best Value" />
+          <Label htmlFor="badge_text" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Badge Text</Label>
+          <Input id="badge_text" value={formData.badge_text} onChange={(e) => setFormData({ ...formData, badge_text: e.target.value })} placeholder="e.g., Most Popular, Best Value" style={{ borderRadius: 6, borderColor: sb.hairline }} />
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="short_description">Short Description</Label>
-        <Input id="short_description" value={formData.short_description} onChange={(e) => setFormData({ ...formData, short_description: e.target.value })} placeholder="One-line plan pitch" />
+        <Label htmlFor="short_description" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Short Description</Label>
+        <Input id="short_description" value={formData.short_description} onChange={(e) => setFormData({ ...formData, short_description: e.target.value })} placeholder="One-line plan pitch" style={{ borderRadius: 6, borderColor: sb.hairline }} />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="long_description">Long Description</Label>
-        <Textarea id="long_description" value={formData.long_description} onChange={(e) => setFormData({ ...formData, long_description: e.target.value })} rows={2} placeholder="Detailed description (optional)" />
+        <Label htmlFor="long_description" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Long Description</Label>
+        <Textarea id="long_description" value={formData.long_description} onChange={(e) => setFormData({ ...formData, long_description: e.target.value })} rows={2} placeholder="Detailed description (optional)" style={{ borderRadius: 6, borderColor: sb.hairline }} />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="best_for">Best For</Label>
-          <Input id="best_for" value={formData.best_for} onChange={(e) => setFormData({ ...formData, best_for: e.target.value })} placeholder="e.g., Growing sellers" />
+          <Label htmlFor="best_for" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Best For</Label>
+          <Input id="best_for" value={formData.best_for} onChange={(e) => setFormData({ ...formData, best_for: e.target.value })} placeholder="e.g., Growing sellers" style={{ borderRadius: 6, borderColor: sb.hairline }} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="cta_text">CTA Button Text</Label>
-          <Input id="cta_text" value={formData.cta_text} onChange={(e) => setFormData({ ...formData, cta_text: e.target.value })} placeholder="e.g., Get Started with Starter" />
+          <Label htmlFor="cta_text" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>CTA Button Text</Label>
+          <Input id="cta_text" value={formData.cta_text} onChange={(e) => setFormData({ ...formData, cta_text: e.target.value })} placeholder="e.g., Get Started with Starter" style={{ borderRadius: 6, borderColor: sb.hairline }} />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="price_monthly">Monthly Price ($)</Label>
-          <Input id="price_monthly" type="number" step="0.01" min="0" value={formData.price_monthly} onChange={(e) => setFormData({ ...formData, price_monthly: parseFloat(e.target.value) || 0 })} />
+          <Label htmlFor="price_monthly" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Monthly Price ($)</Label>
+          <Input id="price_monthly" type="number" step="0.01" min="0" value={formData.price_monthly} onChange={(e) => setFormData({ ...formData, price_monthly: parseFloat(e.target.value) || 0 })} style={{ borderRadius: 6, borderColor: sb.hairline }} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="price_yearly">Yearly Price ($)</Label>
-          <Input id="price_yearly" type="number" step="0.01" min="0" value={formData.price_yearly} onChange={(e) => setFormData({ ...formData, price_yearly: parseFloat(e.target.value) || 0 })} />
+          <Label htmlFor="price_yearly" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Yearly Price ($)</Label>
+          <Input id="price_yearly" type="number" step="0.01" min="0" value={formData.price_yearly} onChange={(e) => setFormData({ ...formData, price_yearly: parseFloat(e.target.value) || 0 })} style={{ borderRadius: 6, borderColor: sb.hairline }} />
         </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="credits">Credits/Month</Label>
-          <Input id="credits" type="number" min="0" value={formData.credits_per_month} onChange={(e) => setFormData({ ...formData, credits_per_month: parseInt(e.target.value) || 0 })} />
+          <Label htmlFor="credits" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Credits/Month</Label>
+          <Input id="credits" type="number" min="0" value={formData.credits_per_month} onChange={(e) => setFormData({ ...formData, credits_per_month: parseInt(e.target.value) || 0 })} style={{ borderRadius: 6, borderColor: sb.hairline }} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="listings">Max Listings (-1 = ∞)</Label>
-          <Input id="listings" type="number" min="-1" value={formData.max_listings} onChange={(e) => setFormData({ ...formData, max_listings: parseInt(e.target.value) || 0 })} />
+          <Label htmlFor="listings" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Max Listings (-1 = ∞)</Label>
+          <Input id="listings" type="number" min="-1" value={formData.max_listings} onChange={(e) => setFormData({ ...formData, max_listings: parseInt(e.target.value) || 0 })} style={{ borderRadius: 6, borderColor: sb.hairline }} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="orders">Max Orders/Day</Label>
-          <Input id="orders" type="number" min="-1" value={formData.max_auto_orders} onChange={(e) => setFormData({ ...formData, max_auto_orders: parseInt(e.target.value) || 0 })} />
+          <Label htmlFor="orders" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Max Orders/Day</Label>
+          <Input id="orders" type="number" min="-1" value={formData.max_auto_orders} onChange={(e) => setFormData({ ...formData, max_auto_orders: parseInt(e.target.value) || 0 })} style={{ borderRadius: 6, borderColor: sb.hairline }} />
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="features">Features (one per line)</Label>
-        <Textarea id="features" value={formData.features} onChange={(e) => setFormData({ ...formData, features: e.target.value })} placeholder="Priority support&#10;Advanced analytics" rows={4} />
+        <Label htmlFor="features" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Features (one per line)</Label>
+        <Textarea id="features" value={formData.features} onChange={(e) => setFormData({ ...formData, features: e.target.value })} placeholder="Priority support&#10;Advanced analytics" rows={4} style={{ borderRadius: 6, borderColor: sb.hairline }} />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="stripe_monthly">Stripe Monthly Price ID</Label>
-          <Input id="stripe_monthly" value={formData.stripe_price_id_monthly} onChange={(e) => setFormData({ ...formData, stripe_price_id_monthly: e.target.value })} placeholder="price_..." />
+          <Label htmlFor="stripe_monthly" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Stripe Monthly Price ID</Label>
+          <Input id="stripe_monthly" value={formData.stripe_price_id_monthly} onChange={(e) => setFormData({ ...formData, stripe_price_id_monthly: e.target.value })} placeholder="price_..." style={{ borderRadius: 6, borderColor: sb.hairline }} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="stripe_yearly">Stripe Yearly Price ID</Label>
-          <Input id="stripe_yearly" value={formData.stripe_price_id_yearly} onChange={(e) => setFormData({ ...formData, stripe_price_id_yearly: e.target.value })} placeholder="price_..." />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="stripe_one_time">Stripe One-Time Price ID (trial $1)</Label>
-          <Input id="stripe_one_time" value={formData.stripe_price_id_one_time} onChange={(e) => setFormData({ ...formData, stripe_price_id_one_time: e.target.value })} placeholder="price_..." />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="stripe_product_id">Stripe Product ID</Label>
-          <Input id="stripe_product_id" value={formData.stripe_product_id} onChange={(e) => setFormData({ ...formData, stripe_product_id: e.target.value })} placeholder="prod_..." />
+          <Label htmlFor="stripe_yearly" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Stripe Yearly Price ID</Label>
+          <Input id="stripe_yearly" value={formData.stripe_price_id_yearly} onChange={(e) => setFormData({ ...formData, stripe_price_id_yearly: e.target.value })} placeholder="price_..." style={{ borderRadius: 6, borderColor: sb.hairline }} />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="sort_order">Sort Order</Label>
-          <Input id="sort_order" type="number" min="0" value={formData.sort_order} onChange={(e) => setFormData({ ...formData, sort_order: parseInt(e.target.value) || 0 })} />
+          <Label htmlFor="stripe_one_time" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Stripe One-Time Price ID (trial $1)</Label>
+          <Input id="stripe_one_time" value={formData.stripe_price_id_one_time} onChange={(e) => setFormData({ ...formData, stripe_price_id_one_time: e.target.value })} placeholder="price_..." style={{ borderRadius: 6, borderColor: sb.hairline }} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="order_reset">Order Reset Frequency</Label>
-          <select id="order_reset" className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm" value={formData.order_reset_frequency} onChange={(e) => setFormData({ ...formData, order_reset_frequency: e.target.value })}>
+          <Label htmlFor="stripe_product_id" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Stripe Product ID</Label>
+          <Input id="stripe_product_id" value={formData.stripe_product_id} onChange={(e) => setFormData({ ...formData, stripe_product_id: e.target.value })} placeholder="prod_..." style={{ borderRadius: 6, borderColor: sb.hairline }} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="sort_order" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Sort Order</Label>
+          <Input id="sort_order" type="number" min="0" value={formData.sort_order} onChange={(e) => setFormData({ ...formData, sort_order: parseInt(e.target.value) || 0 })} style={{ borderRadius: 6, borderColor: sb.hairline }} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="order_reset" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Order Reset Frequency</Label>
+          <select id="order_reset" className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm" value={formData.order_reset_frequency} onChange={(e) => setFormData({ ...formData, order_reset_frequency: e.target.value })} style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>
             <option value="daily">Daily</option>
             <option value="monthly">Monthly</option>
             <option value="never">Never (Accumulating)</option>
@@ -763,7 +789,7 @@ function PlanForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="feature_flags">Feature Flags (JSON)</Label>
+        <Label htmlFor="feature_flags" style={{ fontSize: 13, fontWeight: 500, color: sb.ink }}>Feature Flags (JSON)</Label>
         <Textarea
           id="feature_flags"
           value={formData.feature_flags}
@@ -774,14 +800,15 @@ function PlanForm({
           placeholder='{"bulk_lister": true, "ai_product_research": false}'
           rows={5}
           className="font-mono text-xs"
+          style={{ borderRadius: 6, borderColor: sb.hairline }}
         />
         {flagsError && <p className="text-xs text-destructive">{flagsError}</p>}
-        <p className="text-xs text-muted-foreground">Keys: bulk_lister, price_monitoring, ai_product_research, profitable_products, priority_support</p>
+        <p style={{ fontSize: 11, color: sb.inkMute }}>Keys: bulk_lister, price_monitoring, ai_product_research, profitable_products, priority_support</p>
       </div>
 
       {/* Toggles */}
-      <div className="border-t pt-4 mt-4">
-        <h4 className="font-medium mb-3">Plan Configuration</h4>
+      <div className="border-t pt-4 mt-4" style={{ borderColor: sb.hairlineCool }}>
+        <h4 className="font-medium mb-3" style={{ fontSize: 14, color: sb.ink }}>Plan Configuration</h4>
         <div className="grid grid-cols-2 gap-4">
           {[
             { id: 'is_trial', label: 'Trial Plan', field: 'is_trial' as const },
@@ -793,27 +820,27 @@ function PlanForm({
           ].map(({ id, label, field }) => (
             <div key={id} className="flex items-center gap-2">
               <Switch id={id} checked={Boolean(formData[field])} onCheckedChange={(checked) => setFormData({ ...formData, [field]: checked })} />
-              <Label htmlFor={id}>{label}</Label>
+              <Label htmlFor={id} style={{ fontSize: 13, color: sb.ink }}>{label}</Label>
             </div>
           ))}
         </div>
 
         {formData.is_trial && (
           <div className="space-y-2 mt-4">
-            <Label htmlFor="trial_duration">Trial Duration (days)</Label>
-            <Input id="trial_duration" type="number" min="1" max="365" value={formData.trial_duration_days} onChange={(e) => setFormData({ ...formData, trial_duration_days: parseInt(e.target.value) || 14 })} />
+            <Label htmlFor="trial_duration" style={{ fontSize: 13, color: sb.ink }}>Trial Duration (days)</Label>
+            <Input id="trial_duration" type="number" min="1" max="365" value={formData.trial_duration_days} onChange={(e) => setFormData({ ...formData, trial_duration_days: parseInt(e.target.value) || 14 })} style={{ borderRadius: 6, borderColor: sb.hairline }} />
           </div>
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 pt-2">
         <Switch id="is_active" checked={formData.is_active} onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })} />
-        <Label htmlFor="is_active">Plan is active</Label>
+        <Label htmlFor="is_active" style={{ fontSize: 13, color: sb.ink }}>Plan is active</Label>
       </div>
 
-      <DialogFooter>
-        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button type="submit" disabled={isSaving}>
+      <DialogFooter className="gap-2 pt-2">
+        <Button type="button" variant="outline" onClick={onCancel} style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>Cancel</Button>
+        <Button type="submit" disabled={isSaving} style={{ background: sb.primary, color: sb.onPrimary, borderRadius: 6, fontWeight: 500 }}>
           {isSaving ? (
             <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Saving...</>
           ) : (

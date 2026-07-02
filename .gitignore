@@ -53,5 +53,5 @@ original_runEbayAutomation.js
 
 # Reference directory
 reference/
-
 .vercel
+graphify-out/

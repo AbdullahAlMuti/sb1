@@ -1,96 +1,106 @@
 import React from "react";
 import { Skeleton } from "@repo/ui/components/ui/skeleton";
-import { CreditCard, PackageCheck, ShoppingBag, Settings2, Tags, TrendingUp, Users } from "lucide-react";
+import { CreditCard, ShoppingBag, Settings2, TrendingUp, Users } from "lucide-react";
 import { useEbayAdminOverview } from "../hooks/useEbayAdminOverview";
+
+/* ─── Supabase Design Tokens ─── */
+const sb = {
+  primary: "#3ecf8e",
+  ink: "#171717",
+  inkMute: "#707070",
+  inkFaint: "#b2b2b2",
+  canvas: "#ffffff",
+  canvasSoft: "#fafafa",
+  hairline: "#dfdfdf",
+} as const;
 
 export function EbayOverview() {
   const { data: overviewData, isLoading } = useEbayAdminOverview();
 
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" style={{ fontFamily: "Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
       <div>
-        <h2 className="text-lg font-semibold tracking-tight">eBay App Overview</h2>
-        <p className="text-sm text-muted-foreground">High-level statistics from your eBay Admin configuration and global system usage.</p>
+        <h2 style={{ fontSize: 22, fontWeight: 500, letterSpacing: -0.42, color: sb.ink }} className="tracking-tight">
+          eBay App Overview
+        </h2>
+        <p style={{ fontSize: 13, color: sb.inkMute, lineHeight: 1.45 }} className="mt-1">
+          High-level statistics from your eBay Admin configuration and global system usage.
+        </p>
       </div>
 
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 w-full rounded-xl" />
+            <Skeleton key={i} className="h-24 w-full" style={{ borderRadius: 12 }} />
           ))}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {/* Global Analytics Cards from RPC */}
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <ShoppingBag className="h-4 w-4 text-emerald-500" />
-              <span className="text-sm font-medium">System-Wide Orders</span>
-            </div>
-            <div className="text-2xl font-bold">{overviewData?.globalStats?.totalOrders?.toLocaleString() || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">Total orders synced</p>
-          </div>
-
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <CreditCard className="h-4 w-4 text-blue-500" />
-              <span className="text-sm font-medium">System-Wide Revenue</span>
-            </div>
-            <div className="text-2xl font-bold">
-              ${overviewData?.globalStats?.totalRevenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0.00"}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Total revenue tracked</p>
-          </div>
-
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <Users className="h-4 w-4 text-purple-500" />
-              <span className="text-sm font-medium">Active Stores</span>
-            </div>
-            <div className="text-2xl font-bold">{overviewData?.globalStats?.uniqueUsersWithOrders?.toLocaleString() || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">Users with synced orders</p>
-          </div>
-
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <TrendingUp className="h-4 w-4 text-orange-500" />
-              <span className="text-sm font-medium">Last 24h Activity</span>
-            </div>
-            <div className="text-2xl font-bold">{overviewData?.globalStats?.ordersLast24h?.toLocaleString() || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">Orders synced recently</p>
-          </div>
-
-          {/* Content Library Stats */}
-
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <Tags className="h-4 w-4 text-orange-500" />
-              <span className="text-sm font-medium">Must Sell</span>
-            </div>
-            <div className="text-2xl font-bold">{overviewData?.mustSell || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">Curated Items</p>
-          </div>
-
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <PackageCheck className="h-4 w-4 text-emerald-500" />
-              <span className="text-sm font-medium">Profitable Products</span>
-            </div>
-            <div className="text-2xl font-bold">{overviewData?.profitable || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">Curated Products</p>
-          </div>
-
-          <div className="rounded-xl border border-border bg-card p-4">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <Settings2 className="h-4 w-4 text-purple-500" />
-              <span className="text-sm font-medium">Sync Status</span>
-            </div>
-            <div className="text-lg font-bold">{overviewData?.syncEnabled ? "Enabled" : "Disabled"}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {overviewData?.syncDays ? `${overviewData.syncDays} Days Range` : "Not Configured"}
-            </p>
-          </div>
+          {[
+            {
+              title: "System-Wide Orders",
+              value: overviewData?.globalStats?.totalOrders?.toLocaleString() || 0,
+              desc: "Total orders synced",
+              icon: ShoppingBag,
+              iconColor: sb.primary,
+            },
+            {
+              title: "System-Wide Revenue",
+              value: `$${overviewData?.globalStats?.totalRevenue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0.00"}`,
+              desc: "Total revenue tracked",
+              icon: CreditCard,
+              iconColor: "#054cff", // Accent indigo
+            },
+            {
+              title: "Active Stores",
+              value: overviewData?.globalStats?.uniqueUsersWithOrders?.toLocaleString() || 0,
+              desc: "Users with synced orders",
+              icon: Users,
+              iconColor: "#644fc1", // Accent violet
+            },
+            {
+              title: "Last 24h Activity",
+              value: overviewData?.globalStats?.ordersLast24h?.toLocaleString() || 0,
+              desc: "Orders synced recently",
+              icon: TrendingUp,
+              iconColor: "#ffdb13", // Accent yellow
+            },
+            {
+              title: "Sync Status",
+              value: overviewData?.syncEnabled ? "Enabled" : "Disabled",
+              desc: overviewData?.syncDays ? `${overviewData.syncDays} Days Range` : "Not Configured",
+              icon: Settings2,
+              iconColor: "#644fc1",
+            }
+          ].map((card, idx) => {
+            const Icon = card.icon;
+            return (
+              <div
+                key={idx}
+                style={{
+                  background: sb.canvas,
+                  border: `1px solid ${sb.hairline}`,
+                  borderRadius: 12,
+                  padding: 20,
+                  boxShadow: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+                }}
+                className="flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center gap-2 mb-2" style={{ color: sb.inkMute }}>
+                    <Icon style={{ width: 16, height: 16, color: card.iconColor }} />
+                    <span style={{ fontSize: 13, fontWeight: 500 }}>{card.title}</span>
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 600, color: sb.ink, letterSpacing: -0.5 }}>
+                    {card.value}
+                  </div>
+                </div>
+                <p style={{ fontSize: 12, color: sb.inkMute, marginTop: 4, marginBlockEnd: 0 }}>
+                  {card.desc}
+                </p>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

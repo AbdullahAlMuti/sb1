@@ -451,7 +451,7 @@
 				log("info", `Calling edge function: ${functionName}`, { hasToken: true });
 				try {
 					const controller = new AbortController();
-					const timeoutId = setTimeout(() => controller.abort(), 3e4);
+					const timeoutId = setTimeout(() => controller.abort(), options.timeout || 3e4);
 					const response = await fetch(url, {
 						method: "POST",
 						headers: {
@@ -719,6 +719,10 @@
 				}
 			};
 		})();
+		try {
+			const _ssGlobal = typeof globalThis !== "undefined" && globalThis || typeof self !== "undefined" && self || typeof window !== "undefined" && window || null;
+			if (_ssGlobal) _ssGlobal.AuthHelper = AuthHelper;
+		} catch (_) {}
 		if (typeof module !== "undefined" && module.exports) module.exports = AuthHelper;
 	}));
 	//#endregion
@@ -2233,6 +2237,93 @@
 	require_retry_helper();
 	require_api_client();
 	require_sync_utils();
+	window.SSPricingRuleSync = (() => {
+		"use strict";
+		const CACHE_KEY = "pricingRulesCache";
+		const CACHE_TTL_MS = 300 * 1e3;
+		/**
+		* Sync pricing rules from the backend.
+		*
+		* @param {boolean} [forceRefresh=false]  Skip TTL and always fetch.
+		* @returns {Promise<object|null>}         Cached rules or null on total failure.
+		*/
+		async function sync(forceRefresh = false) {
+			try {
+				const cache = (await chrome.storage.local.get(CACHE_KEY))[CACHE_KEY] || null;
+				if (!forceRefresh && cache && typeof cache.fetchedAt === "number" && Date.now() - cache.fetchedAt < CACHE_TTL_MS) return cache;
+				const { token, isValid } = await AuthHelper.getAuthToken();
+				if (!token || !isValid) return cache;
+				const urls = getUrls();
+				const apiKeys = getApiKeys();
+				if (!urls || !apiKeys) return cache;
+				const headers = {
+					"Authorization": `Bearer ${token}`,
+					"apikey": apiKeys.SUPABASE_ANON || "",
+					"Content-Type": "application/json"
+				};
+				if (cache && cache.etag) headers["If-None-Match"] = cache.etag;
+				let response;
+				try {
+					response = await fetch(`${urls.SUPABASE_FUNCTIONS}/pricing-rules-sync`, {
+						method: "GET",
+						headers
+					});
+				} catch (networkErr) {
+					console.warn("[SSPricingRuleSync] network error:", networkErr?.message || networkErr);
+					return cache;
+				}
+				if (response.status === 304) {
+					const refreshed = {
+						...cache,
+						fetchedAt: Date.now()
+					};
+					await chrome.storage.local.set({ [CACHE_KEY]: refreshed });
+					return refreshed;
+				}
+				if (!response.ok) {
+					console.warn("[SSPricingRuleSync] server error:", response.status);
+					return cache;
+				}
+				const data = await response.json();
+				const etag = response.headers.get("ETag") || "";
+				const newCache = {
+					...data,
+					etag,
+					fetchedAt: Date.now()
+				};
+				await chrome.storage.local.set({ [CACHE_KEY]: newCache });
+				return newCache;
+			} catch (err) {
+				console.warn("[SSPricingRuleSync] sync error:", err?.message || err);
+				try {
+					return (await chrome.storage.local.get(CACHE_KEY))[CACHE_KEY] || null;
+				} catch (_) {
+					return null;
+				}
+			}
+		}
+		/**
+		* Read the cached rule for a specific supplier (local only, no network).
+		*
+		* @param {string} supplierKey  e.g. 'amazon', 'walmart', 'aliexpress'
+		* @returns {Promise<object|null>}
+		*/
+		async function getRuleForSupplier(supplierKey) {
+			try {
+				const cache = (await chrome.storage.local.get(CACHE_KEY))[CACHE_KEY];
+				if (!cache || !Array.isArray(cache.suppliers)) return null;
+				return cache.suppliers.find((s) => s.supplierKey === supplierKey) || null;
+			} catch (_) {
+				return null;
+			}
+		}
+		return {
+			sync,
+			getRuleForSupplier
+		};
+	})();
+	//#endregion
+	//#region common/sku-engine.js
 	window.SSSkuEngine = (() => {
 		const MAX_LEN = 50;
 		function _clean(s, maxChars) {
@@ -3433,6 +3524,18 @@
 		const [listingData, appData, parsedCsrf] = await api.createListing(adapted.prod_title, categoryId);
 		const { draftId, draftCsrfValue, epsData, listingModel, aspectNames } = api.extractListingDraft(listingData, appData, parsedCsrf);
 		console.log("[SS Uploader] Draft ID:", draftId, "— uploading images + fields...");
+		const _v0 = adapted.prod_variations && adapted.prod_variations[0] || {};
+		console.log("[SS Uploader] FINAL PAYLOAD →", {
+			title: adapted.prod_title,
+			titleLen: (adapted.prod_title || "").length,
+			descriptionLen: (adapted.prod_desc || "").length,
+			descriptionHead: (adapted.prod_desc || "").slice(0, 80),
+			price: _v0.price,
+			rawSupplierPrice: _v0.raw_supplier_price,
+			sku: _v0.sku,
+			skuEncoded: window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(_v0.sku || "") : _v0.sku,
+			variations: adapted.prod_variations.length
+		});
 		await api.updateListing(draftId, draftCsrfValue, epsData, listingModel, adapted);
 		console.log("[SS Uploader] Listing saved.");
 		const isSingleVariation = adapted.prod_variations.length <= 1;
@@ -4120,6 +4223,7 @@
 	}
 	var ALARM_SYNC_ORDERS = "ebay-order-sync";
 	var ALARM_SYNC_SETTINGS = "sync-settings";
+	var ALARM_PRICING_SYNC = "pricing-rules-sync";
 	async function startEbayOrderSyncInterval$1() {
 		const data = await chrome.storage.local.get(["ebaySyncInterval", "ebaySyncEnabled"]);
 		const interval = data.ebaySyncInterval || EBAY_ORDER_SYNC_INTERVAL;
@@ -4143,6 +4247,9 @@
 		if (alarm.name === ALARM_SYNC_ORDERS) {
 			if (typeof SyncUtils !== "undefined") SyncUtils.triggerEbayOrderSync("alarm");
 		} else if (alarm.name === ALARM_SYNC_SETTINGS) syncSettings();
+		else if (alarm.name === ALARM_PRICING_SYNC) {
+			if (typeof SSPricingRuleSync !== "undefined") SSPricingRuleSync.sync().catch(() => {});
+		}
 	});
 	chrome.runtime.onStartup.addListener(async () => {
 		chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -4151,6 +4258,7 @@
 		if (isAuth) {
 			if (typeof SyncUtils !== "undefined") setTimeout(() => SyncUtils.triggerEbayOrderSync("startup"), 1e4);
 			startEbayOrderSyncInterval$1();
+			if (typeof SSPricingRuleSync !== "undefined") SSPricingRuleSync.sync().catch(() => {});
 		}
 	});
 	chrome.runtime.onInstalled.addListener(async (details) => {
@@ -4160,6 +4268,7 @@
 		if (isAuth) {
 			if (typeof SyncUtils !== "undefined") setTimeout(() => SyncUtils.triggerEbayOrderSync("install"), 1e4);
 			startEbayOrderSyncInterval$1();
+			if (typeof SSPricingRuleSync !== "undefined") SSPricingRuleSync.sync().catch(() => {});
 		}
 		if (details.reason === "install") {
 			await chrome.storage.local.set({ firstInstall: true });
@@ -4169,6 +4278,7 @@
 		}
 	});
 	chrome.alarms.create(ALARM_SYNC_SETTINGS, { periodInMinutes: 30 });
+	chrome.alarms.create(ALARM_PRICING_SYNC, { periodInMinutes: 10 });
 	//#endregion
 	//#region background/message-router.js
 	/**
@@ -4198,8 +4308,11 @@
 	function detectSupplier(product) {
 		if (!product) return "amazon";
 		if (product.supplier === "walmart") return "walmart";
+		if (product.supplier === "aliexpress") return "aliexpress";
 		if (product.supplier === "amazon") return "amazon";
-		if ((product.url || product.amazonUrl || "").includes("walmart.")) return "walmart";
+		const url = product.url || product.amazonUrl || "";
+		if (url.includes("walmart.")) return "walmart";
+		if (url.includes("aliexpress.")) return "aliexpress";
 		return "amazon";
 	}
 	function createLogger(prefix) {
@@ -4228,6 +4341,53 @@
 	}
 	var authLog = createLogger("Auth");
 	var syncLog = createLogger("Sync");
+	function formatAiGenerationError(functionName, error, status) {
+		const raw = (error || "").toString().trim();
+		const label = functionName === "generate-description" ? "Description generation" : "Title generation";
+		if (status === 0) return `${label} backend is unreachable. ${raw || "Please check the extension backend target and network connection."}`;
+		if (status === 401) return raw || "Session expired. Please log in again.";
+		if (status === 402) return raw || "AI credits exhausted. Please add credits to continue.";
+		if (status === 429) return raw || "Rate limit exceeded. Please wait a moment and try again.";
+		if (status && status >= 500) return raw || `${label} service is temporarily unavailable.`;
+		return raw || `${label} failed.`;
+	}
+	function normalizeAiEdgeResult(functionName, edgeResult) {
+		if (!edgeResult) return {
+			success: false,
+			error: formatAiGenerationError(functionName, "No response from AI backend.", 0),
+			status: 0
+		};
+		if (edgeResult.error) return {
+			success: false,
+			error: formatAiGenerationError(functionName, edgeResult.error, edgeResult.status),
+			status: edgeResult.status
+		};
+		const data = edgeResult.data;
+		if (!data || typeof data !== "object") return {
+			success: false,
+			error: formatAiGenerationError(functionName, "Invalid AI backend response.", edgeResult.status),
+			status: edgeResult.status
+		};
+		if (data.success === false || data.error) return {
+			...data,
+			success: false,
+			error: formatAiGenerationError(functionName, data.error, edgeResult.status),
+			status: edgeResult.status
+		};
+		return {
+			...data,
+			success: true,
+			status: edgeResult.status
+		};
+	}
+	function getFirstGeneratedTitle(result) {
+		if (!result) return "";
+		if (typeof result.title === "string") return result.title.trim();
+		if (!Array.isArray(result.titles) || result.titles.length === 0) return "";
+		const first = result.titles[0];
+		if (typeof first === "string") return first.trim();
+		return (first?.title || "").toString().trim();
+	}
 	chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 		const urls = getUrls();
 		const apiKeys = getApiKeys();
@@ -4377,6 +4537,7 @@
 				if (success) {
 					if (typeof SyncUtils !== "undefined") setTimeout(() => SyncUtils.triggerEbayOrderSync("login"), 5e3);
 					if (typeof startEbayOrderSyncInterval === "function") startEbayOrderSyncInterval();
+					if (typeof SSPricingRuleSync !== "undefined") SSPricingRuleSync.sync(true).catch(() => {});
 				}
 				sendResponse({ success });
 			});
@@ -4553,6 +4714,7 @@
 						if (verified) {
 							if (typeof SyncUtils !== "undefined") setTimeout(() => SyncUtils.triggerEbayOrderSync("token_sync"), 5e3);
 							if (typeof startEbayOrderSyncInterval === "function") startEbayOrderSyncInterval();
+							if (typeof SSPricingRuleSync !== "undefined") SSPricingRuleSync.sync(true).catch(() => {});
 						}
 						sendResponse({
 							success: true,
@@ -4706,6 +4868,31 @@
 								supplier: request.supplier,
 								url: request.productURL
 							});
+							if (request.finalPrice && typeof SSPricingRuleSync !== "undefined") SSPricingRuleSync.getRuleForSupplier(detectedSup).then(async (cachedRule) => {
+								if (!cachedRule) return;
+								try {
+									const { token, isValid } = await AuthHelper.getAuthToken();
+									if (!token || !isValid) return;
+									const urls = getUrls();
+									const apiKeys = getApiKeys();
+									if (!urls || !apiKeys) return;
+									await fetch(`${urls.SUPABASE_FUNCTIONS}/pricing-verify`, {
+										method: "POST",
+										headers: {
+											"Authorization": `Bearer ${token}`,
+											"apikey": apiKeys.SUPABASE_ANON || "",
+											"Content-Type": "application/json"
+										},
+										body: JSON.stringify({
+											supplierKey: detectedSup,
+											supplierPrice: cleanPrice(request.amazonPrice || request.supplierPrice),
+											shippingCost: 0,
+											clientFinalPrice: cleanPrice(request.finalPrice),
+											clientRuleVersion: cachedRule.ruleVersion || 0
+										})
+									});
+								} catch (_) {}
+							}).catch(() => {});
 							const parsedEbayPrice = cleanPrice(request.finalPrice);
 							const parsedSupplierPrice = cleanPrice(request.amazonPrice || request.supplierPrice);
 							await postCreateListing({
@@ -4808,7 +4995,8 @@
 			(async () => {
 				try {
 					const fn = request.kind === "description" ? "generate-description-v2" : "generate-titles";
-					const resp = await AuthHelper.callEdgeFunction(fn, request.productData || {});
+					const timeout = request.kind === "description" ? 9e4 : 6e4;
+					const resp = await AuthHelper.callEdgeFunction(fn, request.productData || {}, { timeout });
 					if (resp.error) {
 						sendResponse({
 							success: false,
@@ -4919,29 +5107,23 @@
 		} else if (request.action === "GENERATE_TITLE") {
 			(async () => {
 				try {
-					const tokenData = await chrome.storage.local.get(["saasToken"]);
-					if (!tokenData.saasToken) throw new Error("Please log in.");
-					const json = await (await fetch(`${urls.SUPABASE_FUNCTIONS}/generate-titles`, {
-						method: "POST",
-						headers: {
-							"Content-Type": "application/json",
-							"apikey": apiKeys.SUPABASE_ANON,
-							"Authorization": `Bearer ${tokenData.saasToken}`
-						},
-						body: JSON.stringify(request.productData)
-					})).json();
-					if (json.success && Array.isArray(json.titles) && json.titles.length) sendResponse({
+					const result = normalizeAiEdgeResult("generate-titles", await AuthHelper.callEdgeFunction("generate-titles", request.productData || {}, { timeout: 6e4 }));
+					const title = getFirstGeneratedTitle(result);
+					if (result.success && title) sendResponse({
+						...result,
 						success: true,
-						title: json.titles[0].title || json.titles[0]
+						title
 					});
 					else sendResponse({
+						...result,
 						success: false,
-						error: json.error || "Title generation failed"
+						error: result.error || "No title returned."
 					});
 				} catch (e) {
 					sendResponse({
 						success: false,
-						error: e.message
+						error: formatAiGenerationError("generate-titles", e?.message, 0),
+						status: 0
 					});
 				}
 			})();
@@ -4949,20 +5131,12 @@
 		} else if (request.action === "GENERATE_AI_TITLES") {
 			(async () => {
 				try {
-					const tokenData = await chrome.storage.local.get(["saasToken"]);
-					sendResponse(await (await fetch(`${urls.SUPABASE_FUNCTIONS}/generate-titles`, {
-						method: "POST",
-						headers: {
-							"Content-Type": "application/json",
-							"apikey": apiKeys.SUPABASE_ANON,
-							"Authorization": `Bearer ${tokenData.saasToken}`
-						},
-						body: JSON.stringify(request.productData)
-					})).json());
+					sendResponse(normalizeAiEdgeResult("generate-titles", await AuthHelper.callEdgeFunction("generate-titles", request.productData || {}, { timeout: 6e4 })));
 				} catch (e) {
 					sendResponse({
 						success: false,
-						error: e.message
+						error: formatAiGenerationError("generate-titles", e?.message, 0),
+						status: 0
 					});
 				}
 			})();
@@ -4970,20 +5144,12 @@
 		} else if (request.action === "GENERATE_DESCRIPTION") {
 			(async () => {
 				try {
-					const tokenData = await chrome.storage.local.get(["saasToken"]);
-					sendResponse(await (await fetch(`${urls.SUPABASE_FUNCTIONS}/generate-description`, {
-						method: "POST",
-						headers: {
-							"Content-Type": "application/json",
-							"apikey": apiKeys.SUPABASE_ANON,
-							"Authorization": `Bearer ${tokenData.saasToken}`
-						},
-						body: JSON.stringify(request.productData)
-					})).json());
+					sendResponse(normalizeAiEdgeResult("generate-description", await AuthHelper.callEdgeFunction("generate-description", request.productData || {}, { timeout: 9e4 })));
 				} catch (e) {
 					sendResponse({
 						success: false,
-						error: e.message
+						error: formatAiGenerationError("generate-description", e?.message, 0),
+						status: 0
 					});
 				}
 			})();
@@ -5058,8 +5224,8 @@
 	});
 	//#endregion
 	//#region background/index.js
-	window.getUrls = () => typeof window.ExtensionConfig !== "undefined" ? window.ExtensionConfig.URLS : null;
-	window.getApiKeys = () => typeof window.ExtensionConfig !== "undefined" ? window.ExtensionConfig.API_KEYS : null;
+	globalThis.getUrls = () => typeof globalThis.ExtensionConfig !== "undefined" ? globalThis.ExtensionConfig.URLS : null;
+	globalThis.getApiKeys = () => typeof globalThis.ExtensionConfig !== "undefined" ? globalThis.ExtensionConfig.API_KEYS : null;
 	chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 	var SIDE_PANEL_DOMAINS = [
 		"amazon.com",

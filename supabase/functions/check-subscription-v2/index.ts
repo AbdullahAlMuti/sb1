@@ -270,6 +270,7 @@ serve(async (req) => {
         const profileUpdate: Record<string, unknown> = {
           plan_id: planDetails.id,
           selected_plan_id: planDetails.id,
+          pending_plan_id: null,
           payment_status: "paid",
           subscription_status: "active",
           current_period_end: subscriptionEnd,

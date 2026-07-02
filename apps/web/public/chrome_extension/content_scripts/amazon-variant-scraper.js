@@ -172,7 +172,7 @@
     let decoded = str.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
     decoded = decoded.replace(/&#x([0-9a-fA-F]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
                      .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d, 10)));
-    const currencyRegex = /(\$|£|€|¥|A\$|C\$|₹|R\$)\s*(\d[\d.,\s]*\d|\d)|(\d[\d.,\s]*\d|\d)\s*(\$|£|€|¥|A\$|C\$|₹|R\$)/;
+    const currencyRegex = /(A\$|C\$|R\$|\$|£|€|¥|₹)\s*(\d[\d.,\s]*\d|\d)|(\d[\d.,\s]*\d|\d)\s*(A\$|C\$|R\$|\$|£|€|¥|₹)/;
     const match = decoded.match(currencyRegex);
     if (match) {
       let rawNum = '';
@@ -229,20 +229,34 @@
         if (g && g.length > 0) return g[0];
       } catch (_) {}
     }
-    const priceEl = document.querySelector('.priceToPay, #corePrice_feature_div .a-price, #price_inside_buybox, .apexPriceToPay, #priceblock_ourprice, #priceblock_dealprice');
-    if (priceEl) {
-      const sym   = (priceEl.querySelector('.a-price-symbol')?.textContent || '$').trim();
-      const whole = (priceEl.querySelector('.a-price-whole')?.textContent || '').replace(/[^\d]/g, '');
-      const frac  = (priceEl.querySelector('.a-price-fraction')?.textContent || '00').trim();
-      let price = parseFloat(`${whole || 0}.${frac}`);
-      if (!(price > 0)) {
-        const rawText = priceEl.querySelector('.a-offscreen')?.textContent || priceEl.textContent || '';
-        const parsed = _cleanPriceText(rawText);
-        if (parsed && parsed.price > 0) {
-          price = parsed.price;
-          return { priceAmount: price, currencySymbol: parsed.symbol || sym };
-        }
+    const selectors = [
+      '.priceToPay',
+      '.apexPriceToPay',
+      '#corePrice_feature_div .a-price',
+      '#corePriceDisplay_desktop_feature_div .a-price',
+      '#corePrice_desktop .a-price',
+      '#price_inside_buybox',
+      '#priceblock_ourprice',
+      '#priceblock_dealprice',
+      '#priceblock_saleprice',
+      '#priceblock_businessprice',
+      '#newBuyBoxPrice',
+      '#sns-base-price',
+      '#tp_price_block_total_price_ww .a-price',
+      '.reinventPricePriceToPayMargin .a-price',
+      '.a-price .a-offscreen'
+    ];
+    const priceEls = Array.from(document.querySelectorAll(selectors.join(', ')));
+    for (const priceEl of priceEls) {
+      const sym = (priceEl.querySelector?.('.a-price-symbol')?.textContent || '$').trim();
+      const rawText = priceEl.querySelector?.('.a-offscreen')?.textContent || priceEl.textContent || '';
+      const parsed = _cleanPriceText(rawText);
+      if (parsed && parsed.price > 0) {
+        return { priceAmount: parsed.price, currencySymbol: parsed.symbol || sym };
       }
+      const whole = (priceEl.querySelector?.('.a-price-whole')?.textContent || '').replace(/[^\d]/g, '');
+      const frac  = (priceEl.querySelector?.('.a-price-fraction')?.textContent || '00').trim().replace(/[^\d]/g, '').slice(0, 2);
+      const price = parseFloat(`${whole || 0}.${frac || '00'}`);
       if (price > 0) return { priceAmount: price, currencySymbol: sym };
     }
     return null;
@@ -286,6 +300,17 @@
     out = out.replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d, 10)));
     out = out.replace(/&(?:#(?:x[0-9a-fA-F]+|\d+)|[a-zA-Z]+);/gi, m => ents[m.toLowerCase()] ?? m);
     return out;
+  }
+
+  function normalizeBrandText(text) {
+    const t = decodeText(String(text || ''))
+      .replace(/\s+/g, ' ')
+      .replace(/^Brand\s*:\s*/i, '')
+      .replace(/^Visit\s+the\s+/i, '')
+      .replace(/^Shop\s+the\s+/i, '')
+      .replace(/\s+Store$/i, '')
+      .trim();
+    return /^(store|brand)$/i.test(t) ? '' : t;
   }
 
   // ─── getVariations — two-phase, matches SuperDS exactly ───────────────────────
@@ -604,7 +629,7 @@
     const title = decodeText(titleRaw.trim());
 
     const brandEl = document.querySelector('#bylineInfo');
-    const brand = brandEl ? decodeText(brandEl.textContent.trim().replace(/^(Brand:|Visit the|Store)/i, '').trim()) : '';
+    const brand = brandEl ? normalizeBrandText(brandEl.textContent) : '';
 
     const bulletPoints = Array.from(
       document.querySelectorAll('#feature-bullets li span.a-list-item')
@@ -718,7 +743,7 @@
     const title = decodeText(titleRaw.trim());
 
     const brandEl = document.querySelector('#bylineInfo');
-    const brand = brandEl ? decodeText(brandEl.textContent.trim().replace(/^(Brand:|Visit the|Store)/i, '').trim()) : '';
+    const brand = brandEl ? normalizeBrandText(brandEl.textContent) : '';
 
     const bulletPoints = Array.from(
       document.querySelectorAll('#feature-bullets li span.a-list-item')
@@ -779,6 +804,6 @@
   // brittle SuperDS-ported parsing can be regression-locked by node:test. These
   // are the same function references used by the scraper; nothing is altered.
   window.SsAmazonVariantScraper._internals = {
-    _fixQuotes, _robustParse, _removeKey, _balanceBraces, _prepareJson, _parseWindowJson, _cleanPriceText,
+    _fixQuotes, _robustParse, _removeKey, _balanceBraces, _prepareJson, _parseWindowJson, _cleanPriceText, normalizeBrandText,
   };
 })();

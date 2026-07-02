@@ -1,5 +1,16 @@
 project_id = "ojxzssooylmydystjvdo"
 
+[auth]
+site_url = "https://sellersuit.com"
+additional_redirect_urls = [
+  "https://sellersuit.com/auth/callback",
+  "https://sellersuit.com/auth",
+  "https://sellersuit.com/verify-email",
+  "http://localhost:3001/auth/callback",
+  "http://localhost:3001/auth",
+  "http://localhost:3001/verify-email",
+]
+
 # Browser/user JWT endpoints. Keep platform JWT verification enabled.
 [functions.create-checkout]
 verify_jwt = true

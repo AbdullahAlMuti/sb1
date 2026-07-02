@@ -8,6 +8,19 @@ import { Label } from '@repo/ui/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@repo/ui/components/ui/select';
 import { toast } from 'sonner';
 
+/* ─── Supabase Design Tokens ─── */
+const sb = {
+  primary: "#3ecf8e",
+  primaryDeep: "#24b47e",
+  ink: "#171717",
+  inkMute: "#707070",
+  canvas: "#ffffff",
+  canvasSoft: "#fafafa",
+  hairline: "#dfdfdf",
+  hairlineCool: "#ededed",
+  onPrimary: "#171717",
+} as const;
+
 interface CreditAdjustmentModalProps {
   userId: string;
   currentBalance: number;
@@ -23,16 +36,6 @@ export function CreditAdjustmentModal({ userId, currentBalance, trigger, onSucce
   const queryClient = useQueryClient();
 
   const numAmount = parseInt(amount || '0', 10);
-  const adjustedAmount = (type === 'revoke' || type === 'correction' && numAmount > 0 && currentBalance - numAmount >= 0) 
-                         ? (type === 'revoke' ? -Math.abs(numAmount) : -Math.abs(numAmount)) // default correction to negative unless specified?
-                         : (type === 'revoke' ? -Math.abs(numAmount) : Math.abs(numAmount));
-
-  // Let's refine correction: if type is revoke, make amount negative. If grant/refund/goodwill, make positive.
-  const finalAmount = type === 'revoke' ? -Math.abs(numAmount) : Math.abs(numAmount);
-  // Actually, correction could be positive or negative. We'll enforce the admin to type a negative sign if they want negative for correction, OR we simplify:
-  // Grant, Goodwill, Refund = Add.
-  // Revoke = Subtract.
-  // Correction = Subtract. (or allow negative input?) Let's explicitly do Add/Subtract based on type.
   const isSubtract = type === 'revoke' || type === 'correction';
   const displayAmount = isSubtract ? -Math.abs(numAmount) : Math.abs(numAmount);
   const projectedBalance = currentBalance + (isNaN(displayAmount) ? 0 : displayAmount);
@@ -70,24 +73,28 @@ export function CreditAdjustmentModal({ userId, currentBalance, trigger, onSucce
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        {trigger || <Button variant="outline" size="sm">Adjust Credits</Button>}
+        {trigger || (
+          <Button variant="outline" size="sm" style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>
+            Adjust Credits
+          </Button>
+        )}
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent style={{ borderRadius: 12, borderColor: sb.hairline }}>
         <DialogHeader>
-          <DialogTitle>Manual Credit Adjustment</DialogTitle>
-          <DialogDescription>
+          <DialogTitle style={{ fontSize: 18, fontWeight: 500, color: sb.ink }}>Manual Credit Adjustment</DialogTitle>
+          <DialogDescription style={{ fontSize: 13, color: sb.inkMute }}>
             Grant or revoke credits for this user. This action is audited.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label>Adjustment Type</Label>
+            <Label style={{ fontSize: 14, fontWeight: 500, color: sb.ink }}>Adjustment Type</Label>
             <Select value={type} onValueChange={setType}>
-              <SelectTrigger>
+              <SelectTrigger style={{ borderRadius: 6, borderColor: sb.hairline }}>
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent style={{ borderRadius: 6 }}>
                 <SelectItem value="grant">Grant (Add)</SelectItem>
                 <SelectItem value="goodwill">Goodwill (Add)</SelectItem>
                 <SelectItem value="refund">Refund (Add)</SelectItem>
@@ -98,38 +105,41 @@ export function CreditAdjustmentModal({ userId, currentBalance, trigger, onSucce
           </div>
 
           <div className="space-y-2">
-            <Label>Amount</Label>
+            <Label style={{ fontSize: 14, fontWeight: 500, color: sb.ink }}>Amount</Label>
             <Input 
               type="number" 
               placeholder="e.g. 50" 
               value={amount}
               onChange={e => setAmount(e.target.value)}
               min={1}
+              style={{ borderRadius: 6, borderColor: sb.hairline }}
             />
           </div>
 
           <div className="space-y-2">
-            <Label>Reason (Required)</Label>
+            <Label style={{ fontSize: 14, fontWeight: 500, color: sb.ink }}>Reason (Required)</Label>
             <Input 
               placeholder="Reason for audit log..." 
               value={reason}
               onChange={e => setReason(e.target.value)}
+              style={{ borderRadius: 6, borderColor: sb.hairline }}
             />
           </div>
 
-          <div className="bg-muted/30 p-3 rounded-lg border text-sm flex justify-between items-center">
-            <span className="text-muted-foreground">Projected Balance:</span>
-            <span className={`font-mono font-medium ${projectedBalance < 0 ? 'text-red-500' : ''}`}>
+          <div className="p-3 flex justify-between items-center text-sm border" style={{ background: sb.canvasSoft, borderColor: sb.hairline, borderRadius: 8 }}>
+            <span style={{ color: sb.inkMute }}>Projected Balance:</span>
+            <span className="font-mono font-medium" style={{ color: projectedBalance < 0 ? '#ff2201' : sb.ink }}>
               {currentBalance} → {projectedBalance}
             </span>
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)} style={{ borderRadius: 6, borderColor: sb.hairline, color: sb.ink }}>Cancel</Button>
           <Button 
             onClick={() => mutation.mutate()} 
             disabled={mutation.isPending || projectedBalance < 0 || !reason.trim() || !amount}
+            style={{ background: sb.primary, color: sb.onPrimary, borderRadius: 6 }}
           >
             {mutation.isPending ? "Applying..." : "Confirm Adjustment"}
           </Button>

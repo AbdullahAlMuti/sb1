@@ -25,13 +25,13 @@ test('unpaid user with plan token → /checkout (encoded)', () => {
   );
 });
 
-test('unpaid user with no plan token → /pricing (Flow A)', () => {
+test('unpaid user with no plan token → /choose-plan (Flow A)', () => {
   assert.equal(
     routeAfterAuth({ canAccess: false, planToken: null, dashboardPath: '/dashboard/ebay' }),
-    '/pricing',
+    '/choose-plan',
   );
   assert.equal(
     routeAfterAuth({ canAccess: false, planToken: '   ', dashboardPath: '/dashboard/ebay' }),
-    '/pricing',
+    '/choose-plan',
   );
 });

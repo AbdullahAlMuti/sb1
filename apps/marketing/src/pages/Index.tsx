@@ -1,21 +1,17 @@
 import Navbar from "@/components/Navbar";
 import HeroSection from "@/components/HeroSection";
-import ShowcasesSection from "@/components/ShowcasesSection";
 import AgentCapabilitiesSection from "@/components/AgentCapabilitiesSection";
-import TogetherSection from "@/components/TogetherSection";
-import StatsMarquee from "@/components/StatsMarquee";
+import VeroCheckSection from "@/components/VeroCheckSection";
 import CTASection from "@/components/CTASection";
 import Footer from "@/components/Footer";
 
 const Index = () => (
-  <div style={{ background: "#ffffff", overflowX: "hidden" }}>
+  <div style={{ background: "#ffffff" }}>
     <Navbar />
-    <main>
+    <main style={{ overflowX: "hidden" }}>
       <HeroSection />
-      <ShowcasesSection />
       <AgentCapabilitiesSection />
-      <TogetherSection />
-      <StatsMarquee />
+      <VeroCheckSection />
       <CTASection />
     </main>
     <Footer />

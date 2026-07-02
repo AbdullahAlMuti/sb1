@@ -264,10 +264,13 @@ export default function Register() {
 
   const handleGoogleSignIn = async () => {
     try {
+      // Persist the plan intent so it survives the round-trip to Google.
+      if (planToken) setPlanIntent(planToken);
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/dashboard`
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: { prompt: 'select_account' }
         }
       });
       if (error) throw error;

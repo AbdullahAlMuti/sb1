@@ -552,14 +552,30 @@
         draft = await window.SSListingDraft.getDraft();
       }
 
-      // Resolve title: panel input > draft > product
-      const panelTitle = inpTitle.value.trim();
-      const finalTitle = panelTitle || (draft && draft.title) || product.title || '';
-      const titleSource = panelTitle ? 'manual' : ((draft && draft.title_source) || 'scraped');
+      const storedAi = await new Promise(r => chrome.storage.local.get([
+        'selectedEbayTitle',
+        'selectedEbayDescription',
+        'generatedAt',
+        'selectedDescriptionTimestamp'
+      ], r));
+      const scannedAt = product.lastScannedAt || product.scrapedAt || 0;
+      const storedTitleFresh = !scannedAt || (storedAi.generatedAt || 0) >= scannedAt;
+      const storedDescFresh = !scannedAt || (storedAi.selectedDescriptionTimestamp || 0) >= scannedAt;
 
-      // Resolve description from draft
-      const description = (draft && draft.description) || product.description || '';
-      const descSource = (draft && draft.description_source) || 'scraped';
+      // Resolve title: manual edit > fresh AI title > draft > scraped title.
+      const scrapedTitle = (product.title || '').trim();
+      const panelTitleRaw = inpTitle.value.trim();
+      const panelTitle = panelTitleRaw && panelTitleRaw !== scrapedTitle ? panelTitleRaw : '';
+      const aiTitle = storedTitleFresh ? (storedAi.selectedEbayTitle || '') : '';
+      const finalTitle = panelTitle || aiTitle || (draft && draft.title) || scrapedTitle || '';
+      const titleSource = panelTitle ? 'manual'
+        : aiTitle ? 'ai'
+        : ((draft && draft.title_source) || 'scraped');
+
+      // Resolve description: fresh AI description > draft > scraped description.
+      const aiDescription = storedDescFresh ? (storedAi.selectedEbayDescription || '') : '';
+      const description = aiDescription || (draft && draft.description) || product.description || '';
+      const descSource = aiDescription ? 'ai' : ((draft && draft.description_source) || 'scraped');
 
       // Resolve pricing: edited product > draft. Draft is scan-time state and
       // must not resurrect old Amazon calculated prices over panel edits.
@@ -569,8 +585,14 @@
 
       // Resolve SKU: edited product wins over scan-time draft.
       const draftSku = draft && draft.sku;
-      const sku = product.ebaySku || draftSku || '';
-      const skuSource = product.sku_source || (draft && draft.sku_source) || 'generated';
+      const skuRoot = product.sourceId || product.parentAsin || product.asin || '';
+      const generatedSku = (!product.ebaySku && !draftSku && skuRoot && window.SSSkuEngine)
+        ? window.SSSkuEngine.buildReadable(skuRoot, {}, window.SSSkuEngine.prefixFor(product.supplier))
+        : '';
+      const sku = product.ebaySku || draftSku || generatedSku || '';
+      const skuSource = product.ebaySku
+        ? (product.sku_source || 'manual')
+        : (draftSku ? ((draft && draft.sku_source) || 'generated') : 'generated');
 
       const images = (product.images || []).filter((_, i) => !_removedImages.has(i));
 
@@ -588,6 +610,8 @@
         images,
         ebaySku: sku,
         finalPrice,
+        supplierPrice: product.raw_supplier_price || product.price || 0,
+        ebayFinalPrice: finalPrice,
         quantity: parseInt(inpAdvQty.value, 10) || 1,
         variations: _mode === 'single' ? [] : _variations,
         title_source: titleSource,
@@ -1122,6 +1146,7 @@
         const varIsManual = cleanFloat(v.ebayPrice) > 0;
         if (!varIsManual && raw > 0) {
           v.finalPrice = window.SSPricingEngine.calculatePrice(raw, cfg);
+          if (!cleanFloat(v.ebayPrice)) v.ebayPrice = v.finalPrice;
         }
       });
     }

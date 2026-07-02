@@ -10,6 +10,19 @@ import { toast } from "sonner";
 import { Button } from "@repo/ui/components/ui/button";
 import { Input } from "@repo/ui/components/ui/input";
 
+/* ─── Supabase Design Tokens ─── */
+const sb = {
+  primary: "#3ecf8e",
+  primaryDeep: "#24b47e",
+  ink: "#171717",
+  inkMute: "#707070",
+  canvas: "#ffffff",
+  canvasSoft: "#fafafa",
+  hairline: "#dfdfdf",
+  hairlineCool: "#ededed",
+  onPrimary: "#171717",
+} as const;
+
 export default function AdminEbayFeatureControls() {
   const queryClient = useQueryClient();
   const [reasonMap, setReasonMap] = useState<Record<string, string>>({});
@@ -128,44 +141,49 @@ export default function AdminEbayFeatureControls() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" style={{ fontFamily: "Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif" }}>
       <div>
-        <h2 className="text-lg font-semibold tracking-tight">Feature Controls</h2>
-        <p className="text-sm text-muted-foreground">Manage global feature flags and granular per-user overrides.</p>
+        <h2 style={{ fontSize: 22, fontWeight: 500, letterSpacing: -0.42, color: sb.ink }} className="tracking-tight">
+          Feature Controls
+        </h2>
+        <p style={{ fontSize: 13, color: sb.inkMute, lineHeight: 1.45 }} className="mt-1">
+          Manage global feature flags and granular per-user overrides.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Global Controls */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Settings2 className="h-4 w-4 text-blue-500" />
+        <Card style={{ background: sb.canvas, border: `1px solid ${sb.hairline}`, borderRadius: 12, overflow: "hidden" }}>
+          <CardHeader style={{ padding: "24px 28px 16px", borderBottom: `1px solid ${sb.hairlineCool}` }}>
+            <CardTitle className="text-base flex items-center gap-2" style={{ color: sb.ink, fontWeight: 500 }}>
+              <Settings2 style={{ width: 16, height: 16, color: sb.primary }} />
               Global Access Rules
             </CardTitle>
-            <CardDescription>Default features enabled for all users.</CardDescription>
+            <CardDescription style={{ fontSize: 12, color: sb.inkMute }}>Default features enabled for all users.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent style={{ padding: 0 }}>
             {isLoadingGlobal ? (
-              <div className="flex justify-center p-6"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+              <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
             ) : (
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Feature Key</TableHead>
-                    <TableHead className="w-[200px]">Reason for Change</TableHead>
-                    <TableHead className="text-right">Global Status</TableHead>
+                <TableHeader style={{ background: sb.canvasSoft }}>
+                  <TableRow style={{ borderBottom: `1px solid ${sb.hairline}` }}>
+                    <TableHead style={{ color: sb.ink, fontWeight: 500 }}>Feature Key</TableHead>
+                    <TableHead className="w-[200px]" style={{ color: sb.ink, fontWeight: 500 }}>Reason for Change</TableHead>
+                    <TableHead className="text-right" style={{ color: sb.ink, fontWeight: 500 }}>Global Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {globalFeatures?.map((f: any) => (
-                    <TableRow key={f.feature_key}>
-                      <TableCell className="font-medium text-sm">{f.feature_key}</TableCell>
+                    <TableRow key={f.feature_key} style={{ borderBottom: `1px solid ${sb.hairline}` }}>
+                      <TableCell style={{ fontWeight: 500, fontSize: 13, color: sb.ink }}>{f.feature_key}</TableCell>
                       <TableCell>
                         <Input 
                           placeholder="Why..." 
                           className="h-8 text-xs" 
                           value={reasonMap[f.feature_key] || ""}
                           onChange={(e) => setReasonMap(p => ({...p, [f.feature_key]: e.target.value}))}
+                          style={{ borderRadius: 6, borderColor: sb.hairline }}
                         />
                       </TableCell>
                       <TableCell className="text-right">
@@ -186,15 +204,15 @@ export default function AdminEbayFeatureControls() {
         </Card>
 
         {/* Per-User Overrides */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <User className="h-4 w-4 text-emerald-500" />
+        <Card style={{ background: sb.canvas, border: `1px solid ${sb.hairline}`, borderRadius: 12, overflow: "hidden" }}>
+          <CardHeader style={{ padding: "24px 28px 16px", borderBottom: `1px solid ${sb.hairlineCool}` }}>
+            <CardTitle className="text-base flex items-center gap-2" style={{ color: sb.ink, fontWeight: 500 }}>
+              <User style={{ width: 16, height: 16, color: sb.primary }} />
               User-Specific Overrides
             </CardTitle>
-            <CardDescription>Force enable or disable a feature for a specific user ID.</CardDescription>
+            <CardDescription style={{ fontSize: 12, color: sb.inkMute }}>Force enable or disable a feature for a specific user ID.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4" style={{ padding: "24px 28px" }}>
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
@@ -202,11 +220,12 @@ export default function AdminEbayFeatureControls() {
                 className="pl-9"
                 value={selectedUserId}
                 onChange={(e) => setSelectedUserId(e.target.value)}
+                style={{ borderRadius: 6, borderColor: sb.hairline }}
               />
             </div>
 
             {debouncedUserId.length > 5 && !isValidUUID(debouncedUserId) && (
-              <div className="p-3 bg-red-50 text-red-600 text-sm rounded border border-red-200">
+              <div className="p-3 bg-red-50 text-red-600 text-sm rounded border border-red-200" style={{ borderRadius: 6 }}>
                 Invalid UUID format. Please paste a valid 36-character User ID.
               </div>
             )}
@@ -215,14 +234,19 @@ export default function AdminEbayFeatureControls() {
               isLoadingOverrides || isLoadingGlobal ? (
                 <div className="flex justify-center p-6"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
               ) : (
-                <div className="rounded border bg-muted/20">
+                <div style={{
+                  background: sb.canvas,
+                  border: `1px solid ${sb.hairline}`,
+                  borderRadius: 8,
+                  overflow: "hidden",
+                }}>
                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Feature</TableHead>
-                        <TableHead>Effective Access</TableHead>
-                        <TableHead>Reason</TableHead>
-                        <TableHead className="text-right">Override</TableHead>
+                    <TableHeader style={{ background: sb.canvasSoft }}>
+                      <TableRow style={{ borderBottom: `1px solid ${sb.hairline}` }}>
+                        <TableHead style={{ color: sb.ink, fontWeight: 500 }}>Feature</TableHead>
+                        <TableHead style={{ color: sb.ink, fontWeight: 500 }}>Effective Access</TableHead>
+                        <TableHead style={{ color: sb.ink, fontWeight: 500 }}>Reason</TableHead>
+                        <TableHead className="text-right" style={{ color: sb.ink, fontWeight: 500 }}>Override</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -232,17 +256,19 @@ export default function AdminEbayFeatureControls() {
                         const reasonKey = `user_${gf.feature_key}`;
 
                         return (
-                          <TableRow key={`user_${gf.feature_key}`}>
-                            <TableCell className="font-medium text-xs">{gf.feature_key}</TableCell>
+                          <TableRow key={`user_${gf.feature_key}`} style={{ borderBottom: `1px solid ${sb.hairline}` }}>
+                            <TableCell style={{ fontWeight: 500, fontSize: 12, color: sb.ink }}>{gf.feature_key}</TableCell>
                             <TableCell>
-                              <Badge variant={effectiveEnabled ? 'default' : 'secondary'} className="mr-2">
-                                {effectiveEnabled ? 'Enabled' : 'Disabled'}
-                              </Badge>
-                              {override && (
-                                <Badge variant="outline" className="text-[10px] h-5 border-emerald-200 text-emerald-600 bg-emerald-50">
-                                  User Override
+                              <div className="flex flex-col gap-1 items-start">
+                                <Badge variant={effectiveEnabled ? 'default' : 'secondary'} className="mr-2" style={{ borderRadius: 6 }}>
+                                  {effectiveEnabled ? 'Enabled' : 'Disabled'}
                                 </Badge>
-                              )}
+                                {override && (
+                                  <Badge variant="outline" className="text-[10px] h-5 border-emerald-200 text-emerald-600 bg-emerald-50" style={{ borderRadius: 6 }}>
+                                    User Override
+                                  </Badge>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell>
                               <Input 
@@ -250,20 +276,21 @@ export default function AdminEbayFeatureControls() {
                                 className="h-7 text-[10px]" 
                                 value={reasonMap[reasonKey] || ""}
                                 onChange={(e) => setReasonMap(p => ({...p, [reasonKey]: e.target.value}))}
+                                style={{ borderRadius: 6, borderColor: sb.hairline }}
                               />
                             </TableCell>
                             <TableCell className="text-right space-x-2 whitespace-nowrap">
                               {!override ? (
                                 <>
-                                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleUserToggle(gf.feature_key, true)}>
+                                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleUserToggle(gf.feature_key, true)} style={{ borderRadius: 6, borderColor: sb.hairline }}>
                                     Force On
                                   </Button>
-                                  <Button size="sm" variant="outline" className="h-7 text-xs text-red-600 hover:text-red-700" onClick={() => handleUserToggle(gf.feature_key, false)}>
+                                  <Button size="sm" variant="outline" className="h-7 text-xs text-red-650 hover:text-red-700" onClick={() => handleUserToggle(gf.feature_key, false)} style={{ borderRadius: 6, borderColor: sb.hairline }}>
                                     Force Off
                                   </Button>
                                 </>
                               ) : (
-                                <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => handleUserToggle(gf.feature_key, false, true)}>
+                                <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => handleUserToggle(gf.feature_key, false, true)} style={{ borderRadius: 6 }}>
                                   Remove Override
                                 </Button>
                               )}
@@ -276,7 +303,7 @@ export default function AdminEbayFeatureControls() {
                 </div>
               )
             ) : (
-              <div className="flex flex-col items-center justify-center p-8 text-center border rounded border-dashed bg-muted/10">
+              <div className="flex flex-col items-center justify-center p-8 text-center border rounded border-dashed bg-muted/10" style={{ borderRadius: 8 }}>
                 <AlertTriangle className="h-8 w-8 text-muted-foreground/50 mb-3" />
                 <p className="text-sm text-muted-foreground">Search for a User UUID to view or apply specific feature overrides.</p>
               </div>

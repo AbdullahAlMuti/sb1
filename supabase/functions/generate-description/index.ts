@@ -30,7 +30,6 @@ serve(async (req) => {
   }
 
   try {
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
 
     // Create service role client for database operations
     const supabase = createServiceClient();
@@ -259,89 +258,68 @@ Generate this title strictly following the Title Copywriter rules below:
 ${titleRules}
 `;
 
-    const useDirectOpenAI = apiProvider === 'openai' && adminApiKey && adminApiKey.startsWith('sk-') && adminApiKey.length > 20;
-    console.log(`[generate-description] Using ${useDirectOpenAI ? 'Direct OpenAI' : 'Lovable AI Gateway'} with model: ${model}`);
+    if (!adminApiKey || !adminApiKey.startsWith('sk-') || adminApiKey.length <= 20) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'OpenAI API key not configured. Add your key in Admin → Extension Settings (ext_ai_api_key).',
+      }), { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    console.log(`[generate-description] Calling OpenAI with model: ${model}`);
 
     let responseContent = '';
 
-    if (useDirectOpenAI) {
-      console.log('[generate-description] Calling OpenAI directly');
-      let response;
-      let retries = 2;
-      
-      while (retries >= 0) {
-        response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${adminApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: model.startsWith('openai/') ? model.replace('openai/', '') : model,
-            messages: [
-              { 
-                role: 'system', 
-                content: 'You are an expert product listing generator. You MUST follow ALL instructions in the user\'s prompt exactly. Always respond with valid JSON only, exactly matching the requested structure. NEVER output markdown code blocks or wrapper backticks.' 
-              },
-              { role: 'user', content: prompt }
-            ],
-            response_format: { type: "json_object" },
-            max_tokens: 1000
-          }),
-        });
+    let response;
+    let retries = 2;
 
-        if (response.ok) break;
-
-        if (response.status >= 500 && retries > 0) {
-          await new Promise(r => setTimeout(r, 1000));
-          retries--;
-        } else {
-          break;
-        }
-      }
-
-      if (!response || !response.ok) {
-        const errorText = await (response ? response.text() : 'No response');
-        console.error('OpenAI API error:', response?.status, errorText);
-        throw new Error(`OpenAI API error: ${response?.status}`);
-      }
-
-      const data = await response.json();
-      responseContent = data.choices?.[0]?.message?.content || '';
-    } else {
-      // Lovable AI Gateway
-      if (!lovableApiKey) {
-        throw new Error('AI gateway credentials not configured.');
-      }
-
-      console.log('[generate-description] Calling Lovable AI Gateway');
-      const gatewayModel = model.startsWith('gpt') ? `openai/${model}` : model;
-
-      const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    while (retries >= 0) {
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${lovableApiKey}`,
+          'Authorization': `Bearer ${adminApiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: gatewayModel,
+          model: model.startsWith('openai/') ? model.replace('openai/', '') : model,
           messages: [
-            { role: 'user', content: prompt }
+            {
+              role: 'system',
+              content: 'You are an expert product listing generator. You MUST follow ALL instructions in the user\'s prompt exactly. Always respond with valid JSON only, exactly matching the requested structure. NEVER output markdown code blocks or wrapper backticks.',
+            },
+            { role: 'user', content: prompt },
           ],
-          response_format: { type: "json_object" },
-          max_tokens: 1000
+          response_format: { type: 'json_object' },
+          max_tokens: 1000,
         }),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Lovable AI Gateway error:', response.status, errorText);
-        throw new Error(`AI gateway error: ${response.status}`);
-      }
+      if (response.ok) break;
 
-      const data = await response.json();
-      responseContent = data.choices?.[0]?.message?.content || '';
+      if (response.status >= 500 && retries > 0) {
+        await new Promise(r => setTimeout(r, 1000));
+        retries--;
+      } else {
+        break;
+      }
     }
+
+    if (!response || !response.ok) {
+      const errorText = await (response ? response.text() : 'No response');
+      console.error('OpenAI API error:', response?.status, errorText);
+      if (response?.status === 401) {
+        throw new Error('Invalid OpenAI API key. Please update ext_ai_api_key in Admin → Extension Settings.');
+      }
+      if (response?.status === 429) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'OpenAI rate limit exceeded. Please wait a moment and try again.',
+        }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      throw new Error(`OpenAI API error: ${response?.status}`);
+    }
+
+    const data = await response.json();
+    responseContent = data.choices?.[0]?.message?.content || '';
 
     // 3) Process and render sections
     let aiJson: Record<string, any> = {};
@@ -388,29 +366,31 @@ ${titleRules}
     // 6) Enforce minimum length of 500 characters
     finalDescription = ensureMinimumLength(finalDescription, config.output_format);
 
-    const deducted = await deductUsage(supabase, userId, 'credit', DESCRIPTION_GENERATION_CREDIT_COST, {
-      description: 'AI description generation',
-      feature: 'generate-description',
-      provider: useDirectOpenAI ? 'openai' : 'lovable',
-      model,
-      length: finalDescription.length,
-    });
-    if (!deducted) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Unable to deduct credits for this generation. Please try again.',
-        code: 'CREDIT_DEDUCTION_FAILED',
-      }), {
-        status: 402,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    if (creditCheck.planName !== 'admin') {
+      const deducted = await deductUsage(supabase, userId, 'credit', DESCRIPTION_GENERATION_CREDIT_COST, {
+        description: 'AI description generation',
+        feature: 'generate-description',
+        provider: 'openai',
+        model,
+        length: finalDescription.length,
       });
+      if (!deducted) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Unable to deduct credits for this generation. Please try again.',
+          code: 'CREDIT_DEDUCTION_FAILED',
+        }), {
+          status: 402,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     return new Response(JSON.stringify({ 
       success: true, 
       title: generatedTitle,
       description: finalDescription,
-      provider: useDirectOpenAI ? 'openai' : 'lovable',
+      provider: 'openai',
       model,
       length: finalDescription.length,
       config_version: (config as DescriptionConfig & { version?: unknown }).version

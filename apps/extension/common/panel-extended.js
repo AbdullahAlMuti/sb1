@@ -410,7 +410,7 @@ async function _ssxRenderExtended(p) {
     _ssxText('ssx-head-title', p.title || 'Product');
     const supplierChip = document.getElementById('ssx-head-supplier');
     if (supplierChip) {
-        const logo = supplierChip.querySelector('img');
+        const logo = supplierChip.querySelector('img, svg');
         supplierChip.textContent = '';
         if (logo) supplierChip.appendChild(logo);
         supplierChip.appendChild(document.createTextNode(supplierMeta.displayName));

@@ -78,11 +78,15 @@ BEGIN
      OR NEW.selected_plan_id    IS DISTINCT FROM OLD.selected_plan_id
      OR NEW.pending_plan_id     IS DISTINCT FROM OLD.pending_plan_id
      OR NEW.customer_id         IS DISTINCT FROM OLD.customer_id
+     OR NEW.stripe_customer_id  IS DISTINCT FROM OLD.stripe_customer_id
      OR NEW.subscription_id     IS DISTINCT FROM OLD.subscription_id
      OR NEW.subscription_provider IS DISTINCT FROM OLD.subscription_provider
      OR NEW.current_period_start  IS DISTINCT FROM OLD.current_period_start
      OR NEW.current_period_end    IS DISTINCT FROM OLD.current_period_end
      OR NEW.is_active           IS DISTINCT FROM OLD.is_active
+     OR NEW.account_status      IS DISTINCT FROM OLD.account_status
+     OR NEW.trial_used_at       IS DISTINCT FROM OLD.trial_used_at
+     OR NEW.platform_access     IS DISTINCT FROM OLD.platform_access
   THEN
     RAISE EXCEPTION 'Not allowed to modify billing, subscription, or account-status columns'
       USING ERRCODE = '42501';

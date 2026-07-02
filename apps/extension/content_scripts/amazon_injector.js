@@ -337,11 +337,22 @@ const injectUI = async ({ fromSidebar = false, sidebarImages = [] } = {}) => {
 
         // Also inject the CSS if not already present
         if (!document.getElementById('sellersuit-panel-css')) {
-            const cssLink = document.createElement('link');
-            cssLink.id = 'sellersuit-panel-css';
-            cssLink.rel = 'stylesheet';
-            cssLink.href = chrome.runtime.getURL('ui/panel.css');
-            document.head.appendChild(cssLink);
+            try {
+                const cssUrl = chrome.runtime.getURL('ui/panel.css');
+                const cssResponse = await fetch(cssUrl);
+                const cssText = await cssResponse.text();
+                const style = document.createElement('style');
+                style.id = 'sellersuit-panel-css';
+                style.textContent = cssText;
+                document.head.appendChild(style);
+            } catch (err) {
+                console.error('[SellerSuit] Failed to inject inline CSS:', err);
+                const cssLink = document.createElement('link');
+                cssLink.id = 'sellersuit-panel-css';
+                cssLink.rel = 'stylesheet';
+                cssLink.href = chrome.runtime.getURL('ui/panel.css');
+                document.head.appendChild(cssLink);
+            }
         }
 
         // Inject the panel as the very first element inside the body tag
@@ -2984,7 +2995,10 @@ const addEventListenersToPanel = () => {
                         <div style="text-align: left; padding: 15px;">
                             <strong style="color: #f59e0b; font-size: 14px;">⏳ Rate Limit Exceeded</strong>
                             <p style="margin: 10px 0; font-size: 13px; color: #374151;">
-                                Too many requests. Please wait a moment and try again.
+                                ${errorMessage.includes('OpenAI API key') || errorMessage.includes('Admin') ? errorMessage : 'Too many requests. Please wait a moment and try again.'}
+                            </p>
+                            <p style="font-size: 11px; color: #6b7280; margin: 5px 0 0 0;">
+                                💡 For unthrottled access, add your OpenAI API key in Admin → Extension Settings.
                             </p>
                         </div>
                     `;
@@ -2993,7 +3007,10 @@ const addEventListenersToPanel = () => {
                         <div style="text-align: left; padding: 15px;">
                             <strong style="color: #dc2626; font-size: 14px;">💳 AI Credits Exhausted</strong>
                             <p style="margin: 10px 0; font-size: 13px; color: #374151;">
-                                Your AI credits have been used up. Please add more credits to continue.
+                                ${errorMessage.includes('OpenAI API key') || errorMessage.includes('Admin') ? errorMessage : 'Your AI credits have been used up. Please add more credits to continue.'}
+                            </p>
+                            <p style="font-size: 11px; color: #6b7280; margin: 5px 0 0 0;">
+                                💡 Add your OpenAI API key in Admin → Extension Settings to bypass the AI gateway.
                             </p>
                         </div>
                     `;

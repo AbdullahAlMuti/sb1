@@ -244,7 +244,7 @@ const AuthHelper = (() => {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), options.timeout || 30000);
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -566,6 +566,20 @@ const AuthHelper = (() => {
     setLastCheck: (val) => { lastAuthCheck = val; }
   };
 })();
+
+// Expose on the global so consumers resolve `AuthHelper` regardless of how this
+// file is loaded — classic <script> (shared global lexical scope), an ES-module
+// bundle (module-local const, NOT global), or a service worker. Without this,
+// any context whose load order/bundling differs throws
+// "ReferenceError: AuthHelper is not defined" (e.g. generate title/description).
+try {
+  const _ssGlobal =
+    (typeof globalThis !== 'undefined' && globalThis) ||
+    (typeof self !== 'undefined' && self) ||
+    (typeof window !== 'undefined' && window) ||
+    null;
+  if (_ssGlobal) _ssGlobal.AuthHelper = AuthHelper;
+} catch (_) { /* non-writable global — bare const still covers same-scope use */ }
 
 // Export for module usage
 if (typeof module !== 'undefined' && module.exports) {

@@ -1,23 +1,32 @@
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@repo/ui/components/ui/tabs";
-import { ShieldCheck, Laptop, Settings2, Activity, Settings } from "lucide-react";
+import { ShieldCheck, Laptop, Settings2 } from "lucide-react";
 import { DeviceListTable } from "../components/extension-admin/DeviceListTable";
 import { FeatureFlagsPanel } from "../components/extension-admin/FeatureFlagsPanel";
 import { PageHeader } from "@/core/ui/PageHeader";
 
-export default function AdminExtensionControl() {
+export default function AdminExtensionControl({ hideHeader }: { hideHeader?: boolean } = {}) {
   const [activeTab, setActiveTab] = useState("devices");
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Extension Control Plane"
-        description="Monitor sessions, manage feature flags, and debug extension connections"
-        icon={ShieldCheck}
-      />
+      {hideHeader ? (
+        <div className="border-b border-border pb-4">
+          <h2 className="text-lg font-semibold tracking-tight">Extension Control Plane</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Monitor sessions, manage feature flags, and debug extension connections.
+          </p>
+        </div>
+      ) : (
+        <PageHeader
+          title="Extension Control Plane"
+          description="Monitor sessions, manage feature flags, and debug extension connections"
+          icon={ShieldCheck}
+        />
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4 max-w-2xl">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
           <TabsTrigger value="devices" className="gap-2">
             <Laptop className="h-4 w-4" />
             Devices & Sessions
@@ -25,14 +34,6 @@ export default function AdminExtensionControl() {
           <TabsTrigger value="flags" className="gap-2">
             <Settings2 className="h-4 w-4" />
             Feature Flags
-          </TabsTrigger>
-          <TabsTrigger value="logs" className="gap-2" disabled>
-            <Activity className="h-4 w-4" />
-            Logs & Errors
-          </TabsTrigger>
-          <TabsTrigger value="jobs" className="gap-2" disabled>
-            <Settings className="h-4 w-4" />
-            Jobs
           </TabsTrigger>
         </TabsList>
 
