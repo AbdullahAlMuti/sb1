@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 
@@ -10,13 +9,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@repo/ui/components/ui/card";
+import { useSeo } from "@/lib/useSeo";
 
 const SUPPORT_EMAIL = "muti.sellersuit@gmail.com";
 
 export default function About() {
-  useEffect(() => {
-    document.title = "About | SellerSuit";
-  }, []);
+  useSeo({
+    title: "About Us | SellerSuit",
+    description: "SellerSuit is a web app + Chrome extension built to streamline dropshipping automation from Amazon and Walmart to eBay.",
+    canonical: "https://www.sellersuit.com/about",
+  });
 
   return (
     <div className="min-h-screen bg-background">

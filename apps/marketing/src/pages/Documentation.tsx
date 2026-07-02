@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, BookOpen, Chrome, CreditCard, LifeBuoy, Settings2 } from "lucide-react";
 
@@ -7,14 +6,17 @@ import Footer from "@/components/Footer";
 import { Button } from "@repo/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@repo/ui/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@repo/ui/components/ui/accordion";
+import { useSeo } from "@/lib/useSeo";
 
 const SUPPORT_EMAIL = "muti.sellersuit@gmail.com";
 const SUPPORT_WHATSAPP = "+8801798008784";
 
 export default function Documentation() {
-  useEffect(() => {
-    document.title = "Documentation | SellerSuit";
-  }, []);
+  useSeo({
+    title: "Documentation & User Guide | SellerSuit",
+    description: "Everything you need to install the extension, connect your account, and use SellerSuit day-to-day.",
+    canonical: "https://www.sellersuit.com/documentation",
+  });
 
   return (
     <div className="min-h-screen bg-background">

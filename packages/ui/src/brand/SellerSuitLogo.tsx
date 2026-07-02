@@ -30,12 +30,14 @@ const SellerSuitLogo = ({ size = "md", showText = true }: SellerSuitLogoProps) =
           className="h-full w-full"
         >
           <rect width="32" height="32" rx="8" fill="#0f172a" />
-          <path
-            d="M9 13C9 10.791 10.791 9 13 9h6.4c2.209 0 4 1.791 4 4v0c0 1.326-1.074 2.4-2.4 2.4H13c-2.209 0-4 1.791-4 4v0c0 2.209 1.791 4 4 4h6.4c2.209 0 4-1.791 4-4"
-            stroke="white"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          />
+          <g transform="translate(16, 16) scale(1.25) translate(-16, -16)">
+            <path
+              d="M9 13C9 10.791 10.791 9 13 9h6.4c2.209 0 4 1.791 4 4v0c0 1.326-1.074 2.4-2.4 2.4H13c-2.209 0-4 1.791-4 4v0c0 2.209 1.791 4 4 4h6.4c2.209 0 4-1.791 4-4"
+              stroke="white"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
+          </g>
         </svg>
       </motion.div>
 

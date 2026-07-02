@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Mail } from "lucide-react";
 
@@ -17,6 +16,7 @@ import {
   AccordionTrigger,
 } from "@repo/ui/components/ui/accordion";
 import { WhatsAppButton } from "@repo/ui/contact/WhatsAppButton";
+import { useSeo } from "@/lib/useSeo";
 
 const SUPPORT_EMAIL = "muti.sellersuit@gmail.com";
 // Normalized to digits-only for buildWhatsAppLink validator
@@ -42,9 +42,11 @@ const FAQS = [
 ] as const;
 
 export default function Contact() {
-  useEffect(() => {
-    document.title = "Contact | SellerSuit";
-  }, []);
+  useSeo({
+    title: "Contact Support | SellerSuit",
+    description: "Need help with SellerSuit? Reach us by email or WhatsApp. We typically reply within 24 hours.",
+    canonical: "https://www.sellersuit.com/contact",
+  });
 
   const subject = "SellerSuit Support";
   const body = "Hi SellerSuit Support,\n\nI need help with...";
