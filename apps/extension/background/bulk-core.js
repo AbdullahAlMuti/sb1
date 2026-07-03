@@ -46,6 +46,7 @@ window.SSBulkCore = (() => {
       intervalMs: sanitizeIntervalMs(payload.interval),
       settings: {
         useAiTitle: !!(payload.settings && payload.settings.useAiTitle),
+        useAiDescription: !!(payload.settings && payload.settings.useAiDescription),
         minQty: parseInt(payload.settings && payload.settings.minQty, 10) || 0,
         allowLowQty: (payload.settings && payload.settings.allowLowQty) !== false
       },

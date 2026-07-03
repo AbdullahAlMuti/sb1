@@ -125,7 +125,7 @@ export function DashboardHeader() {
   };
 
   return (
-    <header className="h-14 sm:h-16 bg-gradient-to-r from-primary/5 via-accent/10 to-transparent flex items-center justify-between px-4 sm:px-6 border-b border-border/50">
+    <header className="h-14 bg-card flex items-center justify-between px-4 sm:px-6 border-b border-border">
       {/* Welcome Message */}
       <div className="min-w-0 flex-1">
         <h1 className="text-xs sm:text-sm font-medium text-foreground truncate">
@@ -173,15 +173,19 @@ export function DashboardHeader() {
           <PopoverContent align="end" className="w-80 p-0 bg-popover">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h4 className="font-semibold text-sm">Notifications</h4>
-              {unreadAlertsCount > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs h-7"
-                  onClick={markAllAsRead}
+              {totalUnreadCount > 0 && (
+                <button 
+                  onClick={async () => {
+                    await markAllAsRead();
+                    const newDismissed = new Set(dismissedNoticeIds);
+                    notices.forEach(n => newDismissed.add(n.id));
+                    setDismissedNoticeIds(newDismissed);
+                    localStorage.setItem('dismissedNotices', JSON.stringify([...newDismissed]));
+                  }} 
+                  className="text-xs text-primary hover:underline font-medium"
                 >
-                  Mark all read
-                </Button>
+                  Mark all as read
+                </button>
               )}
             </div>
             <ScrollArea className="h-[300px]">
@@ -200,6 +204,10 @@ export function DashboardHeader() {
                     <button
                       key={`notice-${notice.id}`}
                       onClick={() => {
+                        const newDismissed = new Set(dismissedNoticeIds);
+                        newDismissed.add(notice.id);
+                        setDismissedNoticeIds(newDismissed);
+                        localStorage.setItem('dismissedNotices', JSON.stringify([...newDismissed]));
                         setIsNotificationsOpen(false);
                         navigate('/dashboard/alerts');
                       }}

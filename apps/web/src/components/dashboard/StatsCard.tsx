@@ -30,23 +30,23 @@ export function StatsCard({
 
   return (
     <div className={cn(
-      "rounded-2xl p-5 transition-all duration-200 relative overflow-hidden group",
+      "rounded-xl p-5 transition-all duration-200 relative overflow-hidden group",
       isFeatured 
-        ? "bg-[#c8f169] dark:bg-[#c8f169] text-foreground col-span-1 row-span-2" 
-        : "bg-card border border-border hover:border-primary/20"
+        ? "bg-secondary text-foreground border border-primary col-span-1 row-span-2" 
+        : "bg-card border border-border hover:border-primary/30"
     )}>
       {/* Header with icon and change badge */}
       <div className="flex items-start justify-between mb-4">
         <div className={cn(
-          "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
+          "w-10 h-10 rounded-lg flex items-center justify-center transition-colors",
           isFeatured 
-            ? "bg-foreground/10" 
+            ? "bg-primary/10" 
             : "bg-muted group-hover:bg-primary/10"
         )}>
           <Icon className={cn(
             "h-5 w-5",
             isFeatured 
-              ? "text-foreground" 
+              ? "text-primary" 
               : "text-muted-foreground group-hover:text-primary transition-colors"
           )} />
         </div>
@@ -55,7 +55,7 @@ export function StatsCard({
           <div className={cn(
             "flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium",
             isFeatured 
-              ? "bg-foreground/10 text-foreground" 
+              ? "bg-primary/10 text-primary" 
               : isPositive 
                 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" 
                 : "bg-red-500/10 text-red-600 dark:text-red-400"

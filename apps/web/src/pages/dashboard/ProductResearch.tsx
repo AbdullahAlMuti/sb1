@@ -224,8 +224,8 @@ function ProductResearchContent() {
       {/* Header */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500 flex items-center justify-center animate-flame-flicker">
-            <Sparkles className="h-6 w-6 text-white" />
+          <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Sparkles className="h-6 w-6 text-primary" />
           </div>
           <div>
             <h1 className="text-2xl font-bold text-foreground">AI Product Research</h1>
@@ -235,7 +235,7 @@ function ProductResearchContent() {
       </div>
 
       {/* Search Section */}
-      <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+      <Card className="border-border bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Search className="h-5 w-5" />
@@ -287,7 +287,7 @@ function ProductResearchContent() {
             <Button 
               onClick={() => gateAction(handleSearch)} 
               disabled={isSearching}
-              className="h-12 px-8 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+              className="h-12 px-8 bg-primary hover:bg-primary/95 text-primary-foreground"
             >
               {isSearching ? (
                 <>
@@ -326,7 +326,7 @@ function ProductResearchContent() {
       {results && !isSearching && (
         <div className="space-y-6">
           {/* Market Analysis Overview */}
-          <Card className="border-2 border-primary/30 bg-gradient-to-br from-primary/10 via-transparent to-purple-500/10">
+          <Card className="border border-border bg-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 className="h-5 w-5 text-primary" />
@@ -335,25 +335,25 @@ function ProductResearchContent() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                <div className="text-center p-4 rounded-xl bg-card/50 border border-border/50">
+                <div className="text-center p-4 rounded-lg bg-secondary/40 border border-border">
                   <p className="text-sm text-muted-foreground mb-2">Market Demand</p>
                   <Badge className={getLevelColor(results.analysis.marketDemand)}>
                     {results.analysis.marketDemand.toUpperCase()}
                   </Badge>
                 </div>
-                <div className="text-center p-4 rounded-xl bg-card/50 border border-border/50">
+                <div className="text-center p-4 rounded-lg bg-secondary/40 border border-border">
                   <p className="text-sm text-muted-foreground mb-2">Competition</p>
                   <Badge className={getLevelColor(results.analysis.competitionLevel)}>
                     {results.analysis.competitionLevel.toUpperCase()}
                   </Badge>
                 </div>
-                <div className="text-center p-4 rounded-xl bg-card/50 border border-border/50">
+                <div className="text-center p-4 rounded-lg bg-secondary/40 border border-border">
                   <p className="text-sm text-muted-foreground mb-2">Profit Potential</p>
                   <Badge className={getLevelColor(results.analysis.profitPotential)}>
                     {results.analysis.profitPotential.toUpperCase()}
                   </Badge>
                 </div>
-                <div className="text-center p-4 rounded-xl bg-card/50 border border-border/50">
+                <div className="text-center p-4 rounded-lg bg-secondary/40 border border-border">
                   <p className="text-sm text-muted-foreground mb-2">Trend</p>
                   <div className="flex items-center justify-center gap-1">
                     {getTrendIcon(results.analysis.trendingStatus)}
@@ -417,7 +417,7 @@ function ProductResearchContent() {
                         </div>
                         <div className="h-2 bg-muted rounded-full overflow-hidden">
                           <div 
-                            className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all"
+                            className="h-full bg-emerald-500 rounded-full transition-all"
                             style={{ width: `${product.demandScore}%` }}
                           />
                         </div>
@@ -429,7 +429,7 @@ function ProductResearchContent() {
                         </div>
                         <div className="h-2 bg-muted rounded-full overflow-hidden">
                           <div 
-                            className="h-full bg-gradient-to-r from-orange-500 to-red-400 rounded-full transition-all"
+                            className="h-full bg-destructive rounded-full transition-all"
                             style={{ width: `${product.competitionScore}%` }}
                           />
                         </div>

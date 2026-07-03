@@ -30,24 +30,24 @@ export function UserProfileCard() {
   };
 
   return (
-    <div className="bg-card/50 backdrop-blur-md border border-border/50 rounded-2xl shadow-xl overflow-hidden transition-all duration-300 hover:shadow-2xl hover:border-border">
-      {/* Header with gradient */}
-      <div className="h-20 bg-gradient-to-r from-primary/30 via-accent/20 to-transparent" />
+    <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md hover:border-border">
+      {/* Header with clean solid surface */}
+      <div className="h-12 bg-secondary/50 border-b border-border" />
       
       {/* Profile Info */}
-      <div className="px-6 pb-6 -mt-10">
+      <div className="px-6 pb-6 -mt-6">
         <div className="flex items-end gap-4 mb-5">
-          <Avatar className="h-20 w-20 border-4 border-card shadow-2xl transition-all duration-300 hover:scale-105">
+          <Avatar className="h-16 w-16 border-2 border-card shadow-sm transition-transform duration-200">
             <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || 'User'} />
-            <AvatarFallback className="bg-primary text-primary-foreground text-xl font-bold">
+            <AvatarFallback className="bg-primary/10 text-primary text-lg font-semibold">
               {getInitials(profile?.full_name)}
             </AvatarFallback>
           </Avatar>
-          <div className="flex-1 min-w-0 pb-1">
-            <h3 className="text-xl font-display font-bold text-foreground truncate leading-tight">
+          <div className="flex-1 min-w-0 pb-0.5">
+            <h3 className="text-lg font-display font-semibold text-foreground truncate leading-tight">
               {profile?.full_name || 'User'}
             </h3>
-            <p className="text-sm text-muted-foreground truncate flex items-center gap-1.5 mt-0.5">
+            <p className="text-xs text-muted-foreground truncate flex items-center gap-1.5 mt-0.5">
               <Mail className="h-3.5 w-3.5 flex-shrink-0" />
               {user?.email}
             </p>
@@ -55,7 +55,7 @@ export function UserProfileCard() {
         </div>
 
         {/* Plan & Status */}
-        <div className="space-y-3.5 mb-5 bg-muted/20 p-4 rounded-xl border border-border/30">
+        <div className="space-y-3.5 mb-5 bg-secondary/40 p-4 rounded-lg border border-border">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Current Plan</span>
             <Badge 

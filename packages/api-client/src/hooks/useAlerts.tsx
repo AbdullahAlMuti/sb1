@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@repo/api-client/supabase/client';
 import { useAuth } from '@repo/auth/hooks/useAuth';
+import { toast } from 'sonner';
 
 export interface Alert {
   id: string;
@@ -44,7 +45,15 @@ export function useAlerts() {
           table: 'inventory_alerts',
           filter: `user_id=eq.${user.id}`,
         },
-        () => {
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            const newAlert = payload.new as Alert;
+            toast.info(newAlert.message || 'New inventory alert received.', {
+              description: newAlert.alert_type 
+                ? newAlert.alert_type.replace('_', ' ').toUpperCase() 
+                : undefined,
+            });
+          }
           fetchAlerts();
         }
       )
@@ -56,6 +65,10 @@ export function useAlerts() {
   }, [user]);
 
   const markAsRead = async (alertId: string) => {
+    // Optimistic update
+    setAlerts(prev => prev.map(a => a.id === alertId ? { ...a, status: 'READ' } : a));
+    setUnreadCount(prev => Math.max(0, prev - 1));
+
     await supabase
       .from('inventory_alerts')
       .update({ status: 'READ' })
@@ -64,6 +77,10 @@ export function useAlerts() {
 
   const markAllAsRead = async () => {
     if (!user) return;
+    // Optimistic update
+    setAlerts(prev => prev.map(a => ({ ...a, status: 'READ' })));
+    setUnreadCount(0);
+
     await supabase
       .from('inventory_alerts')
       .update({ status: 'READ' })
@@ -73,3 +90,4 @@ export function useAlerts() {
 
   return { alerts, unreadCount, markAsRead, markAllAsRead };
 }
+

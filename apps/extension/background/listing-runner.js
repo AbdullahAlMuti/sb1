@@ -290,6 +290,7 @@ async function processNextBulkItem() {
       // 4. Data priority: user-edited dashboard overrides win over scraped data.
       product = window.SSBulkCore.applyOverrides(product, item.overrides);
       if (state.settings.useAiTitle) product = { ...product, useAiTitle: true };
+      if (state.settings.useAiDescription) product = { ...product, useAiDescription: true };
 
       // 5. Upload through the existing non-API uploader.
       await transitionItem(item.id, { status: 'uploading' });
@@ -467,7 +468,8 @@ function uploadViaEbayTab(product, bulkItemId) {
           isImported: false,
           uploadType: 'classic',
           bulkMode: true,
-          bulkItemId
+          bulkItemId,
+          stagedAt: Date.now()
         },
         ebayListingTitle: bulkProduct.title || ''
       });
@@ -593,3 +595,6 @@ async function postCreateListing(payload, source = 'background') {
     data
   };
 }
+
+globalThis.postCreateListing = postCreateListing;
+globalThis.recordListingSyncError = recordListingSyncError;

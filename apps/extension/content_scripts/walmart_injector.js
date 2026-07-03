@@ -1020,6 +1020,63 @@ const renderGalleryFromUrls = async (urls = []) => {
     }
 };
 
+// ─── Scan-time pricing (parity with amazon_injector._applyPricingToProduct and
+// aliexpress_injector.applyPricing) ──────────────────────────────────────────
+// Stamps finalPrice + raw_supplier_price using the user's calculator settings.
+// Fill-only for manual edits: a manual top-level price or per-variant ebayPrice
+// must never be clobbered by recalculation.
+async function _wmStoredCalculatorValues() {
+    try {
+        const data = await chrome.storage.local.get('calculatorValues');
+        return data.calculatorValues || {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function _wmApplyPricingToProduct(product, calculatorValues) {
+    if (!product || !window.SSPricingEngine) return product;
+
+    const cleanFloat = (val) => {
+        if (val === null || val === undefined) return 0;
+        if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
+        const parsed = parseFloat(String(val).replace(/[^\d.-]/g, ''));
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const saved = calculatorValues || {};
+    const parseVal = (v, def) => {
+        if (v === null || v === undefined || v === '') return def;
+        const n = parseFloat(String(v).replace(/[^\d.-]/g, ''));
+        return isNaN(n) ? def : n;
+    };
+    const cfg = {
+        taxPercent:      parseVal(saved['tax-percent'],       9),
+        trackingFee:     parseVal(saved['tracking-fee'],      0.20),
+        ebayFeePercent:  parseVal(saved['ebay-fee-percent'],  20),
+        promoFeePercent: parseVal(saved['promo-fee-percent'], 10),
+        desiredProfit:   parseVal(saved['desired-profit'],    0),
+        paymentFixedFee: parseVal(saved['payment-fixed-fee'], 0.30)
+    };
+
+    const baseRaw = cleanFloat(product.price || product.raw_supplier_price);
+    product.raw_supplier_price = baseRaw;
+    const topIsManual = product.price_source === 'manual' && cleanFloat(product.finalPrice) > 0;
+    if (baseRaw > 0 && !topIsManual) {
+        product.finalPrice = window.SSPricingEngine.calculatePrice(baseRaw, cfg);
+    }
+
+    if (Array.isArray(product.variants)) {
+        product.variants.forEach(v => {
+            const raw = cleanFloat(v.price || v.raw_supplier_price) || baseRaw;
+            v.raw_supplier_price = raw;
+            if (raw > 0 && !(cleanFloat(v.ebayPrice) > 0)) {
+                v.finalPrice = window.SSPricingEngine.calculatePrice(raw, cfg);
+            }
+        });
+    }
+    return product;
+}
+
 // Listen for messages from popup or panel
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'extractImages') {
@@ -1048,6 +1105,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     ? await _adapter.scrapeVariants(request.options || {})
                     : await _adapter.scrapeProduct();
                 const product = _adapter.normalize(raw);
+                // Stamp finalPrice at scan time, same as the Amazon injector
+                // (_applyPricingToProduct) and the AliExpress injector (applyPricing).
+                // The side panel re-prices missing products itself, but the Bulk
+                // Lister consumes this response directly — without pricing here,
+                // every Walmart bulk item fails validateProductPricing.
+                _wmApplyPricingToProduct(product, await _wmStoredCalculatorValues());
                 await chrome.storage.local.set({ currentProduct: product, lastScraped: Date.now() });
                 sendResponse({ success: true, data: product });
             } catch (err) {

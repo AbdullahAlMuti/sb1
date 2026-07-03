@@ -2918,7 +2918,23 @@ const addEventListenersToPanel = () => {
                 // Paste is not wired yet anywhere else in the extension, keep disabled for now.
                 if (pasteDescriptionBtn) pasteDescriptionBtn.disabled = true;
 
-                chrome.storage.local.set({ generatedDescription: lastGeneratedDescription });
+                // Persist under the keys the upload paths actually read
+                // (panel-extended/panel-main resolve selectedEbayDescription with a
+                // selectedDescriptionTimestamp freshness guard). Saving only
+                // generatedDescription meant AI descriptions rendered in the panel
+                // but NEVER reached eBay — drafts fell back to the "Quality
+                // product." placeholder.
+                chrome.storage.local.set({
+                    generatedDescription: lastGeneratedDescription,
+                    selectedEbayDescription: lastGeneratedDescription,
+                    selectedDescriptionTimestamp: Date.now()
+                });
+                if (typeof window.SSListingDraft !== 'undefined') {
+                    window.SSListingDraft.patchDraft({
+                        description: lastGeneratedDescription,
+                        description_source: 'ai'
+                    }).catch(() => {});
+                }
 
                 // Populate and save title if returned (bonus integration)
                 if (bgResp.title) {

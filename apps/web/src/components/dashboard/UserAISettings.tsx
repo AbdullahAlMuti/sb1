@@ -238,7 +238,7 @@ export default function UserAISettings() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.1 }}
     >
-      <Card className="border-border/50 bg-card/60 backdrop-blur-md">
+      <Card className="border-border bg-card shadow-none">
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">

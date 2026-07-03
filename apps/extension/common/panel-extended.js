@@ -205,6 +205,15 @@ async function _handleSidebarUpload() {
             }));
         }
 
+        // Auto Edit Mode: ON rewrites title/description via the admin-configured AI
+        // prompt; skip when the user already manually edited or already generated
+        // fresh AI content, so we never clobber their edit or re-spend a credit.
+        const { autoEditEnabled } = await chrome.storage.local.get('autoEditEnabled');
+        if (autoEditEnabled) {
+            if (titleSource === 'scraped') uploadProduct.useAiTitle = true;
+            if (descSource === 'scraped') uploadProduct.useAiDescription = true;
+        }
+
         chrome.runtime.sendMessage({
             action: 'import_ebay',
             product: uploadProduct,

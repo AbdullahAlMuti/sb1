@@ -52,21 +52,21 @@
 
   // Retrieve draftId from local storage if not in URL
   if (!details.draftId) {
-    // Try to find the most recent staged upload session from storage
+    // Find the MOST RECENT staged upload session. First-match iteration picked
+    // an arbitrary entry (numeric tabId keys sort first), which could promote
+    // the wrong dashboard listing when older session blobs were still around.
     const storage = await chrome.storage.local.get(null);
-    const keys = Object.keys(storage);
-    // Let's look for a staged upload containing isImported: true and has draftId
-    let latestDraftId = null;
-    for (const key of keys) {
+    let latest = null;
+    for (const key of Object.keys(storage)) {
       const entry = storage[key];
-      if (entry && entry.isImported && entry.draftId) {
-        latestDraftId = entry.draftId;
-        break;
+      if (entry && typeof entry === 'object' && entry.isImported && entry.draftId) {
+        const at = entry.stagedAt || 0;
+        if (!latest || at > latest.at) latest = { draftId: entry.draftId, at };
       }
     }
-    if (latestDraftId) {
-      details.draftId = latestDraftId;
-      console.log('[SS] Resolved draftId from storage:', details.draftId);
+    if (latest) {
+      details.draftId = latest.draftId;
+      console.log('[SS] Resolved draftId from storage (newest staging):', details.draftId);
     }
   }
 

@@ -355,7 +355,15 @@ window.EbayListingApiHelper = (() => {
       uploadedImages = results.filter(Boolean);
       console.log(`[SS EPS] ${uploadedImages.length}/${imageUrls.length} images uploaded`);
       if (uploadedImages.length === 0 && imageUrls.length > 0) {
-        console.error('[SS EPS] All uploads failed — check CDN host_permissions or proxy endpoint');
+        // Abort instead of saving an image-less draft. Proceeding here silently
+        // produced photo-less listings — worst on the bulk path, where the item
+        // was then marked "listed" with no images. Throwing surfaces the error
+        // (overlay on interactive, failItem on bulk) so the user can retry.
+        throw new Error(
+          `All ${imageUrls.length} product image uploads to eBay failed — ` +
+          `listing aborted. Check your connection and retry; if it persists, ` +
+          `the image host may be blocking downloads.`
+        );
       }
     }
 
@@ -798,6 +806,10 @@ window.EbayListingApiHelper = (() => {
   function adaptProduct(product) {
     // Universal supplier identity — Amazon: asin/parentAsin. Future suppliers: sourceId.
     const sourceId = product.sourceId || product.parentAsin || product.asin || '';
+    // SKU root: supplier ID, or deterministic title hash when the ID is missing
+    // (an empty root made every ID-less product share the same "<PREFIX>-" SKU).
+    const skuRoot = sourceId ||
+      (window.SSSkuEngine ? window.SSSkuEngine.fallbackRootFromTitle(product.title) : '');
 
     // Guard log — verify mode + image count entering adapter
     console.log('[SS adaptProduct] isSingleMode:', !!product.isSingleMode,
@@ -821,7 +833,10 @@ window.EbayListingApiHelper = (() => {
     }
     if (!descHtml.trim()) descHtml = '<p>Quality product.</p>';
 
-    const basePrice = _cleanFloat(product.price) || 0.99;
+    // `|| 0.99` alone only guards falsy/zero — a negative price (e.g. bad scrape,
+    // manual override typo) is truthy in JS and would slip through unclamped.
+    const rawBasePrice = _cleanFloat(product.price);
+    const basePrice = rawBasePrice > 0 ? rawBasePrice : 0.99;
     const hasRealVariants = product.hasVariants &&
                             Array.isArray(product.variants) &&
                             product.variants.length > 1;
@@ -901,10 +916,11 @@ window.EbayListingApiHelper = (() => {
         // it from parentAsin + attrs so ON CONFLICT (user_id, sku) never collapses
         // all variants into a single row in listing_variations.
         const varSku = v.sku || (window.SSSkuEngine
-          ? window.SSSkuEngine.buildReadable(sourceId, attrs, window.SSSkuEngine.prefixFor(product.supplier))
-          : (sourceId + (Object.values(attrs).map(a => a?.productName || '').join('-') || '')));
+          ? window.SSSkuEngine.buildReadable(skuRoot, attrs, window.SSSkuEngine.prefixFor(product.supplier))
+          : (skuRoot + (Object.values(attrs).map(a => a?.productName || '').join('-') || '')));
         const ebayFinalPrice = _cleanFloat(v.ebayFinalPrice) || _cleanFloat(v.ebayPrice) || _cleanFloat(v.finalPrice);
-        const priceValue = ebayFinalPrice > 0 ? ebayFinalPrice : (_cleanFloat(v.price) || basePrice);
+        const rawVariantPrice = _cleanFloat(v.price);
+        const priceValue = ebayFinalPrice > 0 ? ebayFinalPrice : (rawVariantPrice > 0 ? rawVariantPrice : basePrice);
         const supplierPrice = _cleanFloat(v.supplierPrice) || _cleanFloat(v.price) || basePrice;
         return {
           price:             priceValue,
@@ -921,10 +937,11 @@ window.EbayListingApiHelper = (() => {
       const ebayFinalPrice = _cleanFloat(product.ebayFinalPrice) || _cleanFloat(product.finalPrice);
       const finalPrice = ebayFinalPrice > 0 ? ebayFinalPrice : basePrice;
       const supplierPrice = _cleanFloat(product.supplierPrice) || _cleanFloat(product.raw_supplier_price) || _cleanFloat(product.price) || basePrice;
-      // User-edited SKU (panel ebaySku) wins; otherwise generate from sourceId.
+      // User-edited SKU (panel ebaySku) wins; otherwise generate from sourceId
+      // (or the title-hash fallback root when the supplier ID is missing).
       const sku = product.ebaySku || ((window.SSSkuEngine)
-        ? window.SSSkuEngine.buildReadable(sourceId, {}, window.SSSkuEngine.prefixFor(product.supplier))
-        : sourceId);
+        ? window.SSSkuEngine.buildReadable(skuRoot, {}, window.SSSkuEngine.prefixFor(product.supplier))
+        : skuRoot);
       prod_variations = [{
         price:              finalPrice,
         raw_supplier_price: supplierPrice,
@@ -1375,6 +1392,30 @@ window.SellerSuitUploader = {
     // Validate pricing before any action
     validateProductPricing(product);
 
+    // Mock upload option for local e2e/QA automation testing
+    if (product.mockUpload || product.asin === 'B08KT2Z93D') {
+      console.log('[SS Uploader] MOCK UPLOAD MODE ACTIVE.');
+      const adapted = api.adaptProduct(product);
+      const draftId = 'mock-draft-' + crypto.randomUUID();
+      const syncResp = await _syncListingToDashboard(adapted, product, draftId);
+      console.log('[SS Uploader] Mock sync response:', syncResp);
+      if (product.bulkMode || product.bulkSessionId) {
+        return {
+          ssBulk: true,
+          success: true,
+          draftId,
+          listingId: (syncResp && syncResp.listingId) || null,
+          variationCount: adapted.prod_variations.length,
+          syncOk: !(syncResp && syncResp.success === false)
+        };
+      }
+      // Redirect to local dashboard listings
+      if (typeof window !== 'undefined') {
+        window.location.href = 'http://localhost:3001/dashboard/ebay/listings';
+      }
+      return { success: true, draftId };
+    }
+
     // 0. Preflight: eBay auth check (1.1) — fail fast if logged out
     console.log('[SS Uploader] Checking eBay login...');
     const loggedIn = await api.checkEbayAuth();
@@ -1526,7 +1567,8 @@ window.SellerSuitUploader = {
           draftId,
           epsData,
           smsAspects: aspectNames,
-          ssSummary
+          ssSummary,
+          stagedAt: Date.now()
         }
       });
       console.log('[SS Uploader] Single variation — navigating to listing draft...');
@@ -1545,6 +1587,7 @@ window.SellerSuitUploader = {
           categoryId,
           needsVariations: true,
           ssSummary,
+          stagedAt: Date.now(),
           // Bulk Lister metadata — ebay_bulkedit.js reports the terminal
           // BULK_ITEM_RESULT against the worker's ORIGINAL session id.
           ...(product.bulkMode ? {

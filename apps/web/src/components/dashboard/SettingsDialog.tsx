@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Settings, User, Shield, CreditCard, BarChart3, Bot, Globe, Puzzle, Chrome,
   Search, Check, Loader2, Mail, 
-  ShieldCheck, ArrowUpRight, Download, Laptop, Smartphone, RefreshCw
+  ShieldCheck, ArrowUpRight, Download, Laptop, Smartphone, RefreshCw,
+  Link, CheckCircle, AlertCircle
 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@repo/ui/components/ui/select';
 import { useAuth } from '@repo/auth/hooks/useAuth';
 import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { supabase } from '@repo/api-client/supabase/client';
@@ -69,6 +71,10 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
   const [sessions, setSessions] = useState<any[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
 
+  // General Settings State
+  const [defaultMarketplace, setDefaultMarketplace] = useState<string>((profile?.settings as any)?.default_marketplace || 'eBay US');
+  const [currency, setCurrency] = useState<string>((profile?.settings as any)?.currency || 'USD');
+
   // Auto reload settings
   const [autoReloadEnabled, setAutoReloadEnabled] = useState(false);
 
@@ -86,11 +92,13 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
       setFullName(profile.full_name || '');
       setAvatarUrl(profile.avatar_url || '');
       setApiKeyEnabled(profile.api_key_enabled || false);
+      setDefaultMarketplace((profile.settings as any)?.default_marketplace || 'eBay US');
+      setCurrency((profile.settings as any)?.currency || 'USD');
     }
   }, [profile]);
 
   useEffect(() => {
-    if (user && activeTab === 'privacy') {
+    if (user && (activeTab === 'privacy' || activeTab === 'general')) {
       fetchSessions();
     }
   }, [user, activeTab]);
@@ -148,6 +156,30 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
       toast.error(error.message || 'Failed to update profile');
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const handleSaveGeneralSetting = async (key: string, value: string) => {
+    if (!user) return;
+    try {
+      const updatedSettings = {
+        ...(profile?.settings || {}),
+        [key]: value
+      };
+      
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          settings: updatedSettings,
+          updated_at: new Date().toISOString(),
+        } as never)
+        .eq('id', user.id);
+
+      if (error) throw error;
+      await refreshProfile();
+      toast.success('Setting updated successfully');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update setting');
     }
   };
 
@@ -216,15 +248,12 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
 
   // Sidebar Tabs Config
   const tabs = [
-    { id: 'general', label: 'General', icon: Settings, searchKeywords: 'general theme language preference' },
+    { id: 'general', label: 'General', icon: Settings, searchKeywords: 'general theme language preference default marketplace currency chrome connection' },
     { id: 'account', label: 'Account', icon: User, searchKeywords: 'account profile name avatar email verified mfa' },
     { id: 'privacy', label: 'Privacy', icon: Shield, searchKeywords: 'privacy security mfa API key developer token devices sessions' },
     { id: 'billing', label: 'Billing', icon: CreditCard, searchKeywords: 'billing subscription plan Pro price Visa payment invoices credits auto reload' },
-    { id: 'usage', label: 'Usage', icon: BarChart3, searchKeywords: 'usage limits credits listings auto orders models progress' },
-    { id: 'capabilities', label: 'Capabilities', icon: Bot, searchKeywords: 'capabilities AI models configuration prompts tokens assistant custom' },
-    { id: 'connectors', label: 'Connectors', icon: Globe, searchKeywords: 'connectors integrations eBay Google Sheets sync sheets' },
-    { id: 'extension', label: 'SellerSuit Extension', icon: Puzzle, searchKeywords: 'extension Chrome setup download install pair browser' },
-    { id: 'inbrowser', label: 'SellerSuit in Chrome', icon: Chrome, searchKeywords: 'inbrowser chrome extension usage instructions features documentation' },
+    { id: 'connectors', label: 'Connectors', icon: Link, searchKeywords: 'connectors integrations eBay Google Sheets sync sheets' },
+    { id: 'inbrowser', label: 'SellerSuit in Chrome', icon: Puzzle, searchKeywords: 'inbrowser chrome extension usage instructions features documentation pairing' },
   ];
 
   const filteredTabs = tabs.filter(tab => 
@@ -277,13 +306,13 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left text-sm font-semibold transition-all duration-150 ${
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm font-medium transition-colors ${
                     active 
-                      ? 'bg-primary/10 text-primary border-l-2 border-primary shadow-sm shadow-primary/5' 
-                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                      ? 'bg-muted text-foreground' 
+                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                   }`}
                 >
-                  <Icon className={`h-4 w-4 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <Icon className={`h-4 w-4 ${active ? 'text-foreground' : 'text-muted-foreground'}`} />
                   <span className="truncate">{tab.label}</span>
                 </button>
               );
@@ -304,38 +333,100 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
             {activeTab === 'general' && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-xl font-semibold text-foreground">General Preferences</h2>
-                  <p className="text-muted-foreground text-xs mt-1">Configure your workspace defaults and system preferences.</p>
+                  <h2 className="text-xl font-semibold text-foreground">eBay Settings</h2>
+                  <p className="text-muted-foreground text-xs mt-1">Manage your core preferences and extension connection.</p>
                 </div>
-                <Separator className="bg-border" />
                 
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-4 rounded-xl bg-card border border-border">
-                    <div className="space-y-1">
-                      <span className="text-sm font-medium">Dark Mode Appearance</span>
-                      <p className="text-xs text-muted-foreground">Toggle dark mode interface theme.</p>
+                <div className="divide-y divide-border border-t border-b border-border">
+                  {/* Default Marketplace */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between py-5 gap-4">
+                    <div className="space-y-1 pr-4">
+                      <span className="text-sm font-semibold text-foreground">Default marketplace</span>
+                      <p className="text-xs text-muted-foreground">Select your default eBay marketplace.</p>
                     </div>
-                    <Switch
-                      checked={document.documentElement.classList.contains('dark')}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          document.documentElement.classList.add('dark');
-                        } else {
-                          document.documentElement.classList.remove('dark');
-                        }
-                        toast.success('Theme preference saved');
+                    <Select 
+                      value={defaultMarketplace} 
+                      onValueChange={(val) => {
+                        setDefaultMarketplace(val);
+                        handleSaveGeneralSetting('default_marketplace', val);
                       }}
-                    />
+                    >
+                      <SelectTrigger className="w-full sm:w-[200px] h-9 text-sm shadow-none rounded-md border-border bg-background">
+                        <SelectValue placeholder="Select marketplace" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="eBay US">eBay US</SelectItem>
+                        <SelectItem value="eBay UK">eBay UK</SelectItem>
+                        <SelectItem value="eBay DE">eBay DE</SelectItem>
+                        <SelectItem value="eBay FR">eBay FR</SelectItem>
+                        <SelectItem value="eBay IT">eBay IT</SelectItem>
+                        <SelectItem value="eBay ES">eBay ES</SelectItem>
+                        <SelectItem value="eBay AU">eBay AU</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
-                  <div className="flex items-center justify-between p-4 rounded-xl bg-card border border-border">
-                    <div className="space-y-1">
-                      <span className="text-sm font-medium">Language & Localization</span>
-                      <p className="text-xs text-muted-foreground">System language preferences (currently English only).</p>
+                  {/* Currency */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between py-5 gap-4">
+                    <div className="space-y-1 pr-4">
+                      <span className="text-sm font-semibold text-foreground">Currency</span>
+                      <p className="text-xs text-muted-foreground">Choose your preferred currency.</p>
                     </div>
-                    <Badge variant="outline" className="border-border text-muted-foreground bg-muted/30">
-                      English (US)
-                    </Badge>
+                    <Select 
+                      value={currency} 
+                      onValueChange={(val) => {
+                        setCurrency(val);
+                        handleSaveGeneralSetting('currency', val);
+                      }}
+                    >
+                      <SelectTrigger className="w-full sm:w-[200px] h-9 text-sm shadow-none rounded-md border-border bg-background">
+                        <SelectValue placeholder="Select currency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="USD">USD</SelectItem>
+                        <SelectItem value="GBP">GBP</SelectItem>
+                        <SelectItem value="EUR">EUR</SelectItem>
+                        <SelectItem value="AUD">AUD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Credit Usage */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between py-5 gap-4">
+                    <div className="space-y-1 pr-4">
+                      <span className="text-sm font-semibold text-foreground">Credit usage</span>
+                      <p className="text-xs text-muted-foreground">Usage is tracked through credits.</p>
+                    </div>
+                    <span className="text-sm font-medium text-muted-foreground px-4 py-1.5">—</span>
+                  </div>
+
+                  {/* Chrome Connection */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between py-5 gap-4">
+                    <div className="space-y-1 pr-4">
+                      <span className="text-sm font-semibold text-foreground">Chrome connection</span>
+                      <p className="text-xs text-muted-foreground">Connect the SellerSuit extension in Chrome.</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {sessions.length > 0 ? (
+                        <>
+                          <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
+                            <CheckCircle className="h-4 w-4 animate-none" /> Connected
+                          </span>
+                          <Button variant="outline" size="sm" onClick={() => setActiveTab('privacy')} className="h-8 shadow-none rounded-md">
+                            Manage
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="flex items-center gap-1 text-muted-foreground text-xs font-semibold">
+                            <AlertCircle className="h-4 w-4" /> Disconnected
+                          </span>
+                          <Button variant="outline" size="sm" onClick={() => setActiveTab('privacy')} className="h-8 shadow-none rounded-md">
+                            Manage
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -346,77 +437,46 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
               <div className="space-y-6">
                 <div>
                   <h2 className="text-xl font-semibold text-foreground">Account Details</h2>
-                  <p className="text-muted-foreground text-xs mt-1">Customize your public profile and select custom avatar presets.</p>
+                  <p className="text-muted-foreground text-xs mt-1">Customize your public profile details.</p>
                 </div>
                 <Separator className="bg-border" />
 
                 <div className="space-y-6">
-                  {/* Avatar Preset Selector */}
-                  <div className="flex flex-col sm:flex-row gap-6 items-center">
-                    <Avatar className="h-20 w-20 border-2 border-border shadow-xl">
+                  {/* Flat Avatar Preview */}
+                  <div className="flex items-center gap-4 py-2">
+                    <Avatar className="h-14 w-14 border border-border shadow-none">
                       <AvatarImage src={avatarUrl} />
-                      <AvatarFallback className="bg-muted text-foreground text-2xl font-semibold">
+                      <AvatarFallback className="bg-muted text-foreground text-base font-semibold">
                         {getInitials(fullName)}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="space-y-3 flex-1 w-full">
-                      <Label className="text-muted-foreground text-xs">Select Avatar Preset</Label>
-                      <div className="flex flex-wrap gap-2">
-                        {AVATAR_PRESETS.map((preset, index) => (
-                          <button
-                            key={preset}
-                            type="button"
-                            onClick={() => setAvatarUrl(preset)}
-                            className={`relative rounded-full h-10 w-10 overflow-hidden border-2 transition-all hover:scale-105 ${
-                              avatarUrl === preset ? 'border-primary ring-2 ring-primary/20 scale-105' : 'border-transparent'
-                            }`}
-                          >
-                            <img src={preset} alt={`Preset ${index + 1}`} className="h-full w-full object-cover" />
-                            {avatarUrl === preset && (
-                              <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                                <Check className="h-3 w-3 text-white stroke-[3px]" />
-                              </div>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor="custom-avatar-url" className="text-[10px] text-muted-foreground">Or paste custom image URL</Label>
-                        <Input
-                          id="custom-avatar-url"
-                          type="url"
-                          placeholder="https://example.com/avatar.png"
-                          value={avatarUrl}
-                          onChange={(e) => setAvatarUrl(e.target.value)}
-                          className="h-8 text-xs bg-background border-border text-foreground"
-                        />
-                      </div>
+                    <div>
+                      <h3 className="text-sm font-semibold">{fullName || 'User'}</h3>
+                      <p className="text-xs text-muted-foreground">{user?.email}</p>
                     </div>
                   </div>
-
-                  <Separator className="bg-border" />
 
                   {/* Form Details */}
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="dlg-fullName" className="text-muted-foreground">Full Name</Label>
+                      <Label htmlFor="dlg-fullName" className="text-xs font-semibold text-muted-foreground">Full Name</Label>
                       <Input
                         id="dlg-fullName"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
                         placeholder="Enter your full name"
-                        className="bg-background border-border text-foreground h-10"
+                        className="bg-background border-border text-foreground h-9 shadow-none text-sm"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="dlg-email" className="text-muted-foreground">Email Address</Label>
+                      <Label htmlFor="dlg-email" className="text-xs font-semibold text-muted-foreground">Email Address</Label>
                       <div className="relative">
                         <Input
                           id="dlg-email"
                           type="email"
                           value={user?.email || ''}
                           disabled
-                          className="bg-muted/40 border-border/80 text-muted-foreground h-10 cursor-not-allowed"
+                          className="bg-muted/40 border-border/80 text-muted-foreground h-9 cursor-not-allowed shadow-none text-sm"
                         />
                         <Badge variant="outline" className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-green-500/10 text-green-400 border-green-500/20">
                           Verified
@@ -427,21 +487,21 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
 
                   {/* Info badges */}
                   <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 pt-2">
-                    <div className="p-3.5 rounded-xl border border-border/60 bg-muted/40">
-                      <span className="text-[10px] text-muted-foreground block uppercase font-medium tracking-wider">Plan Tier</span>
+                    <div className="p-3.5 rounded-lg border border-border bg-card">
+                      <span className="text-[10px] text-muted-foreground block uppercase font-semibold tracking-wider">Plan Tier</span>
                       <span className="font-semibold text-foreground text-xs flex items-center gap-1.5 mt-1">
                         <ShieldCheck className="h-4 w-4 text-primary" />
                         {plan?.display_name || planName || 'Free Trial'}
                       </span>
                     </div>
-                    <div className="p-3.5 rounded-xl border border-border/60 bg-muted/40">
-                      <span className="text-[10px] text-muted-foreground block uppercase font-medium tracking-wider">Account Status</span>
+                    <div className="p-3.5 rounded-lg border border-border bg-card">
+                      <span className="text-[10px] text-muted-foreground block uppercase font-semibold tracking-wider">Account Status</span>
                       <span className="font-semibold text-foreground text-xs block mt-1">
                         {profile?.account_status || 'Active'}
                       </span>
                     </div>
-                    <div className="p-3.5 rounded-xl border border-border/60 bg-muted/40 col-span-2 sm:col-span-1">
-                      <span className="text-[10px] text-muted-foreground block uppercase font-medium tracking-wider">Member Since</span>
+                    <div className="p-3.5 rounded-lg border border-border bg-card col-span-2 sm:col-span-1">
+                      <span className="text-[10px] text-muted-foreground block uppercase font-semibold tracking-wider">Member Since</span>
                       <span className="font-semibold text-foreground text-xs block mt-1">
                         {user?.created_at ? format(new Date(user.created_at), 'MMM yyyy') : 'N/A'}
                       </span>
@@ -449,7 +509,7 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
                   </div>
 
                   <div className="flex justify-end pt-2">
-                    <Button onClick={handleSaveProfile} disabled={savingProfile} className="gap-2 bg-primary hover:bg-primary/90">
+                    <Button onClick={handleSaveProfile} disabled={savingProfile} className="gap-2 bg-primary hover:bg-primary/90 h-9">
                       {savingProfile && <Loader2 className="h-4 w-4 animate-spin" />}
                       Save Profile
                     </Button>
@@ -463,55 +523,31 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
               <div className="space-y-6">
                 <div>
                   <h2 className="text-xl font-semibold text-foreground">Security & Privacy</h2>
-                  <p className="text-muted-foreground text-xs mt-1">Manage Multi-Factor Authentication, developer API credentials, and active Chrome extension devices.</p>
+                  <p className="text-muted-foreground text-xs mt-1">Manage Multi-Factor Authentication and active Chrome extension devices.</p>
                 </div>
                 <Separator className="bg-border" />
 
                 <div className="space-y-6">
-                  {/* API keys and MFA */}
-                  <div className="grid gap-6 sm:grid-cols-2">
-                    <div className="p-4 rounded-xl bg-card border border-border flex flex-col justify-between space-y-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <Shield className="h-4 w-4 text-primary" />
-                          <h4 className="text-sm font-medium text-foreground">Multi-Factor Authentication</h4>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                          Secure your SellerSuit account by requiring OTP tokens from authenticator devices on login.
-                        </p>
+                  {/* Multi-Factor Authentication */}
+                  <div className="p-4 rounded-lg bg-card border border-border flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Shield className="h-4 w-4 text-muted-foreground" />
+                        <h4 className="text-sm font-semibold text-foreground">Multi-Factor Authentication</h4>
                       </div>
-                      <div className="flex items-center justify-between pt-2">
-                        <Badge variant={profile?.mfa_enabled ? 'default' : 'outline'} className={profile?.mfa_enabled ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'border-border text-muted-foreground'}>
-                          {profile?.mfa_enabled ? 'Enabled' : 'Disabled'}
-                        </Badge>
-                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Secure your SellerSuit account by requiring OTP tokens from authenticator devices on login.
+                      </p>
                     </div>
-
-                    <div className="p-4 rounded-xl bg-card border border-border flex flex-col justify-between space-y-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <Laptop className="h-4 w-4 text-primary" />
-                          <h4 className="text-sm font-medium text-foreground">Developer API Keys</h4>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                          Grant programmatic access to SellerSuit endpoints for integrations. Keep credentials secure.
-                        </p>
-                      </div>
-                      <div className="flex items-center justify-between pt-2">
-                        <span className="text-xs text-muted-foreground">Developer API</span>
-                        <Switch
-                          checked={apiKeyEnabled}
-                          onCheckedChange={handleToggleApiKey}
-                          disabled={savingSecurity}
-                        />
-                      </div>
-                    </div>
+                    <Badge variant={profile?.mfa_enabled ? 'default' : 'outline'} className={profile?.mfa_enabled ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'border-border text-muted-foreground'}>
+                      {profile?.mfa_enabled ? 'Enabled' : 'Disabled'}
+                    </Badge>
                   </div>
 
                   {/* Paired Sessions */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                      <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
                         <Smartphone className="h-4 w-4 text-muted-foreground" />
                         Active Paired Extension Devices
                       </h3>
@@ -529,11 +565,11 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
                     <div className="space-y-2.5">
                       {loadingSessions && sessions.length === 0 ? (
                         <div className="flex justify-center items-center py-6 gap-2">
-                          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                           <span className="text-xs text-muted-foreground">Loading paired sessions...</span>
                         </div>
                       ) : sessions.length === 0 ? (
-                        <div className="p-6 border border-dashed border-border rounded-xl text-center bg-muted/20">
+                        <div className="p-6 border border-dashed border-border rounded-lg text-center bg-muted/20">
                           <Laptop className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                           <p className="text-xs text-muted-foreground">No paired extension devices found</p>
                           <p className="text-[10px] text-muted-foreground mt-1">Connect your Chrome extension to sync listings.</p>
@@ -542,7 +578,7 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
                         sessions.map((session) => {
                           const dev = session.extension_devices;
                           return (
-                            <div key={session.id} className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-muted/50 gap-3 hover:bg-muted/30 transition-colors">
+                            <div key={session.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-card gap-3 hover:bg-muted/10 transition-colors">
                               <div className="min-w-0 flex items-start gap-2.5">
                                 <div className="p-2 rounded-lg bg-muted shrink-0">
                                   <Laptop className="h-4 w-4 text-muted-foreground" />
@@ -552,7 +588,7 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
                                     <span className="text-xs font-semibold text-foreground truncate">
                                       {dev?.device_name || 'Chrome Extension'}
                                     </span>
-                                    <Badge className="bg-green-500/10 text-green-400 hover:bg-green-500/10 border-0 h-4 text-[9px] px-1.5 font-normal">Active</Badge>
+                                    <Badge className="bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500/10 border-0 h-4 text-[9px] px-1.5 font-normal">Active</Badge>
                                   </div>
                                   <p className="text-[10px] text-muted-foreground truncate mt-0.5">
                                     {dev?.browser || 'Chrome'} on {dev?.os || 'OS'} • IP: {session.ip_address || 'Unknown'}
@@ -566,7 +602,7 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
                                 variant="destructive"
                                 size="sm"
                                 onClick={() => handleRevokeSession(session.device_id)}
-                                className="h-8 px-2 text-[10px] font-medium bg-red-950/40 text-red-400 border border-red-900/30 hover:bg-red-900 hover:text-white"
+                                className="h-8 px-2 text-[10px] font-medium bg-red-950/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/30 hover:bg-red-600 hover:text-white"
                               >
                                 Revoke
                               </Button>
@@ -739,104 +775,7 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
                 </div>
               </div>
             )}
-
-            {/* 5. USAGE TAB */}
-            {activeTab === 'usage' && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-foreground">Plan Usage Limits</h2>
-                  <p className="text-muted-foreground text-xs mt-1">Monitor remaining API credits, listing allocations, auto order runs, and capabilities.</p>
-                </div>
-                <Separator className="bg-border" />
-
-                <div className="space-y-6">
-                  {/* Usage Summary with Progress Bars */}
-                  <div className="space-y-5">
-                    {/* Credits */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="font-semibold text-foreground">Current Session Credits</span>
-                        <span className="text-muted-foreground font-medium">{creditsPercent}% used ({creditsUsed.toLocaleString()} / {creditsTotal.toLocaleString()})</span>
-                      </div>
-                      <div className="h-2.5 w-full bg-background border border-border rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-red-500 rounded-full transition-all duration-300"
-                          style={{ width: `${creditsPercent}%` }}
-                        />
-                      </div>
-                      <p className="text-[10px] text-muted-foreground mt-1">Resets in 3 hr 18 min</p>
-                    </div>
-
-                    {/* Listings Limit */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="font-semibold text-foreground">Weekly Active Listings Limits</span>
-                        <span className="text-muted-foreground font-medium">{listingsPercent}% used ({listingsActive} / {listingsLimit})</span>
-                      </div>
-                      <div className="h-2.5 w-full bg-background border border-border rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-blue-500 rounded-full transition-all duration-300"
-                          style={{ width: `${listingsPercent}%` }}
-                        />
-                      </div>
-                      <p className="text-[10px] text-muted-foreground mt-1">Resets in 22 hr 18 min</p>
-                    </div>
-
-                    {/* Auto-Orders Limit */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs">
-                        <span className="font-semibold text-foreground">Monthly Automated Orders</span>
-                        <span className="text-muted-foreground font-medium">{autoOrdersPercent}% used ({autoOrdersUsed} / {autoOrdersLimit})</span>
-                      </div>
-                      <div className="h-2.5 w-full bg-background border border-border rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-                          style={{ width: `${autoOrdersPercent}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-4 rounded-xl bg-card border border-border space-y-4">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-foreground">Daily Included routine runs</span>
-                      <span className="text-muted-foreground">0 / 5</span>
-                    </div>
-                    <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                      <div className="h-full bg-muted-foreground/30 rounded-full" style={{ width: '0%' }} />
-                    </div>
-                  </div>
-
-                  {/* Usage Credits switch */}
-                  <div className="flex items-center justify-between p-4 rounded-xl bg-card border border-border">
-                    <div className="space-y-1 pr-4">
-                      <span className="text-sm font-medium text-foreground">Usage credits fallback</span>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        Turn on usage credits to keep using SellerSuit if you hit your plan listing limits.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={autoReloadEnabled}
-                      onCheckedChange={setAutoReloadEnabled}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 6. CAPABILITIES / AI CONFIG TAB */}
-            {activeTab === 'capabilities' && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-foreground">Capabilities (AI configuration)</h2>
-                  <p className="text-muted-foreground text-xs mt-1">Tune translation engines, model limits, prompt engineering guidelines, and token optimizations.</p>
-                </div>
-                <Separator className="bg-border" />
-                <UserAISettings />
-              </div>
-            )}
-
-            {/* 7. CONNECTORS TAB */}
+                  {/* 5. CONNECTORS TAB */}
             {activeTab === 'connectors' && (
               <div className="space-y-6">
                 <div>
@@ -850,39 +789,39 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
               </div>
             )}
 
-            {/* 8. EXTENSION TAB */}
-            {activeTab === 'extension' && (
+            {/* 6. SELLER_SUIT IN CHROME */}
+            {activeTab === 'inbrowser' && (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-xl font-semibold text-foreground">Chrome Extension Pairing</h2>
-                  <p className="text-muted-foreground text-xs mt-1">Download and securely authenticate the SellerSuit Chrome assistant on this device.</p>
+                  <h2 className="text-xl font-semibold text-foreground">SellerSuit in Chrome</h2>
+                  <p className="text-muted-foreground text-xs mt-1">Get to know the browser automation suite and pair your device.</p>
                 </div>
                 <Separator className="bg-border" />
 
                 <div className="space-y-5">
-                  <div className="p-4 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 space-y-3">
-                    <div className="flex items-center gap-2.5">
-                      <Chrome className="h-5 w-5 text-primary" />
-                      <h4 className="text-sm font-semibold text-foreground">1. Download Zip File</h4>
-                    </div>
+                  <div className="p-4 rounded-lg bg-card border border-border space-y-3">
+                    <h4 className="font-semibold text-foreground text-sm flex items-center gap-2">
+                      <Download className="h-4 w-4 text-muted-foreground" />
+                      1. Download Chrome Extension
+                    </h4>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      Download the latest production bundle for the SellerSuit Chrome Extension. Keep automated scraping active.
+                      Download the latest production bundle for the SellerSuit Chrome Extension to start scraping and syncing inventory details.
                     </p>
                     <Button 
                       onClick={handleDownloadExtension}
                       disabled={isDownloading}
-                      className="bg-primary hover:bg-primary/95 text-xs text-primary-foreground"
+                      className="bg-primary hover:bg-primary/95 text-xs text-primary-foreground h-8 shadow-none rounded-md"
                     >
                       {isDownloading ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Download className="h-4 w-4 mr-1.5" />}
                       Download Zip File
                     </Button>
                   </div>
 
-                  <div className="p-4 rounded-xl bg-card border border-border space-y-3">
-                    <div className="flex items-center gap-2.5">
-                      <Smartphone className="h-5 w-5 text-muted-foreground" />
-                      <h4 className="text-sm font-semibold text-foreground">2. Pair Device Session</h4>
-                    </div>
+                  <div className="p-4 rounded-lg bg-card border border-border space-y-3">
+                    <h4 className="font-semibold text-foreground text-sm flex items-center gap-2">
+                      <Smartphone className="h-4 w-4 text-muted-foreground" />
+                      2. Pair Device Session
+                    </h4>
                     <p className="text-xs text-muted-foreground leading-relaxed">
                       Enter the pairing code shown inside your Chrome extension popover to register this browser profile instantly.
                     </p>
@@ -890,33 +829,16 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
                       <Input
                         placeholder="e.g. 123456"
                         maxLength={6}
-                        className="w-32 bg-background border-border text-center font-mono tracking-widest text-foreground h-9"
+                        className="w-32 bg-background border-border text-center font-mono tracking-widest text-foreground h-9 shadow-none text-sm"
                       />
-                      <Button className="bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs h-9">
+                      <Button className="bg-secondary hover:bg-secondary/80 text-secondary-foreground text-xs h-9 shadow-none rounded-md">
                         Approve Pairing
                       </Button>
                     </div>
                   </div>
-                </div>
-              </div>
-            )}
 
-            {/* 9. SELLER_SUIT IN CHROME */}
-            {activeTab === 'inbrowser' && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-foreground">SellerSuit in Chrome</h2>
-                  <p className="text-muted-foreground text-xs mt-1">Get to know the browser automation suite and supplier importer tool features.</p>
-                </div>
-                <Separator className="bg-border" />
-
-                <div className="space-y-4 text-xs text-muted-foreground leading-relaxed">
-                  <p>
-                    The SellerSuit Chrome Extension injects advanced pricing widgets directly onto supplier platforms (Walmart, Amazon) and allows one-click import mapping directly into your SellerSuit inventory databases.
-                  </p>
-                  
-                  <div className="p-4 rounded-xl bg-card border border-border space-y-3 text-[11px]">
-                    <h4 className="font-semibold text-foreground">Core Capabilities:</h4>
+                  <div className="p-4 rounded-lg bg-card border border-border space-y-3 text-[11px] text-muted-foreground leading-relaxed">
+                    <h4 className="font-semibold text-foreground text-xs">Core Capabilities:</h4>
                     <ul className="list-disc pl-4 space-y-1.5">
                       <li>Walmart &amp; Amazon catalog detail scraping</li>
                       <li>Calculates supplier costs vs eBay estimated payouts instantly</li>
@@ -924,10 +846,6 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
                       <li>Monitors inventory variations (sizes, colors, SKUs)</li>
                     </ul>
                   </div>
-
-                  <p className="text-[10px] text-muted-foreground mt-2">
-                    For detailed usage walkthroughs, please reference our help documentation center.
-                  </p>
                 </div>
               </div>
             )}

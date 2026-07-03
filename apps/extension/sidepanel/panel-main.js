@@ -585,7 +585,8 @@
 
       // Resolve SKU: edited product wins over scan-time draft.
       const draftSku = draft && draft.sku;
-      const skuRoot = product.sourceId || product.parentAsin || product.asin || '';
+      const skuRoot = product.sourceId || product.parentAsin || product.asin ||
+        (window.SSSkuEngine ? window.SSSkuEngine.fallbackRootFromTitle(product.title) : '');
       const generatedSku = (!product.ebaySku && !draftSku && skuRoot && window.SSSkuEngine)
         ? window.SSSkuEngine.buildReadable(skuRoot, {}, window.SSSkuEngine.prefixFor(product.supplier))
         : '';
@@ -624,6 +625,18 @@
           dedupe: true,
           dropInvalid: true
         });
+      }
+
+      // Auto Edit Mode: ON rewrites title/description via the admin-configured AI
+      // prompt (SellerSuitUploader.run reads these flags); OFF leaves the existing
+      // minimal cleanup (_enforceEbayTitle / template compile) as the only pass.
+      // Only trigger AI generation for content the user hasn't already touched —
+      // a manual edit or an already-fresh AI draft must not be silently overwritten
+      // or re-billed against credits.
+      const { autoEditEnabled } = await new Promise(r => chrome.storage.local.get('autoEditEnabled', r));
+      if (autoEditEnabled) {
+        if (titleSource === 'scraped') ebayProduct.useAiTitle = true;
+        if (descSource === 'scraped') ebayProduct.useAiDescription = true;
       }
 
       // Mirror to storage so panel stays in sync

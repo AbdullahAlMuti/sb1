@@ -133,8 +133,9 @@ function getFirstGeneratedTitle(result) {
 
 // getUrls and getApiKeys are declared globally in background/index.js
 
-// Register the single message listener
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+// Register the single message listener. Named so the auth gate can re-route a
+// request after a successful re-verification (see the unlock gate below).
+function routeMessage(request, sender, sendResponse) {
   const urls = getUrls();
   const apiKeys = getApiKeys();
 
@@ -507,10 +508,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   const isUnlocked = AuthHelper.isUnlocked();
   if (!isUnlocked) {
+    // The unlock flag lives in service-worker memory, so every MV3 cold start
+    // resets it even though the user is still logged in. The old gate verified
+    // auth but ALWAYS responded "Please Log In" — the first click after any
+    // idle period failed, and rapid retries failed too (verify still in
+    // flight). On successful re-verification, route the original request
+    // instead of failing it; the flag is now true so the gate won't re-enter.
     AuthHelper.verifyAuthStatus().then(unlocked => {
-      if (!unlocked && request.action !== 'AI_REMOVE_BG' && request.action !== 'GENERATE_TITLE' && request.action !== 'GENERATE_DESCRIPTION') {
+      if (unlocked) {
+        routeMessage(request, sender, sendResponse);
+        return;
+      }
+      if (request.action !== 'AI_REMOVE_BG' && request.action !== 'GENERATE_TITLE' && request.action !== 'GENERATE_DESCRIPTION') {
         chrome.tabs.create({ url: urls.WEB_APP_DASHBOARD });
       }
+      sendResponse({ success: false, error: "Please Log In to use the extension." });
+    }).catch(() => {
       sendResponse({ success: false, error: "Please Log In to use the extension." });
     });
     return true;
@@ -557,9 +570,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const uploadSessionId = crypto.randomUUID();
         const ebayUrl  = `https://www.ebay.com/sl/prelist/suggest?sr=shListingsTopNav&uploadSessionId=${uploadSessionId}`;
 
-        // Store product under uploadSessionId first to prevent race condition
+        // Store product under uploadSessionId first to prevent race condition.
+        // stagedAt drives the prelist tabId-fallback TTL and the storage sweep.
         await chrome.storage.local.set({
-          [uploadSessionId]: { product, isImported: false, uploadType: request.uploadType || 'classic' },
+          [uploadSessionId]: { product, isImported: false, uploadType: request.uploadType || 'classic', stagedAt: Date.now() },
           ebayListingTitle: product.title || '',
           ebayListingTabId: ''
         });
@@ -569,7 +583,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         // Also set legacy tabId keys for backward compatibility
         await chrome.storage.local.set({
-          [String(tabId)]: { product, isImported: false, uploadType: request.uploadType || 'classic' },
+          [String(tabId)]: { product, isImported: false, uploadType: request.uploadType || 'classic', stagedAt: Date.now() },
           ebayListingTabId: String(tabId)
         });
 
@@ -955,4 +969,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     })();
     return true;
   }
-});
+}
+
+chrome.runtime.onMessage.addListener(routeMessage);

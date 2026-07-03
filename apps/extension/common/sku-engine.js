@@ -74,5 +74,20 @@ window.SSSkuEngine = (() => {
     return String(readableSku || '').trim();
   }
 
-  return { buildReadable, encodeForEbay, prefixFor, MAX_LEN };
+  /**
+   * Fallback SKU root for products with no supplier ID: deterministic hash of
+   * the cleaned title ("T" + 6-char base36). Without this, every ID-less
+   * product produced the same "<PREFIX>-" root, colliding in the DB upsert
+   * (ON CONFLICT (user_id, sku)). Deterministic on purpose — re-scanning the
+   * same product yields the same SKU, so duplicate detection still works.
+   * @param {string} title
+   * @returns {string} e.g. 'T1A2B3C', or '' when the title is empty too
+   */
+  function fallbackRootFromTitle(title) {
+    const cleaned = String(title || '').toUpperCase().replace(/[^A-Z0-9]+/g, '');
+    if (!cleaned) return '';
+    return 'T' + _hash32(cleaned);
+  }
+
+  return { buildReadable, encodeForEbay, prefixFor, fallbackRootFromTitle, MAX_LEN };
 })();

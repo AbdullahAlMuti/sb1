@@ -464,7 +464,7 @@ export default function GoogleSheetsSettings() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.1 }}
     >
-      <Card>
+      <Card className="border-border bg-card shadow-none">
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-green-500/10">

@@ -269,6 +269,74 @@ describe('adaptProduct — Amazon quick-import (injector Upload button) payload'
   });
 });
 
+describe('adaptProduct — missing/invalid price safety', () => {
+  test('missing price and finalPrice falls back to 0.99, never throws', () => {
+    const rawProd = { ...AMAZON_SINGLE, price: undefined, finalPrice: undefined, ebayFinalPrice: undefined };
+    const out = loadAdapt()(rawProd);
+    assert.equal(out.prod_variations[0].price, 0.99);
+  });
+
+  test('negative price falls back to 0.99', () => {
+    const rawProd = { ...AMAZON_SINGLE, price: -5, finalPrice: -5, ebayFinalPrice: undefined };
+    const out = loadAdapt()(rawProd);
+    assert.equal(out.prod_variations[0].price, 0.99);
+  });
+
+  test('non-numeric price string ("N/A") falls back to 0.99', () => {
+    const rawProd = { ...AMAZON_SINGLE, price: 'N/A', finalPrice: 'N/A', ebayFinalPrice: undefined };
+    const out = loadAdapt()(rawProd);
+    assert.equal(out.prod_variations[0].price, 0.99);
+  });
+
+  test('missing price on a variant falls back to parent price, never NaN', () => {
+    const rawProd = {
+      ...AMAZON_VARIATION,
+      variants: [
+        { attrs: { Color: { productName: 'Red' } }, price: undefined, finalPrice: undefined, img: null, imgProp: 'Color', supplierVariantId: 'ASIN-RED' },
+      ],
+    };
+    const out = loadAdapt()(rawProd);
+    assert.ok(!Number.isNaN(out.prod_variations[0].price));
+    assert.equal(out.prod_variations[0].price, 12); // AMAZON_VARIATION.price fallback (basePrice)
+  });
+});
+
+describe('adaptProduct — missing product/source ID safety', () => {
+  test('no asin/parentAsin/sourceId → prod_id empty string, never throws', () => {
+    const rawProd = { ...AMAZON_SINGLE, asin: undefined, parentAsin: undefined, sourceId: undefined };
+    const out = loadAdapt()(rawProd);
+    assert.equal(out.prod_id, '');
+  });
+
+  test('missing ID falls back to deterministic title-hash SKU (never bare prefix)', () => {
+    const rawProd = { ...AMAZON_SINGLE, asin: undefined, parentAsin: undefined, sourceId: undefined, ebaySku: undefined };
+    const out = loadAdapt()(rawProd);
+    const sku = out.prod_variations[0].sku;
+    // 'AZS-' + 'T' + 6-char base36 title hash — unique per title, stable per re-run
+    assert.match(sku, /^AZS-T[A-Z0-9]{6}$/, `unexpected fallback SKU: ${sku}`);
+    assert.equal(loadAdapt()(rawProd).prod_variations[0].sku, sku, 'fallback SKU must be deterministic');
+  });
+
+  test('two different ID-less products get different fallback SKUs', () => {
+    const a = loadAdapt()({ ...AMAZON_SINGLE, asin: undefined, parentAsin: undefined, title: 'Blue Ceramic Mug 12oz' });
+    const b = loadAdapt()({ ...AMAZON_SINGLE, asin: undefined, parentAsin: undefined, title: 'Red Steel Bottle 24oz' });
+    assert.notEqual(a.prod_variations[0].sku, b.prod_variations[0].sku,
+      'ID-less products must not collide on the same SKU (DB upsert is ON CONFLICT (user_id, sku))');
+  });
+
+  test('title falls back to sourceId or "Product" when title is missing entirely', () => {
+    const rawProd = { ...AMAZON_SINGLE, title: undefined, asin: 'B08XYZ', parentAsin: 'B08XYZ' };
+    const out = loadAdapt()(rawProd);
+    assert.equal(out.prod_title, 'B08XYZ');
+  });
+
+  test('missing title and missing ID falls back to literal "Product"', () => {
+    const rawProd = { ...AMAZON_SINGLE, title: undefined, asin: undefined, parentAsin: undefined, sourceId: undefined };
+    const out = loadAdapt()(rawProd);
+    assert.equal(out.prod_title, 'Product');
+  });
+});
+
 describe('adaptProduct — supplierPrice and ebayFinalPrice separation', () => {
   test('single variation maps ebayFinalPrice and supplierPrice correctly', () => {
     const rawProd = {

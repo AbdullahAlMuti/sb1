@@ -731,6 +731,16 @@ function _ssShowDuplicateBlock(listing, onOverride) {
       storageKey = String(tabId);
       const stored = await chrome.storage.local.get(storageKey);
       entry = stored[storageKey];
+      // TTL guard — the tabId fallback has no session id in the URL, so a
+      // reused/recycled tab id could resurrect a product staged long ago
+      // (e.g. an upload the user aborted). Only run fresh stagings here.
+      const STALE_MS = 30 * 60 * 1000;
+      if (entry && entry.stagedAt && (Date.now() - entry.stagedAt) > STALE_MS) {
+        console.warn('[SS] Ignoring stale staged product for tab', storageKey,
+          '- staged', Math.round((Date.now() - entry.stagedAt) / 60000), 'min ago');
+        chrome.storage.local.remove(storageKey).catch(() => {});
+        return;
+      }
     }
 
     if (!storageKey || !entry?.product || entry.isImported) return;
