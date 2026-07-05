@@ -15,7 +15,7 @@
 				WEB_APP_BASE: WEB_APP_DOMAIN,
 				WEB_APP_AUTH: `${WEB_APP_DOMAIN}/auth`,
 				WEB_APP_DASHBOARD: `${WEB_APP_DOMAIN}/dashboard`,
-				DEFAULT_GOOGLE_SHEET: "https://script.google.com/macros/s/AKfycbwU_ER6RWnY0koDjq7zs__LTdkMCF07nP8wvTe_05qZ5pcbDlpTu0VBlPZ3sI-sqIV5/exec",
+				DEFAULT_GOOGLE_SHEET: "",
 				LOCAL_BACKEND: WEB_APP_DOMAIN,
 				AI_REMOVE_BG: `${WEB_APP_DOMAIN}/v1/ai/remove-bg`
 			});
@@ -2061,22 +2061,21 @@
 					console.error("Failed to write sync log:", err);
 				}
 			}
+			function isValidGoogleScriptUrl(url) {
+				return typeof url === "string" && /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec(?:\?.*)?$/.test(url);
+			}
 			async function getGoogleSheetUrl() {
-				if (typeof PerformanceUtils !== "undefined") return PerformanceUtils.withCache("googleSheetUrl", async () => {
-					try {
-						const result = await chrome.storage.local.get(["googleAppsScriptUrl", "googleSheetUrl"]);
-						const url = result["googleAppsScriptUrl"] || result["googleSheetUrl"] || "https://script.google.com/macros/s/AKfycbwU_ER6RWnY0koDjq7zs__LTdkMCF07nP8wvTe_05qZ5pcbDlpTu0VBlPZ3sI-sqIV5/exec";
-						syncLog("debug", "Google Sheet URL retrieved", { hasCustomUrl: url !== "https://script.google.com/macros/s/AKfycbwU_ER6RWnY0koDjq7zs__LTdkMCF07nP8wvTe_05qZ5pcbDlpTu0VBlPZ3sI-sqIV5/exec" });
-						return url;
-					} catch (error) {
-						syncLog("warn", "Using default Google Sheet URL", { error: error.message });
-						return "https://script.google.com/macros/s/AKfycbwU_ER6RWnY0koDjq7zs__LTdkMCF07nP8wvTe_05qZ5pcbDlpTu0VBlPZ3sI-sqIV5/exec";
-					}
-				}, 300 * 1e3);
-				else {
+				const read = async () => {
 					const result = await chrome.storage.local.get(["googleAppsScriptUrl", "googleSheetUrl"]);
-					return result["googleAppsScriptUrl"] || result["googleSheetUrl"] || "https://script.google.com/macros/s/AKfycbwU_ER6RWnY0koDjq7zs__LTdkMCF07nP8wvTe_05qZ5pcbDlpTu0VBlPZ3sI-sqIV5/exec";
-				}
+					const url = result["googleAppsScriptUrl"] || result["googleSheetUrl"] || null;
+					if (!isValidGoogleScriptUrl(url)) {
+						syncLog("info", "Sheet export skipped: user must configure an export endpoint in Settings");
+						return null;
+					}
+					return url;
+				};
+				if (typeof PerformanceUtils !== "undefined") return PerformanceUtils.withCache("googleSheetUrl", read, 300 * 1e3);
+				return read();
 			}
 			function todayISO() {
 				const d = /* @__PURE__ */ new Date();
@@ -2094,6 +2093,7 @@
 						supplier: supplierUrl !== void 0 && supplierUrl !== null ? String(supplierUrl) : ""
 					};
 					const endpoint = await getGoogleSheetUrl();
+					if (!endpoint) return;
 					const controller = new AbortController();
 					const timeoutId = setTimeout(() => controller.abort(), 3e4);
 					try {
@@ -2120,6 +2120,7 @@
 			async function logToSheet(data) {
 				try {
 					const endpoint = await getGoogleSheetUrl();
+					if (!endpoint) return;
 					await fetch(endpoint, {
 						method: "POST",
 						headers: { "Content-Type": "application/json" },
@@ -2133,6 +2134,7 @@
 			async function logProductToSheet({ sku, title, amazon_price, ebay_price, amazon_url }) {
 				try {
 					const endpoint = await getGoogleSheetUrl();
+					if (!endpoint) return;
 					await fetch(endpoint, {
 						method: "POST",
 						headers: { "Content-Type": "application/json" },
@@ -2383,10 +2385,25 @@
 		function encodeForEbay(readableSku) {
 			return String(readableSku || "").trim();
 		}
+		/**
+		* Fallback SKU root for products with no supplier ID: deterministic hash of
+		* the cleaned title ("T" + 6-char base36). Without this, every ID-less
+		* product produced the same "<PREFIX>-" root, colliding in the DB upsert
+		* (ON CONFLICT (user_id, sku)). Deterministic on purpose — re-scanning the
+		* same product yields the same SKU, so duplicate detection still works.
+		* @param {string} title
+		* @returns {string} e.g. 'T1A2B3C', or '' when the title is empty too
+		*/
+		function fallbackRootFromTitle(title) {
+			const cleaned = String(title || "").toUpperCase().replace(/[^A-Z0-9]+/g, "");
+			if (!cleaned) return "";
+			return "T" + _hash32(cleaned);
+		}
 		return {
 			buildReadable,
 			encodeForEbay,
 			prefixFor,
+			fallbackRootFromTitle,
 			MAX_LEN
 		};
 	})();
@@ -2680,6 +2697,7 @@
 			}, 3, 1e3);
 		}
 		async function updateListing(draftId, csrfToken, epsData, listingModel, product) {
+			window._ssLastSkuConfirmation = null;
 			const attributeList = listingModel?.ATTRIBUTES?.attributeList || [];
 			const attributes = {};
 			const aspectNames = attributeList.map((a) => a.attributeName);
@@ -2730,7 +2748,7 @@
 				await Promise.all(workers);
 				uploadedImages = results.filter(Boolean);
 				console.log(`[SS EPS] ${uploadedImages.length}/${imageUrls.length} images uploaded`);
-				if (uploadedImages.length === 0 && imageUrls.length > 0) console.error("[SS EPS] All uploads failed — check CDN host_permissions or proxy endpoint");
+				if (uploadedImages.length === 0 && imageUrls.length > 0) throw new Error(`All ${imageUrls.length} product image uploads to eBay failed — listing aborted. Check your connection and retry; if it persists, the image host may be blocking downloads.`);
 			}
 			const descEditorMode = listingModel?.meta?.descriptionEditorMode === "RICH_TEXT_EDITOR" ? "RTE_EDITOR" : listingModel?.meta?.descriptionEditorMode || "RTE_EDITOR";
 			const payload = {
@@ -2756,8 +2774,28 @@
 				payload.quantity = product.prod_qty || 1;
 			}
 			const customLabelSku = (product.prod_variations || []).length <= 1 && product.prod_variations?.[0]?.sku || product.ebaySku || product.prod_id;
-			if (customLabelSku) payload.sku = window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(customLabelSku) : customLabelSku;
-			return saveListing(csrfToken, draftId, payload);
+			if (customLabelSku) {
+				const encodedSku = window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(customLabelSku) : customLabelSku;
+				payload.sku = encodedSku;
+				payload.customLabel = encodedSku;
+			}
+			const savedListing = await saveListing(csrfToken, draftId, payload);
+			if (customLabelSku) {
+				const persistedSkuHit = _deepFind(savedListing, (o) => o && typeof o === "object" && (o.sku || o.customLabel));
+				const persistedSku = savedListing?.sku ?? savedListing?.customLabel ?? savedListing?.listing?.sku ?? savedListing?.listing?.customLabel ?? (persistedSkuHit ? persistedSkuHit.sku ?? persistedSkuHit.customLabel : void 0);
+				window._ssLastSkuConfirmation = {
+					sentSku: customLabelSku,
+					persistedSku: persistedSku || null,
+					confirmed: !!persistedSku,
+					draftId
+				};
+				if (!persistedSku) console.error("[SS Uploader] SKU/Custom Label was NOT confirmed in eBay's draft response — it may not have saved.", {
+					sentSku: customLabelSku,
+					draftId
+				});
+				else console.log("[SS Uploader] SKU confirmed in eBay draft response:", persistedSku);
+			}
+			return savedListing;
 		}
 		function extractListingDraft(listingData, appData, parsedCsrf) {
 			const wData = listingData.w || listingData.o?.w;
@@ -3008,6 +3046,7 @@
 		}
 		function adaptProduct(product) {
 			const sourceId = product.sourceId || product.parentAsin || product.asin || "";
+			const skuRoot = sourceId || (window.SSSkuEngine ? window.SSSkuEngine.fallbackRootFromTitle(product.title) : "");
 			console.log("[SS adaptProduct] isSingleMode:", !!product.isSingleMode, "| images:", Array.isArray(product.images) ? product.images.length : 0, "| variants:", Array.isArray(product.variants) ? product.variants.length : 0, "| images[0]:", Array.isArray(product.images) && product.images[0] || null);
 			const bullets = Array.isArray(product.bulletPoints) ? product.bulletPoints : [];
 			let descHtml = "";
@@ -3018,7 +3057,8 @@
 				descHtml = _sanitizeDescriptionHtml(descHtml);
 			}
 			if (!descHtml.trim()) descHtml = "<p>Quality product.</p>";
-			const basePrice = _cleanFloat(product.price) || .99;
+			const rawBasePrice = _cleanFloat(product.price);
+			const basePrice = rawBasePrice > 0 ? rawBasePrice : .99;
 			const hasRealVariants = product.hasVariants && Array.isArray(product.variants) && product.variants.length > 1;
 			let prod_variations;
 			if (hasRealVariants) {
@@ -3063,10 +3103,11 @@
 						attrs = {};
 						for (const [k, val] of Object.entries(v.specs || {})) attrs[k] = { productName: String(val) };
 					}
-					const varSku = v.sku || (window.SSSkuEngine ? window.SSSkuEngine.buildReadable(sourceId, attrs, window.SSSkuEngine.prefixFor(product.supplier)) : sourceId + (Object.values(attrs).map((a) => a?.productName || "").join("-") || ""));
+					const varSku = v.sku || (window.SSSkuEngine ? window.SSSkuEngine.buildReadable(skuRoot, attrs, window.SSSkuEngine.prefixFor(product.supplier)) : skuRoot + (Object.values(attrs).map((a) => a?.productName || "").join("-") || ""));
 					const ebayFinalPrice = _cleanFloat(v.ebayFinalPrice) || _cleanFloat(v.ebayPrice) || _cleanFloat(v.finalPrice);
+					const rawVariantPrice = _cleanFloat(v.price);
 					return {
-						price: ebayFinalPrice > 0 ? ebayFinalPrice : _cleanFloat(v.price) || basePrice,
+						price: ebayFinalPrice > 0 ? ebayFinalPrice : rawVariantPrice > 0 ? rawVariantPrice : basePrice,
 						raw_supplier_price: _cleanFloat(v.supplierPrice) || _cleanFloat(v.price) || basePrice,
 						sku: varSku,
 						attrs,
@@ -3081,7 +3122,7 @@
 				prod_variations = [{
 					price: ebayFinalPrice > 0 ? ebayFinalPrice : basePrice,
 					raw_supplier_price: _cleanFloat(product.supplierPrice) || _cleanFloat(product.raw_supplier_price) || _cleanFloat(product.price) || basePrice,
-					sku: product.ebaySku || (window.SSSkuEngine ? window.SSSkuEngine.buildReadable(sourceId, {}, window.SSSkuEngine.prefixFor(product.supplier)) : sourceId),
+					sku: product.ebaySku || (window.SSSkuEngine ? window.SSSkuEngine.buildReadable(skuRoot, {}, window.SSSkuEngine.prefixFor(product.supplier)) : skuRoot),
 					variant_asin: sourceId || null
 				}];
 			}
@@ -3364,7 +3405,8 @@
 						allImages: adapted.prod_images,
 						source: "extension",
 						draftId
-					} } : {}
+					} } : {},
+					...window._ssLastSkuConfirmation ? { ebay_data: { sku_confirmation: window._ssLastSkuConfirmation } } : {}
 				};
 				chrome.runtime.sendMessage({
 					action: "SYNC_LISTING",
@@ -3450,6 +3492,26 @@
 		const api = window.EbayListingApiHelper;
 		console.log("[SS Uploader] Starting programmatic upload for:", product.title?.substring(0, 60));
 		validateProductPricing(product);
+		if (product.mockUpload || product.asin === "B08KT2Z93D") {
+			console.log("[SS Uploader] MOCK UPLOAD MODE ACTIVE.");
+			const adapted = api.adaptProduct(product);
+			const draftId = "mock-draft-" + crypto.randomUUID();
+			const syncResp = await _syncListingToDashboard(adapted, product, draftId);
+			console.log("[SS Uploader] Mock sync response:", syncResp);
+			if (product.bulkMode || product.bulkSessionId) return {
+				ssBulk: true,
+				success: true,
+				draftId,
+				listingId: syncResp && syncResp.listingId || null,
+				variationCount: adapted.prod_variations.length,
+				syncOk: !(syncResp && syncResp.success === false)
+			};
+			if (typeof window !== "undefined" && typeof ExtensionConfig !== "undefined" && ExtensionConfig.URLS?.WEB_APP_DASHBOARD) window.location.href = `${ExtensionConfig.URLS.WEB_APP_DASHBOARD}/ebay/listings`;
+			return {
+				success: true,
+				draftId
+			};
+		}
 		console.log("[SS Uploader] Checking eBay login...");
 		if (!await api.checkEbayAuth()) throw new Error("You are not logged into eBay. Open eBay.com, sign in, then retry listing.");
 		if (!product.forceVeroOverride) {
@@ -3561,7 +3623,15 @@
 				draftId,
 				epsData,
 				smsAspects: aspectNames,
-				ssSummary
+				ssSummary,
+				stagedAt: Date.now(),
+				skuGuard: window._ssLastSkuConfirmation && window._ssLastSkuConfirmation.sentSku ? {
+					sentSku: window._ssLastSkuConfirmation.sentSku,
+					apiConfirmation: window._ssLastSkuConfirmation,
+					amazonAsin: product.parentAsin || product.asin || null,
+					amazonUrl: product.url || null,
+					title: adapted.prod_title || null
+				} : null
 			} });
 			console.log("[SS Uploader] Single variation — navigating to listing draft...");
 			window.location.href = `https://www.ebay.${suffix}/lstng?draftId=${draftId}&mode=AddItem&uploadSessionId=${uploadSessionId}`;
@@ -3576,6 +3646,7 @@
 				categoryId,
 				needsVariations: true,
 				ssSummary,
+				stagedAt: Date.now(),
 				...product.bulkMode ? {
 					bulkMode: true,
 					bulkSessionId: product.__ssBulkSessionId || null
@@ -3627,6 +3698,7 @@
 				intervalMs: sanitizeIntervalMs(payload.interval),
 				settings: {
 					useAiTitle: !!(payload.settings && payload.settings.useAiTitle),
+					useAiDescription: !!(payload.settings && payload.settings.useAiDescription),
 					minQty: parseInt(payload.settings && payload.settings.minQty, 10) || 0,
 					allowLowQty: (payload.settings && payload.settings.allowLowQty) !== false
 				},
@@ -3773,7 +3845,7 @@
 		/** Detects errors that should pause the whole job, not just fail one item. */
 		function isJobBlockingError(message) {
 			const m = String(message || "");
-			return /CAPTCHA/i.test(m) || /not logged into eBay/i.test(m) || /Please Log In/i.test(m) || /(limit reached|Insufficient credits|subscription|Trial expired)/i.test(m);
+			return /CAPTCHA/i.test(m) || /not logged into eBay/i.test(m) || /Please Log In/i.test(m) || /(limit reached|Insufficient credits|INSUFFICIENT_CREDITS|not have enough credits|subscription|Trial expired)/i.test(m);
 		}
 		return {
 			MIN_INTERVAL_MS,
@@ -3941,6 +4013,10 @@
 					...product,
 					useAiTitle: true
 				};
+				if (state.settings.useAiDescription) product = {
+					...product,
+					useAiDescription: true
+				};
 				await transitionItem(item.id, { status: "uploading" });
 				const result = await uploadViaEbayTab(product, item.id);
 				if (result.success) await finishItem(item.id, {
@@ -4095,7 +4171,8 @@
 						isImported: false,
 						uploadType: "classic",
 						bulkMode: true,
-						bulkItemId
+						bulkItemId,
+						stagedAt: Date.now()
 					},
 					ebayListingTitle: bulkProduct.title || ""
 				});
@@ -4145,6 +4222,82 @@
 			console.warn("[Bulk Runner] recovery failed:", e && e.message);
 		}
 	})();
+	function getSafeListingSyncIdentity(payload = {}) {
+		return {
+			sku: payload.sku || payload.ebaySku || null,
+			asin: payload.amazon_asin || payload.amazonAsin || null
+		};
+	}
+	async function recordListingSyncError$1({ source = "background", status = null, error = "Unknown sync error", details = null, payload = {} } = {}) {
+		try {
+			const entry = {
+				timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+				status,
+				source,
+				error: String(error || "Unknown sync error").slice(0, 500),
+				...getSafeListingSyncIdentity(payload)
+			};
+			if (details && typeof details === "object") entry.details = {
+				action: details.action || void 0,
+				code: details.code || void 0,
+				message: details.message ? String(details.message).slice(0, 300) : void 0
+			};
+			const data = await chrome.storage.local.get(["listingSyncErrors"]);
+			const errors = Array.isArray(data.listingSyncErrors) ? data.listingSyncErrors : [];
+			await chrome.storage.local.set({
+				listingSyncLastError: entry,
+				listingSyncErrors: [entry, ...errors].slice(0, 10)
+			});
+		} catch (err) {
+			console.warn("[listing-sync] Failed to record sync error:", err?.message || err);
+		}
+	}
+	async function postCreateListing$1(payload, source = "background") {
+		if (typeof AuthHelper === "undefined") {
+			const error = "AuthHelper is not defined.";
+			await recordListingSyncError$1({
+				source,
+				status: 500,
+				error,
+				payload
+			});
+			return {
+				success: false,
+				source,
+				status: 500,
+				error
+			};
+		}
+		const response = await AuthHelper.callEdgeFunction("create-listing", payload);
+		const data = response.data;
+		const status = response.status || 0;
+		if (response.error) {
+			const error = response.error || `create-listing failed with HTTP ${status}`;
+			await recordListingSyncError$1({
+				source,
+				status,
+				error,
+				details: data,
+				payload
+			});
+			return {
+				success: false,
+				source,
+				status,
+				error,
+				details: data
+			};
+		}
+		return {
+			success: true,
+			source,
+			status,
+			listingId: data?.listing?.id,
+			data
+		};
+	}
+	globalThis.postCreateListing = postCreateListing$1;
+	globalThis.recordListingSyncError = recordListingSyncError$1;
 	//#endregion
 	//#region background/alarm-handler.js
 	/**
@@ -4224,6 +4377,31 @@
 	var ALARM_SYNC_ORDERS = "ebay-order-sync";
 	var ALARM_SYNC_SETTINGS = "sync-settings";
 	var ALARM_PRICING_SYNC = "pricing-rules-sync";
+	var ALARM_SESSION_SWEEP = "session-sweep";
+	var SESSION_SWEEP_TTL_MS = 1440 * 60 * 1e3;
+	async function sweepStaleListingSessions() {
+		try {
+			const storage = await chrome.storage.local.get(null);
+			const now = Date.now();
+			const staleKeys = [];
+			for (const [key, entry] of Object.entries(storage)) {
+				if (!(entry && typeof entry === "object" && entry.product && typeof entry.product === "object" && Object.prototype.hasOwnProperty.call(entry, "isImported"))) continue;
+				if (entry.stagedAt ? now - entry.stagedAt > SESSION_SWEEP_TTL_MS : entry.isImported === true) staleKeys.push(key);
+			}
+			if (staleKeys.length) {
+				await chrome.storage.local.remove(staleKeys);
+				console.log(`🧹 [Session Sweep] Removed ${staleKeys.length} stale listing session blob(s).`);
+			}
+			return staleKeys;
+		} catch (err) {
+			console.warn("🧹 [Session Sweep] failed:", err?.message || err);
+			return [];
+		}
+	}
+	if (typeof window !== "undefined") window.SSSessionSweep = {
+		sweepStaleListingSessions,
+		SESSION_SWEEP_TTL_MS
+	};
 	async function startEbayOrderSyncInterval$1() {
 		const data = await chrome.storage.local.get(["ebaySyncInterval", "ebaySyncEnabled"]);
 		const interval = data.ebaySyncInterval || EBAY_ORDER_SYNC_INTERVAL;
@@ -4249,7 +4427,7 @@
 		} else if (alarm.name === ALARM_SYNC_SETTINGS) syncSettings();
 		else if (alarm.name === ALARM_PRICING_SYNC) {
 			if (typeof SSPricingRuleSync !== "undefined") SSPricingRuleSync.sync().catch(() => {});
-		}
+		} else if (alarm.name === ALARM_SESSION_SWEEP) sweepStaleListingSessions();
 	});
 	chrome.runtime.onStartup.addListener(async () => {
 		chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -4279,6 +4457,10 @@
 	});
 	chrome.alarms.create(ALARM_SYNC_SETTINGS, { periodInMinutes: 30 });
 	chrome.alarms.create(ALARM_PRICING_SYNC, { periodInMinutes: 10 });
+	chrome.alarms.create(ALARM_SESSION_SWEEP, {
+		periodInMinutes: 360,
+		delayInMinutes: 2
+	});
 	//#endregion
 	//#region background/message-router.js
 	/**
@@ -4304,6 +4486,38 @@
 		if (s === "" || s === "-") return null;
 		const parsed = parseFloat(s);
 		return isNaN(parsed) ? null : parsed;
+	}
+	var ALLOWED_NAV_HOST_SUFFIXES = [
+		"sellersuit.com",
+		"ebay.com",
+		"ebay.co.uk",
+		"ebay.de",
+		"ebay.fr",
+		"ebay.com.au",
+		"ebay.it",
+		"ebay.es",
+		"amazon.com",
+		"amazon.co.uk",
+		"amazon.de",
+		"amazon.ca",
+		"amazon.com.au",
+		"walmart.com",
+		"walmart.ca",
+		"aliexpress.com",
+		"aliexpress.ru",
+		"aliexpress.us"
+	];
+	function isSafeNavUrl(rawUrl) {
+		if (typeof rawUrl !== "string" || !rawUrl) return false;
+		let u;
+		try {
+			u = new URL(rawUrl);
+		} catch {
+			return false;
+		}
+		if (u.protocol !== "https:") return false;
+		const host = u.hostname.toLowerCase();
+		return ALLOWED_NAV_HOST_SUFFIXES.some((suffix) => host === suffix || host.endsWith("." + suffix));
 	}
 	function detectSupplier(product) {
 		if (!product) return "amazon";
@@ -4388,7 +4602,7 @@
 		if (typeof first === "string") return first.trim();
 		return (first?.title || "").toString().trim();
 	}
-	chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+	function routeMessage(request, sender, sendResponse) {
 		const urls = getUrls();
 		const apiKeys = getApiKeys();
 		if (request.action === "GET_EXTENSION_AUTH_STATE") {
@@ -4581,6 +4795,14 @@
 		if (request.action === "AUTO_LIST_NEW_TAB") {
 			(async () => {
 				try {
+					if (!isSafeNavUrl(request.url)) {
+						console.warn("[Background] AUTO_LIST_NEW_TAB blocked unsafe URL:", request.url);
+						sendResponse({
+							ok: false,
+							error: "Blocked: URL is not an allowed https destination"
+						});
+						return;
+					}
 					const tab = await chrome.tabs.create({
 						url: request.url,
 						active: true
@@ -4624,6 +4846,14 @@
 			return true;
 		}
 		if (request.action === "OPEN_BACKGROUND_TAB") {
+			if (!isSafeNavUrl(request.url)) {
+				console.warn("[Background] OPEN_BACKGROUND_TAB blocked unsafe URL:", request.url);
+				sendResponse({
+					ok: false,
+					error: "Blocked: URL is not an allowed https destination"
+				});
+				return true;
+			}
 			chrome.tabs.create({
 				url: request.url,
 				active: false
@@ -4772,7 +5002,16 @@
 		}
 		if (!AuthHelper.isUnlocked()) {
 			AuthHelper.verifyAuthStatus().then((unlocked) => {
-				if (!unlocked && request.action !== "AI_REMOVE_BG" && request.action !== "GENERATE_TITLE" && request.action !== "GENERATE_DESCRIPTION") chrome.tabs.create({ url: urls.WEB_APP_DASHBOARD });
+				if (unlocked) {
+					routeMessage(request, sender, sendResponse);
+					return;
+				}
+				if (request.action !== "AI_REMOVE_BG" && request.action !== "GENERATE_TITLE" && request.action !== "GENERATE_DESCRIPTION") chrome.tabs.create({ url: urls.WEB_APP_DASHBOARD });
+				sendResponse({
+					success: false,
+					error: "Please Log In to use the extension."
+				});
+			}).catch(() => {
 				sendResponse({
 					success: false,
 					error: "Please Log In to use the extension."
@@ -4828,7 +5067,8 @@
 						[uploadSessionId]: {
 							product,
 							isImported: false,
-							uploadType: request.uploadType || "classic"
+							uploadType: request.uploadType || "classic",
+							stagedAt: Date.now()
 						},
 						ebayListingTitle: product.title || "",
 						ebayListingTabId: ""
@@ -4841,7 +5081,8 @@
 						[String(tabId)]: {
 							product,
 							isImported: false,
-							uploadType: request.uploadType || "classic"
+							uploadType: request.uploadType || "classic",
+							stagedAt: Date.now()
 						},
 						ebayListingTabId: String(tabId)
 					});
@@ -4906,7 +5147,7 @@
 								amazon_price: parsedSupplierPrice,
 								amazon_url: request.productURL,
 								amazon_asin: request.asin,
-								status: "active",
+								status: "draft",
 								amazon_data: { image: request.mainImage }
 							}, "start_optilist").catch((e) => console.warn("[START_OPTILIST] sync error:", e?.message || e));
 						}
@@ -5058,6 +5299,7 @@
 				amazonUrl || ""
 			];
 			if (typeof SyncUtils !== "undefined") SyncUtils.getGoogleSheetUrl().then((endpoint) => {
+				if (!endpoint) return;
 				fetch(endpoint, {
 					method: "POST",
 					mode: "no-cors",
@@ -5067,6 +5309,14 @@
 			});
 			return true;
 		} else if (request.action === "openNewTabForDescription") {
+			if (!isSafeNavUrl(request.targetURL)) {
+				console.warn("[Background] openNewTabForDescription blocked unsafe URL:", request.targetURL);
+				sendResponse?.({
+					ok: false,
+					error: "Blocked: URL is not an allowed https destination"
+				});
+				return true;
+			}
 			chrome.storage.local.set({ tempAmazonURL: request.amazonURL }, () => {
 				chrome.tabs.create({
 					url: request.targetURL,
@@ -5087,6 +5337,14 @@
 			});
 			return true;
 		} else if (request.action === "openNewTabForProductDetails") {
+			if (!isSafeNavUrl(request.targetURL)) {
+				console.warn("[Background] openNewTabForProductDetails blocked unsafe URL:", request.targetURL);
+				sendResponse?.({
+					ok: false,
+					error: "Blocked: URL is not an allowed https destination"
+				});
+				return true;
+			}
 			chrome.storage.local.set({ tempAmazonTitle: request.amazonTitle }, () => {
 				chrome.tabs.create({
 					url: request.targetURL,
@@ -5221,7 +5479,8 @@
 			})();
 			return true;
 		}
-	});
+	}
+	chrome.runtime.onMessage.addListener(routeMessage);
 	//#endregion
 	//#region background/index.js
 	globalThis.getUrls = () => typeof globalThis.ExtensionConfig !== "undefined" ? globalThis.ExtensionConfig.URLS : null;

@@ -39,7 +39,8 @@ SET row_security = off;
 CREATE TYPE public.app_role AS ENUM (
     'admin',
     'moderator',
-    'user'
+    'user',
+    'super_admin'
 );
 
 

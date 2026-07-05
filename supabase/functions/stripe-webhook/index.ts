@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.0";
 import { sendBillingEmail } from "../_shared/email.ts";
 import { activateTrial } from "../_shared/trial-activation.ts";
 import { syncStripeData } from "../_shared/billing-sync.ts";
@@ -48,9 +48,8 @@ serve(async (req) => {
   const stripeKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
   const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
 
-  // SECURITY: Enforce webhook signature verification in production
-  const isDevelopment = Deno.env.get("ENVIRONMENT") === "development";
-  if (!webhookSecret && !isDevelopment) {
+  // SECURITY: never process Stripe webhook events without signature verification.
+  if (!webhookSecret) {
     logStep("SECURITY ERROR: STRIPE_WEBHOOK_SECRET not configured");
     return new Response(
       JSON.stringify({ error: "Webhook secret not configured" }),
@@ -95,7 +94,6 @@ serve(async (req) => {
     
     const profilePatch: Record<string, unknown> = {
       plan_id: null,
-      credits: 0,
       selected_plan_id: null,
       payment_status: "unpaid",
       subscription_status: "inactive",
@@ -107,14 +105,14 @@ serve(async (req) => {
     }
     await supabase.from("profiles").update(profilePatch).eq("id", userId);
 
-    await supabase.from("credit_transactions").insert({
-      user_id: userId,
-      amount: 0,
-      transaction_type: "plan_grant",
-      balance_after: 0,
-      description: "Subscription ended",
-      metadata: { reason },
+    const { error: creditErr } = await supabase.rpc("set_user_credit_balance", {
+      p_user_id: userId,
+      p_target_balance: 0,
+      p_transaction_type: "period_reset",
+      p_description: "Subscription ended",
+      p_metadata: { reason },
     });
+    if (creditErr) throw creditErr;
 
     logStep("User downgraded to no plan", { userId, reason });
   };
@@ -185,13 +183,16 @@ serve(async (req) => {
       return;
     }
 
+    const currentPeriodStart = new Date(subscription.current_period_start * 1000).toISOString();
+    const currentPeriodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+
     const planPayload = {
       user_id: userId,
       plan_id: planData.id,
       status: subscription.status,
       stripe_subscription_id: subscription.id,
-      current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-      current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+      current_period_start: currentPeriodStart,
+      current_period_end: currentPeriodEnd,
       orders_used: 0,
       credits_used: 0,
       updated_at: new Date().toISOString(),
@@ -207,19 +208,34 @@ serve(async (req) => {
       .from("profiles")
       .update({
         plan_id: planData.id,
-        credits: planData.credits_per_month,
         selected_plan_id: planData.id,
         pending_plan_id: null,
         payment_status: "paid",
         subscription_status: "active",
         customer_id: subscription.customer as string,
         subscription_id: subscription.id,
-        current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+        current_period_start: currentPeriodStart,
+        current_period_end: currentPeriodEnd,
         subscription_provider: "stripe",
         updated_at: new Date().toISOString()
       })
       .eq("id", userId);
+
+    const { error: creditErr } = await supabase.rpc("set_user_credit_balance", {
+      p_user_id: userId,
+      p_target_balance: planData.credits_per_month,
+      p_transaction_type: "plan_grant",
+      p_description: `Subscribed to ${planData.name} plan`,
+      p_metadata: {
+        new_plan_id: planData.id,
+        stripe_subscription_id: subscription.id,
+        period_end: currentPeriodEnd,
+        is_new_period: true,
+        is_plan_change: true,
+        grant_key: `stripe:${subscription.id}:${currentPeriodEnd}:${planData.id}`,
+      },
+    });
+    if (creditErr) throw creditErr;
 
     logStep("User plan updated", { userId, planName: planData.name });
   };
@@ -234,26 +250,26 @@ serve(async (req) => {
 
     let event: Stripe.Event;
 
-    // SECURITY: Verify webhook signature
-    if (webhookSecret && signature) {
-      try {
-        event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-        logStep("Webhook signature verified");
-      } catch (err) {
-        logStep("Webhook signature verification failed", { error: String(err) });
-        await sendErrorAlert("Webhook signature verification failed", { error: String(err), signature });
-        return new Response(JSON.stringify({ error: "Invalid signature" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    } else if (isDevelopment) {
-      // WARNING: Development mode only - signature not verified
-      event = JSON.parse(body);
-      logStep("WARNING: Development mode - webhook signature not verified");
-    } else {
+    if (!signature) {
       logStep("SECURITY ERROR: Missing webhook signature");
       return new Response(JSON.stringify({ error: "Missing signature" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // SECURITY: Verify webhook signature before touching event.data.
+    try {
+      // Deno's edge runtime only exposes async Web Crypto (SubtleCrypto), so the
+      // sync constructEvent throws "SubtleCryptoProvider cannot be used in a
+      // synchronous context" on every call — every webhook delivery was failing
+      // signature verification because of this.
+      event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
+      logStep("Webhook signature verified");
+    } catch (err) {
+      logStep("Webhook signature verification failed", { error: String(err) });
+      await sendErrorAlert("Webhook signature verification failed", { error: String(err) });
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -295,6 +311,19 @@ serve(async (req) => {
           });
 
         const stripeCustomerId = typeof session.customer === "string" ? session.customer : null;
+        if (session.mode === "payment") {
+          if (session.payment_status !== "paid") {
+            logStep("Payment-mode session not paid; trial activation skipped", {
+              sessionId: session.id,
+              paymentStatus: session.payment_status,
+            });
+            break;
+          }
+
+          await activateTrialFromSession(session);
+          break;
+        }
+
         if (stripeCustomerId) {
           const syncResult = await syncStripeData(supabase, stripe, stripeCustomerId);
           if (!syncResult.success) {
@@ -335,6 +364,27 @@ serve(async (req) => {
         });
 
         const stripeCustomerId = typeof invoice.customer === "string" ? invoice.customer : null;
+        if (stripeCustomerId) {
+          const syncResult = await syncStripeData(supabase, stripe, stripeCustomerId);
+          if (!syncResult.success) {
+            throw new Error(`Sync failed: ${syncResult.error}`);
+          }
+        }
+        break;
+      }
+
+      case "payment_intent.succeeded":
+      case "payment_intent.payment_failed": {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        logStep("Payment intent event received", {
+          type: event.type,
+          paymentIntentId: paymentIntent.id,
+          customerId: paymentIntent.customer,
+          status: paymentIntent.status,
+        });
+
+        const stripeCustomerId =
+          typeof paymentIntent.customer === "string" ? paymentIntent.customer : null;
         if (stripeCustomerId) {
           const syncResult = await syncStripeData(supabase, stripe, stripeCustomerId);
           if (!syncResult.success) {

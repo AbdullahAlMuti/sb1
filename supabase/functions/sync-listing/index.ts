@@ -51,6 +51,23 @@ function extractAsinFromAmazonUrl(url: string | null | undefined): string | null
   }
 }
 
+function isInsufficientCredits(message: string | undefined): boolean {
+  return /INSUFFICIENT_CREDITS|insufficient credits|not have enough credits/i.test(message || '');
+}
+
+function insufficientCreditsBody(current?: number, limit = 1, results?: unknown[]) {
+  return {
+    success: false,
+    code: 'INSUFFICIENT_CREDITS',
+    error: 'You do not have enough credits to create a listing.',
+    limitType: 'credits',
+    current,
+    limit,
+    upgradeRequired: true,
+    ...(results ? { results } : {}),
+  };
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -305,12 +322,8 @@ Deno.serve(async (req) => {
           console.log('[sync-listing] Credit validation blocked:', creditValidation);
           return new Response(
             JSON.stringify({
-              success: false,
-              error: creditValidation.reason ?? 'Insufficient credits',
-              limitType: 'credits',
-              current: creditValidation.current,
-              limit: creditValidation.limit,
-              upgradeRequired: true,
+              ...insufficientCreditsBody(creditValidation.current, creditValidation.limit ?? newListingsCount),
+              error: creditValidation.reason ?? 'You do not have enough credits to create a listing.',
             }),
             { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
@@ -320,14 +333,7 @@ Deno.serve(async (req) => {
         if (userCredits < newListingsCount) {
           console.log('[sync-listing] Insufficient credits (legacy check)');
           return new Response(
-            JSON.stringify({
-              success: false,
-              error: 'You do not have enough credits to create a listing.',
-              limitType: 'credits',
-              current: userCredits,
-              limit: newListingsCount,
-              upgradeRequired: true,
-            }),
+            JSON.stringify(insufficientCreditsBody(userCredits, newListingsCount)),
             { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
@@ -359,52 +365,33 @@ Deno.serve(async (req) => {
             results.push({ success: true, action: 'updated', data });
           }
         } else {
-          // Create new listing
-          const { data, error } = await supabase
-            .from('listings')
-            .insert({
-              user_id: user.id,
+          // Create new listing through the same atomic RPC used by create-listing.
+          const { data: rpc, error } = await supabase.rpc('create_listing_with_variations', {
+            p_user_id: user.id,
+            p_listing: {
               ...normalizedListing,
-            })
-            .select()
-            .single();
+              status: normalizedListing.status || 'active',
+            },
+            p_variations: [],
+          });
 
           if (error) {
             console.error('[sync-listing] Insert error:', error);
+            if (isInsufficientCredits(error.message)) {
+              return new Response(
+                JSON.stringify(insufficientCreditsBody(undefined, 1, results)),
+                { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
+            }
             results.push({ error: error.message, listing: original });
           } else {
+            const data = (rpc as any)?.listing ?? rpc;
+            const action = (rpc as any)?.action ?? 'created';
             console.log(`[sync-listing] Created listing: ${data.id}`);
-            results.push({ success: true, action: 'created', data });
-            creditsDeducted++;
+            results.push({ success: true, action, data });
+            if (action === 'created') creditsDeducted++;
           }
         }
-      }
-
-      // Deduct credits for successfully created listings
-      if (creditsDeducted > 0) {
-        const { error: creditError } = await supabase.rpc('deduct_credits', {
-          user_id_param: user.id,
-          amount: creditsDeducted
-        });
-        
-        // Fallback to direct update if RPC doesn't exist
-        if (creditError) {
-          console.log('[sync-listing] RPC not available, using direct update');
-          const { data: currentProfile } = await supabase
-            .from('profiles')
-            .select('credits')
-            .eq('id', user.id)
-            .single();
-          
-          if (currentProfile) {
-            await supabase
-              .from('profiles')
-              .update({ credits: Math.max(0, (currentProfile.credits || 0) - creditsDeducted) })
-              .eq('id', user.id);
-          }
-        }
-        
-        console.log(`[sync-listing] Deducted ${creditsDeducted} credits from user`);
       }
 
       const response = { 

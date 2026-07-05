@@ -585,7 +585,8 @@
 
       // Resolve SKU: edited product wins over scan-time draft.
       const draftSku = draft && draft.sku;
-      const skuRoot = product.sourceId || product.parentAsin || product.asin || '';
+      const skuRoot = product.sourceId || product.parentAsin || product.asin ||
+        (window.SSSkuEngine ? window.SSSkuEngine.fallbackRootFromTitle(product.title) : '');
       const generatedSku = (!product.ebaySku && !draftSku && skuRoot && window.SSSkuEngine)
         ? window.SSSkuEngine.buildReadable(skuRoot, {}, window.SSSkuEngine.prefixFor(product.supplier))
         : '';
@@ -624,6 +625,18 @@
           dedupe: true,
           dropInvalid: true
         });
+      }
+
+      // Auto Edit Mode: ON rewrites title/description via the admin-configured AI
+      // prompt (SellerSuitUploader.run reads these flags); OFF leaves the existing
+      // minimal cleanup (_enforceEbayTitle / template compile) as the only pass.
+      // Only trigger AI generation for content the user hasn't already touched —
+      // a manual edit or an already-fresh AI draft must not be silently overwritten
+      // or re-billed against credits.
+      const { autoEditEnabled } = await new Promise(r => chrome.storage.local.get('autoEditEnabled', r));
+      if (autoEditEnabled) {
+        if (titleSource === 'scraped') ebayProduct.useAiTitle = true;
+        if (descSource === 'scraped') ebayProduct.useAiDescription = true;
       }
 
       // Mirror to storage so panel stays in sync
@@ -1105,52 +1118,7 @@
 
   function recalculateProductPricing(product, calculatorValues) {
     if (!product || !window.SSPricingEngine) return product;
-
-    const savedValues = calculatorValues || {};
-    const parseVal = (v, def) => {
-      if (v === null || v === undefined || v === '') return def;
-      const cleaned = String(v).replace(/[^\d.-]/g, '');
-      const n = parseFloat(cleaned);
-      return isNaN(n) ? def : n;
-    };
-    
-    const cfg = {
-      taxPercent:      parseVal(savedValues['tax-percent'],       9),
-      trackingFee:     parseVal(savedValues['tracking-fee'],      0.20),
-      ebayFeePercent:  parseVal(savedValues['ebay-fee-percent'],  20),
-      promoFeePercent: parseVal(savedValues['promo-fee-percent'], 10),
-      desiredProfit:   parseVal(savedValues['desired-profit'],    0),
-      paymentFixedFee: parseVal(savedValues['payment-fixed-fee'], 0.30)
-    };
-
-    const cleanFloat = (val) => {
-      if (val === null || val === undefined) return 0;
-      if (typeof val === 'number') return val;
-      const cleaned = String(val).replace(/[^\d.-]/g, '');
-      const parsed = parseFloat(cleaned);
-      return isNaN(parsed) ? 0 : parsed;
-    };
-
-    const baseRaw = cleanFloat(product.price || product.raw_supplier_price);
-    product.raw_supplier_price = baseRaw;
-    
-    const topIsManual = product.price_source === 'manual' && cleanFloat(product.finalPrice) > 0;
-    if (!topIsManual && baseRaw > 0) {
-      product.finalPrice = window.SSPricingEngine.calculatePrice(baseRaw, cfg);
-    }
-
-    if (Array.isArray(product.variants)) {
-      product.variants.forEach(v => {
-        const raw = cleanFloat(v.price || v.raw_supplier_price) || baseRaw;
-        v.raw_supplier_price = raw;
-        const varIsManual = cleanFloat(v.ebayPrice) > 0;
-        if (!varIsManual && raw > 0) {
-          v.finalPrice = window.SSPricingEngine.calculatePrice(raw, cfg);
-          if (!cleanFloat(v.ebayPrice)) v.ebayPrice = v.finalPrice;
-        }
-      });
-    }
-    return product;
+    return window.SSPricingEngine.applyPricingToProduct(product, calculatorValues);
   }
 
   if (document.readyState === 'loading') {

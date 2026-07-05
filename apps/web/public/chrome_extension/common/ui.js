@@ -489,26 +489,32 @@ const UIHelper = (() => {
     // Check reduced motion
     const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReducedMotion) {
-      element.innerText = text;
+      element.textContent = text;
       element.classList.remove('typing-active');
       return;
     }
 
-    element.innerText = '';
+    element.textContent = '';
     element.classList.add('typing-active');
-    
+
+    // Slice from the source string each tick instead of `innerText += ch`:
+    // appending a space to the END of a text node gets collapsed by HTML
+    // whitespace normalization before the next tick reads it back, which
+    // silently deleted every space from the finished text ("Humane No Kill…"
+    // rendered — and then uploaded — as "HumaneNoKill…"). textContent + slice
+    // preserves whitespace exactly and avoids the O(n²) innerText re-reads.
     let i = 0;
     const timer = setInterval(() => {
       if (i < text.length) {
-        element.innerText += text.charAt(i);
         i++;
+        element.textContent = text.slice(0, i);
       } else {
         clearInterval(timer);
         typingTimers.delete(element);
         element.classList.remove('typing-active');
       }
     }, speed);
-    
+
     typingTimers.set(element, timer);
   }
 

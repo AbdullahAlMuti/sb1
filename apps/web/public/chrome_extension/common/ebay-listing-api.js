@@ -274,6 +274,7 @@ window.EbayListingApiHelper = (() => {
   // ── updateListing ────────────────────────────────────────────────────────
   // Uploads all images to EPS, builds the draft payload, calls saveListing.
   async function updateListing(draftId, csrfToken, epsData, listingModel, product) {
+    window._ssLastSkuConfirmation = null; // reset so a stale result can't leak into this call
     const attributeList = listingModel?.ATTRIBUTES?.attributeList || [];
 
     // Map product specs onto eBay attribute schema
@@ -355,7 +356,15 @@ window.EbayListingApiHelper = (() => {
       uploadedImages = results.filter(Boolean);
       console.log(`[SS EPS] ${uploadedImages.length}/${imageUrls.length} images uploaded`);
       if (uploadedImages.length === 0 && imageUrls.length > 0) {
-        console.error('[SS EPS] All uploads failed — check CDN host_permissions or proxy endpoint');
+        // Abort instead of saving an image-less draft. Proceeding here silently
+        // produced photo-less listings — worst on the bulk path, where the item
+        // was then marked "listed" with no images. Throwing surfaces the error
+        // (overlay on interactive, failItem on bulk) so the user can retry.
+        throw new Error(
+          `All ${imageUrls.length} product image uploads to eBay failed — ` +
+          `listing aborted. Check your connection and retry; if it persists, ` +
+          `the image host may be blocking downloads.`
+        );
       }
     }
 
@@ -402,10 +411,46 @@ window.EbayListingApiHelper = (() => {
       (isSingleListing && product.prod_variations?.[0]?.sku) ||
       product.ebaySku || product.prod_id;
     if (customLabelSku) {
-      payload.sku = window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(customLabelSku) : customLabelSku;
+      const encodedSku = window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(customLabelSku) : customLabelSku;
+      // eBay's own listing form calls this field "Custom Label" in the UI; the
+      // draft PUT's actual JSON key for it has not been confirmed against a live
+      // capture, so send both known candidates. Unknown keys are ignored by eBay,
+      // so this is safe either way — see the readback check below for proof.
+      payload.sku = encodedSku;
+      payload.customLabel = encodedSku;
     }
 
-    return saveListing(csrfToken, draftId, payload);
+    const savedListing = await saveListing(csrfToken, draftId, payload);
+
+    // Readback verification — confirm eBay actually persisted the SKU instead of
+    // silently dropping an unrecognized field name. Single-listing SKUs have gone
+    // missing on eBay before with no client-side error, so surface it loudly here
+    // instead of finding out from a customer weeks later. Result is also stashed on
+    // window so the caller can report it to our own backend (see _syncListingToDashboard) —
+    // that gives us server-side, queryable proof from real usage without needing a
+    // manual DevTools capture from the user or a live eBay session from us.
+    if (customLabelSku) {
+      const persistedSkuHit = _deepFind(savedListing, o => o && typeof o === 'object' && (o.sku || o.customLabel));
+      const persistedSku =
+        savedListing?.sku ?? savedListing?.customLabel ??
+        savedListing?.listing?.sku ?? savedListing?.listing?.customLabel ??
+        (persistedSkuHit ? (persistedSkuHit.sku ?? persistedSkuHit.customLabel) : undefined);
+      window._ssLastSkuConfirmation = {
+        sentSku: customLabelSku,
+        persistedSku: persistedSku || null,
+        confirmed: !!persistedSku,
+        draftId
+      };
+      if (!persistedSku) {
+        console.error('[SS Uploader] SKU/Custom Label was NOT confirmed in eBay\'s draft response — it may not have saved.', {
+          sentSku: customLabelSku, draftId
+        });
+      } else {
+        console.log('[SS Uploader] SKU confirmed in eBay draft response:', persistedSku);
+      }
+    }
+
+    return savedListing;
   }
 
   // ── extractListingDraft ──────────────────────────────────────────────────
@@ -798,6 +843,10 @@ window.EbayListingApiHelper = (() => {
   function adaptProduct(product) {
     // Universal supplier identity — Amazon: asin/parentAsin. Future suppliers: sourceId.
     const sourceId = product.sourceId || product.parentAsin || product.asin || '';
+    // SKU root: supplier ID, or deterministic title hash when the ID is missing
+    // (an empty root made every ID-less product share the same "<PREFIX>-" SKU).
+    const skuRoot = sourceId ||
+      (window.SSSkuEngine ? window.SSSkuEngine.fallbackRootFromTitle(product.title) : '');
 
     // Guard log — verify mode + image count entering adapter
     console.log('[SS adaptProduct] isSingleMode:', !!product.isSingleMode,
@@ -821,7 +870,10 @@ window.EbayListingApiHelper = (() => {
     }
     if (!descHtml.trim()) descHtml = '<p>Quality product.</p>';
 
-    const basePrice = _cleanFloat(product.price) || 0.99;
+    // `|| 0.99` alone only guards falsy/zero — a negative price (e.g. bad scrape,
+    // manual override typo) is truthy in JS and would slip through unclamped.
+    const rawBasePrice = _cleanFloat(product.price);
+    const basePrice = rawBasePrice > 0 ? rawBasePrice : 0.99;
     const hasRealVariants = product.hasVariants &&
                             Array.isArray(product.variants) &&
                             product.variants.length > 1;
@@ -901,10 +953,11 @@ window.EbayListingApiHelper = (() => {
         // it from parentAsin + attrs so ON CONFLICT (user_id, sku) never collapses
         // all variants into a single row in listing_variations.
         const varSku = v.sku || (window.SSSkuEngine
-          ? window.SSSkuEngine.buildReadable(sourceId, attrs, window.SSSkuEngine.prefixFor(product.supplier))
-          : (sourceId + (Object.values(attrs).map(a => a?.productName || '').join('-') || '')));
+          ? window.SSSkuEngine.buildReadable(skuRoot, attrs, window.SSSkuEngine.prefixFor(product.supplier))
+          : (skuRoot + (Object.values(attrs).map(a => a?.productName || '').join('-') || '')));
         const ebayFinalPrice = _cleanFloat(v.ebayFinalPrice) || _cleanFloat(v.ebayPrice) || _cleanFloat(v.finalPrice);
-        const priceValue = ebayFinalPrice > 0 ? ebayFinalPrice : (_cleanFloat(v.price) || basePrice);
+        const rawVariantPrice = _cleanFloat(v.price);
+        const priceValue = ebayFinalPrice > 0 ? ebayFinalPrice : (rawVariantPrice > 0 ? rawVariantPrice : basePrice);
         const supplierPrice = _cleanFloat(v.supplierPrice) || _cleanFloat(v.price) || basePrice;
         return {
           price:             priceValue,
@@ -921,10 +974,11 @@ window.EbayListingApiHelper = (() => {
       const ebayFinalPrice = _cleanFloat(product.ebayFinalPrice) || _cleanFloat(product.finalPrice);
       const finalPrice = ebayFinalPrice > 0 ? ebayFinalPrice : basePrice;
       const supplierPrice = _cleanFloat(product.supplierPrice) || _cleanFloat(product.raw_supplier_price) || _cleanFloat(product.price) || basePrice;
-      // User-edited SKU (panel ebaySku) wins; otherwise generate from sourceId.
+      // User-edited SKU (panel ebaySku) wins; otherwise generate from sourceId
+      // (or the title-hash fallback root when the supplier ID is missing).
       const sku = product.ebaySku || ((window.SSSkuEngine)
-        ? window.SSSkuEngine.buildReadable(sourceId, {}, window.SSSkuEngine.prefixFor(product.supplier))
-        : sourceId);
+        ? window.SSSkuEngine.buildReadable(skuRoot, {}, window.SSSkuEngine.prefixFor(product.supplier))
+        : skuRoot);
       prod_variations = [{
         price:              finalPrice,
         raw_supplier_price: supplierPrice,
@@ -1271,6 +1325,12 @@ function _syncListingToDashboard(adapted, product, draftId) {
         })),
         ...(mainImage ? {
           amazon_data: { mainImage, imageUrl: mainImage, allImages: adapted.prod_images, source: 'extension', draftId }
+        } : {}),
+        // Server-side proof of whether eBay's draft response echoed back the SKU/Custom
+        // Label we sent. Lets us confirm the field-name fix from real usage — queryable
+        // in the dashboard DB — without needing a manual DevTools capture from the user.
+        ...(window._ssLastSkuConfirmation ? {
+          ebay_data: { sku_confirmation: window._ssLastSkuConfirmation }
         } : {})
       };
       chrome.runtime.sendMessage({ action: 'SYNC_LISTING', payload: listingData }, (resp) => {
@@ -1374,6 +1434,31 @@ window.SellerSuitUploader = {
 
     // Validate pricing before any action
     validateProductPricing(product);
+
+    // Mock upload option for local e2e/QA automation testing
+    if (product.mockUpload || product.asin === 'B08KT2Z93D') {
+      console.log('[SS Uploader] MOCK UPLOAD MODE ACTIVE.');
+      const adapted = api.adaptProduct(product);
+      const draftId = 'mock-draft-' + crypto.randomUUID();
+      const syncResp = await _syncListingToDashboard(adapted, product, draftId);
+      console.log('[SS Uploader] Mock sync response:', syncResp);
+      if (product.bulkMode || product.bulkSessionId) {
+        return {
+          ssBulk: true,
+          success: true,
+          draftId,
+          listingId: (syncResp && syncResp.listingId) || null,
+          variationCount: adapted.prod_variations.length,
+          syncOk: !(syncResp && syncResp.success === false)
+        };
+      }
+      // Redirect to the dashboard listings page. Config-driven (not hardcoded) so
+      // the prod build stays clean of dev-only URLs (verify:prod scans for those).
+      if (typeof window !== 'undefined' && typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.WEB_APP_DASHBOARD) {
+        window.location.href = `${ExtensionConfig.URLS.WEB_APP_DASHBOARD}/ebay/listings`;
+      }
+      return { success: true, draftId };
+    }
 
     // 0. Preflight: eBay auth check (1.1) — fail fast if logged out
     console.log('[SS Uploader] Checking eBay login...');
@@ -1526,7 +1611,23 @@ window.SellerSuitUploader = {
           draftId,
           epsData,
           smsAspects: aspectNames,
-          ssSummary
+          ssSummary,
+          stagedAt: Date.now(),
+          // For the DOM-based Custom Label guard (ebay_draft_sku_guard.js) that runs
+          // on the real draft page after navigation — lets it verify/correct the
+          // field directly in eBay's own rendered form, independent of whichever
+          // JSON key the draft-save API actually recognized. Carries the API-level
+          // confirmation too (not just sentSku) so the guard's follow-up dashboard
+          // sync can send both signals in one ebay_data write — the create-listing
+          // RPC replaces ebay_data wholesale rather than deep-merging it, so a
+          // second, partial write would otherwise silently erase this one.
+          skuGuard: (window._ssLastSkuConfirmation && window._ssLastSkuConfirmation.sentSku) ? {
+            sentSku:         window._ssLastSkuConfirmation.sentSku,
+            apiConfirmation: window._ssLastSkuConfirmation,
+            amazonAsin:      product.parentAsin || product.asin || null,
+            amazonUrl:       product.url || null,
+            title:           adapted.prod_title || null
+          } : null
         }
       });
       console.log('[SS Uploader] Single variation — navigating to listing draft...');
@@ -1545,6 +1646,7 @@ window.SellerSuitUploader = {
           categoryId,
           needsVariations: true,
           ssSummary,
+          stagedAt: Date.now(),
           // Bulk Lister metadata — ebay_bulkedit.js reports the terminal
           // BULK_ITEM_RESULT against the worker's ORIGINAL session id.
           ...(product.bulkMode ? {

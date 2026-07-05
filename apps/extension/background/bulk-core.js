@@ -175,7 +175,7 @@ window.SSBulkCore = (() => {
     return /CAPTCHA/i.test(m) ||
            /not logged into eBay/i.test(m) ||
            /Please Log In/i.test(m) ||
-           /(limit reached|Insufficient credits|subscription|Trial expired)/i.test(m);
+           /(limit reached|Insufficient credits|INSUFFICIENT_CREDITS|not have enough credits|subscription|Trial expired)/i.test(m);
   }
 
   return {

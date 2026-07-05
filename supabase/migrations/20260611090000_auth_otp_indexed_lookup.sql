@@ -2,6 +2,10 @@
 -- Replaces the paginated auth.admin.listUsers scan (broke past ~20k users)
 -- with an indexed profiles lookup plus a direct auth.users fallback.
 
+-- profiles.email was added out-of-band in prod before this migration ran; no
+-- earlier migration creates it, so add it for a from-scratch replay.
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email text;
+
 -- Fast path: profiles.email equality lookup used on every OTP request.
 CREATE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles (email);
 

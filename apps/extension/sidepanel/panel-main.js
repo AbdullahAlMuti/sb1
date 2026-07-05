@@ -1118,52 +1118,7 @@
 
   function recalculateProductPricing(product, calculatorValues) {
     if (!product || !window.SSPricingEngine) return product;
-
-    const savedValues = calculatorValues || {};
-    const parseVal = (v, def) => {
-      if (v === null || v === undefined || v === '') return def;
-      const cleaned = String(v).replace(/[^\d.-]/g, '');
-      const n = parseFloat(cleaned);
-      return isNaN(n) ? def : n;
-    };
-    
-    const cfg = {
-      taxPercent:      parseVal(savedValues['tax-percent'],       9),
-      trackingFee:     parseVal(savedValues['tracking-fee'],      0.20),
-      ebayFeePercent:  parseVal(savedValues['ebay-fee-percent'],  20),
-      promoFeePercent: parseVal(savedValues['promo-fee-percent'], 10),
-      desiredProfit:   parseVal(savedValues['desired-profit'],    0),
-      paymentFixedFee: parseVal(savedValues['payment-fixed-fee'], 0.30)
-    };
-
-    const cleanFloat = (val) => {
-      if (val === null || val === undefined) return 0;
-      if (typeof val === 'number') return val;
-      const cleaned = String(val).replace(/[^\d.-]/g, '');
-      const parsed = parseFloat(cleaned);
-      return isNaN(parsed) ? 0 : parsed;
-    };
-
-    const baseRaw = cleanFloat(product.price || product.raw_supplier_price);
-    product.raw_supplier_price = baseRaw;
-    
-    const topIsManual = product.price_source === 'manual' && cleanFloat(product.finalPrice) > 0;
-    if (!topIsManual && baseRaw > 0) {
-      product.finalPrice = window.SSPricingEngine.calculatePrice(baseRaw, cfg);
-    }
-
-    if (Array.isArray(product.variants)) {
-      product.variants.forEach(v => {
-        const raw = cleanFloat(v.price || v.raw_supplier_price) || baseRaw;
-        v.raw_supplier_price = raw;
-        const varIsManual = cleanFloat(v.ebayPrice) > 0;
-        if (!varIsManual && raw > 0) {
-          v.finalPrice = window.SSPricingEngine.calculatePrice(raw, cfg);
-          if (!cleanFloat(v.ebayPrice)) v.ebayPrice = v.finalPrice;
-        }
-      });
-    }
-    return product;
+    return window.SSPricingEngine.applyPricingToProduct(product, calculatorValues);
   }
 
   if (document.readyState === 'loading') {

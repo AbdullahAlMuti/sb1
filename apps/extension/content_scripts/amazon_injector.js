@@ -8,6 +8,35 @@
 let uiInjected = false;
 let isProcessing = false;
 
+// ─────────────────────────────────────────────────────────────
+// 🧼 Inline HTML sanitizer (W5). Bundled content script has no shared global,
+// so we keep a self-contained sanitizer for the rich-HTML description preview,
+// which is built from untrusted scraped/templated fields. Strips executable
+// elements, on* handlers, and javascript:/data: URLs while preserving markup.
+// ─────────────────────────────────────────────────────────────
+function _ssSanitizeHtml(html) {
+    if (html == null) return '';
+    if (typeof SSSanitizer !== 'undefined') return SSSanitizer.sanitizeHtml(html);
+    try {
+        const doc = new DOMParser().parseFromString(String(html), 'text/html');
+        doc.body.querySelectorAll('script,iframe,object,embed,link,meta,style,base,form').forEach(el => el.remove());
+        doc.body.querySelectorAll('*').forEach(el => {
+            for (const attr of Array.from(el.attributes)) {
+                const n = attr.name.toLowerCase();
+                const v = String(attr.value).replace(/\s+/g, '').toLowerCase();
+                if (n.startsWith('on')) el.removeAttribute(attr.name);
+                else if (['href', 'src', 'action', 'formaction'].includes(n) &&
+                    (v.startsWith('javascript:') || v.startsWith('data:') || v.startsWith('vbscript:'))) {
+                    el.removeAttribute(attr.name);
+                }
+            }
+        });
+        return doc.body.innerHTML;
+    } catch {
+        return String(html).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+}
+
 // ═══════════════════════════════════════════════════════════
 // 🛠️ UTILITY FUNCTIONS (with performance optimizations)
 // ═══════════════════════════════════════════════════════════
@@ -2911,7 +2940,11 @@ const addEventListenersToPanel = () => {
                 lastGeneratedDescription = bgResp.description;
 
                 if (descriptionPreviewEl) {
-                    descriptionPreviewEl.innerHTML = lastGeneratedDescription;
+                    if (window.UIHelper && typeof window.UIHelper.streamDescription === 'function') {
+                        window.UIHelper.streamDescription(lastGeneratedDescription);
+                    } else {
+                        descriptionPreviewEl.innerHTML = _ssSanitizeHtml(lastGeneratedDescription);
+                    }
                 }
 
                 if (copyDescriptionBtn) copyDescriptionBtn.disabled = false;
@@ -3039,7 +3072,7 @@ const addEventListenersToPanel = () => {
                 }
 
                 if (descriptionPreviewEl) {
-                    descriptionPreviewEl.innerHTML = displayHtml;
+                    descriptionPreviewEl.innerHTML = _ssSanitizeHtml(displayHtml);
                 }
 
                 window.UIHelper?.showToast?.(errorMessage, 'error');
@@ -4748,10 +4781,14 @@ function formatDataForCopy(data) {
 // Helper function to send data to Google Sheets
 async function sendToGoogleSheets(data) {
     try {
-        // Get Google Apps Script URL from storage with fallback
-        const defaultUrl = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
+        // PRIVACY: opt-in export only. No default endpoint — if the user has not
+        // configured their own Google Apps Script URL, nothing is sent.
         const result = await chrome.storage.local.get('googleAppsScriptUrl');
-        const GOOGLE_SCRIPT_URL = result.googleAppsScriptUrl || defaultUrl;
+        const GOOGLE_SCRIPT_URL = result.googleAppsScriptUrl;
+        if (!GOOGLE_SCRIPT_URL) {
+            console.log('ℹ️ Sheet export skipped: user must configure an export endpoint in Settings');
+            return false;
+        }
 
         const response = await fetch(GOOGLE_SCRIPT_URL, {
             method: 'POST',
@@ -4773,10 +4810,14 @@ async function sendToGoogleSheets(data) {
 // Function to log pricing data to Google Sheets
 async function logToGoogleSheet(data) {
     try {
-        // Get Google Apps Script URL from storage with fallback
-        const defaultUrl = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec";
+        // PRIVACY: opt-in export only. No default endpoint — if the user has not
+        // configured their own Google Apps Script URL, nothing is sent.
         const result = await chrome.storage.local.get('googleAppsScriptUrl');
-        const GOOGLE_SHEET_WEBHOOK = result.googleAppsScriptUrl || defaultUrl;
+        const GOOGLE_SHEET_WEBHOOK = result.googleAppsScriptUrl;
+        if (!GOOGLE_SHEET_WEBHOOK) {
+            console.log('ℹ️ Sheet export skipped: user must configure an export endpoint in Settings');
+            return;
+        }
 
         fetch(GOOGLE_SHEET_WEBHOOK, {
             method: "POST",
@@ -5127,19 +5168,11 @@ const initializeApp = async () => {
 
 // ─── _applyPricingToProduct ──────────────────────────────────────────────────
 // Reads pricing params from localStorage (same source as panel calculator),
-// runs calculateSellingPrice per variant, stamps v.finalPrice + v.raw_supplier_price.
-// Called at PREPARE_EBAY_LISTING time — calculator.js is loaded here on Amazon pages.
+// runs SSPricingEngine.applyPricingToProduct.
+// Called at PREPARE_EBAY_LISTING time.
 // adaptProduct in ebay-listing-api.js reads v.finalPrice, never touches raw v.price.
 function _applyPricingToProduct(product, extValues) {
-    if (typeof calculateSellingPrice !== 'function') return;
-
-    const cleanFloat = (val) => {
-        if (val === null || val === undefined) return 0;
-        if (typeof val === 'number') return val;
-        const cleaned = String(val).replace(/[^\d.-]/g, '');
-        const parsed = parseFloat(cleaned);
-        return isNaN(parsed) ? 0 : parsed;
-    };
+    if (!window.SSPricingEngine) return;
 
     let savedValues = {};
     try { savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}'); } catch (_) {}
@@ -5147,45 +5180,8 @@ function _applyPricingToProduct(product, extValues) {
     if (extValues && typeof extValues === 'object' && Object.keys(extValues).length > 0) {
         savedValues = { ...savedValues, ...extValues };
     }
-    const parseVal = (v, def) => {
-        if (v === null || v === undefined || v === '') return def;
-        const cleaned = String(v).replace(/[^\d.-]/g, '');
-        const n = parseFloat(cleaned);
-        return isNaN(n) ? def : n;
-    };
-    const cfg = {
-        taxPercent:      parseVal(savedValues['tax-percent'],       9),
-        trackingFee:     parseVal(savedValues['tracking-fee'],      0.20),
-        ebayFeePercent:  parseVal(savedValues['ebay-fee-percent'],  20),
-        promoFeePercent: parseVal(savedValues['promo-fee-percent'], 10),
-        desiredProfit:   parseVal(savedValues['desired-profit'],    0),
-        paymentFixedFee: parseVal(savedValues['payment-fixed-fee'], 0.30)
-    };
 
-    const priceOne = raw => {
-        const r = calculateSellingPrice({ sourcePrice: cleanFloat(raw), ...cfg });
-        return r ? r.finalPrice : 0.99;
-    };
-
-    // Stamp finalPrice on top-level product (single listing path).
-    // Fill-only for user edits: a manual price (price_source === 'manual', set by
-    // the panel editor) must survive PREPARE_EBAY_LISTING re-runs — recalculating
-    // here clobbered edited prices with calculator output.
-    const baseRaw = cleanFloat(product.price);
-    product.raw_supplier_price = baseRaw;
-    const topIsManual = product.price_source === 'manual' && cleanFloat(product.finalPrice) > 0;
-    if (!topIsManual) product.finalPrice = priceOne(baseRaw);
-
-    // Stamp finalPrice on each variant (multi-variation path).
-    // v.ebayPrice is only ever set by a manual per-variant edit in the panel
-    // (and adaptProduct reads it first) — treat it as the manual marker.
-    if (Array.isArray(product.variants)) {
-        product.variants.forEach(v => {
-            const raw = cleanFloat(v.price) || baseRaw;
-            v.raw_supplier_price = raw;
-            if (!(cleanFloat(v.ebayPrice) > 0)) v.finalPrice = priceOne(raw);
-        });
-    }
+    window.SSPricingEngine.applyPricingToProduct(product, savedValues);
 }
 
 // ═══════════════════════════════════════════════════════════

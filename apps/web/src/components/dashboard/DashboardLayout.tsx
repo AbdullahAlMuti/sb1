@@ -22,9 +22,17 @@ export function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isSettingsOpen = location.pathname === '/dashboard/settings';
+  const [prevPath, setPrevPath] = useState('/dashboard');
+
+  useEffect(() => {
+    if (!location.pathname.includes('/settings')) {
+      setPrevPath(location.pathname);
+    }
+  }, [location.pathname]);
+
+  const isSettingsOpen = location.pathname.includes('/settings');
   const handleCloseSettings = () => {
-    navigate('/dashboard');
+    navigate(prevPath);
   };
 
   // Sidebar collapse state is managed via props from DashboardSidebar

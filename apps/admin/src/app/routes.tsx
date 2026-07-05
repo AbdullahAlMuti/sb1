@@ -1,10 +1,15 @@
 import { type ReactNode } from "react";
 import {
   Activity,
+  BarChart3,
+  Boxes,
   ClipboardList,
   Gauge,
   ListChecks,
   Megaphone,
+  Package,
+  SlidersHorizontal,
+  Sparkles,
   ToggleLeft,
   Webhook,
   Newspaper,
@@ -30,6 +35,11 @@ import AdminExtension from "@/pages/AdminExtension";
 import AdminBlog from "@/pages/AdminBlog";
 import AdminBlogEditor from "@/pages/AdminBlogEditor";
 import AdminNotices from "@/modules/content/notices";
+import ProductsPage from "@/modules/catalog/ProductsPage";
+import RecommendationsPage from "@/modules/catalog/RecommendationsPage";
+import CatalogSettingsPage from "@/modules/catalog/CatalogSettingsPage";
+import CatalogAnalyticsPage from "@/modules/catalog/CatalogAnalyticsPage";
+import TaxonomyPage from "@/modules/catalog/taxonomy";
 import AdminAudit from "@/modules/ops/AuditPage";
 import AdminRoles from "@/pages/AdminRoles";
 import QueuesPage from "@/modules/ops/QueuesPage";
@@ -42,7 +52,7 @@ import { PlatformDashboardLayout } from "@/platforms/components/PlatformDashboar
 export type AdminAccess = "admin" | "super_admin";
 
 /** Nav group ordering for the sidebar. */
-export const NAV_GROUPS = ["Overview", "Customers", "Billing", "Platform", "Operations", "System"] as const;
+export const NAV_GROUPS = ["Overview", "Customers", "Catalog", "Billing", "Platform", "Operations", "System"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
 
 export interface AdminRouteDef {
@@ -72,6 +82,13 @@ export const adminRoutes: AdminRouteDef[] = [
   // Customers
   { path: "users", element: <AdminUsers />, label: "Users", icon: Users, group: "Customers" },
   { path: "users/:userId", element: <AdminUsers /> },
+
+  // Catalog — must-sell & profitable products control system
+  { path: "products", element: <ProductsPage />, label: "Products", icon: Package, group: "Catalog", redirectFrom: ["profitable-products", "must-sell", "best-selling"] },
+  { path: "products/recommendations", element: <RecommendationsPage />, label: "Recommendations", icon: Sparkles, group: "Catalog", redirectFrom: ["product-intelligence"] },
+  { path: "products/analytics", element: <CatalogAnalyticsPage />, label: "Catalog Analytics", icon: BarChart3, group: "Catalog" },
+  { path: "products/taxonomy", element: <TaxonomyPage />, label: "Suppliers & Categories", icon: Boxes, group: "Catalog" },
+  { path: "products/settings", element: <CatalogSettingsPage />, label: "Smart Settings", icon: SlidersHorizontal, group: "Catalog" },
 
   // Billing
   { path: "billing", element: <Navigate to="/plans" replace /> },
@@ -118,4 +135,4 @@ export const adminRoutes: AdminRouteDef[] = [
 ];
 
 /** Routes that no longer exist (scope cuts / removed aliases) → bounce to overview. */
-export const removedRoutes: string[] = ["workspaces", "reports", "payments", "credits", "best-selling", "must-sell", "profitable-products", "product-intelligence", "settings"];
+export const removedRoutes: string[] = ["workspaces", "reports", "payments", "credits", "settings"];

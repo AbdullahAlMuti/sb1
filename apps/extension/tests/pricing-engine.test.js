@@ -7,30 +7,31 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import { makeWindow, loadInto } from './helpers/load-global.js';
 
-// Engines use window.* global pattern — polyfill then eval
-const src = readFileSync(join(__dirname, '../common/pricing-engine.js'), 'utf8');
-const globalObj = {};
-const fn = new Function('window', src);
-fn(globalObj);
-const { calculatePrice, DEFAULTS } = globalObj.SSPricingEngine;
+function loadEngine() {
+  const win = makeWindow();
+  loadInto(win, 'common/pricing-engine.js');
+  return win.SSPricingEngine;
+}
+
+const { calculatePrice, DEFAULTS, applyPricingToProduct } = loadEngine();
 
 function priceWithDefaults(cost, overrides) {
   return calculatePrice(cost, Object.assign({}, DEFAULTS, overrides));
 }
 
 describe('calculatePrice — defaults', () => {
-  test('returns 0.99 for zero cost', () => {
-    assert.equal(calculatePrice(0, {}), 0.99);
+  test('returns 78.57 (cost 50 default) for zero cost', () => {
+    assert.equal(calculatePrice(0, {}), 78.57);
   });
 
-  test('returns 0.99 for negative cost', () => {
-    assert.equal(calculatePrice(-5, {}), 0.99);
+  test('returns 78.57 (cost 50 default) for negative cost', () => {
+    assert.equal(calculatePrice(-5, {}), 78.57);
   });
 
-  test('returns 0.99 for NaN cost', () => {
-    assert.equal(calculatePrice('abc', {}), 0.99);
+  test('returns 78.57 (cost 50 default) for NaN cost', () => {
+    assert.equal(calculatePrice('abc', {}), 78.57);
   });
 
   test('never returns below 0.99', () => {
@@ -128,3 +129,57 @@ describe('calculatePrice — rounding & type', () => {
     assert.equal(typeof calculatePrice(15, DEFAULTS), 'number');
   });
 });
+
+describe('applyPricingToProduct', () => {
+  test('recalculates product and variant prices using calculator values', () => {
+    const product = {
+      price: 20,
+      variants: [
+        { price: 15 },
+        { price: 25 }
+      ]
+    };
+    const settings = {
+      'tax-percent': 0,
+      'tracking-fee': 0,
+      'ebay-fee-percent': 0,
+      'promo-fee-percent': 0,
+      'desired-profit': 0,
+      'payment-fixed-fee': 0
+    };
+    
+    const updated = applyPricingToProduct(product, settings);
+    assert.equal(updated.finalPrice, 20);
+    assert.equal(updated.ebayPrice, 20);
+    assert.equal(updated.variants[0].finalPrice, 15);
+    assert.equal(updated.variants[0].ebayPrice, 15);
+    assert.equal(updated.variants[1].finalPrice, 25);
+    assert.equal(updated.variants[1].ebayPrice, 25);
+  });
+
+  test('respects manual overrides on product and variants', () => {
+    const product = {
+      price: 20,
+      finalPrice: 99.99,
+      price_source: 'manual',
+      variants: [
+        { price: 15, finalPrice: 12.34, ebayPrice: 45.99 }
+      ]
+    };
+    const settings = {
+      'tax-percent': 0,
+      'tracking-fee': 0,
+      'ebay-fee-percent': 0,
+      'promo-fee-percent': 0,
+      'desired-profit': 0,
+      'payment-fixed-fee': 0
+    };
+    
+    const updated = applyPricingToProduct(product, settings);
+    assert.equal(updated.finalPrice, 99.99);
+    assert.equal(updated.variants[0].ebayPrice, 45.99);
+    // v.finalPrice is preserved because ebayPrice is set
+    assert.equal(updated.variants[0].finalPrice, 12.34);
+  });
+});
+

@@ -41,11 +41,9 @@ const SellerSuitLogo = ({ size = "md", showText = true }: SellerSuitLogoProps) =
         </svg>
       </motion.div>
 
-      {showText && (
-        <span className={`font-display ${text} font-bold tracking-tight text-foreground`}>
-          SellerSuit
-        </span>
-      )}
+      <span className={`font-display ${text} font-bold tracking-tight text-foreground transition-all duration-300 ease-in-out whitespace-nowrap overflow-hidden origin-left ${showText ? "opacity-100 max-w-[150px] translate-x-0" : "opacity-0 max-w-0 -translate-x-2"}`}>
+        SellerSuit
+      </span>
     </div>
   );
 };

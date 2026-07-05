@@ -1,3 +1,16 @@
+-- update_updated_at_column() is used by triggers from this migration onward
+-- but was never defined in migration history (created out-of-band in prod).
+-- Standard idempotent updated_at trigger helper.
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
 -- Create ebay_orders table for synced eBay orders from extension
 CREATE TABLE public.ebay_orders (
     id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,

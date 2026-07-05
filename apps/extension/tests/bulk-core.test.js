@@ -168,6 +168,8 @@ describe('isJobBlockingError', () => {
     assert.ok(Core.isJobBlockingError('You are not logged into eBay. Open eBay.com…'));
     assert.ok(Core.isJobBlockingError('Listing limit reached (10/10)'));
     assert.ok(Core.isJobBlockingError('Insufficient credits (have 0)'));
+    assert.ok(Core.isJobBlockingError('You do not have enough credits to create a listing.'));
+    assert.ok(Core.isJobBlockingError('INSUFFICIENT_CREDITS'));
   });
   test('ordinary item errors do not pause the job', () => {
     assert.ok(!Core.isJobBlockingError('Could not find draftId in eBay response'));

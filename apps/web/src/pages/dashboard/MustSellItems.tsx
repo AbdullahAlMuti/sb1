@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@repo/api-client/supabase/client';
 import { Card, CardContent } from '@repo/ui/components/ui/card';
 import { Input } from '@repo/ui/components/ui/input';
@@ -93,14 +93,38 @@ export default function MustSellItems() {
   const [selectedCountry, setSelectedCountry] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const queryClient = useQueryClient();
+
+  // Real-time subscription to update the list on admin actions
+  useEffect(() => {
+    const channel = supabase
+      .channel('public:profitable_products_must_sell')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profitable_products',
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['must-sell-items'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 
   const { data: items, isLoading } = useQuery({
     queryKey: ['must-sell-items', searchQuery, selectedCountry],
     queryFn: async () => {
-      let query = supabase
-        .from('must_sell_items')
-        .select('*')
+      let query = (supabase.from('profitable_products' as any) as any)
+        .select('id, title, description, image_url, price, shipping_cost, profit, stock, sales_count, total_sold, sku, tags, discount, country, category, ebay_url')
         .eq('is_active', true)
+        .eq('is_must_sell', true)
+        .order('position', { ascending: true })
         .order('sales_count', { ascending: false });
 
       if (searchQuery) {
@@ -113,7 +137,7 @@ export default function MustSellItems() {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data as MustSellItem[];
+      return data as unknown as MustSellItem[];
     },
   });
 

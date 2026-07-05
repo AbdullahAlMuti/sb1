@@ -120,37 +120,28 @@ serve(async (req) => {
       }
     }
 
-    // Apply profile credits update
-    const { error: updErr } = await supabaseAdmin
-      .from("profiles")
-      .update({ credits: newCredits })
-      .eq("id", userId);
-    if (updErr) {
-      console.error("admin-adjust-credits profile update failed", updErr);
-      return json(500, { error: "Unable to update credits" });
-    }
-
     const transactionType =
-      action === "grant" ? "admin_grant" : action === "set" ? "admin_set" : "admin_reset";
+      action === "grant" && delta >= 0 ? "grant" :
+      action === "grant" ? "revoke" :
+      "manual_adjustment";
 
-    // Log credit transaction
-    const { error: txErr } = await supabaseAdmin.from("credit_transactions").insert({
-      user_id: userId,
-      amount: delta,
-      balance_after: newCredits,
-      transaction_type: transactionType,
-      description: reason,
-      metadata: {
+    const { error: creditErr } = await supabaseAdmin.rpc("set_user_credit_balance", {
+      p_user_id: userId,
+      p_target_balance: newCredits,
+      p_transaction_type: transactionType,
+      p_description: reason,
+      p_metadata: {
         admin_user_id: adminId,
         action,
         requested_amount: action === "reset_to_plan" ? null : Number(amountRaw),
         previous_credits: currentCredits,
+        new_credits: newCredits,
       },
     });
 
-    if (txErr) {
-      // Credits already updated; keep this best-effort but report.
-      console.error("credit_transactions insert failed", txErr);
+    if (creditErr) {
+      console.error("admin-adjust-credits ledger update failed", creditErr);
+      return json(500, { error: "Unable to update credits" });
     }
 
     await supabaseAdmin.from("audit_logs").insert({
@@ -172,7 +163,7 @@ serve(async (req) => {
       previousCredits: currentCredits,
       newCredits,
       delta,
-      transactionLogged: !txErr,
+      transactionLogged: true,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

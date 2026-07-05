@@ -86,6 +86,48 @@ async function syncSettings() {
 const ALARM_SYNC_ORDERS = 'ebay-order-sync';
 const ALARM_SYNC_SETTINGS = 'sync-settings';
 const ALARM_PRICING_SYNC = 'pricing-rules-sync';
+const ALARM_SESSION_SWEEP = 'session-sweep';
+
+// ═══════════════════════════════════════════════════════════
+// 🧹 STALE LISTING-SESSION SWEEP
+// Upload staging blobs ({ product, isImported, ... } keyed by uploadSessionId
+// UUID or legacy tabId) were never removed on the non-bulk path, so they
+// accumulated forever and poisoned "most recent session" lookups
+// (ebay_success.js draftId resolution). Remove entries older than 24h, plus
+// pre-stagedAt legacy entries that already completed (isImported: true).
+// ═══════════════════════════════════════════════════════════
+const SESSION_SWEEP_TTL_MS = 24 * 60 * 60 * 1000;
+
+async function sweepStaleListingSessions() {
+  try {
+    const storage = await chrome.storage.local.get(null);
+    const now = Date.now();
+    const staleKeys = [];
+    for (const [key, entry] of Object.entries(storage)) {
+      const isSessionBlob = entry && typeof entry === 'object' &&
+        entry.product && typeof entry.product === 'object' &&
+        Object.prototype.hasOwnProperty.call(entry, 'isImported');
+      if (!isSessionBlob) continue;
+      const expired = entry.stagedAt
+        ? (now - entry.stagedAt) > SESSION_SWEEP_TTL_MS
+        : entry.isImported === true; // legacy blob without stagedAt, already done
+      if (expired) staleKeys.push(key);
+    }
+    if (staleKeys.length) {
+      await chrome.storage.local.remove(staleKeys);
+      console.log(`🧹 [Session Sweep] Removed ${staleKeys.length} stale listing session blob(s).`);
+    }
+    return staleKeys;
+  } catch (err) {
+    console.warn('🧹 [Session Sweep] failed:', err?.message || err);
+    return [];
+  }
+}
+
+// Exposed for unit tests (same window-global pattern as SSPricingRuleSync).
+if (typeof window !== 'undefined') {
+  window.SSSessionSweep = { sweepStaleListingSessions, SESSION_SWEEP_TTL_MS };
+}
 
 async function startEbayOrderSyncInterval() {
   const data = await chrome.storage.local.get(['ebaySyncInterval', 'ebaySyncEnabled']);
@@ -143,6 +185,8 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (typeof SSPricingRuleSync !== 'undefined') {
       SSPricingRuleSync.sync().catch(() => {});
     }
+  } else if (alarm.name === ALARM_SESSION_SWEEP) {
+    sweepStaleListingSessions();
   }
 });
 
@@ -193,3 +237,6 @@ chrome.alarms.create(ALARM_SYNC_SETTINGS, { periodInMinutes: 30 });
 
 // Periodic pricing rules sync — every 10 minutes
 chrome.alarms.create(ALARM_PRICING_SYNC, { periodInMinutes: 10 });
+
+// Stale listing-session sweep — every 6 hours, plus once shortly after SW start
+chrome.alarms.create(ALARM_SESSION_SWEEP, { periodInMinutes: 360, delayInMinutes: 2 });

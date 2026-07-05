@@ -10,8 +10,8 @@
 //   - records the credit grant
 //   - marks the Stripe customer (survives DB resets / re-registration)
 //
-// If the trial was already claimed (replayed webhook, concurrent reconcile),
-// it no-ops and returns { activated: false }.
+// If the same trial was already claimed (replayed webhook, concurrent
+// reconcile), it reconciles the credit balance without resetting spent credits.
 
 import type Stripe from "https://esm.sh/stripe@18.5.0";
 import { trialEndFor } from "./billing.ts";
@@ -57,6 +57,25 @@ export async function activateTrial(
     return { activated: false, reason: "not_a_trial_plan" };
   }
 
+  const now = new Date();
+  const trialEnd = trialEndFor(now, plan.trial_duration_days ?? 7);
+
+  const grantTrialCredits = async (description: string) => {
+    const { error: creditErr } = await supabase.rpc("set_user_credit_balance", {
+      p_user_id: userId,
+      p_target_balance: plan.credits_per_month,
+      p_transaction_type: "plan_grant",
+      p_description: description,
+      p_metadata: {
+        plan_id: plan.id,
+        source_id: sourceId,
+        trial_end: trialEnd.toISOString(),
+        grant_key: `trial:${sourceId}`,
+      },
+    });
+    if (creditErr) throw creditErr;
+  };
+
   // Atomic one-trial-per-account claim. Only the first caller flips trial_used_at
   // from null; everyone else sees no claimed row and bails.
   const { data: claimed } = await supabase
@@ -67,11 +86,26 @@ export async function activateTrial(
     .select("id");
 
   if (!claimed?.length) {
+    const { data: existingTrial } = await supabase
+      .from("user_plans")
+      .select("plan_id, status, trial_end")
+      .eq("user_id", userId)
+      .eq("plan_id", plan.id)
+      .in("status", ["trialing", "active"])
+      .maybeSingle();
+
+    if (existingTrial) {
+      await grantTrialCredits("Trial credits reconciled");
+      return {
+        activated: false,
+        reason: "already_claimed_reconciled",
+        planName: plan.name,
+        trialEnd: existingTrial.trial_end ?? trialEnd.toISOString(),
+      };
+    }
+
     return { activated: false, reason: "already_claimed" };
   }
-
-  const now = new Date();
-  const trialEnd = trialEndFor(now, plan.trial_duration_days ?? 7);
 
   const planPayload = {
     user_id: userId,
@@ -93,7 +127,6 @@ export async function activateTrial(
 
   const profileUpdate: Record<string, unknown> = {
     plan_id: plan.id,
-    credits: plan.credits_per_month,
     selected_plan_id: plan.id,
     pending_plan_id: null,
     payment_status: "paid",
@@ -108,14 +141,7 @@ export async function activateTrial(
   if (stripeCustomerId) profileUpdate.stripe_customer_id = stripeCustomerId;
   await supabase.from("profiles").update(profileUpdate).eq("id", userId);
 
-  await supabase.from("credit_transactions").insert({
-    user_id: userId,
-    amount: plan.credits_per_month,
-    transaction_type: "plan_grant",
-    balance_after: plan.credits_per_month,
-    description: "Trial activated",
-    metadata: { plan_id: plan.id, source_id: sourceId, trial_end: trialEnd.toISOString() },
-  });
+  await grantTrialCredits("Trial activated");
 
   // Belt-and-braces: mark the Stripe customer so a wiped/re-created account
   // reusing the same customer cannot start a second trial.

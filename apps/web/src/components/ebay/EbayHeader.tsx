@@ -1,47 +1,90 @@
-import { Bell, Command, Moon, Search, Sun, Zap } from 'lucide-react';
+import { Bell, Command, Moon, Search, Sun, Zap, RefreshCw } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
 import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { useTheme } from '@repo/ui/theme/useTheme';
+import { useAuth } from '@repo/auth/hooks/useAuth';
 
 export function EbayHeader() {
-  const { usage, subscribed } = useSubscription();
+  const { user, profile } = useAuth();
+  const { usage, subscribed, planName } = useSubscription();
   const { theme, toggleTheme } = useTheme();
   const creditsRemaining = subscribed ? (usage?.credits_remaining ?? 0) : 0;
 
   return (
     <div className="flex items-center justify-between w-full">
-      <div className="flex-1 max-w-md">
+      {/* Search Input Box */}
+      <div className="flex-1 max-w-sm">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search listings, orders, SKUs..."
-            className="w-full h-10 pl-10 pr-20 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all"
+            placeholder="Search SKU, listing title, order ID, buyer, item ID..."
+            className="w-full h-9 pl-9 pr-14 rounded-xl bg-card border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-xs"
           />
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-            <Command className="h-3 w-3" />
-            K
+          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 px-1 py-0.5 rounded bg-muted text-[9px] text-muted-foreground font-semibold border border-border/50">
+            <Command size={10} />
+            <span>K</span>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-3 ml-4">
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-          <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
-            <Zap className="h-3 w-3 text-white" />
-          </div>
-          <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">{creditsRemaining}</span>
-          <span className="text-xs text-blue-500 dark:text-blue-400">Credits</span>
-        </div>
+      {/* Center Connected Status Info */}
+      <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-muted/40 text-xs font-semibold text-muted-foreground/95 ml-4">
+        <span className="text-[#e53238] font-bold tracking-tight">e</span>
+        <span className="text-[#0064d2] font-bold tracking-tight -ml-0.5">b</span>
+        <span className="text-[#f5af02] font-bold tracking-tight -ml-0.5">a</span>
+        <span className="text-[#86b817] font-bold tracking-tight -ml-0.5">y</span>
+        <span className="text-foreground ml-1">eBay US</span>
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-1" />
+        <span className="text-emerald-600 dark:text-emerald-400">Connected</span>
+        <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+        <span className="text-[10px] font-normal text-muted-foreground/80">Last sync: 4 min ago</span>
+      </div>
 
-        <Button variant="ghost" size="icon" onClick={toggleTheme} className="h-9 w-9 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">
-          {theme === 'dark' ? <Sun className="h-4 w-4 text-amber-500" /> : <Moon className="h-4 w-4 text-slate-500" />}
+      {/* Right Action Controls */}
+      <div className="flex items-center gap-2.5 ml-4">
+        
+        {/* Sync Now Button */}
+        <Button 
+          size="sm" 
+          className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs border-0"
+        >
+          <RefreshCw size={13} />
+          <span>Sync Now</span>
         </Button>
 
-        <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">
-          <Bell className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-          <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
+        {/* Credits Counter Button */}
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="h-9 px-4 rounded-xl border border-border bg-card hover:bg-muted/30 text-xs font-bold flex items-center gap-1.5 text-foreground shadow-xs"
+        >
+          <Zap size={13} className="text-blue-500 fill-blue-500" />
+          <span>{creditsRemaining.toLocaleString() || '10,240'} Credits</span>
         </Button>
+
+        {/* Theme toggle */}
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={toggleTheme} 
+          className="h-9 w-9 rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground border border-border bg-card"
+        >
+          {theme === 'dark' ? <Sun className="h-4 w-4 text-amber-500" /> : <Moon className="h-4 w-4" />}
+        </Button>
+
+        {/* Notification Bell */}
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="relative h-9 w-9 rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground border border-border bg-card"
+        >
+          <Bell className="h-4 w-4" />
+          <span className="absolute top-1.5 right-1.5 h-3.5 w-3.5 rounded-full bg-red-500 text-[9px] font-extrabold text-white flex items-center justify-center border border-card">
+            5
+          </span>
+        </Button>
+
       </div>
     </div>
   );

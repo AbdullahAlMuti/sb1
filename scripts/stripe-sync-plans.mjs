@@ -65,6 +65,37 @@ export function neededPricesFor(plan) {
   return needed;
 }
 
+// Guard against the failure mode that leaves an environment unusable: writing
+// TEST-mode Stripe price ids into a remote (prod) database, or LIVE-mode ids into
+// a local test database. The edge functions call Stripe in whatever mode the
+// stored price id belongs to, so a mode/target mismatch silently breaks checkout.
+// Returns { ok: true } or { ok: false, reason }. Pure + unit-testable.
+export function assertKeyMatchesTarget(stripeKey, supabaseUrl, opts = {}) {
+  const isLocalTarget = /localhost|127\.0\.0\.1/.test(supabaseUrl);
+  const isTestKey = stripeKey.startsWith('sk_test_') || stripeKey.startsWith('rk_test_');
+  const isLiveKey = stripeKey.startsWith('sk_live_') || stripeKey.startsWith('rk_live_');
+
+  if (isTestKey && !isLocalTarget && !opts.allowTestOnRemote) {
+    return {
+      ok: false,
+      reason:
+        'Refusing to write TEST-mode Stripe price ids into a remote database ' +
+        `(${supabaseUrl}). This is how production ends up with unusable price ids. ` +
+        'Use a live key for the remote project, or pass --allow-test-on-remote if this ' +
+        'target really is a staging/test project.',
+    };
+  }
+  if (isLiveKey && isLocalTarget && !opts.allowLiveOnLocal) {
+    return {
+      ok: false,
+      reason:
+        'Refusing to write LIVE-mode Stripe price ids into a local database ' +
+        `(${supabaseUrl}). Use a test key locally, or pass --allow-live-on-local if intentional.`,
+    };
+  }
+  return { ok: true };
+}
+
 export function matchExistingPrice(prices, spec) {
   return prices.find((p) => {
     if (!p.active || p.currency !== 'usd' || p.unit_amount !== spec.unit_amount) return false;
@@ -182,7 +213,15 @@ async function main() {
       process.exit(1);
     }
   }
-  if (env.stripeKey.startsWith('sk_live_')) {
+  const guard = assertKeyMatchesTarget(env.stripeKey, env.supabaseUrl, {
+    allowTestOnRemote: process.argv.includes('--allow-test-on-remote'),
+    allowLiveOnLocal: process.argv.includes('--allow-live-on-local'),
+  });
+  if (!guard.ok) {
+    console.error(`ABORT: ${guard.reason}`);
+    process.exit(1);
+  }
+  if (env.stripeKey.startsWith('sk_live_') || env.stripeKey.startsWith('rk_live_')) {
     console.log('NOTE: using a LIVE Stripe key.');
   }
 

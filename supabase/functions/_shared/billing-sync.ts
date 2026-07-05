@@ -3,6 +3,7 @@ import { activateTrial } from "./trial-activation.ts";
 
 type SupabaseLike = {
   from: (table: string) => any;
+  rpc: (fn: string, args?: Record<string, unknown>) => any;
 };
 
 export async function syncStripeData(
@@ -125,25 +126,27 @@ export async function syncStripeData(
         if (planChanged || periodChanged) {
           planPayload.orders_used = 0;
           planPayload.credits_used = 0;
-          profileUpdate.credits = planData.credits_per_month;
 
-          // Log credit transaction
-          await supabaseAdmin.from("credit_transactions").insert({
-            user_id: userId,
-            amount: planData.credits_per_month,
-            transaction_type: "plan_grant",
-            balance_after: planData.credits_per_month,
-            description: planChanged 
+          const creditDescription = planChanged 
               ? `Subscribed to ${planData.name} plan` 
-              : `Credits refreshed - ${planData.name} plan renewal`,
-            metadata: {
+              : `Credits refreshed - ${planData.name} plan renewal`;
+
+          const { error: creditErr } = await supabaseAdmin.rpc("set_user_credit_balance", {
+            p_user_id: userId,
+            p_target_balance: planData.credits_per_month,
+            p_transaction_type: "plan_grant",
+            p_description: creditDescription,
+            p_metadata: {
               old_plan_id: existingPlan?.plan_id ?? null,
               new_plan_id: planData.id,
               stripe_subscription_id: activeSub.id,
+              period_end: subscriptionEnd,
               is_new_period: periodChanged,
               is_plan_change: planChanged,
+              grant_key: `stripe:${activeSub.id}:${subscriptionEnd}:${planData.id}`,
             },
           });
+          if (creditErr) throw creditErr;
 
           // Log order reset
           await supabaseAdmin.from("order_transactions").insert({
@@ -229,7 +232,6 @@ export async function syncStripeData(
           .from("profiles")
           .update({
             plan_id: null,
-            credits: 0,
             selected_plan_id: null,
             payment_status: "unpaid",
             subscription_status: "inactive",
@@ -239,14 +241,14 @@ export async function syncStripeData(
           })
           .eq("id", userId);
 
-        await supabaseAdmin.from("credit_transactions").insert({
-          user_id: userId,
-          amount: 0,
-          transaction_type: "plan_grant",
-          balance_after: 0,
-          description: "Subscription ended",
-          metadata: { reason: "stripe_sync_downgrade" },
+        const { error: creditErr } = await supabaseAdmin.rpc("set_user_credit_balance", {
+          p_user_id: userId,
+          p_target_balance: 0,
+          p_transaction_type: "period_reset",
+          p_description: "Subscription ended",
+          p_metadata: { reason: "stripe_sync_downgrade" },
         });
+        if (creditErr) throw creditErr;
       }
     }
 

@@ -279,16 +279,26 @@ async function validateListingAllowed(supabase: SupabaseClient, userId: string):
   const { data: up } = await supabase.from('user_plans').select('is_blocked,blocked_reason,trial_end,current_period_end,status,admin_override_limits,plan_id').eq('user_id', userId).maybeSingle();
   const planId = profile.plan_id || up?.plan_id;
   let maxListings = 10;
+  let isTrialPlan = false;
   if (planId) {
-    const { data: plan } = await supabase.from('plans').select('max_listings').eq('id', planId).maybeSingle();
+    const { data: plan } = await supabase.from('plans').select('max_listings,is_trial').eq('id', planId).maybeSingle();
     if (plan?.max_listings != null) maxListings = plan.max_listings;
+    isTrialPlan = !!plan?.is_trial;
   }
   if (up?.admin_override_limits?.max_listings != null) maxListings = up.admin_override_limits.max_listings;
   if (up?.is_blocked) return { allowed: false, reason: up.blocked_reason || 'Account blocked' };
   const now = new Date();
-  if (up?.trial_end && new Date(up.trial_end) < now) return { allowed: false, reason: 'Trial expired' };
+  // trial_end is only a meaningful gate while the user is actually ON a trial plan.
+  // It never gets cleared after converting to paid, so checking it unconditionally
+  // permanently 402'd every paying customer who was ever on a trial — including
+  // users with thousands of credits on an active "pro" subscription.
+  const isCurrentlyTrialing = isTrialPlan || up?.status === 'trialing';
+  if (isCurrentlyTrialing && up?.trial_end && new Date(up.trial_end) < now) return { allowed: false, reason: 'Trial expired' };
   if (up?.current_period_end && new Date(up.current_period_end) < now) return { allowed: false, reason: 'Subscription expired' };
-  const { count } = await supabase.from('listings').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'active');
+  // Only rows that actually made it onto eBay count against the quota. Scanned/staged
+  // drafts previously wrote status='active' with no ebay_item_id, which silently ate
+  // the whole quota and then blocked the real post-upload dashboard sync with a 402.
+  const { count } = await supabase.from('listings').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'active').not('ebay_item_id', 'is', null);
   const current = count ?? 0;
   if (maxListings !== -1 && current >= maxListings) return { allowed: false, reason: `Listing limit reached (${current}/${maxListings})`, current, limit: maxListings };
   const credits = profile.credits ?? 0;
@@ -346,6 +356,22 @@ function cleanPrice(price: any): number | null {
   if (s === '' || s === '-') return null;
   const parsed = parseFloat(s);
   return isNaN(parsed) ? null : parsed;
+}
+
+function isInsufficientCredits(message: string | undefined): boolean {
+  return /INSUFFICIENT_CREDITS|insufficient credits|not have enough credits/i.test(message || '');
+}
+
+function insufficientCreditsBody(message = 'You do not have enough credits to create a listing.', current?: number, limit = 1) {
+  return {
+    success: false,
+    code: 'INSUFFICIENT_CREDITS',
+    error: message,
+    limitType: 'credits',
+    current,
+    limit,
+    upgradeRequired: true,
+  };
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
@@ -411,7 +437,12 @@ Deno.serve(async (req) => {
     // Validate plan limits for NEW listings only
     if (!existingId) {
       const v = await validateListingAllowed(supabase, userId);
-      if (!v.allowed) return json({ success: false, error: v.reason, limitType: 'listings', current: v.current, limit: v.limit, upgradeRequired: true }, 402);
+      if (!v.allowed) {
+        if (isInsufficientCredits(v.reason)) {
+          return json(insufficientCreditsBody('You do not have enough credits to create a listing.', v.current, v.limit), 402);
+        }
+        return json({ success: false, error: v.reason, limitType: 'listings', current: v.current, limit: v.limit, upgradeRequired: true }, 402);
+      }
     }
 
     const ebayPrice   = cleanPrice(body.ebayPrice   ?? body.ebay_price);
@@ -451,7 +482,11 @@ Deno.serve(async (req) => {
       amazon_url:         body.amazonUrl ?? body.amazon_url ?? null,
       amazon_asin:        normAsin,
       ebay_item_id:       (body.ebay_item_id ?? body.ebayItemId)?.trim().substring(0, 50) || null,
-      status:             body.status || 'active',
+      // Default to 'draft' unless the caller both sent an explicit status AND a real
+      // ebay_item_id exists. A default of 'active' here previously let any caller that
+      // forgot to set status create phantom "active" rows with no eBay item, which
+      // silently consumed the plan's listing quota (see validateListingAllowed above).
+      status:             (body.status || (((body.ebay_item_id ?? body.ebayItemId)?.trim()) ? 'active' : 'draft')),
       auto_order_enabled: body.auto_order_enabled ?? false,
       amazon_data:        amazonData,
       ebay_data:          ebayData,
@@ -473,6 +508,9 @@ Deno.serve(async (req) => {
 
     if (rpcErr || !rpc) {
       const msg = rpcErr?.message || 'Failed to create listing';
+      if (isInsufficientCredits(msg)) {
+        return json(insufficientCreditsBody(), 402);
+      }
       const httpStatus = /(limit|credit|subscription|blocked|plan)/i.test(msg) ? 402 : 500;
       console.error('[create-listing] RPC error:', msg);
       return json({ success: false, error: msg, upgradeRequired: httpStatus === 402 }, httpStatus);

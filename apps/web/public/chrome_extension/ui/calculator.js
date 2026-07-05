@@ -1,4 +1,11 @@
 // calculator.js — Single source of truth for all calculator math
+//
+// IMPORTANT: the window assignment at the bottom of this file is load-bearing.
+// This file is imported for side effects by the Vite IIFE bundles
+// (src/content_scripts/*.js). A module with only bare declarations and no side
+// effects gets dropped from the bundle entirely — which silently removed
+// calculateSellingPrice and disabled all scan-time pricing (the callers'
+// `typeof calculateSellingPrice !== 'function'` guards masked the failure).
 
 const CALCULATOR_DEFAULTS = {
   taxPercent: 9,
@@ -18,17 +25,19 @@ function round2(value) {
 }
 
 function calculateSellingPrice(params) {
+  const p = params || {};
+  let sourcePrice = parseFloat(p.sourcePrice);
+  if (isNaN(sourcePrice) || sourcePrice <= 0) {
+    sourcePrice = 50;
+  }
   const {
-    sourcePrice = 0,
     taxPercent = CALCULATOR_DEFAULTS.taxPercent,
     trackingFee = CALCULATOR_DEFAULTS.trackingFee,
     ebayFeePercent = CALCULATOR_DEFAULTS.ebayFeePercent,
     promoFeePercent = CALCULATOR_DEFAULTS.promoFeePercent,
     desiredProfit = CALCULATOR_DEFAULTS.desiredProfit,
     paymentFixedFee = CALCULATOR_DEFAULTS.paymentFixedFee
-  } = params;
-
-  if (sourcePrice <= 0) return null;
+  } = p;
 
   const taxAmount = sourcePrice * (taxPercent / 100);
   const baseCost = sourcePrice + taxAmount + trackingFee + paymentFixedFee;
@@ -62,4 +71,12 @@ function calculateSellingPrice(params) {
     roi: round1(roi),
     margin: round1(margin)
   };
+}
+
+// Load-bearing side effect — see header comment. Exposes the calculator to the
+// injectors (amazon/walmart quick-calc + _applyPricingToProduct) and panel.html,
+// and pins this module into the Vite IIFE bundles so it is never dropped.
+if (typeof window !== 'undefined') {
+  window.calculateSellingPrice = calculateSellingPrice;
+  window.CALCULATOR_DEFAULTS = CALCULATOR_DEFAULTS;
 }

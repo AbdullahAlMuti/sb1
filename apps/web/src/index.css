@@ -8,71 +8,71 @@
 
 @layer base {
   :root {
-    /* ─── Light Mode (Linear Inverse Canvas Base) ─── */
-    --background: 210 40% 98%; /* Soft slate #f8fafc */
-    --foreground: 224 71% 4%; /* Near-black #020617 */
+    /* ─── Light Mode (Claude Humanist Cream Canvas Base) ─── */
+    --background: 48 24% 97%; /* Claude canvas #faf9f5 */
+    --foreground: 40 4% 8%; /* Claude ink #141413 */
 
-    --card: 0 0% 100%; /* Pure white #ffffff */
-    --card-foreground: 224 71% 4%;
+    --card: 0 0% 100%; /* Pure white cards #ffffff */
+    --card-foreground: 40 4% 8%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 224 71% 4%;
+    --popover-foreground: 40 4% 8%;
 
-    --primary: 234 60% 60%; /* Lavender-Blue #5e6ad2 */
+    --primary: 15 52% 58%; /* Claude warm coral #cc785c */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 14% 96%; /* Surface-2 #f1f5f9 */
-    --secondary-foreground: 224 71% 4%;
+    --secondary: 40 29% 94%; /* Claude surface-soft #f5f0e8 */
+    --secondary-foreground: 40 4% 8%;
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%; /* Muted slate #64748b */
+    --muted: 40 29% 94%;
+    --muted-foreground: 43 7% 53%; /* Claude muted-soft #8e8b82 */
 
-    --accent: 138 62% 40%; /* Success Green #27a644 */
+    --accent: 134 39% 54%; /* Claude green #5db872 */
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 0 53% 52%; /* Claude error red #c64545 */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%; /* Hairline border #e2e8f0 */
-    --input: 220 13% 91%;
-    --ring: 234 60% 60%; /* Lavender-Blue outline */
+    --border: 36 12% 88%; /* Claude hairline #e6dfd8 */
+    --input: 36 12% 88%;
+    --ring: 15 52% 58%;
 
     --radius: 0.75rem; /* 12px card corners matching rounded.lg */
 
     /* ─── Custom Design Tokens ─── */
-    --gradient-primary: linear-gradient(135deg, hsl(234, 60%, 60%) 0%, hsl(234, 60%, 45%) 100%);
-    --gradient-hero: linear-gradient(180deg, hsl(210, 40%, 98%) 0%, hsl(220, 14%, 96%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(210, 40%, 99%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(234, 60%, 60%) 0%, hsl(234, 60%, 50%) 100%);
-    --gradient-cta: linear-gradient(135deg, hsl(234, 60%, 60%) 0%, hsl(234, 60%, 52%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(15, 52%, 58%) 0%, hsl(15, 52%, 48%) 100%);
+    --gradient-hero: linear-gradient(180deg, hsl(48, 24%, 97%) 0%, hsl(40, 29%, 94%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0, 0%, 100%) 0%, hsl(48, 24%, 98%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(15, 52%, 58%) 0%, hsl(15, 52%, 48%) 100%);
+    --gradient-cta: linear-gradient(135deg, hsl(15, 52%, 58%) 0%, hsl(15, 52%, 48%) 100%);
     
-    --shadow-sm: 0 1px 2px hsl(224 71% 4% / 0.02);
-    --shadow-md: 0 4px 6px -1px hsl(224 71% 4% / 0.04), 0 2px 4px -2px hsl(224 71% 4% / 0.02);
-    --shadow-lg: 0 10px 15px -3px hsl(224 71% 4% / 0.05), 0 4px 6px -4px hsl(224 71% 4% / 0.03);
-    --shadow-xl: 0 20px 25px -5px hsl(224 71% 4% / 0.08);
+    --shadow-sm: 0 1px 2px hsl(40 4% 8% / 0.02);
+    --shadow-md: 0 4px 6px -1px hsl(40 4% 8% / 0.04), 0 2px 4px -2px hsl(40 4% 8% / 0.02);
+    --shadow-lg: 0 10px 15px -3px hsl(40 4% 8% / 0.05), 0 4px 6px -4px hsl(40 4% 8% / 0.03);
+    --shadow-xl: 0 20px 25px -5px hsl(40 4% 8% / 0.08);
     
-    --glow-primary: 0 8px 24px hsl(234 60% 60% / 0.12);
-    --glow-accent: 0 8px 24px hsl(138 62% 40% / 0.10);
+    --glow-primary: 0 8px 24px hsl(15 52% 58% / 0.12);
+    --glow-accent: 0 8px 24px hsl(134 39% 54% / 0.10);
     
     --glass-bg: hsl(0 0% 100% / 0.85);
-    --glass-border: hsl(220 13% 91% / 0.70);
+    --glass-border: hsl(36 12% 88% / 0.70);
 
     /* Platform brand colors */
     --amazon-orange: 33 100% 50%;
     --ebay-blue: 211 100% 45%;
     --whatsapp: 142 70% 45%;
     --whatsapp-foreground: 0 0% 100%;
-    --success: 138 62% 40%;
-    --warning: 38 92% 50%;
+    --success: 134 39% 54%;
+    --warning: 43 78% 50%; /* Claude amber #e8a55a */
     --info: 210 100% 50%;
 
     /* Premium/paywall tokens */
-    --premium: 234 60% 60%;
+    --premium: 15 52% 58%;
     --premium-foreground: 0 0% 100%;
-    --premium-surface: 234 60% 97%;
-    --premium-surface-foreground: 224 71% 4%;
-    --premium-border: 234 60% 90%;
-    --premium-ring: 234 60% 60%;
+    --premium-surface: 40 29% 94%;
+    --premium-surface-foreground: 40 4% 8%;
+    --premium-border: 36 12% 88%;
+    --premium-ring: 15 52% 58%;
     --gradient-premium-card: linear-gradient(
       180deg,
       hsl(var(--premium-surface)) 0%,
@@ -81,106 +81,106 @@
     --glow-premium: 0 10px 30px -14px hsl(var(--premium) / 0.25);
 
     /* Text hierarchy */
-    --text-primary: 224 71% 4%;
-    --text-secondary: 220 9% 30%;
-    --text-muted: 220 9% 46%;
+    --text-primary: 40 4% 8%;
+    --text-secondary: 40 4% 18%;
+    --text-muted: 43 7% 53%;
 
-    --warm-bg: 210 40% 98%;
-    --warm-glow: 234 60% 95%;
-    --warm-accent: 234 60% 60%;
-    --warm-accent-soft: 234 60% 97%;
-    --warm-text: 224 71% 4%;
-    --warm-text-muted: 220 9% 46%;
-    --warm-border: 220 13% 91%;
-    --warm-cta: 234 60% 60%;
-    --warm-cta-hover: 234 60% 52%;
+    --warm-bg: 48 24% 97%;
+    --warm-glow: 15 52% 95%;
+    --warm-accent: 15 52% 58%;
+    --warm-accent-soft: 40 29% 94%;
+    --warm-text: 40 4% 8%;
+    --warm-text-muted: 43 7% 53%;
+    --warm-border: 36 12% 88%;
+    --warm-cta: 15 52% 58%;
+    --warm-cta-hover: 15 52% 48%;
     --warm-cta-text: 0 0% 100%;
-    --warm-star: 45 93% 47%;
-    --warm-trust: 138 62% 40%;
-    --warm-chrome: 220 9% 46%;
-    --warm-tab-bg: 220 14% 96%;
+    --warm-star: 43 78% 50%;
+    --warm-trust: 134 39% 54%;
+    --warm-chrome: 43 7% 53%;
+    --warm-tab-bg: 40 29% 94%;
     --warm-card: 0 0% 100%;
-    --warm-flow: 220 13% 91%;
-    --warm-badge: 234 60% 97%;
+    --warm-flow: 36 12% 88%;
+    --warm-badge: 40 29% 94%;
 
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 224 71% 4%;
-    --sidebar-primary: 234 60% 60%;
+    --sidebar-background: 48 24% 97%;
+    --sidebar-foreground: 40 4% 8%;
+    --sidebar-primary: 15 52% 58%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 14% 96%;
-    --sidebar-accent-foreground: 224 71% 4%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 234 60% 60%;
+    --sidebar-accent: 39 34% 90%;
+    --sidebar-accent-foreground: 40 4% 8%;
+    --sidebar-border: 36 12% 88%;
+    --sidebar-ring: 15 52% 58%;
   }
 
   .dark {
-    /* ─── Dark Mode (Linear Canonical Canvas Base) ─── */
-    --background: 240 5% 1%; /* Canvas #010102 */
-    --foreground: 210 17% 98%; /* Ink #f7f8f8 */
+    /* ─── Dark Mode (Claude Humanist Dark Canvas Base) ─── */
+    --background: 40 7% 9%; /* Claude surface-dark #181715 */
+    --foreground: 47 32% 97%; /* Claude on-dark #faf9f5 */
 
     /* Cards - Elevated dark surfaces */
-    --card: 240 5% 6%; /* Surface-1 #0f1011 */
-    --card-foreground: 210 17% 98%;
+    --card: 36 7% 14%; /* Claude surface-dark-elevated #252320 */
+    --card-foreground: 47 32% 97%;
 
-    --popover: 240 5% 6%;
-    --popover-foreground: 210 17% 98%;
+    --popover: 36 7% 14%;
+    --popover-foreground: 47 32% 97%;
 
-    --primary: 234 60% 60%; /* Lavender-Blue #5e6ad2 */
+    --primary: 15 52% 58%; /* Claude warm coral #cc785c */
     --primary-foreground: 0 0% 100%;
 
     /* Secondary */
-    --secondary: 240 5% 8%; /* Surface-2 #141516 */
-    --secondary-foreground: 210 17% 98%;
+    --secondary: 45 7% 11%; /* Claude surface-dark-soft #1f1e1b */
+    --secondary-foreground: 47 32% 97%;
 
     /* Muted */
-    --muted: 240 5% 8%;
-    --muted-foreground: 220 9% 70%; /* Ink Muted #d0d6e0 */
+    --muted: 45 7% 11%;
+    --muted-foreground: 43 5% 61%; /* Claude muted-soft #a09d96 */
 
     /* Accent */
-    --accent: 138 62% 40%; /* Success Green #27a644 */
+    --accent: 134 39% 54%; /* Claude green #5db872 */
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 62% 50%;
+    --destructive: 0 53% 52%; /* Claude error red #c64545 */
     --destructive-foreground: 0 0% 100%;
 
     /* Borders */
-    --border: 224 10% 15%; /* Hairline border #23252a */
-    --input: 224 10% 15%;
-    --ring: 234 60% 60%;
+    --border: 45 5% 16%; /* Claude dark border #2a2926 */
+    --input: 45 5% 16%;
+    --ring: 15 52% 58%;
 
     /* Custom tokens */
-    --gradient-primary: linear-gradient(135deg, hsl(234, 60%, 60%) 0%, hsl(234, 60%, 45%) 100%);
-    --gradient-hero: linear-gradient(180deg, hsl(240, 5%, 3%) 0%, hsl(240, 5%, 1%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(240, 5%, 7%) 0%, hsl(240, 5% , 5%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(234, 60%, 60%) 0%, hsl(234, 60%, 50%) 100%);
-    --gradient-cta: linear-gradient(135deg, hsl(234, 60%, 60%) 0%, hsl(234, 60%, 52%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(15, 52%, 58%) 0%, hsl(15, 52%, 48%) 100%);
+    --gradient-hero: linear-gradient(180deg, hsl(40, 7%, 14%) 0%, hsl(40, 7%, 9%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(36, 7%, 16%) 0%, hsl(36, 7%, 14%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(15, 52%, 58%) 0%, hsl(15, 52%, 48%) 100%);
+    --gradient-cta: linear-gradient(135deg, hsl(15, 52%, 58%) 0%, hsl(15, 52%, 48%) 100%);
     
     --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.5);
     --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.6);
     --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.7);
     --shadow-xl: 0 20px 25px -5px hsl(0 0% 0% / 0.8);
     
-    --glow-primary: 0 8px 28px hsl(234 60% 60% / 0.15);
-    --glow-accent: 0 8px 24px hsl(138 62% 40% / 0.12);
+    --glow-primary: 0 8px 28px hsl(15 52% 58% / 0.15);
+    --glow-accent: 0 8px 24px hsl(134 39% 54% / 0.12);
     
-    --glass-bg: hsl(240 5% 6% / 0.85);
-    --glass-border: hsl(224 10% 15% / 0.60);
+    --glass-bg: hsl(36 7% 14% / 0.85);
+    --glass-border: hsl(45 5% 16% / 0.60);
 
     /* Platform brand colors */
     --amazon-orange: 33 100% 50%;
     --ebay-blue: 211 100% 55%;
     --whatsapp: 142 72% 48%;
     --whatsapp-foreground: 0 0% 100%;
-    --success: 138 62% 40%;
-    --warning: 38 92% 50%;
+    --success: 134 39% 54%;
+    --warning: 43 78% 50%; /* Claude amber #e8a55a */
     --info: 199 89% 55%;
 
-    --premium: 234 60% 60%;
+    --premium: 15 52% 58%;
     --premium-foreground: 0 0% 100%;
-    --premium-surface: 240 5% 10%;
-    --premium-surface-foreground: 210 17% 98%;
-    --premium-border: 224 10% 18%;
-    --premium-ring: 234 60% 60%;
+    --premium-surface: 45 7% 11%;
+    --premium-surface-foreground: 47 32% 97%;
+    --premium-border: 45 5% 16%;
+    --premium-ring: 15 52% 58%;
     --gradient-premium-card: linear-gradient(
       180deg,
       hsl(var(--premium-surface)) 0%,
@@ -189,37 +189,37 @@
     --glow-premium: 0 12px 34px -16px hsl(var(--premium) / 0.35);
 
     /* Text hierarchy */
-    --text-primary: 210 17% 98%;
-    --text-secondary: 220 9% 80%;
-    --text-muted: 220 9% 70%;
+    --text-primary: 47 32% 97%;
+    --text-secondary: 43 5% 80%;
+    --text-muted: 43 5% 61%;
 
-    --warm-bg: 240 5% 1%;
-    --warm-glow: 234 60% 12%;
-    --warm-accent: 234 60% 60%;
-    --warm-accent-soft: 240 5% 8%;
-    --warm-text: 210 17% 98%;
-    --warm-text-muted: 220 9% 70%;
-    --warm-border: 224 10% 15%;
-    --warm-cta: 234 60% 60%;
-    --warm-cta-hover: 234 60% 66%;
+    --warm-bg: 40 7% 9%;
+    --warm-glow: 15 52% 15%;
+    --warm-accent: 15 52% 58%;
+    --warm-accent-soft: 45 7% 11%;
+    --warm-text: 47 32% 97%;
+    --warm-text-muted: 43 5% 61%;
+    --warm-border: 45 5% 16%;
+    --warm-cta: 15 52% 58%;
+    --warm-cta-hover: 15 52% 64%;
     --warm-cta-text: 0 0% 100%;
-    --warm-star: 45 90% 55%;
-    --warm-trust: 138 62% 40%;
-    --warm-chrome: 220 9% 70%;
-    --warm-tab-bg: 240 5% 8%;
-    --warm-card: 240 5% 6%;
-    --warm-flow: 224 10% 15%;
-    --warm-badge: 240 5% 8%;
+    --warm-star: 43 78% 50%;
+    --warm-trust: 134 39% 54%;
+    --warm-chrome: 43 5% 61%;
+    --warm-tab-bg: 45 7% 11%;
+    --warm-card: 36 7% 14%;
+    --warm-flow: 45 5% 16%;
+    --warm-badge: 45 7% 11%;
 
     /* Sidebar */
-    --sidebar-background: 240 5% 1%;
-    --sidebar-foreground: 210 17% 95%;
-    --sidebar-primary: 234 60% 60%;
+    --sidebar-background: 40 7% 9%;
+    --sidebar-foreground: 47 32% 97%;
+    --sidebar-primary: 15 52% 58%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 5% 8%;
-    --sidebar-accent-foreground: 210 17% 98%;
-    --sidebar-border: 224 10% 15%;
-    --sidebar-ring: 234 60% 60%;
+    --sidebar-accent: 45 7% 11%;
+    --sidebar-accent-foreground: 47 32% 97%;
+    --sidebar-border: 45 5% 16%;
+    --sidebar-ring: 15 52% 58%;
   }
 }
 

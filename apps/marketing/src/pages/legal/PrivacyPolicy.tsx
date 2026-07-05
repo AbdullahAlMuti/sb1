@@ -24,12 +24,12 @@ const PrivacyPolicy = () => {
         <h3 className="mb-3 mt-6 text-xl font-medium">eBay listing workflow data</h3>
         <ul className="list-disc space-y-2 pl-6 text-muted-foreground">
           <li>Product titles, prices, images, product identifiers, variants, item specifics, drafts, SKUs, listing status, and related listing workflow records.</li>
-          <li>eBay order sync data when you choose to use order management features, such as order identifiers, status, shipping/order details, and sync logs.</li>
+          <li>eBay order sync data when you choose to use order management features. Because eBay order records include buyer information, this can include the <strong>buyer's name and shipping address</strong>, along with order identifiers, item and transaction details, status, and sync logs. This buyer information is read only when you trigger an order sync, using your own logged-in eBay session, and is used solely to display and manage your own sales in your dashboard. It is never sold or used for advertising.</li>
         </ul>
 
         <h3 className="mb-3 mt-6 text-xl font-medium">Supplier page data processed by the extension</h3>
         <p className="leading-relaxed text-muted-foreground">
-          When you use SellerSuit on supported supplier websites, the extension reads page content needed to build eBay listing assets, such as product names, prices, images, options, and product identifiers. Supported supplier surfaces currently include Amazon and Walmart pages used for supplier-to-eBay listing workflows.
+          When you use SellerSuit on supported supplier websites, the extension reads page content needed to build eBay listing assets, such as product names, prices, images, options, and product identifiers. This happens only on the supplier pages you are actively viewing and act on — there is no background browsing collection. Supported supplier surfaces currently include Amazon, Walmart, and AliExpress pages used for supplier-to-eBay listing workflows.
         </p>
 
         <h3 className="mb-3 mt-6 text-xl font-medium">AI feature inputs and outputs</h3>
@@ -77,7 +77,7 @@ const PrivacyPolicy = () => {
           <li>Stripe for payment processing, subscriptions, invoices, billing portal, and payment records.</li>
           <li>OpenAI and/or Lovable AI gateway for AI generation features when you request them.</li>
           <li>Resend or similar email infrastructure for transactional emails.</li>
-          <li>Google Apps Script only if you configure Google Sheets sync or related export features.</li>
+          <li>Google Apps Script only if you configure Google Sheets export. This feature is off by default and the extension ships with no default endpoint — listing data is sent only to a Google Apps Script URL that you supply in Settings. If you do not configure one, nothing is exported.</li>
           <li>Optional website analytics providers such as Google Analytics, Google Tag Manager, or Plausible if enabled on the website.</li>
         </ul>
       </section>

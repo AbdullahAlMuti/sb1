@@ -46,6 +46,7 @@ window.SSBulkCore = (() => {
       intervalMs: sanitizeIntervalMs(payload.interval),
       settings: {
         useAiTitle: !!(payload.settings && payload.settings.useAiTitle),
+        useAiDescription: !!(payload.settings && payload.settings.useAiDescription),
         minQty: parseInt(payload.settings && payload.settings.minQty, 10) || 0,
         allowLowQty: (payload.settings && payload.settings.allowLowQty) !== false
       },
@@ -174,7 +175,7 @@ window.SSBulkCore = (() => {
     return /CAPTCHA/i.test(m) ||
            /not logged into eBay/i.test(m) ||
            /Please Log In/i.test(m) ||
-           /(limit reached|Insufficient credits|subscription|Trial expired)/i.test(m);
+           /(limit reached|Insufficient credits|INSUFFICIENT_CREDITS|not have enough credits|subscription|Trial expired)/i.test(m);
   }
 
   return {

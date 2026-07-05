@@ -17,6 +17,20 @@ CREATE INDEX IF NOT EXISTS idx_function_rate_limits_expires_at
 
 ALTER TABLE public.function_rate_limits ENABLE ROW LEVEL SECURITY;
 
+-- auth_codes was created out-of-band in prod (used by supabase/functions/auth-otp)
+-- before this migration ran; no earlier migration creates it, so define it
+-- here for a from-scratch replay, matching the columns auth-otp reads/writes.
+CREATE TABLE IF NOT EXISTS public.auth_codes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  code text NOT NULL,
+  used boolean NOT NULL DEFAULT false,
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.auth_codes ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE public.auth_codes
   ADD COLUMN IF NOT EXISTS attempt_count integer NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS last_attempt_at timestamptz,

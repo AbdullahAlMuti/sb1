@@ -1,3 +1,7 @@
+-- plans.updated_at was added out-of-band in prod before this migration ran;
+-- no earlier migration creates it, so add it for a from-scratch replay.
+ALTER TABLE public.plans ADD COLUMN IF NOT EXISTS updated_at timestamp with time zone DEFAULT now();
+
 -- Trial plan: enforce default max_listings = 10 (admin override may exceed)
 update public.plans
 set max_listings = 10,

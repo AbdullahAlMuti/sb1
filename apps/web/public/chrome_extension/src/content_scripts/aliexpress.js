@@ -1,6 +1,7 @@
 // src/content_scripts/aliexpress.js - Vite entry for AliExpress content script.
 
 import '../../common/config.js';
+import '../../common/html-sanitizer.js'; // exposes window.SSSanitizer before any HTML preview (W5)
 import '../../common/panel-extended.js';
 import '../../common/listing-draft.js';
 import '../../common/pricing-engine.js';

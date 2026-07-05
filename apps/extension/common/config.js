@@ -28,8 +28,13 @@ const ExtensionConfig = (() => {
     WEB_APP_AUTH: `${WEB_APP_DOMAIN}/auth`,
     WEB_APP_DASHBOARD: `${WEB_APP_DOMAIN}/dashboard`,
 
-    // Google Apps Script (default fallback)
-    DEFAULT_GOOGLE_SHEET: 'https://script.google.com/macros/s/AKfycbwU_ER6RWnY0koDjq7zs__LTdkMCF07nP8wvTe_05qZ5pcbDlpTu0VBlPZ3sI-sqIV5/exec',
+    // Google Apps Script export endpoint.
+    // PRIVACY: intentionally EMPTY. Listing export is an opt-in feature that
+    // requires the user to configure their OWN Google Apps Script URL in
+    // Settings (validated against https://script.google.com/macros/s/<id>/exec).
+    // No developer-owned default is shipped, so no user data is ever sent to a
+    // developer-controlled server. See getGoogleSheetUrl() in common/sync-utils.js.
+    DEFAULT_GOOGLE_SHEET: '',
 
     // Backend API (same as web app)
     LOCAL_BACKEND: WEB_APP_DOMAIN,

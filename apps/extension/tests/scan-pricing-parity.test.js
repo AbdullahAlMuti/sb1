@@ -44,15 +44,13 @@ describe('scan-time pricing parity across supplier injectors', () => {
 
   test('walmart pricing helper respects manual edits (fill-only)', () => {
     const src = read('content_scripts/walmart_injector.js');
-    assert.match(src, /price_source === 'manual'/,
-      'manual top-level price must survive re-pricing');
-    assert.match(src, /cleanFloat\(v\.ebayPrice\) > 0/,
-      'manual per-variant ebayPrice must survive re-pricing');
+    assert.match(src, /SSPricingEngine\.applyPricingToProduct/,
+      'delegates to applyPricingToProduct which preserves manual edits');
   });
 
   test('walmart pricing helper uses SSPricingEngine (no duplicated math)', () => {
     const src = read('content_scripts/walmart_injector.js');
-    assert.match(src, /window\.SSPricingEngine\.calculatePrice/,
+    assert.match(src, /SSPricingEngine\.applyPricingToProduct/,
       'must delegate to the shared pricing engine, not reimplement the formula');
   });
 

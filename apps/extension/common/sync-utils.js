@@ -789,40 +789,44 @@ const SyncUtils = (() => {
   }
 
   // 📋 GOOGLE SHEET LOGGING (Moved from background.js)
+  //
+  // DATA FLOW / PRIVACY:
+  //   Exporting listing data to a Google Sheet is an OPT-IN feature. The
+  //   destination is ONLY the user's own Google Apps Script URL, which they
+  //   paste into Settings. There is NO developer-owned default endpoint — if
+  //   the user has not configured a URL, getGoogleSheetUrl() returns null and
+  //   every sender below becomes a no-op. This guarantees no listing data is
+  //   ever silently transmitted to a developer-controlled server (W2 fix).
+
+  // Only accept a user-configured Google Apps Script webhook of the exact
+  // expected shape. Anything else (empty, http, other host) is rejected so we
+  // never POST user data to an unexpected origin.
+  function isValidGoogleScriptUrl(url) {
+    return typeof url === 'string' &&
+      /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec(?:\?.*)?$/.test(url);
+  }
 
   async function getGoogleSheetUrl() {
-    if (typeof PerformanceUtils !== 'undefined') {
-      return PerformanceUtils.withCache('googleSheetUrl', async () => {
-        try {
-          const result = await chrome.storage.local.get([
-            'googleAppsScriptUrl',
-            'googleSheetUrl'
-          ]);
-
-          const url = result['googleAppsScriptUrl'] ||
-            result['googleSheetUrl'] ||
-            'https://script.google.com/macros/s/AKfycbwU_ER6RWnY0koDjq7zs__LTdkMCF07nP8wvTe_05qZ5pcbDlpTu0VBlPZ3sI-sqIV5/exec';
-
-          syncLog('debug', 'Google Sheet URL retrieved', {
-            hasCustomUrl: url !== 'https://script.google.com/macros/s/AKfycbwU_ER6RWnY0koDjq7zs__LTdkMCF07nP8wvTe_05qZ5pcbDlpTu0VBlPZ3sI-sqIV5/exec'
-          });
-
-          return url;
-        } catch (error) {
-          syncLog('warn', 'Using default Google Sheet URL', { error: error.message });
-          return 'https://script.google.com/macros/s/AKfycbwU_ER6RWnY0koDjq7zs__LTdkMCF07nP8wvTe_05qZ5pcbDlpTu0VBlPZ3sI-sqIV5/exec';
-        }
-      }, 5 * 60 * 1000);
-    } else {
+    const read = async () => {
       const result = await chrome.storage.local.get([
         'googleAppsScriptUrl',
         'googleSheetUrl'
       ]);
+      const url = result['googleAppsScriptUrl'] || result['googleSheetUrl'] || null;
 
-      return result['googleAppsScriptUrl'] ||
-        result['googleSheetUrl'] ||
-        'https://script.google.com/macros/s/AKfycbwU_ER6RWnY0koDjq7zs__LTdkMCF07nP8wvTe_05qZ5pcbDlpTu0VBlPZ3sI-sqIV5/exec';
+      // No developer-owned fallback. Reject anything that is not the user's
+      // own valid Apps Script webhook.
+      if (!isValidGoogleScriptUrl(url)) {
+        syncLog('info', 'Sheet export skipped: user must configure an export endpoint in Settings');
+        return null;
+      }
+      return url;
+    };
+
+    if (typeof PerformanceUtils !== 'undefined') {
+      return PerformanceUtils.withCache('googleSheetUrl', read, 5 * 60 * 1000);
     }
+    return read();
   }
 
   function todayISO() {
@@ -843,6 +847,7 @@ const SyncUtils = (() => {
       };
 
       const endpoint = await getGoogleSheetUrl();
+      if (!endpoint) return; // no user-configured export endpoint → local-only, nothing sent
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
@@ -871,6 +876,7 @@ const SyncUtils = (() => {
   async function logToSheet(data) {
     try {
       const endpoint = await getGoogleSheetUrl();
+      if (!endpoint) return; // no user-configured export endpoint → local-only, nothing sent
       await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -885,6 +891,7 @@ const SyncUtils = (() => {
   async function logProductToSheet({ sku, title, amazon_price, ebay_price, amazon_url }) {
     try {
       const endpoint = await getGoogleSheetUrl();
+      if (!endpoint) return; // no user-configured export endpoint → local-only, nothing sent
       await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

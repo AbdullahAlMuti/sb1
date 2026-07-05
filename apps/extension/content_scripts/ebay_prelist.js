@@ -809,6 +809,25 @@ function _ssShowDuplicateBlock(listing, onOverride) {
     }
 
     await chrome.storage.local.set({ [storageKey]: { ...entry, product: productToRun, isImported: true } });
+
+    // Immediate dashboard sync — fire the instant the upload starts, not after
+    // the eBay draft/image/SKU pipeline succeeds. Users clicking "Upload to
+    // eBay"/"List on eBay" expect to see the listing in their dashboard right
+    // away; waiting on the full multi-step eBay round trip meant a slow or
+    // failed upload left the dashboard looking like nothing happened at all.
+    // Best-effort and non-blocking — the authoritative post-upload sync (with
+    // final images/price/SKU) still runs later and upserts the same row by
+    // sku/asin/url, so this is superseded rather than duplicated.
+    if (!isBulkRun) {
+      try {
+        const adaptedForQuickSync = window.EbayListingApiHelper.adaptProduct(productToRun);
+        window._syncListingToDashboard(adaptedForQuickSync, productToRun, null)
+          .catch(e => console.warn('[SS] Immediate dashboard sync failed (non-blocking):', e?.message || e));
+      } catch (e) {
+        console.warn('[SS] Immediate dashboard sync could not start (non-blocking):', e?.message || e);
+      }
+    }
+
     _ssShowOverlay('Preparing your eBay listing…');
 
     try {

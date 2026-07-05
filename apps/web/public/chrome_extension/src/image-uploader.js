@@ -224,6 +224,7 @@ class ImageUploadSystem {
                 this.logger.info(`✅ Validation complete: ${validImages.length}/${images.length} images passed validation`);
                 this.logger.info('═══════════════════════════════════════════════════════');
                 resolve(validImages);
+                });
             });
         });
     }

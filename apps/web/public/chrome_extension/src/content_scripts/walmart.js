@@ -8,6 +8,7 @@
 
 // ── Common utilities ──────────────────────────────────────────────────────────
 import '../../common/config.js';
+import '../../common/html-sanitizer.js'; // exposes window.SSSanitizer before any HTML preview (W5)
 import '../../common/panel-extended.js';
 import '../../common/pricing-engine.js';
 import '../../common/sku-engine.js';

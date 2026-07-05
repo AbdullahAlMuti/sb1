@@ -1,3 +1,18 @@
+-- is_admin(uuid) is used by RLS policies from this migration onward but was
+-- never defined in migration history (created out-of-band in prod at some
+-- point). Define it idempotently so a from-scratch migration replay works;
+-- CREATE OR REPLACE is a no-op against an existing prod function with the
+-- same semantics.
+CREATE OR REPLACE FUNCTION public.is_admin(_user_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT public.has_role(_user_id, 'admin'::public.app_role);
+$$;
+
 -- Add duration configuration to plans
 ALTER TABLE public.plans 
 ADD COLUMN IF NOT EXISTS duration_months integer DEFAULT 1;

@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.0";
 import {
   resolveAccessState,
   shouldFlipToExpired,
@@ -122,7 +122,7 @@ serve(async (req) => {
 
     const { data: profile } = await supabaseServiceClient
       .from("profiles")
-      .select("credits, plan_id, stripe_customer_id")
+      .select("credits, plan_id, stripe_customer_id, subscription_id")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -280,7 +280,6 @@ serve(async (req) => {
         if (planChanged || periodChanged) {
           payload.orders_used = 0;
           payload.credits_used = 0;
-          profileUpdate.credits = planDetails.credits_per_month;
 
           const description = planChanged 
             ? `Plan updated to ${planDetails.name} (reconciliation)` 
@@ -303,21 +302,22 @@ serve(async (req) => {
             },
           });
 
-          // Log credit transaction
-          await supabaseServiceClient.from("credit_transactions").insert({
-            user_id: user.id,
-            amount: planDetails.credits_per_month,
-            transaction_type: "plan_grant",
-            balance_after: planDetails.credits_per_month,
-            description: description,
-            metadata: {
+          const { error: creditErr } = await supabaseServiceClient.rpc("set_user_credit_balance", {
+            p_user_id: user.id,
+            p_target_balance: planDetails.credits_per_month,
+            p_transaction_type: "plan_grant",
+            p_description: description,
+            p_metadata: {
               old_plan_id: existingPlan?.plan_id ?? null,
               new_plan_id: planDetails.id,
               stripe_subscription_id: stripeSubscriptionId,
+              period_end: subscriptionEnd,
               is_new_period: periodChanged,
               is_plan_change: planChanged,
+              grant_key: `stripe:${stripeSubscriptionId}:${subscriptionEnd}:${planDetails.id}`,
             },
           });
+          if (creditErr) throw creditErr;
 
           logStep(planChanged 
             ? "Plan upgrade/downgrade detected in reconciliation, reset usage and granted credits"
@@ -347,7 +347,7 @@ serve(async (req) => {
         // Re-fetch profile to ensure in-memory state is fresh
         const { data: freshProfile } = await supabaseServiceClient
           .from("profiles")
-          .select("credits, plan_id, stripe_customer_id")
+          .select("credits, plan_id, stripe_customer_id, subscription_id")
           .eq("id", user.id)
           .maybeSingle();
         if (freshProfile) {
@@ -410,6 +410,52 @@ serve(async (req) => {
         ? ("past_due" as AccessState)
         : resolveAccessState(userPlan, planDetails, new Date());
 
+    if (access === "trial" && planDetails?.is_trial) {
+      const expectedTrialCredits = Math.max(
+        planDetails.credits_per_month - Number(userPlan?.credits_used ?? 0),
+        0,
+      );
+      const currentProfileCredits = Math.max(Number(profileObj?.credits ?? 0), 0);
+
+      if (expectedTrialCredits > currentProfileCredits) {
+        const sourceId =
+          typeof profileObj?.subscription_id === "string" && profileObj.subscription_id
+            ? profileObj.subscription_id
+            : `user:${user.id}:plan:${planDetails.id}`;
+
+        const { error: creditErr } = await supabaseServiceClient.rpc("set_user_credit_balance", {
+          p_user_id: user.id,
+          p_target_balance: expectedTrialCredits,
+          p_transaction_type: "plan_grant",
+          p_description: "Trial credits reconciled",
+          p_metadata: {
+            plan_id: planDetails.id,
+            source_id: sourceId,
+            credits_used: Number(userPlan?.credits_used ?? 0),
+            repair_source: "check-subscription-v2",
+            grant_key: `trial:${sourceId}`,
+          },
+        });
+        if (creditErr) throw creditErr;
+
+        const { data: freshProfile } = await supabaseServiceClient
+          .from("profiles")
+          .select("credits, plan_id, stripe_customer_id, subscription_id")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (freshProfile) {
+          profileObj = freshProfile;
+        }
+
+        logStep("Trial credits reconciled from plan reference", {
+          userId: user.id,
+          planId: planDetails.id,
+          expectedTrialCredits,
+          previousCredits: currentProfileCredits,
+        });
+      }
+    }
+
     // Credits accounting: profiles.credits is the authoritative remaining
     // balance; plans.credits_per_month is the per-period total.
     const [{ count: listingsCount }] = await Promise.all([
@@ -425,7 +471,7 @@ serve(async (req) => {
       ? planDetails.credits_per_month
       : 0;
     const creditsUsed = Math.max(creditsTotal - creditsRemaining, 0);
-    const isSubscribed = access === "active";
+    const isSubscribed = access === "active" || access === "trial";
 
     const trialInfo = planDetails?.is_trial
       ? {

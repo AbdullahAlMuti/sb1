@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { centsFor, neededPricesFor, matchExistingPrice, planActions } from './stripe-sync-plans.mjs';
+import { centsFor, neededPricesFor, matchExistingPrice, planActions, assertKeyMatchesTarget } from './stripe-sync-plans.mjs';
 
 const trialPlan = {
   id: 'p1', name: 'trial', is_trial: true,
@@ -72,6 +72,29 @@ test('planActions: ids already stored means empty patch (true no-op)', () => {
   const { dbPatch, priceActions } = planActions(synced, product, prices);
   assert.deepEqual(priceActions.map((a) => a.action), ['reuse', 'reuse']);
   assert.deepEqual(dbPatch, {});
+});
+
+test('assertKeyMatchesTarget: test key + remote db is refused (prevents unusable prod ids)', () => {
+  const r = assertKeyMatchesTarget('sk_test_abc', 'https://ojxzssooylmydystjvdo.supabase.co');
+  assert.equal(r.ok, false);
+});
+
+test('assertKeyMatchesTarget: test key + local db is allowed', () => {
+  assert.equal(assertKeyMatchesTarget('sk_test_abc', 'http://127.0.0.1:54321').ok, true);
+  assert.equal(assertKeyMatchesTarget('sk_test_abc', 'http://localhost:54321').ok, true);
+});
+
+test('assertKeyMatchesTarget: live key + remote db is allowed', () => {
+  assert.equal(assertKeyMatchesTarget('sk_live_abc', 'https://ojxzssooylmydystjvdo.supabase.co').ok, true);
+});
+
+test('assertKeyMatchesTarget: live key + local db is refused unless overridden', () => {
+  assert.equal(assertKeyMatchesTarget('sk_live_abc', 'http://127.0.0.1:54321').ok, false);
+  assert.equal(assertKeyMatchesTarget('sk_live_abc', 'http://127.0.0.1:54321', { allowLiveOnLocal: true }).ok, true);
+});
+
+test('assertKeyMatchesTarget: test key + remote db can be overridden for staging', () => {
+  assert.equal(assertKeyMatchesTarget('sk_test_abc', 'https://staging.supabase.co', { allowTestOnRemote: true }).ok, true);
 });
 
 test('planActions: price amount change forces a new price', () => {

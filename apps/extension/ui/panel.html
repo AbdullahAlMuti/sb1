@@ -89,10 +89,6 @@
           </div>
         </div>        <!-- 8. Image gallery -->
         <div class="ssx-card ssx-gallery-block">
-          <div class="ssx-gallery-head">
-            <span class="ssx-card-title">Selected Variation Images</span>
-            <span class="ssx-gallery-hint">Single mode shows only selected variation images. In All Variations mode, each variation keeps its own images.</span>
-          </div>
           <div class="ssx-mount ssx-gallery-mount" id="ssx-gallery-mount">
             <!-- Image gallery lives here -->
             <div class="gallery-scroll" id="snipe-image-gallery">
@@ -101,39 +97,54 @@
           </div>
         </div>
 
-        <!-- 3+4. AI title + description two-col (nodes pre-placed in mounts) -->
-        <div class="ssx-two-col">
-          <div class="ssx-card ssx-ai-col">
-            <div class="ssx-card-head">
+        <!-- 3+4. AI title + description single-block (nodes pre-placed in mounts) -->
+        <div class="ssx-card ssx-ai-block">
+          
+          <!-- Title Section -->
+          <div class="ssx-ai-title-section">
+            <div class="ssx-card-head" style="display: flex; justify-content: space-between; align-items: center;">
               <span class="ssx-card-title">Title <span class="ssx-ai-tag">AI</span></span>
-              <button class="ssx-btn ssx-btn-ai" id="ssx-ai-title-btn" type="button">✦ AI Generate</button>
+              <!-- Action wrapper for Title AI -->
+              <div class="ssx-header-action-wrap" id="ssx-title-action-wrap">
+                <button class="ssx-btn ssx-btn-ai" id="ssx-ai-title-btn" type="button">✦ AI Generate Title</button>
+              </div>
             </div>
             <div class="ssx-mount" id="ssx-title-mount">
               <!-- AI title container lives here -->
               <div class="ss-selected-title-box ai-title-container selected-title-card" id="ai-title-container">
-                <div class="ss-selected-title-body">
-                  <div class="ss-selected-title-header">
-                    <span class="ss-char-count ai-title-counter st-char-count char-count" id="ai-title-counter">0 / 80 chars</span>
+                <div class="ss-selected-title-body" style="display: flex; flex-direction: column;">
+                  <div class="ss-title-text ai-title-display st-text title-text" id="ai-generated-title" contenteditable="true" spellcheck="false" style="width: 100%; min-height: 80px;">Click AI Generate to create an optimized eBay title…</div>
+                  <div class="ss-selected-title-header" style="display: flex; justify-content: flex-end; margin-top: 6px; width: 100%;">
+                    <span class="ss-char-count ai-title-counter st-char-count char-count" id="ai-title-counter" style="font-size: 12px; color: #22c55e; font-weight: 500;">0 / 80 chars</span>
                   </div>
-                  <div class="ss-title-text ai-title-display st-text title-text" id="ai-generated-title" contenteditable="true" spellcheck="false">Click AI Generate to create an optimized eBay title…</div>
                 </div>
                 <div class="ss-title-list title-list inline-title-list" id="snipe-title-list"></div>
               </div>
             </div>
           </div>
 
-          <div class="ssx-card ssx-ai-col">
-            <div class="ssx-card-head">
+          <!-- Divider between Title & Description -->
+          <div class="ssx-ai-divider-wrap">
+            <div class="ssx-ai-divider"></div>
+          </div>
+
+          <!-- Description Section -->
+          <div class="ssx-ai-desc-section">
+            <div class="ssx-card-head" style="display: flex; justify-content: space-between; align-items: center;">
               <span class="ssx-card-title">Description <span class="ssx-ai-tag">AI</span></span>
-              <button class="ssx-btn ssx-btn-ai" id="ssx-ai-desc-btn" type="button">✦ AI Write Description</button>
+              <!-- Action wrapper for Description AI -->
+              <div class="ssx-header-action-wrap" id="ssx-desc-action-wrap"></div>
             </div>
             <div class="ssx-mount" id="ssx-desc-mount">
               <!-- Description preview lives here -->
-              <div class="ss-desc-body description-preview" id="description-preview" contenteditable="true" spellcheck="false">
-                <div class="ss-desc-empty description-placeholder description-empty-state" contenteditable="false">
-                  <svg class="ss-empty-icon" viewBox="0 0 24 24" fill="none" stroke="var(--ss-green)" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                  <h4 class="ss-empty-title">No description yet</h4>
-                  <p class="ss-empty-subtitle">Click AI Write Description to generate.</p>
+              <div class="ss-desc-body description-preview" id="description-preview" contenteditable="true" spellcheck="false" style="min-height: 120px;">
+                <div class="ss-desc-empty description-placeholder description-empty-state" contenteditable="false" style="display: flex; align-items: center; gap: 12px; padding: 12px; background: transparent; border: none; min-height: unset; width: 100%;">
+                  <!-- Green circular wrapper with doc icon -->
+                  <div class="ss-empty-icon-wrap" style="display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background-color: #ecfdf5; color: #10b981; flex-shrink: 0;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                  </div>
+                  <span class="ss-empty-title" style="font-size: 13.5px; color: #475569; font-weight: 500;">No description yet</span>
+                  <button class="ssx-btn ssx-btn-ai" id="ssx-ai-desc-btn" type="button">✦ AI Write Description</button>
                 </div>
               </div>
               <button class="ss-btn ss-btn-outline btn-slate btn-copy-desc ss-desc-copy-btn" id="copy-description-btn" type="button" disabled title="Copy HTML" style="display:none;">
@@ -142,8 +153,7 @@
               </button>
               <div class="ssx-desc-footer" style="display: flex; justify-content: flex-end; margin-top: 6px;">
                 <span class="ss-desc-counter" id="ss-desc-counter" style="font-size: 12px; color: #22c55e; font-weight: 500; display: inline-flex; align-items: center; gap: 4px;">
-                  0 / 5000
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width: 12px; height: 12px; color: #22c55e;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  0 / 5000 chars
                 </span>
               </div>
             </div>
@@ -233,7 +243,7 @@
           <button id="calculator-close-btn" class="calculator-close" type="button" aria-label="Close calculator">X</button>
         </div>
         <div class="calculator-content">
-          <label>Supplier Price<input type="number" id="supplier-price" placeholder="Supplier Price"></label>
+          <label>Product Cost<input type="number" id="supplier-price" placeholder="Product Cost"></label>
           <label>Tax Percent<input type="number" id="tax-percent" value="9"></label>
           <label>Tracking Fee<input type="number" id="tracking-fee" value="0.20"></label>
           <label>eBay Fee Percent<input type="number" id="ebay-fee-percent" value="20"></label>
@@ -241,7 +251,7 @@
           <label>Desired Profit<input type="number" id="desired-profit"></label>
           <label>Payment Fixed Fee<input type="number" id="payment-fixed-fee" value="0.30"></label>
           <div class="calculator-breakdown" id="calculator-breakdown" style="display: none;">
-            <div class="breakdown-row"><span>Source Price</span><span id="bd-source">—</span></div>
+            <div class="breakdown-row"><span>Product Cost</span><span id="bd-source">—</span></div>
             <div class="breakdown-row"><span>+ Tax</span><span id="bd-tax">—</span></div>
             <div class="breakdown-row"><span>+ Tracking</span><span id="bd-tracking">—</span></div>
             <div class="breakdown-row"><span>+ Payment Fee</span><span id="bd-payment">—</span></div>
@@ -287,6 +297,7 @@
 
   <script src="../build/suppliers.bundle.js"></script>
   <script src="../common/config.js"></script>
+  <script src="../common/html-sanitizer.js"></script>
   <script src="../common/performance.js"></script>
   <script src="../common/ui.js"></script>
   <script src="../common/auth-helper.js"></script>

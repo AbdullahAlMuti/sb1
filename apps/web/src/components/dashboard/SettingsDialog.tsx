@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Settings, User, Shield, CreditCard, BarChart3, Bot, Globe, Puzzle, Chrome,
   Search, Check, Loader2, Mail, 
@@ -57,7 +57,17 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
     openCustomerPortal 
   } = useSubscription();
 
-  const [activeTab, setActiveTab] = useState(defaultTab);
+  const location = useLocation();
+  const pathParts = location.pathname.split('/');
+  const isSettingsPath = pathParts.includes('settings');
+  const activeTab = isSettingsPath ? (pathParts[pathParts.indexOf('settings') + 1] || 'general') : 'general';
+
+  const handleTabChange = (tabId: string) => {
+    const basePath = location.pathname.includes('/dashboard/ebay') 
+      ? '/dashboard/ebay/settings' 
+      : '/dashboard/settings';
+    navigate(`${basePath}/${tabId}`);
+  };
   const [searchQuery, setSearchQuery] = useState('');
 
   // Profile Form State
@@ -81,11 +91,28 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
   // Extension state
   const [isDownloading, setIsDownloading] = useState(false);
 
-  useEffect(() => {
-    if (open) {
-      setActiveTab(defaultTab);
-    }
-  }, [open, defaultTab]);
+  // Billing details
+  interface CardDetails {
+    brand: string;
+    last4: string;
+    exp_month: number;
+    exp_year: number;
+  }
+
+  interface InvoiceDetails {
+    id: string;
+    date: string;
+    amount_paid: number;
+    currency: string;
+    status: string;
+    hosted_invoice_url: string;
+    invoice_pdf: string;
+  }
+
+  const [billingDetails, setBillingDetails] = useState<{ card: CardDetails | null; invoices: InvoiceDetails[] } | null>(null);
+  const [loadingBillingDetails, setLoadingBillingDetails] = useState(false);
+
+  // Tabs state is synchronized automatically via react-router-dom URL parameters
 
   useEffect(() => {
     if (profile) {
@@ -132,6 +159,33 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
       console.error('Error fetching sessions:', error);
     } finally {
       setLoadingSessions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (open && activeTab === 'billing' && user) {
+      fetchBillingDetails();
+    }
+  }, [open, activeTab, user]);
+
+  const fetchBillingDetails = async () => {
+    setLoadingBillingDetails(true);
+    try {
+      const sessionRes = await supabase.auth.getSession();
+      const token = sessionRes.data.session?.access_token;
+      if (!token) return;
+
+      const { data, error } = await supabase.functions.invoke('get-billing-details', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (error) throw error;
+      setBillingDetails(data);
+    } catch (error) {
+      console.error('Error fetching billing details:', error);
+      toast.error('Failed to load billing history');
+    } finally {
+      setLoadingBillingDetails(false);
     }
   };
 
@@ -305,7 +359,7 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => handleTabChange(tab.id)}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm font-medium transition-colors ${
                     active 
                       ? 'bg-muted text-foreground' 
@@ -412,7 +466,7 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
                           <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
                             <CheckCircle className="h-4 w-4 animate-none" /> Connected
                           </span>
-                          <Button variant="outline" size="sm" onClick={() => setActiveTab('privacy')} className="h-8 shadow-none rounded-md">
+                          <Button variant="outline" size="sm" onClick={() => handleTabChange('privacy')} className="h-8 shadow-none rounded-md">
                             Manage
                           </Button>
                         </>
@@ -421,7 +475,7 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
                           <span className="flex items-center gap-1 text-muted-foreground text-xs font-semibold">
                             <AlertCircle className="h-4 w-4" /> Disconnected
                           </span>
-                          <Button variant="outline" size="sm" onClick={() => setActiveTab('privacy')} className="h-8 shadow-none rounded-md">
+                          <Button variant="outline" size="sm" onClick={() => handleTabChange('privacy')} className="h-8 shadow-none rounded-md">
                             Manage
                           </Button>
                         </>
@@ -655,22 +709,45 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
                   <div className="space-y-3">
                     <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Payment Method</h4>
                     <div className="p-4 rounded-xl border border-border bg-muted/30 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-12 rounded bg-background border border-border flex items-center justify-center font-bold text-blue-500 text-xs">
-                          VISA
+                      {loadingBillingDetails ? (
+                        <div className="flex items-center justify-center py-2 w-full">
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
                         </div>
-                        <div>
-                          <span className="text-sm font-medium text-foreground">Visa •••• 3020</span>
-                          <span className="text-[10px] text-muted-foreground block">Expires 12/28</span>
+                      ) : billingDetails?.card ? (
+                        <div className="flex items-center gap-3 w-full justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="h-8 w-12 rounded bg-background border border-border flex items-center justify-center font-bold text-blue-500 text-xs uppercase">
+                              {billingDetails.card.brand}
+                            </div>
+                            <div>
+                              <span className="text-sm font-medium text-foreground capitalize">
+                                {billingDetails.card.brand} •••• {billingDetails.card.last4}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground block">
+                                Expires {billingDetails.card.exp_month}/{billingDetails.card.exp_year}
+                              </span>
+                            </div>
+                          </div>
+                          <Button 
+                            variant="outline" 
+                            onClick={() => openCustomerPortal()} 
+                            className="border-border text-muted-foreground hover:bg-muted hover:text-foreground h-8 text-xs"
+                          >
+                            Update
+                          </Button>
                         </div>
-                      </div>
-                      <Button 
-                        variant="outline" 
-                        onClick={() => openCustomerPortal()} 
-                        className="border-border text-muted-foreground hover:bg-muted hover:text-foreground h-8 text-xs"
-                      >
-                        Update
-                      </Button>
+                      ) : (
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-sm text-muted-foreground">No payment method on file</span>
+                          <Button 
+                            variant="outline" 
+                            onClick={() => openCustomerPortal()} 
+                            className="border-border text-muted-foreground hover:bg-muted hover:text-foreground h-8 text-xs"
+                          >
+                            Add Card
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -683,8 +760,10 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
                           Buy usage credits so your team can keep listing products if they hit their monthly limits.
                         </p>
                         <div className="pt-2">
-                          <span className="text-2xl font-bold text-foreground">$0.00</span>
-                          <span className="text-[10px] text-muted-foreground ml-1.5">Current balance</span>
+                          <span className="text-2xl font-bold text-foreground">
+                            {usage?.credits_remaining ?? profile?.credits ?? 0}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground ml-1.5">Credits remaining</span>
                         </div>
                       </div>
                       <Button 
@@ -736,38 +815,56 @@ export function SettingsDialog({ open, onOpenChange, defaultTab = 'general' }: S
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
-                          <tr className="hover:bg-muted/30">
-                            <td className="p-3 text-muted-foreground font-medium">Jun 7, 2026</td>
-                            <td className="p-3 text-foreground font-semibold">$20.00</td>
-                            <td className="p-3">
-                              <Badge className="bg-green-500/10 text-green-400 border-0 text-[10px] font-normal h-5">Paid</Badge>
-                            </td>
-                            <td className="p-3 text-right">
-                              <button 
-                                onClick={() => openCustomerPortal()}
-                                className="text-primary hover:underline font-semibold inline-flex items-center gap-0.5"
-                              >
-                                View
-                                <ArrowUpRight className="h-3 w-3" />
-                              </button>
-                            </td>
-                          </tr>
-                          <tr className="hover:bg-muted/30">
-                            <td className="p-3 text-muted-foreground font-medium">May 7, 2026</td>
-                            <td className="p-3 text-foreground font-semibold">$20.00</td>
-                            <td className="p-3">
-                              <Badge className="bg-green-500/10 text-green-400 border-0 text-[10px] font-normal h-5">Paid</Badge>
-                            </td>
-                            <td className="p-3 text-right">
-                              <button 
-                                onClick={() => openCustomerPortal()}
-                                className="text-primary hover:underline font-semibold inline-flex items-center gap-0.5"
-                              >
-                                View
-                                <ArrowUpRight className="h-3 w-3" />
-                              </button>
-                            </td>
-                          </tr>
+                          {loadingBillingDetails ? (
+                            <tr>
+                              <td colSpan={4} className="p-8 text-center">
+                                <Loader2 className="h-5 w-5 animate-spin text-primary mx-auto" />
+                              </td>
+                            </tr>
+                          ) : !billingDetails?.invoices || billingDetails.invoices.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="p-6 text-center text-muted-foreground font-medium">
+                                No invoices found.
+                              </td>
+                            </tr>
+                          ) : (
+                            billingDetails.invoices.map((inv) => (
+                              <tr key={inv.id} className="hover:bg-muted/30">
+                                <td className="p-3 text-muted-foreground font-medium">
+                                  {format(new Date(inv.date), 'MMM d, yyyy')}
+                                </td>
+                                <td className="p-3 text-foreground font-semibold">
+                                  ${(inv.amount_paid / 100).toFixed(2)}
+                                </td>
+                                <td className="p-3">
+                                  <Badge className={
+                                    inv.status === 'paid' 
+                                      ? "bg-green-500/10 text-green-400 border-0 text-[10px] font-normal h-5" 
+                                      : inv.status === 'open'
+                                        ? "bg-blue-500/10 text-blue-400 border-0 text-[10px] font-normal h-5"
+                                        : "bg-muted text-muted-foreground border-0 text-[10px] font-normal h-5"
+                                  }>
+                                    {inv.status}
+                                  </Badge>
+                                </td>
+                                <td className="p-3 text-right">
+                                  {inv.hosted_invoice_url || inv.invoice_pdf ? (
+                                    <a 
+                                      href={inv.hosted_invoice_url || inv.invoice_pdf}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-primary hover:underline font-semibold inline-flex items-center gap-0.5"
+                                    >
+                                      View
+                                      <ArrowUpRight className="h-3 w-3" />
+                                    </a>
+                                  ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
                     </div>

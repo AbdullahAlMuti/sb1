@@ -790,9 +790,13 @@ export default function Listings() {
       refetch();
     } catch (error) {
       console.error("Error creating listing:", error);
+      const message = error instanceof Error ? error.message : String((error as { message?: string })?.message ?? "");
+      const outOfCredits = /INSUFFICIENT_CREDITS|not have enough credits/i.test(message);
       toast({
-        title: "Error",
-        description: "Failed to create listing",
+        title: outOfCredits ? "Insufficient Credits" : "Error",
+        description: outOfCredits
+          ? "You do not have enough credits to create a listing."
+          : "Failed to create listing",
         variant: "destructive",
       });
     } finally {

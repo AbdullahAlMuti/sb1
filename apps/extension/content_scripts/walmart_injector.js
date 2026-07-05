@@ -2,6 +2,35 @@
 
 let uiInjected = false;
 
+// ─────────────────────────────────────────────────────────────
+// 🧼 Inline HTML sanitizer (W5). Bundled content script has no shared global,
+// so we keep a self-contained sanitizer for the rich-HTML description preview,
+// which is built from untrusted scraped/templated fields. Strips executable
+// elements, on* handlers, and javascript:/data: URLs while preserving markup.
+// ─────────────────────────────────────────────────────────────
+function _ssSanitizeHtml(html) {
+    if (html == null) return '';
+    if (typeof SSSanitizer !== 'undefined') return SSSanitizer.sanitizeHtml(html);
+    try {
+        const doc = new DOMParser().parseFromString(String(html), 'text/html');
+        doc.body.querySelectorAll('script,iframe,object,embed,link,meta,style,base,form').forEach(el => el.remove());
+        doc.body.querySelectorAll('*').forEach(el => {
+            for (const attr of Array.from(el.attributes)) {
+                const n = attr.name.toLowerCase();
+                const v = String(attr.value).replace(/\s+/g, '').toLowerCase();
+                if (n.startsWith('on')) el.removeAttribute(attr.name);
+                else if (['href', 'src', 'action', 'formaction'].includes(n) &&
+                    (v.startsWith('javascript:') || v.startsWith('data:') || v.startsWith('vbscript:'))) {
+                    el.removeAttribute(attr.name);
+                }
+            }
+        });
+        return doc.body.innerHTML;
+    } catch {
+        return String(html).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+}
+
 // **IMPROVED** Function to inject the main UI panel
 const injectUI = async ({ fromSidebar = false, sidebarImages = [] } = {}) => {
     if (uiInjected) return;
@@ -1036,45 +1065,7 @@ async function _wmStoredCalculatorValues() {
 
 function _wmApplyPricingToProduct(product, calculatorValues) {
     if (!product || !window.SSPricingEngine) return product;
-
-    const cleanFloat = (val) => {
-        if (val === null || val === undefined) return 0;
-        if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
-        const parsed = parseFloat(String(val).replace(/[^\d.-]/g, ''));
-        return Number.isFinite(parsed) ? parsed : 0;
-    };
-    const saved = calculatorValues || {};
-    const parseVal = (v, def) => {
-        if (v === null || v === undefined || v === '') return def;
-        const n = parseFloat(String(v).replace(/[^\d.-]/g, ''));
-        return isNaN(n) ? def : n;
-    };
-    const cfg = {
-        taxPercent:      parseVal(saved['tax-percent'],       9),
-        trackingFee:     parseVal(saved['tracking-fee'],      0.20),
-        ebayFeePercent:  parseVal(saved['ebay-fee-percent'],  20),
-        promoFeePercent: parseVal(saved['promo-fee-percent'], 10),
-        desiredProfit:   parseVal(saved['desired-profit'],    0),
-        paymentFixedFee: parseVal(saved['payment-fixed-fee'], 0.30)
-    };
-
-    const baseRaw = cleanFloat(product.price || product.raw_supplier_price);
-    product.raw_supplier_price = baseRaw;
-    const topIsManual = product.price_source === 'manual' && cleanFloat(product.finalPrice) > 0;
-    if (baseRaw > 0 && !topIsManual) {
-        product.finalPrice = window.SSPricingEngine.calculatePrice(baseRaw, cfg);
-    }
-
-    if (Array.isArray(product.variants)) {
-        product.variants.forEach(v => {
-            const raw = cleanFloat(v.price || v.raw_supplier_price) || baseRaw;
-            v.raw_supplier_price = raw;
-            if (raw > 0 && !(cleanFloat(v.ebayPrice) > 0)) {
-                v.finalPrice = window.SSPricingEngine.calculatePrice(raw, cfg);
-            }
-        });
-    }
-    return product;
+    return window.SSPricingEngine.applyPricingToProduct(product, calculatorValues);
 }
 
 // Listen for messages from popup or panel
@@ -2199,7 +2190,11 @@ const addEventListenersToPanel = () => {
                 if (!bgResp?.description) throw new Error('No description returned');
 
                 if (descriptionPreviewEl) {
-                    descriptionPreviewEl.innerHTML = bgResp.description;
+                    if (window.UIHelper && typeof window.UIHelper.streamDescription === 'function') {
+                        window.UIHelper.streamDescription(bgResp.description);
+                    } else {
+                        descriptionPreviewEl.innerHTML = _ssSanitizeHtml(bgResp.description);
+                    }
                 }
                 
                 await chrome.storage.local.set({ 
@@ -3610,10 +3605,15 @@ function formatDataForCopy(data) {
 // Helper function to send data to Google Sheets
 async function sendToGoogleSheets(data) {
     try {
-        const defaultUrl = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
+        // PRIVACY: opt-in export only. No default endpoint — if the user has not
+        // configured their own Google Apps Script URL, nothing is sent.
         const result = await chrome.storage.local.get('googleAppsScriptUrl');
-        const GOOGLE_SCRIPT_URL = result.googleAppsScriptUrl || defaultUrl;
-        
+        const GOOGLE_SCRIPT_URL = result.googleAppsScriptUrl;
+        if (!GOOGLE_SCRIPT_URL) {
+            console.log('ℹ️ Sheet export skipped: user must configure an export endpoint in Settings');
+            return false;
+        }
+
         const response = await fetch(GOOGLE_SCRIPT_URL, {
             method: 'POST',
             mode: 'no-cors',
@@ -3634,10 +3634,15 @@ async function sendToGoogleSheets(data) {
 // Function to log pricing data to Google Sheets
 async function logToGoogleSheet(data) {
     try {
-        const defaultUrl = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec";
+        // PRIVACY: opt-in export only. No default endpoint — if the user has not
+        // configured their own Google Apps Script URL, nothing is sent.
         const result = await chrome.storage.local.get('googleAppsScriptUrl');
-        const GOOGLE_SHEET_WEBHOOK = result.googleAppsScriptUrl || defaultUrl;
-        
+        const GOOGLE_SHEET_WEBHOOK = result.googleAppsScriptUrl;
+        if (!GOOGLE_SHEET_WEBHOOK) {
+            console.log('ℹ️ Sheet export skipped: user must configure an export endpoint in Settings');
+            return;
+        }
+
         fetch(GOOGLE_SHEET_WEBHOOK, {
             method: "POST",
             body: JSON.stringify(data),

@@ -317,3 +317,170 @@ describe('_normalizeBrandText', () => {
     assert.equal(_normalizeBrandText('Brand'), '');
   });
 });
+
+// ─── Variant→price mapping integrity (enrichment tier, stubbed DOM) ──────────
+// Locks the fix for the parent-price-on-every-variant bug: a click that never
+// switches the page to the target ASIN must NOT stamp the visible buybox price
+// onto that variant.
+
+function loadWithDoc(doc) {
+  const win = makeWindow();
+  win.document = doc;
+  loadInto(win, 'content_scripts/amazon-scraper-v2.js');
+  return win.SsAmazonScraperV2._internals;
+}
+
+function makeDoc({ currentAsin, twisterPlus }) {
+  return {
+    body: {},
+    querySelector(sel) {
+      if (sel.includes('input#ASIN')) return currentAsin ? { value: currentAsin } : null;
+      if (sel === '.twister-plus-buying-options-price-data') {
+        return twisterPlus ? { textContent: JSON.stringify(twisterPlus) } : null;
+      }
+      return null; // #availability → in stock, quantity select → 1, price els → none
+    },
+    querySelectorAll() { return []; },
+  };
+}
+
+const TW_EMPTY = { asinToDimensionIndexMap: {} };
+
+describe('_getBuyboxFromDom — per-ASIN twister-plus lookup', () => {
+  const twisterPlus = {
+    desktop_buybox_group_1: [
+      { asin: 'B0PARENT000', priceAmount: 10.0, currencySymbol: '$' },
+      { asin: 'B0TARGET111', priceAmount: 19.99, currencySymbol: '$' },
+    ],
+  };
+
+  test('prefers the entry matching the requested ASIN', () => {
+    const { _getBuyboxFromDom } = loadWithDoc(makeDoc({ currentAsin: 'B0PARENT000', twisterPlus }));
+    assert.equal(_getBuyboxFromDom('B0TARGET111').priceAmount, 19.99);
+  });
+
+  test('falls back to first entry when no ASIN requested', () => {
+    const { _getBuyboxFromDom } = loadWithDoc(makeDoc({ currentAsin: 'B0PARENT000', twisterPlus }));
+    assert.equal(_getBuyboxFromDom().priceAmount, 10.0);
+  });
+});
+
+describe('_clickAndScrapeVariant — mapping integrity', () => {
+  test('already-selected variant reads its own per-ASIN price without clicking', async () => {
+    const twisterPlus = {
+      desktop_buybox_group_1: [
+        { asin: 'B0PARENT000', priceAmount: 10.0, currencySymbol: '$' },
+        { asin: 'B0TARGET111', priceAmount: 19.99, currencySymbol: '$' },
+      ],
+    };
+    const { _clickAndScrapeVariant } = loadWithDoc(makeDoc({ currentAsin: 'B0TARGET111', twisterPlus }));
+    const r = await _clickAndScrapeVariant(TW_EMPTY, 'B0TARGET111', [], [], {});
+    assert.equal(r.price, 19.99);
+    assert.equal(r.currency, 'USD');
+  });
+
+  test('unmatched click never stamps the visible (parent) buybox price', async () => {
+    // Page stays on the parent ASIN; parent price 10.0 is visible but must NOT
+    // be reported for B0TARGET111 (old behavior stamped it as _enriched).
+    const twisterPlus = {
+      desktop_buybox_group_1: [{ asin: 'B0PARENT000', priceAmount: 10.0, currencySymbol: '$' }],
+    };
+    const { _clickAndScrapeVariant } = loadWithDoc(makeDoc({ currentAsin: 'B0PARENT000', twisterPlus }));
+    const r = await _clickAndScrapeVariant(TW_EMPTY, 'B0TARGET111', [], [], {});
+    assert.equal(r.price, null);
+    assert.equal(r.quantity, 0);
+  });
+
+  test('unmatched click recovers the price from per-ASIN twister-plus data', async () => {
+    const twisterPlus = {
+      desktop_buybox_group_1: [
+        { asin: 'B0PARENT000', priceAmount: 10.0, currencySymbol: '$' },
+        { asin: 'B0TARGET111', priceAmount: 24.99, currencySymbol: '$' },
+      ],
+    };
+    const { _clickAndScrapeVariant } = loadWithDoc(makeDoc({ currentAsin: 'B0PARENT000', twisterPlus }));
+    const r = await _clickAndScrapeVariant(TW_EMPTY, 'B0TARGET111', [], [], {});
+    assert.equal(r.price, 24.99);
+    assert.equal(r.currency, 'USD');
+    assert.equal(r.quantity, 1);
+  });
+});
+
+describe('_harvestDomVariantPrices — swatch price tier', () => {
+  test('maps data-asin swatches to their printed prices', () => {
+    const swatches = [
+      {
+        getAttribute: (a) => (a === 'data-asin' ? 'b0aaa11111' : null),
+        querySelector: () => ({ textContent: '$12.99' }),
+      },
+      {
+        getAttribute: (a) => (a === 'data-asin' ? 'B0BBB22222' : null),
+        querySelector: () => ({ textContent: '$24.50' }),
+      },
+      { // swatch without a printed price — must be omitted, not zeroed
+        getAttribute: (a) => (a === 'data-asin' ? 'B0CCC33333' : null),
+        querySelector: () => null,
+      },
+    ];
+    const doc = {
+      body: {},
+      querySelector: () => null,
+      querySelectorAll: (sel) => (sel.includes('data-asin') ? swatches : []),
+    };
+    const { _harvestDomVariantPrices } = loadWithDoc(doc);
+    const map = _harvestDomVariantPrices();
+    assert.equal(map.B0AAA11111.price, 12.99);
+    assert.equal(map.B0BBB22222.price, 24.5);
+    assert.equal(map.B0CCC33333, undefined);
+  });
+});
+
+describe('_iframeScrapeVariant — hidden-iframe price tier', () => {
+  test('reads the variant page own buybox out of the iframe document', async () => {
+    const variantDoc = makeDoc({
+      currentAsin: 'B0TARGET111',
+      twisterPlus: { desktop_buybox_group_1: [{ asin: 'B0TARGET111', priceAmount: 42.5, currencySymbol: '$' }] },
+    });
+    let removed = false;
+    const fakeFrame = {
+      style: {}, src: '',
+      setAttribute() {},
+      remove() { removed = true; },
+      contentDocument: variantDoc,
+    };
+    const doc = {
+      body: { appendChild() {} },
+      createElement: () => fakeFrame,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+    };
+    const win = makeWindow();
+    win.location = { origin: 'https://www.amazon.com' };
+    win.document = doc;
+    loadInto(win, 'content_scripts/amazon-scraper-v2.js');
+    const r = await win.SsAmazonScraperV2._internals._iframeScrapeVariant('B0TARGET111', 3000);
+    assert.equal(r.price, 42.5);
+    assert.equal(r.currency, 'USD');
+    assert.equal(r.quantity, 1);
+    assert.equal(removed, true, 'iframe must be removed after the read');
+  });
+
+  test('reports unavailable (qty 0, no price) when the page has no offer', async () => {
+    const variantDoc = makeDoc({ currentAsin: 'B0TARGET111', twisterPlus: null });
+    const fakeFrame = { style: {}, src: '', setAttribute() {}, remove() {}, contentDocument: variantDoc };
+    const doc = {
+      body: { appendChild() {} },
+      createElement: () => fakeFrame,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+    };
+    const win = makeWindow();
+    win.location = { origin: 'https://www.amazon.com' };
+    win.document = doc;
+    loadInto(win, 'content_scripts/amazon-scraper-v2.js');
+    const r = await win.SsAmazonScraperV2._internals._iframeScrapeVariant('B0TARGET111', 1200);
+    assert.equal(r.price, null);
+    assert.equal(r.quantity, 0);
+    assert.equal(r.unavailable, true);
+  });
+});

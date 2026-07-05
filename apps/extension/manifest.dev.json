@@ -174,6 +174,21 @@
     },
     {
       "matches": [
+        "*://www.ebay.com/lstng*",
+        "*://www.ebay.co.uk/lstng*",
+        "*://www.ebay.de/lstng*",
+        "*://www.ebay.fr/lstng*",
+        "*://www.ebay.com.au/lstng*",
+        "*://www.ebay.it/lstng*",
+        "*://www.ebay.es/lstng*"
+      ],
+      "js": [
+        "content_scripts/ebay_draft_sku_guard.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
         "*://*.ebay.com/*",
         "*://*.ebay.co.uk/*",
         "*://*.ebay.de/*",
@@ -218,7 +233,26 @@
     {
       "matches": [
         "*://www.ebay.com/sl/success*",
-        "*://www.ebay.com/lstng/success*"
+        "*://www.ebay.com/lstng/success*",
+        "*://www.ebay.com/lstng*",
+        "*://www.ebay.co.uk/sl/success*",
+        "*://www.ebay.co.uk/lstng/success*",
+        "*://www.ebay.co.uk/lstng*",
+        "*://www.ebay.de/sl/success*",
+        "*://www.ebay.de/lstng/success*",
+        "*://www.ebay.de/lstng*",
+        "*://www.ebay.fr/sl/success*",
+        "*://www.ebay.fr/lstng/success*",
+        "*://www.ebay.fr/lstng*",
+        "*://www.ebay.com.au/sl/success*",
+        "*://www.ebay.com.au/lstng/success*",
+        "*://www.ebay.com.au/lstng*",
+        "*://www.ebay.it/sl/success*",
+        "*://www.ebay.it/lstng/success*",
+        "*://www.ebay.it/lstng*",
+        "*://www.ebay.es/sl/success*",
+        "*://www.ebay.es/lstng/success*",
+        "*://www.ebay.es/lstng*"
       ],
       "js": [
         "content_scripts/ebay_success.js"
@@ -245,6 +279,7 @@
     {
       "resources": [
         "common/config.js",
+        "common/html-sanitizer.js",
         "common/listing-draft.js",
         "common/constants.js",
         "common/performance.js",

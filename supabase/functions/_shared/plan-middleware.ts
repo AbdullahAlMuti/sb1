@@ -266,12 +266,15 @@ export async function getFullPlanStatus(
       planData = data;
     }
 
-    // Count active listings
+    // Count active listings — only ones that actually landed on eBay. Rows staged
+    // as 'active' without an ebay_item_id are drafts/scans, not real listings, and
+    // must not consume the plan's listing quota.
     const { count: listingsCount } = await supabase
       .from('listings')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .not('ebay_item_id', 'is', null);
 
     // Determine if expired
     // IMPORTANT: do NOT allow a stale "active" string to bypass an ended period.

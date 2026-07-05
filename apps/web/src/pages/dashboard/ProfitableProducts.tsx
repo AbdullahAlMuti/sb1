@@ -34,6 +34,20 @@ interface ProfitableProduct {
 
 const ITEMS_PER_PAGE = 12;
 
+// Demand telemetry for the admin product-intelligence engine. Views are
+// deduped per session; failures are swallowed (tracking must never break UX).
+const seenProductViews = new Set<string>();
+function trackProductEvent(productId: string, event: 'view' | 'click') {
+  if (event === 'view') {
+    if (seenProductViews.has(productId)) return;
+    seenProductViews.add(productId);
+  }
+  void (supabase.rpc as any)('record_product_event', { p_product_id: productId, p_event: event }).then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
 // Format large numbers (e.g., 2870000 -> $2.87m)
 const formatRevenue = (amount: number): string => {
   if (amount >= 1000000) {
@@ -191,8 +205,14 @@ function ProfitableProductsContent() {
     currentPage * ITEMS_PER_PAGE
   );
 
+  // Record a view for each product actually shown (session-deduped).
+  useEffect(() => {
+    paginatedItems.forEach((item) => trackProductEvent(item.id, 'view'));
+  }, [paginatedItems]);
+
   const handleAddToEbay = (item: ProfitableProduct) => {
     gateAction(() => {
+      trackProductEvent(item.id, 'click');
       const listingData = {
         title: item.title,
         price: item.price,
@@ -409,7 +429,12 @@ function ProfitableProductsContent() {
                           size="sm"
                           variant="secondary"
                           className="shadow-lg"
-                          onClick={() => gateAction(() => window.open(item.ebay_url!, '_blank'))}
+                          onClick={() =>
+                            gateAction(() => {
+                              trackProductEvent(item.id, 'click');
+                              window.open(item.ebay_url!, '_blank');
+                            })
+                          }
                         >
                           <ExternalLink className="h-4 w-4" />
                         </Button>

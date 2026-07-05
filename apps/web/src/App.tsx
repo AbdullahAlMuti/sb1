@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { Toaster } from "@repo/ui/components/ui/toaster";
 import { Toaster as Sonner } from "@repo/ui/components/ui/sonner";
 import { TooltipProvider } from "@repo/ui/components/ui/tooltip";
@@ -73,6 +73,11 @@ function RedirectPreserve({ to }: { to: string }) {
       replace
     />
   );
+}
+
+function LegacySettingsRedirect() {
+  const { tab } = useParams();
+  return <Navigate to={`/dashboard/ebay/settings/${tab || 'general'}`} replace />;
 }
 
 function AdminRedirect() {
@@ -158,6 +163,7 @@ const EbayRoutes = () => (
       <Route path="must-sell" element={<MustSellItems />} />
       <Route path="profitable-products" element={<ProfitableProducts />} />
       <Route path="calculator" element={<EbayProfitCalculator />} />
+      <Route path="calculator/:supplier" element={<EbayProfitCalculator />} />
       {/* Supplier-wise pricing-rule config (feeds the extension overlay + backend sync).
           Kept reachable by URL; not in the sidebar to avoid a duplicate nav entry. */}
       <Route path="supplier-pricing" element={<CalculatorSettings />} />
@@ -165,7 +171,8 @@ const EbayRoutes = () => (
       <Route path="alerts" element={<Alerts />} />
       <Route path="subscription" element={<Subscription />} />
       <Route path="billing" element={<Subscription />} />
-      <Route path="settings" element={<DashboardSettings />} />
+      <Route path="settings" element={<Navigate to="/dashboard/ebay/settings/general" replace />} />
+      <Route path="settings/:tab" element={<DashboardSettings />} />
       <Route path="templates" element={<ListingTemplates />} />
     </Route>
   </Routes>
@@ -235,7 +242,7 @@ const App = () => (
                 <Route path="/dashboard/must-sell" element={<Navigate to="/dashboard/ebay/must-sell" replace />} />
                 <Route path="/dashboard/profitable-products" element={<Navigate to="/dashboard/ebay/profitable-products" replace />} />
                 <Route path="/dashboard/product-research" element={<Navigate to="/dashboard/ebay/product-research" replace />} />
-                <Route path="/dashboard/settings" element={<Navigate to="/dashboard/ebay/settings" replace />} />
+                <Route path="/dashboard/settings/:tab?" element={<LegacySettingsRedirect />} />
                 <Route path="/dashboard/templates" element={<Navigate to="/dashboard/ebay/templates" replace />} />
 
                 <Route path="/dashboard/ebay/*" element={<EbayRoutes />} />
@@ -247,7 +254,7 @@ const App = () => (
                 <Route path="/listings" element={<Navigate to="/dashboard/listings" replace />} />
                 <Route path="/products" element={<Navigate to="/dashboard/product-research" replace />} />
                 <Route path="/inventory" element={<Navigate to="/dashboard/listings" replace />} />
-                <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
+                <Route path="/settings/:tab?" element={<LegacySettingsRedirect />} />
 
                 <Route path="/extension-viewer" element={<ExtensionViewer />} />
                 <Route path="*" element={<NotFound />} />

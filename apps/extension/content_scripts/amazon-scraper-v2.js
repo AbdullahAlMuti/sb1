@@ -276,19 +276,30 @@
     return null;
   }
 
-  function _getBuyboxFromDom() {
+  function _getBuyboxFromDom(targetAsin, root) {
+    root = root || document;
     try {
-      const el = document.querySelector('.twister-plus-buying-options-price-data');
+      const el = root.querySelector('.twister-plus-buying-options-price-data');
       if (el && el.textContent) {
         try {
           const p = JSON.parse(el.textContent);
           const g = p && p.desktop_buybox_group_1;
-          if (g && g.length > 0) return g[0];
+          if (g && g.length > 0) {
+            // Entries can carry per-ASIN prices; match the target variant when
+            // asked so a stale buybox render can't mislabel a sibling's price.
+            if (targetAsin) {
+              const hit = g.find(e => e && e.asin && e.asin.toUpperCase() === targetAsin.toUpperCase());
+              if (hit) return hit;
+            }
+            return g[0];
+          }
         } catch (_) {}
       }
       const selectors = [
         '.priceToPay',
         '.apexPriceToPay',
+        '#apex_price .a-price',        // 2025+ apex layout (no .priceToPay)
+        '#apex_desktop .a-price',
         '#corePrice_feature_div .a-price',
         '#corePriceDisplay_desktop_feature_div .a-price',
         '#corePrice_desktop .a-price',
@@ -303,7 +314,7 @@
         '.reinventPricePriceToPayMargin .a-price',
         '.a-price .a-offscreen'
       ];
-      const priceEls = Array.from(document.querySelectorAll(selectors.join(', ')));
+      const priceEls = Array.from(root.querySelectorAll(selectors.join(', ')));
       for (const priceEl of priceEls) {
         const sym = (priceEl.querySelector?.('.a-price-symbol')?.textContent || '$').trim();
         const rawText = priceEl.querySelector?.('.a-offscreen')?.textContent || priceEl.textContent || '';
@@ -320,9 +331,9 @@
     return null;
   }
 
-  function _getQuantityFromDom() {
+  function _getQuantityFromDom(root) {
     try {
-      const sel = document.querySelector('select[name="quantity"]');
+      const sel = (root || document).querySelector('select[name="quantity"]');
       if (!sel) return 1;
       const opts = Array.from(sel.querySelectorAll('option'));
       if (!opts.length) return 1;
@@ -334,9 +345,9 @@
     return { '$': 'USD', '£': 'GBP', '€': 'EUR', '¥': 'JPY', 'A$': 'AUD', 'C$': 'CAD', '₹': 'INR', 'R$': 'BRL' }[sym] || 'USD';
   }
 
-  function _checkStock() {
+  function _checkStock(root) {
     try {
-      const el = document.querySelector('#availability');
+      const el = (root || document).querySelector('#availability');
       if (!el) return true;
       const txt = (el.querySelector('span') || el).innerText.toLowerCase().replace(/\s+/g, ' ').trim();
       if (!txt) return true;
@@ -562,110 +573,220 @@
     } catch (_) { return { img: undefined, imgProp: undefined }; }
   }
 
-  // ─── Price/qty enrichment via xhrpatch (click tier — optional) ──────────────
-
-  function _waitForMessage(key, timeoutMs) {
-    return new Promise((resolve, reject) => {
-      const handler = ev => {
-        const d = ev.data;
-        if (d && d.for === key) {
-          clearTimeout(timer);
-          window.removeEventListener('message', handler);
-          resolve(d.data);
-        }
-      };
-      const timer = setTimeout(() => {
-        window.removeEventListener('message', handler);
-        reject(new Error('Timeout waiting for ' + key));
-      }, timeoutMs || 1500);
-      window.addEventListener('message', handler);
-    });
-  }
+  // ─── Direct DOM selection and scraping (click tier — optional) ──────────────
 
   function _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-  /**
-   * Phase 1 of v1, ported as-is: click every dimension option per ASIN so
-   * Amazon's twister ajaxv2 calls fire and the MAIN-world xhrpatch caches
-   * per-ASIN buybox data. Failure of any click is non-fatal — enumeration has
-   * already happened from data by the time this runs.
-   */
-  async function _clickThroughVariants(tw) {
-    const varContainers = Array.from(document.querySelectorAll('div[id*="variation_"]'));
-    const o = [];
-    const s = {};
-    varContainers.forEach((container, l) => {
-      const selectOpts = Array.from(container.querySelectorAll('option'))
-        .filter(opt => !(opt.getAttribute('data-a-id') || '').includes('-1'))
-        .map(opt => '#' + opt.getAttribute('data-a-id'));
-      const liEls = Array.from(container.querySelectorAll('li'));
-      o[l] = [...selectOpts, ...liEls];
-    });
-    document.querySelectorAll('div[id*="inline-twister-expander-content"]').forEach((el, l) => {
-      if (!o[l]) {
-        o[l] = Array.from(el.querySelectorAll('li'));
-        const suffix = el.id.replace('inline-twister-expander-content-', '');
-        if (suffix) s[l] = suffix;
-      }
-    });
-
-    for (const asin in tw.asinToDimensionIndexMap) {
-      const dimIndices = tw.asinToDimensionIndexMap[asin];
-      for (let h = 0; h < dimIndices.length; h++) {
-        try {
-          const remappedDimKey = s[h];
-          const D = remappedDimKey ? tw.dimensions.findIndex(d => d === remappedDimKey) : -1;
-          if (D < 0 && o[h] === undefined) continue;
-          const optIdx = dimIndices[D >= 0 ? D : h];
-          const optionsForDim = o[h];
-          if (!optionsForDim) continue;
-          const optEntry = optionsForDim[optIdx];
-          if (!optEntry) continue;
-          const container = varContainers[h];
-
-          if (typeof optEntry === 'string') {
-            const hasDropdown = container && container.querySelectorAll('option').length > 0;
-            if (hasDropdown) {
-              let optEl = document.querySelector(optEntry);
-              let guard = 0;
-              while (!optEl && guard++ < 40) { // bounded — v1 could loop forever
-                const dropBtn = container && container.querySelector('span[data-action="a-dropdown-button"]');
-                if (dropBtn) dropBtn.click();
-                await _sleep(50);
-                optEl = document.querySelector(optEntry);
-              }
-              if (optEl) optEl.click();
-            }
-          } else {
-            const el = optEntry;
-            const btn = el.querySelector('button');
-            if (btn) btn.click();
-            else {
-              const inp = el.querySelector('input');
-              if (inp) inp.click();
-              else el.querySelector('a')?.click();
-            }
-          }
-          await _sleep(50);
-        } catch (_) { /* per-option failure is non-fatal */ }
-      }
-    }
-    await _sleep(300);
+  function _getBuyboxAndQtyFromDom(targetAsin) {
+    const isAvailable = _checkStock();
+    const bb = _getBuyboxFromDom(targetAsin);
+    const qty = isAvailable ? (_getQuantityFromDom() || 1) : 0;
+    return {
+      price: bb ? bb.priceAmount : null,
+      currency: bb ? _resolveCurrency(bb.currencySymbol) : 'USD',
+      quantity: qty
+    };
   }
 
-  async function _fetchBuyboxForAsin(asin) {
-    const msgPromise = _waitForMessage(`ss-buybox-${asin}`, 3000);
-    setTimeout(() => {
-      window.postMessage({ from: 'ss-amazon-cs', action: 'getBuybox', asin });
-    }, 50);
-    const bbData = await msgPromise;
-    const parsed = JSON.parse(bbData.buyboxRaw);
-    const group = parsed.desktop_buybox_group_1 && parsed.desktop_buybox_group_1[0];
-    return {
-      price:    group && group.priceAmount ? group.priceAmount : null,
-      currency: group && group.currencySymbol ? _resolveCurrency(group.currencySymbol) : null,
-      quantity: bbData.quantity || (group ? 1 : 0),
-    };
+  function _buyboxSignature() {
+    const bb = _getBuyboxFromDom();
+    return bb ? `${bb.priceAmount}|${bb.currencySymbol || ''}` : '';
+  }
+
+  // Same-origin hidden-iframe enrichment: on modern inline-twister pages a
+  // swatch click NAVIGATES (destroying this script mid-scan), and fetch()'d
+  // pages carry no server-rendered buybox — so the variant's own /dp/ page is
+  // rendered in a hidden iframe instead and its hydrated DOM is read directly.
+  async function _iframeScrapeVariant(asin, budgetMs) {
+    budgetMs = budgetMs || 9000;
+    let fr;
+    try {
+      fr = document.createElement('iframe');
+      fr.setAttribute('aria-hidden', 'true');
+      fr.style.cssText =
+        'position:fixed;width:1200px;height:900px;left:-99999px;top:0;visibility:hidden;pointer-events:none;';
+      fr.src = `${location.origin}/dp/${encodeURIComponent(asin)}?th=1&psc=1`;
+      document.body.appendChild(fr);
+      const t0 = Date.now();
+      let asinMatched = false;
+      while (Date.now() - t0 < budgetMs) {
+        await _sleep(400);
+        let doc;
+        try { doc = fr.contentDocument; } catch (_) { continue; }
+        if (!doc || !doc.body) continue;
+        const cur = doc.querySelector('input#ASIN, input#asin')?.value || '';
+        if (cur.toUpperCase() !== asin.toUpperCase()) continue;
+        asinMatched = true;
+        const bb = _getBuyboxFromDom(asin, doc);
+        if (bb && bb.priceAmount > 0) {
+          const avail = _checkStock(doc);
+          return {
+            price: bb.priceAmount,
+            currency: _resolveCurrency(bb.currencySymbol || '$'),
+            quantity: avail ? (_getQuantityFromDom(doc) || 1) : 0,
+          };
+        }
+        // Right page, price not hydrated yet — keep polling within budget.
+      }
+      // Right page but no offer surfaced (e.g. "Currently unavailable").
+      if (asinMatched) return { price: null, currency: null, quantity: 0, unavailable: true };
+    } catch (_) {
+      /* fall through — caller keeps fallback pricing */
+    } finally {
+      try { if (fr) fr.remove(); } catch (_) {}
+    }
+    return null;
+  }
+
+  // Data-first per-variant prices with ZERO clicking: inline-twister swatches
+  // carry data-asin and (on many pages) render that variant's own price right
+  // on the swatch. Harvest ASIN → price for every such element.
+  function _harvestDomVariantPrices() {
+    const map = {};
+    try {
+      const els = document.querySelectorAll('li[data-asin], [data-csa-c-item-id][data-asin], [data-defaultasin]');
+      els.forEach(el => {
+        const asin = (el.getAttribute('data-asin') || el.getAttribute('data-defaultasin') || '').trim().toUpperCase();
+        if (!asin || map[asin]) return;
+        const priceEl = el.querySelector('.a-price .a-offscreen, .a-price, .twisterSwatchPrice');
+        const parsed = _cleanPriceText(priceEl ? priceEl.textContent || '' : '');
+        if (parsed && parsed.price > 0) {
+          map[asin] = { price: parsed.price, symbol: parsed.symbol || '$' };
+        }
+      });
+    } catch (_) {}
+    return map;
+  }
+
+  // Amazon swaps the buybox via AJAX after a twister click — the hidden ASIN
+  // input updates before the price nodes re-render. Wait until the buybox
+  // reading is stable across consecutive polls (and, when the price actually
+  // changes, differs from the pre-click signature) instead of a fixed sleep.
+  async function _waitForBuyboxSettle(prevSig, maxMs) {
+    maxMs = maxMs || 1500;
+    const priceRoot = document.querySelector(
+      '#corePrice_feature_div, #corePriceDisplay_desktop_feature_div, #apex_desktop, #ppd'
+    ) || document.body;
+    let mutated = false;
+    const mo = new MutationObserver(() => { mutated = true; });
+    try {
+      mo.observe(priceRoot, { subtree: true, childList: true, characterData: true });
+    } catch (_) {}
+    const start = Date.now();
+    let last = _buyboxSignature();
+    let stable = 0;
+    while (Date.now() - start < maxMs) {
+      await _sleep(75);
+      const sig = _buyboxSignature();
+      if (sig === last && sig !== '') {
+        stable++;
+        // Settled: price moved off the pre-click value, or the DOM re-rendered
+        // and re-stabilized. Extra patience covers siblings priced identically.
+        if (stable >= 2 && (sig !== prevSig || mutated)) break;
+        if (stable >= 5) break;
+      } else {
+        stable = 0;
+        last = sig;
+      }
+    }
+    mo.disconnect();
+  }
+
+  async function _selectVariant(tw, asin, varContainers, o, s) {
+    const dimIndices = tw.asinToDimensionIndexMap[asin];
+    if (!dimIndices) return;
+    for (let h = 0; h < dimIndices.length; h++) {
+      try {
+        const remappedDimKey = s[h];
+        const D = remappedDimKey ? tw.dimensions.findIndex(d => d === remappedDimKey) : -1;
+        if (D < 0 && o[h] === undefined) continue;
+        const optIdx = dimIndices[D >= 0 ? D : h];
+        const optionsForDim = o[h];
+        if (!optionsForDim) continue;
+        const optEntry = optionsForDim[optIdx];
+        if (!optEntry) continue;
+        const container = varContainers[h];
+
+        if (typeof optEntry === 'string') {
+          const hasDropdown = container && container.querySelectorAll('option').length > 0;
+          if (hasDropdown) {
+            let optEl = document.querySelector(optEntry);
+            let guard = 0;
+            while (!optEl && guard++ < 40) {
+              const dropBtn = container && container.querySelector('span[data-action="a-dropdown-button"]');
+              if (dropBtn) dropBtn.click();
+              await _sleep(50);
+              optEl = document.querySelector(optEntry);
+            }
+            if (optEl) optEl.click();
+          }
+        } else {
+          const el = optEntry;
+          const btn = el.querySelector('button');
+          if (btn) btn.click();
+          else {
+            const inp = el.querySelector('input');
+            if (inp) inp.click();
+            else el.querySelector('a')?.click();
+          }
+        }
+        await _sleep(50);
+      } catch (_) { /* ignore click failure */ }
+    }
+  }
+
+  async function _clickAndScrapeVariant(tw, asin, varContainers, o, s) {
+    const alreadySelected =
+      (document.querySelector('input#ASIN, input#asin')?.value || '').toUpperCase() === asin.toUpperCase();
+    if (alreadySelected) {
+      // Currently displayed variant — the buybox is already correct; no click,
+      // no settle-wait, zero risk of disturbing the page state.
+      return _getBuyboxAndQtyFromDom(asin);
+    }
+
+    const prevSig = _buyboxSignature();
+    await _selectVariant(tw, asin, varContainers, o, s);
+    let matched = false;
+    let retries = 0;
+    const maxRetries = 10; // Wait up to 1s
+    while (retries++ < maxRetries) {
+      const currentAsin = document.querySelector('input#ASIN, input#asin')?.value;
+      if (currentAsin && currentAsin.toUpperCase() === asin.toUpperCase()) {
+        matched = true;
+        break;
+      }
+      await _sleep(100);
+    }
+    if (matched) {
+      await _waitForBuyboxSettle(prevSig);
+      return _getBuyboxAndQtyFromDom(asin);
+    }
+
+    console.warn(`[SS ScraperV2] ASIN mismatch after click. Target: ${asin}, Found: ${document.querySelector('input#ASIN, input#asin')?.value}`);
+    // The page never switched to the target variant — the visible buybox still
+    // belongs to a DIFFERENT variant. Stamping it here is exactly the
+    // parent-price-on-every-variant bug. Only a per-ASIN entry in the
+    // twister-plus price JSON is trustworthy at this point; otherwise report
+    // no price so the caller leaves the variant unenriched (base-price
+    // fallback semantics, honestly labeled).
+    try {
+      const el = document.querySelector('.twister-plus-buying-options-price-data');
+      if (el && el.textContent) {
+        const p = JSON.parse(el.textContent);
+        const g = p && p.desktop_buybox_group_1;
+        const hit = Array.isArray(g)
+          ? g.find(e => e && e.asin && e.asin.toUpperCase() === asin.toUpperCase())
+          : null;
+        if (hit && hit.priceAmount > 0) {
+          return {
+            price: hit.priceAmount,
+            currency: _resolveCurrency(hit.currencySymbol || '$'),
+            quantity: _checkStock() ? (_getQuantityFromDom() || 1) : 0,
+          };
+        }
+      }
+    } catch (_) {}
+    return { price: null, currency: null, quantity: 0 };
   }
 
   // ─── Public API ──────────────────────────────────────────────────────────────
@@ -744,31 +865,131 @@
         };
       });
 
-      // 2) Enrichment tier: click options → xhrpatch caches per-ASIN buybox.
+      // 1.5) Swatch tier: prices printed on the twister swatches themselves
+      // (data-asin elements). No clicks, no races — seeds real per-variant
+      // prices even when the click tier below can't switch the page.
+      const domPriceMap = _harvestDomVariantPrices();
+      variants.forEach(v => {
+        const hit = domPriceMap[(v.supplierVariantId || '').toUpperCase()];
+        if (hit) {
+          v.price = hit.price;
+          v.currency = _resolveCurrency(hit.symbol);
+          v._priceFromDom = true;
+        }
+      });
+
+      // 1.6) The currently displayed variant is priced straight from the live
+      // DOM — its buybox is already correct, no click or iframe needed.
+      const curAsin = (document.querySelector('input#ASIN, input#asin')?.value || '').toUpperCase();
+      variants.forEach(v => {
+        if (!v._enriched && (v.supplierVariantId || '').toUpperCase() === curAsin) {
+          const d = _getBuyboxAndQtyFromDom(v.supplierVariantId);
+          if (d.price != null) {
+            v.price = d.price;
+            if (d.currency) v.currency = d.currency;
+            v.quantity = d.quantity;
+            v._enriched = true;
+          }
+        }
+      });
+
+      // 2) Click tier — ONLY on classic AJAX-twister pages (div[id*="variation_"]).
+      // On inline-twister pages a swatch click NAVIGATES to the sibling's /dp/
+      // page, destroying this content script mid-scan (observed live) — those
+      // pages are handled by the iframe tier below instead.
+      const varContainers = Array.from(document.querySelectorAll('div[id*="variation_"]'));
+      if (varContainers.length === 0) {
+        console.log('[SS ScraperV2] no classic twister containers — skipping click tier (inline twister navigates); iframe tier will price variants');
+      } else {
+        try {
+          const originalAsin = base.currentAsin;
+          const o = [];
+          const s = {};
+          varContainers.forEach((container, l) => {
+            const selectOpts = Array.from(container.querySelectorAll('option'))
+              .filter(opt => !(opt.getAttribute('data-a-id') || '').includes('-1'))
+              .map(opt => '#' + opt.getAttribute('data-a-id'));
+            const liEls = Array.from(container.querySelectorAll('li'));
+            o[l] = [...selectOpts, ...liEls];
+          });
+          document.querySelectorAll('div[id*="inline-twister-expander-content"]').forEach((el, l) => {
+            if (!o[l]) {
+              o[l] = Array.from(el.querySelectorAll('li'));
+              const suffix = el.id.replace('inline-twister-expander-content-', '');
+              if (suffix) s[l] = suffix;
+            }
+          });
+
+          for (const v of variants) {
+            if (v._enriched) continue;
+            try {
+              const enr = await _clickAndScrapeVariant(tw, v.supplierVariantId, varContainers, o, s);
+              if (enr.price != null) {
+                v.price = enr.price;
+                v._enriched = true;
+              }
+              if (enr.currency) v.currency = enr.currency;
+              v.quantity = enr.quantity;
+            } catch (err) {
+              console.warn(`[SS ScraperV2] failed to scrape variant ${v.supplierVariantId}:`, err);
+            }
+          }
+
+          // Click back to the original ASIN so the user's page stays on their selection
+          if (originalAsin) {
+            try {
+              await _selectVariant(tw, originalAsin, varContainers, o, s);
+            } catch (_) {}
+          }
+        } catch (e) {
+          console.warn('[SS ScraperV2] click tier failed (iframe tier will retry):', e?.message || e);
+        }
+      }
+
+      // 3) Iframe tier: render each still-unpriced variant's own /dp/ page in a
+      // hidden same-origin iframe and read its hydrated buybox. Sequential and
+      // capped so giant twisters can't stall the scan indefinitely.
+      const IFRAME_CAP = 24;
       try {
-        window.postMessage({ from: 'ss-amazon-cs', action: 'activate' });
-        await _clickThroughVariants(tw);
-        for (const v of variants) {
-          try {
-            const enr = await _fetchBuyboxForAsin(v.supplierVariantId);
-            if (enr.price != null) v.price = enr.price;
+        const pending = variants.filter(v => !v._enriched && v.supplierVariantId);
+        let processed = 0;
+        for (const v of pending) {
+          if (processed++ >= IFRAME_CAP) {
+            console.warn(`[SS ScraperV2] iframe tier cap (${IFRAME_CAP}) reached — ${pending.length - IFRAME_CAP} variants keep fallback price`);
+            break;
+          }
+          const enr = await _iframeScrapeVariant(v.supplierVariantId);
+          if (enr && enr.price != null) {
+            v.price = enr.price;
             if (enr.currency) v.currency = enr.currency;
             v.quantity = enr.quantity;
             v._enriched = true;
-          } catch (_) { /* keep base price; quantity stays 0 */ }
+            v._viaIframe = true;
+          } else if (enr && enr.unavailable) {
+            v.quantity = 0;
+            v._unavailable = true;
+          }
         }
       } catch (e) {
-        console.warn('[SS ScraperV2] enrichment tier failed (variants kept with base price):', e?.message || e);
-      } finally {
-        try { window.postMessage({ from: 'ss-amazon-cs', action: 'deactivate' }); } catch (_) {}
+        console.warn('[SS ScraperV2] iframe tier failed (variants keep fallback price):', e?.message || e);
       }
 
-      // Variants the enrichment never reached keep base price and qty 1 so a
-      // transient XHR failure doesn't zero out the whole listing.
+      // Variants no tier reached keep their swatch price (or base price) and
+      // qty 1 so a transient failure doesn't zero the listing — except variants
+      // whose own page said "unavailable": those stay at qty 0.
+      let nClick = 0, nIframe = 0, nSwatch = 0, nBase = 0;
       variants.forEach(v => {
-        if (!v._enriched) v.quantity = basePrice > 0 ? 1 : v.quantity;
+        if (v._viaIframe) nIframe++;
+        else if (v._enriched) nClick++;
+        else if (v._priceFromDom) nSwatch++;
+        else nBase++;
+        if (!v._enriched && !v._unavailable) v.quantity = (basePrice > 0 || v._priceFromDom) ? 1 : v.quantity;
         delete v._enriched;
+        delete v._priceFromDom;
+        delete v._viaIframe;
+        delete v._unavailable;
       });
+      console.log(`[SS ScraperV2] variant pricing: ${variants.length} total — ${nClick} click/live-verified, ${nIframe} iframe-verified, ${nSwatch} swatch-priced, ${nBase} base-price fallback`);
 
       // minQty filter — error messages preserved verbatim from v1 (panel UX).
       const qualified = variants.filter(v => (v.quantity || 0) >= minQty);
@@ -895,7 +1116,8 @@
 
   window.SsAmazonScraperV2 = { scrapeProductWithVariants, scrapeSingleProduct };
 
-  // Test-only surface — pure helpers, no DOM.
+  // Test-only surface — pure helpers plus the DOM-reading enrichment pieces
+  // (exercised in node:test against a stubbed document).
   window.SsAmazonScraperV2._internals = {
     _extractBalanced,
     _extractKeyedValue,
@@ -906,5 +1128,9 @@
     _parseTwisterFields,
     _cleanPriceText,
     _normalizeBrandText,
+    _getBuyboxFromDom,
+    _clickAndScrapeVariant,
+    _harvestDomVariantPrices,
+    _iframeScrapeVariant,
   };
 })();

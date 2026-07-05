@@ -4,6 +4,31 @@
 // ═══════════════════════════════════════════════════════════
 
 const DescriptionGenerator = (() => {
+  // 🧼 HTML sanitizer for the rich description preview (W5). Prefers the shared
+  // SSSanitizer global; otherwise self-contained so we never render raw HTML.
+  function _sanitizeHtml(html) {
+    if (html == null) return '';
+    if (typeof SSSanitizer !== 'undefined') return SSSanitizer.sanitizeHtml(html);
+    try {
+      const doc = new DOMParser().parseFromString(String(html), 'text/html');
+      doc.body.querySelectorAll('script,iframe,object,embed,link,meta,style,base,form').forEach(el => el.remove());
+      doc.body.querySelectorAll('*').forEach(el => {
+        for (const attr of Array.from(el.attributes)) {
+          const n = attr.name.toLowerCase();
+          const v = String(attr.value).replace(/\s+/g, '').toLowerCase();
+          if (n.startsWith('on')) el.removeAttribute(attr.name);
+          else if (['href', 'src', 'action', 'formaction'].includes(n) &&
+            (v.startsWith('javascript:') || v.startsWith('data:') || v.startsWith('vbscript:'))) {
+            el.removeAttribute(attr.name);
+          }
+        }
+      });
+      return doc.body.innerHTML;
+    } catch {
+      return String(html).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+  }
+
   const SUPABASE_URL =
     (typeof ExtensionConfig !== 'undefined' && ExtensionConfig.URLS?.SUPABASE_URL)
       ? ExtensionConfig.URLS.SUPABASE_URL
@@ -406,9 +431,10 @@ const DescriptionGenerator = (() => {
       }
       // ──────────────────────────────────────────────────────────────────────────
 
-      // Display the description
+      // Display the description — sanitize the rich HTML built from untrusted
+      // scraped/templated product fields before rendering (W5).
       if (previewEl) {
-        previewEl.innerHTML = currentDescription;
+        previewEl.innerHTML = _sanitizeHtml(currentDescription);
       }
 
       // Enable action buttons

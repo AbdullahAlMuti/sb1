@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import { Button } from '@repo/ui/components/ui/button';
@@ -17,13 +17,21 @@ export default function EbayLayout() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isSettingsOpen = location.pathname === '/dashboard/ebay/settings';
+  const [prevPath, setPrevPath] = useState('/dashboard/ebay');
+
+  useEffect(() => {
+    if (!location.pathname.includes('/settings')) {
+      setPrevPath(location.pathname);
+    }
+  }, [location.pathname]);
+
+  const isSettingsOpen = location.pathname.includes('/settings');
   const handleCloseSettings = () => {
-    navigate('/dashboard/ebay');
+    navigate(prevPath);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen bg-background">
       {/* Settings Dialog Modal */}
       <SettingsDialog 
       open={isSettingsOpen} 
@@ -45,7 +53,7 @@ export default function EbayLayout() {
       </Sheet>
 
       <div className={cn('transition-all duration-300 ease-in-out', isCollapsed ? 'lg:ml-[80px]' : 'lg:ml-[244px]')}>
-        <div className="sticky top-0 z-40 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+        <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b border-border">
           <div className="flex items-center h-16 px-4 sm:px-6">
             <Button
               variant="ghost"
@@ -59,10 +67,8 @@ export default function EbayLayout() {
           </div>
         </div>
 
-        <main className="p-4 sm:p-5 lg:p-6">
-          <div className="max-w-[1600px] mx-auto">
-            <Outlet />
-          </div>
+        <main className="p-4 sm:p-5 lg:p-6 w-full">
+          <Outlet />
         </main>
       </div>
     </div>

@@ -5,6 +5,31 @@
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// 🧼 HTML sanitizer for the rich description preview (W5). Prefers the shared
+// SSSanitizer global; otherwise self-contained so we never fall back to raw HTML.
+function _ssxSanitizeHtml(html) {
+    if (html == null) return '';
+    if (typeof SSSanitizer !== 'undefined') return SSSanitizer.sanitizeHtml(html);
+    try {
+        const doc = new DOMParser().parseFromString(String(html), 'text/html');
+        doc.body.querySelectorAll('script,iframe,object,embed,link,meta,style,base,form').forEach(el => el.remove());
+        doc.body.querySelectorAll('*').forEach(el => {
+            for (const attr of Array.from(el.attributes)) {
+                const n = attr.name.toLowerCase();
+                const v = String(attr.value).replace(/\s+/g, '').toLowerCase();
+                if (n.startsWith('on')) el.removeAttribute(attr.name);
+                else if (['href', 'src', 'action', 'formaction'].includes(n) &&
+                    (v.startsWith('javascript:') || v.startsWith('data:') || v.startsWith('vbscript:'))) {
+                    el.removeAttribute(attr.name);
+                }
+            }
+        });
+        return doc.body.innerHTML;
+    } catch {
+        return String(html).replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+}
+
 // Robust float cleaning helper for the panel
 function _ssxCleanFloat(val) {
     if (val === null || val === undefined) return 0;
@@ -370,38 +395,24 @@ async function _ssxRenderExtended(p) {
         p.ebaySku = window.SSSkuEngine.buildReadable(skuParentId, {}, skuPrefix);
         variantsUpdated = true;
     }
-    // Auto-calculate missing eBay prices (universal — same engine + defaults for
-    // every supplier). Injectors stamp finalPrice at scan time on the Amazon
-    // path; Walmart and future suppliers land here without it.
+    
+    const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
+    const calcVals = stored.calculatorValues || {};
     if (window.SSPricingEngine) {
-        const storedCalc = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
-        const calcVals = storedCalc.calculatorValues || {};
-        const parseVal = (v, def) => {
-            if (v === null || v === undefined || v === '') return def;
-            const cleaned = String(v).replace(/[^\d.-]/g, '');
-            const n = parseFloat(cleaned);
-            return isNaN(n) ? def : n;
-        };
-        const pricingConfig = {
-            taxPercent:      parseVal(calcVals['tax-percent'],       9),
-            trackingFee:     parseVal(calcVals['tracking-fee'],      0.20),
-            ebayFeePercent:  parseVal(calcVals['ebay-fee-percent'],  20),
-            promoFeePercent: parseVal(calcVals['promo-fee-percent'], 10),
-            desiredProfit:   parseVal(calcVals['desired-profit'],    0),
-            paymentFixedFee: parseVal(calcVals['payment-fixed-fee'], 0.30)
-        };
-
-        variants.forEach(v => {
-            const rawCost = _ssxCleanFloat(v.raw_supplier_price ?? v.price);
-            if (!_ssxCleanFloat(v.finalPrice) && rawCost > 0) {
-                v.finalPrice = window.SSPricingEngine.calculatePrice(rawCost, pricingConfig);
-                if (!_ssxCleanFloat(v.ebayPrice)) v.ebayPrice = v.finalPrice;
-                variantsUpdated = true;
-            }
+        const hashBefore = JSON.stringify({ 
+            finalPrice: p.finalPrice, 
+            ebayPrice: p.ebayPrice, 
+            variants: variants.map(v => ({ finalPrice: v.finalPrice, ebayPrice: v.ebayPrice })) 
         });
-        const baseCost = _ssxCleanFloat(p.raw_supplier_price ?? p.price);
-        if (!_ssxCleanFloat(p.finalPrice) && baseCost > 0) {
-            p.finalPrice = window.SSPricingEngine.calculatePrice(baseCost, pricingConfig);
+        
+        window.SSPricingEngine.applyPricingToProduct(p, calcVals);
+        
+        const hashAfter = JSON.stringify({ 
+            finalPrice: p.finalPrice, 
+            ebayPrice: p.ebayPrice, 
+            variants: variants.map(v => ({ finalPrice: v.finalPrice, ebayPrice: v.ebayPrice })) 
+        });
+        if (hashBefore !== hashAfter) {
             variantsUpdated = true;
         }
     }
@@ -524,13 +535,175 @@ async function _ssxRenderExtended(p) {
         btn.addEventListener('click', () => applyModeView(btn.dataset.mode));
     });
 
-    const bindClick = (newId, targetId) => {
-        const nb = document.getElementById(newId);
-        const tgt = document.getElementById(targetId);
-        if (nb && tgt && !nb._ssxBound) { nb._ssxBound = true; nb.addEventListener('click', () => tgt.click()); }
+    // Custom AI triggering with advanced animation & typewriter flow
+    const initAiTriggers = () => {
+        const titleBtn = document.getElementById('ssx-ai-title-btn');
+        const genTitleBtn = document.getElementById('generate-ai-titles-btn');
+        if (titleBtn && genTitleBtn && !titleBtn._ssxAiBound) {
+            titleBtn._ssxAiBound = true;
+            titleBtn.addEventListener('click', () => {
+                // Show fast spinning loader in header action wrap
+                const actionWrap = document.getElementById('ssx-title-action-wrap');
+                if (actionWrap) {
+                    actionWrap.innerHTML = `
+                        <div class="ssx-ai-loading-status" id="ssx-title-loading-status" style="display: flex; align-items: center; gap: 6px;">
+                            <span class="ssx-ai-fast-spin">✦</span>
+                            <span style="font-size: 11px; font-weight: 600; color: var(--x-primary); text-transform: uppercase; letter-spacing: 0.04em;">AI Writing...</span>
+                        </div>
+                    `;
+                }
+
+                // Show blinking cursor loading state inside title text
+                const titleDisplay = document.getElementById('ai-generated-title');
+                if (titleDisplay) {
+                    titleDisplay.innerHTML = '';
+                    titleDisplay.classList.add('typing-active');
+                    titleDisplay.textContent = 'Generating titles...';
+                }
+
+                // Trigger actual legacy generation button click
+                genTitleBtn.click();
+            });
+        }
+
+        const descBtn = document.getElementById('ssx-ai-desc-btn');
+        const genDescBtn = document.getElementById('generate-description-btn');
+        if (descBtn && genDescBtn && !descBtn._ssxAiBound) {
+            descBtn._ssxAiBound = true;
+            descBtn.addEventListener('click', () => {
+                // Show fast spinning loader in header action wrap
+                const actionWrap = document.getElementById('ssx-desc-action-wrap');
+                if (actionWrap) {
+                    actionWrap.innerHTML = `
+                        <div class="ssx-ai-loading-status" id="ssx-desc-loading-status" style="display: flex; align-items: center; gap: 6px;">
+                            <span class="ssx-ai-fast-spin">✦</span>
+                            <span style="font-size: 11px; font-weight: 600; color: var(--x-primary); text-transform: uppercase; letter-spacing: 0.04em;">AI Writing...</span>
+                        </div>
+                    `;
+                }
+
+                // Show blinking cursor loading state inside description area
+                const descPreview = document.getElementById('description-preview');
+                if (descPreview) {
+                    descPreview.innerHTML = `
+                        <div class="description-placeholder typing-active">
+                            <span>AI is researching product data...</span>
+                        </div>
+                    `;
+                }
+
+                // Trigger actual legacy description generation click
+                genDescBtn.click();
+            });
+        }
     };
-    bindClick('ssx-ai-title-btn', 'generate-ai-titles-btn');
-    bindClick('ssx-ai-desc-btn', 'generate-description-btn');
+    initAiTriggers();
+
+    // Extend window.UIHelper with custom typewriter & description streaming logic
+    if (window.UIHelper) {
+        // Intercept inline title rendering for typewriter & pop effects
+        const originalRenderInlineTitles = window.UIHelper.renderInlineTitles;
+        window.UIHelper.renderInlineTitles = function(titles) {
+            let normalizedTitles = [];
+            if (Array.isArray(titles)) {
+                normalizedTitles = titles;
+            } else if (titles && Array.isArray(titles.titles)) {
+                normalizedTitles = titles.titles;
+            } else if (titles && titles.data && Array.isArray(titles.data.titles)) {
+                normalizedTitles = titles.data.titles;
+            }
+
+            if (!normalizedTitles || normalizedTitles.length === 0) {
+                if (originalRenderInlineTitles) originalRenderInlineTitles(titles);
+                return;
+            }
+
+            const bestTitleStr = typeof normalizedTitles[0] === 'object' ? normalizedTitles[0].title : normalizedTitles[0];
+
+            // Save to storage immediately
+            chrome.storage.local.set({
+                selectedEbayTitle: bestTitleStr,
+                savedTitles: normalizedTitles,
+                generatedAt: Date.now()
+            });
+
+            // Populate static selection slots first (handled by original logic)
+            if (originalRenderInlineTitles) {
+                originalRenderInlineTitles(titles);
+            }
+
+            // Animate main title view with typing cursor and scaling pop effect
+            const titleDisplay = document.getElementById('ai-generated-title');
+            if (titleDisplay) {
+                titleDisplay.innerHTML = '';
+                titleDisplay.classList.add('typing-active');
+
+                let i = 0;
+                const typingSpeed = 25; // realistic typewriter speed
+                const timer = setInterval(() => {
+                    if (i < bestTitleStr.length) {
+                        i++;
+                        titleDisplay.textContent = bestTitleStr.slice(0, i);
+                    } else {
+                        clearInterval(timer);
+                        titleDisplay.classList.remove('typing-active');
+                        titleDisplay.classList.add('has-title');
+
+                        // Clear loading status and restore button in header action wrap
+                        const actionWrap = document.getElementById('ssx-title-action-wrap');
+                        if (actionWrap) {
+                            actionWrap.innerHTML = `
+                                <button class="ssx-btn ssx-btn-ai" id="ssx-ai-title-btn" type="button">✦ Regenerate</button>
+                            `;
+                            // Re-bind click event to the new button
+                            setTimeout(() => initAiTriggers(), 50);
+                        }
+
+                        // Gentle pop transition on completion (scale 0.98 -> 1)
+                        titleDisplay.style.transition = 'transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease';
+                        titleDisplay.style.transform = 'scale(0.98)';
+                        titleDisplay.style.opacity = '0.9';
+                        requestAnimationFrame(() => {
+                            titleDisplay.style.transform = 'scale(1)';
+                            titleDisplay.style.opacity = '1';
+                        });
+                    }
+                }, typingSpeed);
+            }
+        };
+
+        // Instant render for AI descriptions — a per-character typewriter made long
+        // descriptions take tens of seconds to appear. Render immediately and keep
+        // only the completion polish (paragraph-flash highlight, button restore).
+        window.UIHelper.streamDescription = function(fullHtml) {
+            const descPreview = document.getElementById('description-preview');
+            const copyBtn = document.getElementById('copy-description-btn');
+            if (!descPreview) return;
+
+            descPreview.classList.remove('typing-active');
+            descPreview.innerHTML = fullHtml;
+
+            // Clear loading status and restore button in header action wrap
+            const actionWrap = document.getElementById('ssx-desc-action-wrap');
+            if (actionWrap) {
+                actionWrap.innerHTML = `
+                    <button class="ssx-btn ssx-btn-ai" id="ssx-ai-desc-btn" type="button">✦ Regenerate Description</button>
+                `;
+                // Re-bind click event to the new button
+                setTimeout(() => initAiTriggers(), 50);
+            }
+
+            // Apply paragraph-flash highlights on completion
+            Array.from(descPreview.children).forEach(child => {
+                child.classList.add('paragraph-flash');
+                setTimeout(() => {
+                    child.classList.remove('paragraph-flash');
+                }, 1500);
+            });
+
+            if (copyBtn) copyBtn.disabled = false;
+        };
+    }
 
     // Auto-edit toggle — shared top-level storage key with the side panel.
     const autoEditCb = document.getElementById('ssx-autoedit-toggle');
@@ -625,7 +798,8 @@ async function showSidebarExtended(opts = {}) {
             const description = aiDescription || (draft && draft.description) || p.description || '';
             
             if (description) {
-                descDisplay.innerHTML = description;
+                // Rich-HTML preview of an untrusted (scraped/templated) description → sanitize (W5).
+                descDisplay.innerHTML = _ssxSanitizeHtml(description);
                 descDisplay.classList.remove('description-empty-state');
                 
                 const copyBtn = document.getElementById('copy-description-btn');

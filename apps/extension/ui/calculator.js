@@ -25,17 +25,19 @@ function round2(value) {
 }
 
 function calculateSellingPrice(params) {
+  const p = params || {};
+  let sourcePrice = parseFloat(p.sourcePrice);
+  if (isNaN(sourcePrice) || sourcePrice <= 0) {
+    sourcePrice = 50;
+  }
   const {
-    sourcePrice = 0,
     taxPercent = CALCULATOR_DEFAULTS.taxPercent,
     trackingFee = CALCULATOR_DEFAULTS.trackingFee,
     ebayFeePercent = CALCULATOR_DEFAULTS.ebayFeePercent,
     promoFeePercent = CALCULATOR_DEFAULTS.promoFeePercent,
     desiredProfit = CALCULATOR_DEFAULTS.desiredProfit,
     paymentFixedFee = CALCULATOR_DEFAULTS.paymentFixedFee
-  } = params;
-
-  if (sourcePrice <= 0) return null;
+  } = p;
 
   const taxAmount = sourcePrice * (taxPercent / 100);
   const baseCost = sourcePrice + taxAmount + trackingFee + paymentFixedFee;

@@ -57,6 +57,15 @@ SUPABASE_SERVICE_ROLE_KEY=...
 
 ## Runbook: Setting Up Billing from Scratch
 
+> **⚠️ Production status (2026-07-04):** Verified via Stripe MCP that the **live** account
+> (`acct_1RWG31J5ks4Nw0ZG`) has **no** Trial/Starter/Pro products or recurring prices and
+> **zero** subscriptions — step 2 was never run against live, and the live webhook (step 3)
+> is not pointed at the Supabase function. Until steps 2–3 below are executed with **live**
+> credentials, production checkout fails ("Selected plan is not configured for checkout") and
+> billing survives only on the `check-subscription-v2` login self-heal. The billing code itself
+> is correct and idempotent; this is purely operational. Run the same steps once per environment
+> (test key → dev/local DB, live key → prod DB).
+
 ### 1. Apply migrations
 
 ```bash
@@ -77,6 +86,8 @@ node scripts/stripe-sync-plans.mjs              # apply
 
 This creates Stripe products (keyed by `metadata.sellersuit_plan`) and prices, then writes the price IDs back to the `plans` table. Safe to re-run; subsequent runs are no-ops if prices match.
 
+The script **refuses to write test-mode price IDs into a remote (prod) database, or live-mode IDs into a local DB** (`assertKeyMatchesTarget`) — this is the guard against the mismatch that silently breaks checkout. Use a `sk_live_` key for the prod project and a `sk_test_` key locally. Overrides `--allow-test-on-remote` (for a real staging project) / `--allow-live-on-local` exist but should rarely be needed.
+
 ### 3. Configure Stripe webhook
 
 In the [Stripe Dashboard](https://dashboard.stripe.com/webhooks), create a webhook pointing to:
@@ -84,12 +95,14 @@ In the [Stripe Dashboard](https://dashboard.stripe.com/webhooks), create a webho
 https://ojxzssooylmydystjvdo.supabase.co/functions/v1/stripe-webhook
 ```
 
-Events to forward:
+Events to forward (must match the `switch` in `stripe-webhook/index.ts`):
 - `checkout.session.completed`
+- `customer.subscription.created`
 - `customer.subscription.updated`
 - `customer.subscription.deleted`
-- `invoice.payment_failed`
+- `invoice.paid`
 - `invoice.payment_succeeded`
+- `invoice.payment_failed`
 
 Copy the signing secret (`whsec_...`) and set it as `STRIPE_WEBHOOK_SECRET` in Supabase Edge Function secrets.
 

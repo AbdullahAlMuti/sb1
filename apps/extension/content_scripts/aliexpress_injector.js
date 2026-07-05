@@ -27,34 +27,7 @@
 
   function applyPricing(product, calculatorValues) {
     if (!product || !window.SSPricingEngine) return product;
-    const saved = calculatorValues || {};
-    const parseVal = (key, fallback) => {
-      const n = cleanFloat(saved[key]);
-      return n || fallback;
-    };
-    const cfg = {
-      taxPercent: parseVal('tax-percent', 9),
-      trackingFee: parseVal('tracking-fee', 0.2),
-      ebayFeePercent: parseVal('ebay-fee-percent', 20),
-      promoFeePercent: parseVal('promo-fee-percent', 10),
-      desiredProfit: parseVal('desired-profit', 0),
-      paymentFixedFee: parseVal('payment-fixed-fee', 0.3),
-    };
-    const baseRaw = cleanFloat(product.price || product.raw_supplier_price);
-    product.raw_supplier_price = baseRaw;
-    if (baseRaw > 0 && !(product.price_source === 'manual' && cleanFloat(product.finalPrice) > 0)) {
-      product.finalPrice = window.SSPricingEngine.calculatePrice(baseRaw, cfg);
-    }
-    if (Array.isArray(product.variants)) {
-      product.variants.forEach((variant) => {
-        const raw = cleanFloat(variant.price || variant.raw_supplier_price) || baseRaw;
-        variant.raw_supplier_price = raw;
-        if (raw > 0 && !(cleanFloat(variant.ebayPrice) > 0)) {
-          variant.finalPrice = window.SSPricingEngine.calculatePrice(raw, cfg);
-        }
-      });
-    }
-    return product;
+    return window.SSPricingEngine.applyPricingToProduct(product, calculatorValues);
   }
 
   async function saveProduct(product, mode) {

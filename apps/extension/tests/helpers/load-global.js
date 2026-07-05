@@ -47,6 +47,9 @@ export function loadInto(win, relPath) {
     'console',
     'btoa',
     'atob',
+    'document',
+    'MutationObserver',
+    'location',
   ];
   const sandboxVals = [
     win,
@@ -57,6 +60,11 @@ export function loadInto(win, relPath) {
     console,
     win.btoa,
     win.atob,
+    // Default undefined — set win.document / win.MutationObserver in a test to
+    // exercise DOM-reading paths (e.g. scraper enrichment) with stubs.
+    win.document,
+    win.MutationObserver,
+    win.location,
   ];
   // eslint-disable-next-line no-new-func
   const fn = new Function(...sandboxKeys, src);
