@@ -7,6 +7,7 @@ type CorsOptions = {
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://sellersuit.com",
+  "https://www.sellersuit.com",
   "http://localhost:3000",
   "http://localhost:3001",
   "http://localhost:3002",
