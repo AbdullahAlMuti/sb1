@@ -616,7 +616,6 @@ function routeMessage(request, sender, sendResponse) {
         // stagedAt drives the prelist tabId-fallback TTL and the storage sweep.
         await chrome.storage.local.set({
           [uploadSessionId]: { product, isImported: false, uploadType: request.uploadType || 'classic', stagedAt: Date.now() },
-          ebayListingTitle: product.title || '',
           ebayListingTabId: ''
         });
 

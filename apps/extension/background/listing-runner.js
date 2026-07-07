@@ -470,8 +470,7 @@ function uploadViaEbayTab(product, bulkItemId) {
           bulkMode: true,
           bulkItemId,
           stagedAt: Date.now()
-        },
-        ebayListingTitle: bulkProduct.title || ''
+        }
       });
 
       chrome.tabs.create({ url: ebayUrl, active: true }, (tab) => {

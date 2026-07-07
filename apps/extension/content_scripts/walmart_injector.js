@@ -2197,46 +2197,77 @@ const addEventListenersToPanel = () => {
                     }
                 }
                 
-                await chrome.storage.local.set({ 
+                // selectedDescriptionTimestamp is load-bearing: the upload paths
+                // (panel-extended/panel-main/panel) apply a freshness guard and
+                // treat a missing timestamp as stale, silently discarding the
+                // description at upload time.
+                await chrome.storage.local.set({
                     generatedDescription: bgResp.description,
-                    selectedEbayDescription: bgResp.description
+                    selectedEbayDescription: bgResp.description,
+                    selectedDescriptionTimestamp: Date.now()
                 });
+                if (typeof window.SSListingDraft !== 'undefined') {
+                    window.SSListingDraft.patchDraft({
+                        description: bgResp.description,
+                        description_source: 'ai'
+                    }).catch(() => {});
+                }
 
-                // Populate and save title if returned (bonus integration)
+                // Populate and save title if returned (bonus integration).
+                // A fresh existing selection wins: if the user generated titles
+                // and picked one within the last 30 minutes, the bonus title must
+                // not clobber that choice — it is merged into savedTitles instead.
                 if (bgResp.title) {
                     console.log('🎯 AI Title generated with description:', bgResp.title);
-                    
-                    // Save to storage
-                    await chrome.storage.local.set({ 
-                        selectedEbayTitle: bgResp.title,
-                        savedTitles: [bgResp.title],
-                        selectedTitleTimestamp: Date.now(),
-                        generatedAt: Date.now()
-                    });
 
-                    // Patch listing draft
-                    if (typeof window.SSListingDraft !== 'undefined') {
-                        window.SSListingDraft.patchDraft({
-                            title: bgResp.title,
-                            title_source: 'ai'
-                        }).catch(() => {});
+                    const titleStore = await chrome.storage.local.get(['selectedEbayTitle', 'selectedTitleTimestamp', 'savedTitles']);
+                    const thirtyMinutesAgo = Date.now() - (30 * 60 * 1000);
+                    const keepExistingTitle = titleStore.selectedTitleTimestamp &&
+                        titleStore.selectedTitleTimestamp >= thirtyMinutesAgo &&
+                        titleStore.selectedEbayTitle &&
+                        titleStore.selectedEbayTitle.trim() !== '';
+
+                    const mergedTitles = Array.isArray(titleStore.savedTitles) ? titleStore.savedTitles.slice() : [];
+                    if (!mergedTitles.includes(bgResp.title)) {
+                        mergedTitles.unshift(bgResp.title);
                     }
 
-                    // Update UI elements
-                    const titleDisplay = document.getElementById('ai-generated-title');
-                    const titleCounter = document.getElementById('ai-title-counter');
-                    const extTitle = document.getElementById('ext-title');
+                    if (keepExistingTitle) {
+                        await chrome.storage.local.set({ savedTitles: mergedTitles });
+                        console.log('📋 Keeping fresh selected title; bonus title merged into savedTitles');
+                    } else {
+                        // Save to storage
+                        await chrome.storage.local.set({
+                            selectedEbayTitle: bgResp.title,
+                            savedTitles: mergedTitles,
+                            selectedTitleTimestamp: Date.now(),
+                            generatedAt: Date.now()
+                        });
 
-                    if (titleDisplay) {
-                        titleDisplay.classList.add('has-title');
-                        titleDisplay.innerText = bgResp.title;
-                        if (titleCounter) {
-                            titleCounter.innerHTML = `${bgResp.title.length} / 80 chars <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>`;
+                        // Patch listing draft
+                        if (typeof window.SSListingDraft !== 'undefined') {
+                            window.SSListingDraft.patchDraft({
+                                title: bgResp.title,
+                                title_source: 'ai'
+                            }).catch(() => {});
                         }
-                    }
 
-                    if (extTitle) {
-                        extTitle.value = bgResp.title;
+                        // Update UI elements
+                        const titleDisplay = document.getElementById('ai-generated-title');
+                        const titleCounter = document.getElementById('ai-title-counter');
+                        const extTitle = document.getElementById('ext-title');
+
+                        if (titleDisplay) {
+                            titleDisplay.classList.add('has-title');
+                            titleDisplay.innerText = bgResp.title;
+                            if (titleCounter) {
+                                titleCounter.innerHTML = `${bgResp.title.length} / 80 chars <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>`;
+                            }
+                        }
+
+                        if (extTitle) {
+                            extTitle.value = bgResp.title;
+                        }
                     }
                 }
 

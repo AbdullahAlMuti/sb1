@@ -4165,17 +4165,14 @@
 					...product,
 					bulkMode: true
 				};
-				await chrome.storage.local.set({
-					[uploadSessionId]: {
-						product: bulkProduct,
-						isImported: false,
-						uploadType: "classic",
-						bulkMode: true,
-						bulkItemId,
-						stagedAt: Date.now()
-					},
-					ebayListingTitle: bulkProduct.title || ""
-				});
+				await chrome.storage.local.set({ [uploadSessionId]: {
+					product: bulkProduct,
+					isImported: false,
+					uploadType: "classic",
+					bulkMode: true,
+					bulkItemId,
+					stagedAt: Date.now()
+				} });
 				chrome.tabs.create({
 					url: ebayUrl,
 					active: true
@@ -5070,7 +5067,6 @@
 							uploadType: request.uploadType || "classic",
 							stagedAt: Date.now()
 						},
-						ebayListingTitle: product.title || "",
 						ebayListingTabId: ""
 					});
 					const tabId = (await chrome.tabs.create({
