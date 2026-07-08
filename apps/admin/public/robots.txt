@@ -1,14 +1,4 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
+# SellerSuit admin panel — internal, authenticated surface.
+# Must never be crawled or indexed.
 User-agent: *
-Allow: /
+Disallow: /
