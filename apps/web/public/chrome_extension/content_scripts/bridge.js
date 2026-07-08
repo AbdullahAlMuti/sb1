@@ -84,8 +84,7 @@
         }
 
         log('info', 'Syncing token to extension...', {
-            userId: tokenData.user?.id,
-            email: tokenData.user?.email,
+            hasUser: !!tokenData.user,
             expiresIn: tokenData.expiresAt ? Math.round(tokenData.expiresAt - Date.now() / 1000) + 's' : 'unknown'
         });
 

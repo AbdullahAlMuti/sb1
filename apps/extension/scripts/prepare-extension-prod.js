@@ -16,6 +16,7 @@ const IGNORE_LIST = [
   'vite.config.amazon.js',
   'vite.config.walmart.js',
   'vite.config.aliexpress.js',
+  'vite.config.background.js',
   'scripts',
   'tests',
   'manifest.dev.json',
@@ -58,7 +59,7 @@ function copyDir(src, dest) {
   for (const entry of entries) {
     if (IGNORE_LIST.includes(entry.name)) continue;
     if (entry.name.endsWith('.dev.js') || entry.name.endsWith('.prod.js')) continue;
-    if (entry.name.endsWith('.cjs') || entry.name.endsWith('.md') || entry.name === 'debug-logs.txt') continue;
+    if (entry.name.endsWith('.cjs') || entry.name.endsWith('.md') || entry.name.endsWith('.map') || entry.name === 'debug-logs.txt') continue;
 
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);

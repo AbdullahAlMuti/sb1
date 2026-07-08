@@ -17,6 +17,7 @@ const IGNORE_LIST = [
   'vite.config.amazon.js',
   'vite.config.walmart.js',
   'vite.config.aliexpress.js',
+  'vite.config.background.js',
   'scripts',
   'manifest.dev.json',
   'manifest.prod.json',

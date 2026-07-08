@@ -471,8 +471,12 @@ const AuthHelper = (() => {
    * Verify Auth with Backend (Enhanced)
    * Centralized from background.js
    */
-  async function verifyAuthStatus(forceRefresh = false) {
-    if (!forceRefresh && Date.now() - lastAuthCheck < AUTH_CHECK_INTERVAL && isExtensionUnlocked) {
+  async function verifyAuthStatus(forceRefresh = false, allowGrace = true) {
+    // allowGrace=false (passed for write/state-changing actions) forces a fresh
+    // backend verification and fails CLOSED on any error: no in-memory unlock
+    // cache, no "just synced" trust, no offline grace window. Reads/UI keep the
+    // grace behavior so the panel still works on flaky networks. (M4)
+    if (allowGrace && !forceRefresh && Date.now() - lastAuthCheck < AUTH_CHECK_INTERVAL && isExtensionUnlocked) {
       log('debug', 'Skipping auth check (recently verified)');
       return true;
     }
@@ -491,7 +495,7 @@ const AuthHelper = (() => {
       const result = response.data || {};
 
       if (!response.error && result.success && result.user) {
-        log('success', 'Session verified', { userId: result.user.id, email: result.user.email });
+        log('success', 'Session verified');
 
         // SYNC: Update Extension Storage with fresh data
         await chrome.storage.local.set({
@@ -512,14 +516,14 @@ const AuthHelper = (() => {
       log('warn', 'LOCKDOWN: Invalid session', { status: response.status, error: result.error || response.error });
       
       // If it's a network error or edge function timeout, and we JUST got this token from the web app
-      const storage = await chrome.storage.local.get('authTimestamp');
-      const justSynced = storage.authTimestamp && (Date.now() - storage.authTimestamp < 60 * 1000);
-      
-      if (response.error && justSynced) {
-         log('info', 'Edge function failed but token was just synced from web app. Trusting it temporarily.');
-         isExtensionUnlocked = true;
-         lastAuthCheck = Date.now();
-         return true;
+      if (allowGrace) {
+        const storage = await chrome.storage.local.get('authTimestamp');
+        const justSynced = storage.authTimestamp && (Date.now() - storage.authTimestamp < 60 * 1000);
+        if (response.error && justSynced) {
+           isExtensionUnlocked = true;
+           lastAuthCheck = Date.now();
+           return true;
+        }
       }
       
       isExtensionUnlocked = false;
@@ -528,15 +532,17 @@ const AuthHelper = (() => {
     } catch (e) {
       log('error', 'Auth Check Error', { message: e.message });
 
-      const storage = await chrome.storage.local.get('authTimestamp');
-      const justSynced = storage.authTimestamp && (Date.now() - storage.authTimestamp < 60 * 1000);
+      if (allowGrace) {
+        const storage = await chrome.storage.local.get('authTimestamp');
+        const justSynced = storage.authTimestamp && (Date.now() - storage.authTimestamp < 60 * 1000);
 
-      // If network error but we have recent valid auth, stay unlocked temporarily
-      if ((isExtensionUnlocked && Date.now() - lastAuthCheck < 30 * 60 * 1000) || justSynced) {
-        log('info', 'Network error but using cached/synced auth status');
-        isExtensionUnlocked = true;
-        lastAuthCheck = Date.now();
-        return true;
+        // If network error but we have recent valid auth, stay unlocked temporarily
+        if ((isExtensionUnlocked && Date.now() - lastAuthCheck < 30 * 60 * 1000) || justSynced) {
+          log('info', 'Network error but using cached/synced auth status');
+          isExtensionUnlocked = true;
+          lastAuthCheck = Date.now();
+          return true;
+        }
       }
 
       isExtensionUnlocked = false;

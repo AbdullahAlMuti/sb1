@@ -16,6 +16,16 @@ const LOGOUT_STORAGE_KEYS = [
   "copyButtonData"
 ];
 
+// Write / state-changing (or credit-spending) actions. The auth gate re-verifies
+// against the backend and fails CLOSED for these — no offline grace. (M4)
+const WRITE_ACTIONS = new Set([
+  "START_OPTILIST", "SYNC_LISTING", "LISTING_PUBLISHED", "import_ebay",
+  "sync_ebay_orders", "trigger_ebay_sync",
+  "SS_AI_GENERATE", "GENERATE_TITLE", "GENERATE_AI_TITLES", "GENERATE_DESCRIPTION",
+  "AI_REMOVE_BG", "SAVE_TO_SHEET", "LOG_TO_SHEET", "logSheet",
+  "START_BULK_JOB", "RESUME_BULK_JOB"
+]);
+
 function cleanPrice(price) {
   if (price === null || price === undefined) return null;
   if (typeof price === 'number') {
@@ -57,6 +67,21 @@ function isSafeNavUrl(rawUrl) {
   return ALLOWED_NAV_HOST_SUFFIXES.some(
     (suffix) => host === suffix || host.endsWith('.' + suffix)
   );
+}
+
+// Image fetch proxy safety: FETCH_IMAGE_AS_BASE64 lets any content script fetch a
+// URL via the worker. Restrict it to marketplace image CDNs. (M5)
+const ALLOWED_IMAGE_HOST_SUFFIXES = [
+  'media-amazon.com', 'ssl-images-amazon.com', 'images-amazon.com',
+  'walmartimages.com', 'walmartimages.ca', 'alicdn.com'
+];
+function isAllowedImageUrl(rawUrl) {
+  if (typeof rawUrl !== 'string' || !rawUrl) return false;
+  let u;
+  try { u = new URL(rawUrl); } catch { return false; }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+  const host = u.hostname.toLowerCase();
+  return ALLOWED_IMAGE_HOST_SUFFIXES.some((s) => host === s || host.endsWith('.' + s));
 }
 
 function detectSupplier(product) {
@@ -415,7 +440,7 @@ function routeMessage(request, sender, sendResponse) {
   if (request.action === 'sync_ebay_orders' || request.action === 'trigger_ebay_sync') {
     (async () => {
       try {
-        const isAuth = await AuthHelper.verifyAuthStatus();
+        const isAuth = await AuthHelper.verifyAuthStatus(false, false);
         if (!isAuth) {
           sendResponse({ ok: false, error: 'Not logged in to SellerSuit.' });
           return;
@@ -556,7 +581,8 @@ function routeMessage(request, sender, sendResponse) {
     // idle period failed, and rapid retries failed too (verify still in
     // flight). On successful re-verification, route the original request
     // instead of failing it; the flag is now true so the gate won't re-enter.
-    AuthHelper.verifyAuthStatus().then(unlocked => {
+    const requireFreshAuth = WRITE_ACTIONS.has(request.action);
+    AuthHelper.verifyAuthStatus(false, !requireFreshAuth).then(unlocked => {
       if (unlocked) {
         routeMessage(request, sender, sendResponse);
         return;
@@ -843,42 +869,6 @@ function routeMessage(request, sender, sendResponse) {
       });
     }
     return true;
-  } else if (request.action === 'openNewTabForDescription') {
-    if (!isSafeNavUrl(request.targetURL)) {
-      console.warn('[Background] openNewTabForDescription blocked unsafe URL:', request.targetURL);
-      sendResponse?.({ ok: false, error: 'Blocked: URL is not an allowed https destination' });
-      return true;
-    }
-    chrome.storage.local.set({ tempAmazonURL: request.amazonURL }, () => {
-      chrome.tabs.create({ url: request.targetURL, active: false }, (tab) => {
-        chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-          if (tabId === tab.id && info.status === 'complete') {
-            chrome.tabs.onUpdated.removeListener(listener);
-            setTimeout(() => {
-              chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content_scripts/description_paster.js"] });
-            }, 2000);
-          }
-        });
-      });
-    });
-    return true;
-  } else if (request.action === 'openNewTabForProductDetails') {
-    if (!isSafeNavUrl(request.targetURL)) {
-      console.warn('[Background] openNewTabForProductDetails blocked unsafe URL:', request.targetURL);
-      sendResponse?.({ ok: false, error: 'Blocked: URL is not an allowed https destination' });
-      return true;
-    }
-    chrome.storage.local.set({ tempAmazonTitle: request.amazonTitle }, () => {
-      chrome.tabs.create({ url: request.targetURL, active: false }, (tab) => {
-        chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-          if (tabId === tab.id && info.status === 'complete') {
-            chrome.tabs.onUpdated.removeListener(listener);
-            chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content_scripts/description_paster.js"] });
-          }
-        });
-      });
-    });
-    return true;
   } else if (request.action === "GENERATE_TITLE") {
     (async () => {
       try {
@@ -988,6 +978,10 @@ function routeMessage(request, sender, sendResponse) {
       try {
         if (!request.url || (!request.url.startsWith('http://') && !request.url.startsWith('https://'))) {
           throw new Error('Unsupported URL scheme: Only http/https fetches are permitted.');
+        }
+        if (!isAllowedImageUrl(request.url)) {
+          sendResponse({ success: false, error: 'Blocked: image host is not on the allowlist.' });
+          return;
         }
         const response = await fetch(request.url);
         if (response.type === 'opaque') {

@@ -681,7 +681,7 @@ async function _ssxRenderExtended(p) {
             if (!descPreview) return;
 
             descPreview.classList.remove('typing-active');
-            descPreview.innerHTML = fullHtml;
+            descPreview.innerHTML = (typeof _ssxSanitizeHtml === 'function') ? _ssxSanitizeHtml(fullHtml) : fullHtml;
 
             // Clear loading status and restore button in header action wrap
             const actionWrap = document.getElementById('ssx-desc-action-wrap');

@@ -2535,56 +2535,7 @@ const addEventListenersToPanel = () => {
         console.log('✅ Refresh images button listener added');
     }
 
-    // Description button
-    const descriptionBtn = document.getElementById('new-description-btn');
-    if (descriptionBtn) {
-        descriptionBtn.addEventListener('click', () => {
-            const productURL = window.location.href;
-            const targetWebsiteURL = 'https://gemini.google.com/gem/6dced44c5365?usp=sharing'; 
 
-            chrome.runtime.sendMessage({
-                action: 'openNewTabForDescription',
-                targetURL: targetWebsiteURL,
-                walmartURL: productURL
-            });
-            console.log('✅ Description button clicked');
-        });
-        console.log('✅ Description button listener added');
-    }
-
-    // Product Details button
-    const productDetailsBtn = document.getElementById('product-details-btn');
-    if (productDetailsBtn) {
-        productDetailsBtn.addEventListener('click', () => {
-            const titleSelectors = [
-                'h1[itemprop="name"]',
-                '.prod-ProductTitle',
-                '[data-testid="product-title"]',
-                'h1.prod-Title',
-                '.product-title h1',
-                'h1[data-automation-id="product-title"]'
-            ];
-            
-            let productTitle = 'Product Title Not Found';
-            for (const selector of titleSelectors) {
-                const titleElement = document.querySelector(selector);
-                if (titleElement) {
-                    productTitle = titleElement.innerText?.trim() || productTitle;
-                    break;
-                }
-            }
-            
-            const targetWebsiteURL = 'https://gemini.google.com/gem/6dced44c5365?usp=sharing'; 
-
-            chrome.runtime.sendMessage({
-                action: 'openNewTabForProductDetails',
-                targetURL: targetWebsiteURL,
-                walmartTitle: productTitle
-            });
-            console.log('✅ Product Details button clicked - Title scraped:', productTitle);
-        });
-        console.log('✅ Product Details button listener added');
-    }
 
     // SKU Generator button
     const generateSkuBtn = document.getElementById('generate-sku-btn');

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "SellerSuit",
-  "version": "1.3.1",
-  "description": "SellerSuit helps streamline eBay listing workflows by extracting product data from supported sites and preparing listing assets.",
+  "version": "1.4.0",
+  "description": "SellerSuit helps eBay sellers create listings faster by importing product data from supported marketplaces (Amazon, Walmart, AliExpress) and syncing their eBay orders for order management.",
   "homepage_url": "https://sellersuit.com",
   "permissions": [
     "storage",
@@ -13,39 +13,46 @@
     "unlimitedStorage"
   ],
   "host_permissions": [
-    "*://*.media-amazon.com/*",
-    "*://*.ssl-images-amazon.com/*",
-    "*://*.images-amazon.com/*",
-    "*://*.walmartimages.com/*",
-    "*://*.walmartimages.ca/*",
+    "https://*.media-amazon.com/*",
+    "https://*.ssl-images-amazon.com/*",
+    "https://*.images-amazon.com/*",
+    "https://*.walmartimages.com/*",
+    "https://*.walmartimages.ca/*",
     "https://www.ebay.com/*",
-    "*://msa-b1.ebay.com/*",
-    "*://bulkedit.ebay.com/*",
-    "*://amazon.com/*",
-    "*://*.amazon.com/*",
-    "*://amazon.co.uk/*",
-    "*://*.amazon.co.uk/*",
-    "*://amazon.de/*",
-    "*://*.amazon.de/*",
-    "*://amazon.ca/*",
-    "*://*.amazon.ca/*",
-    "*://amazon.com.au/*",
-    "*://*.amazon.com.au/*",
-    "*://www.walmart.com/*",
-    "*://*.walmart.com/*",
-    "*://www.walmart.ca/*",
-    "*://*.walmart.ca/*",
+    "https://msa-b1.ebay.com/*",
+    "https://bulkedit.ebay.com/*",
+    "https://amazon.com/*",
+    "https://*.amazon.com/*",
+    "https://amazon.co.uk/*",
+    "https://*.amazon.co.uk/*",
+    "https://amazon.de/*",
+    "https://*.amazon.de/*",
+    "https://amazon.ca/*",
+    "https://*.amazon.ca/*",
+    "https://amazon.com.au/*",
+    "https://*.amazon.com.au/*",
+    "https://www.walmart.com/*",
+    "https://*.walmart.com/*",
+    "https://www.walmart.ca/*",
+    "https://*.walmart.ca/*",
     "https://script.google.com/*",
     "https://sellersuit.com/*",
     "https://*.sellersuit.com/*",
     "https://ojxzssooylmydystjvdo.supabase.co/*",
-    "*://aliexpress.com/*",
-    "*://*.aliexpress.com/*",
-    "*://aliexpress.ru/*",
-    "*://*.aliexpress.ru/*",
-    "*://aliexpress.us/*",
-    "*://*.aliexpress.us/*",
-    "*://*.alicdn.com/*"
+    "https://aliexpress.com/*",
+    "https://*.aliexpress.com/*",
+    "https://aliexpress.ru/*",
+    "https://*.aliexpress.ru/*",
+    "https://aliexpress.us/*",
+    "https://*.aliexpress.us/*",
+    "https://*.alicdn.com/*",
+    "https://aliexpress.com/*",
+    "https://*.aliexpress.com/*",
+    "https://aliexpress.ru/*",
+    "https://*.aliexpress.ru/*",
+    "https://aliexpress.us/*",
+    "https://*.aliexpress.us/*",
+    "https://*.alicdn.com/*"
   ],
   "background": {
     "service_worker": "build/background.bundle.js"
@@ -57,16 +64,16 @@
   "content_scripts": [
     {
       "matches": [
-        "*://amazon.com/*",
-        "*://*.amazon.com/*",
-        "*://amazon.co.uk/*",
-        "*://*.amazon.co.uk/*",
-        "*://amazon.de/*",
-        "*://*.amazon.de/*",
-        "*://amazon.ca/*",
-        "*://*.amazon.ca/*",
-        "*://amazon.com.au/*",
-        "*://*.amazon.com.au/*"
+        "https://amazon.com/*",
+        "https://*.amazon.com/*",
+        "https://amazon.co.uk/*",
+        "https://*.amazon.co.uk/*",
+        "https://amazon.de/*",
+        "https://*.amazon.de/*",
+        "https://amazon.ca/*",
+        "https://*.amazon.ca/*",
+        "https://amazon.com.au/*",
+        "https://*.amazon.com.au/*"
       ],
       "js": [
         "build/amazon.bundle.js"
@@ -78,8 +85,8 @@
     },
     {
       "matches": [
-        "*://www.walmart.com/*",
-        "*://www.walmart.ca/*"
+        "https://www.walmart.com/*",
+        "https://www.walmart.ca/*"
       ],
       "js": [
         "build/walmart.bundle.js"
@@ -91,12 +98,12 @@
     },
     {
       "matches": [
-        "*://aliexpress.com/*",
-        "*://*.aliexpress.com/*",
-        "*://aliexpress.ru/*",
-        "*://*.aliexpress.ru/*",
-        "*://aliexpress.us/*",
-        "*://*.aliexpress.us/*"
+        "https://aliexpress.com/*",
+        "https://*.aliexpress.com/*",
+        "https://aliexpress.ru/*",
+        "https://*.aliexpress.ru/*",
+        "https://aliexpress.us/*",
+        "https://*.aliexpress.us/*"
       ],
       "js": [
         "build/aliexpress.bundle.js"
@@ -109,8 +116,8 @@
     },
     {
       "matches": [
-        "*://www.ebay.com/*/sell*",
-        "*://www.ebay.com/sl/*"
+        "https://www.ebay.com/*/sell*",
+        "https://www.ebay.com/sl/*"
       ],
       "js": [
         "common/config.js",
@@ -128,7 +135,7 @@
     },
     {
       "matches": [
-        "*://bulkedit.ebay.com/msku*"
+        "https://bulkedit.ebay.com/msku*"
       ],
       "js": [
         "common/config.js",
@@ -146,7 +153,7 @@
     },
     {
       "matches": [
-        "*://www.ebay.com/lstng*"
+        "https://www.ebay.com/lstng*"
       ],
       "js": [
         "common/config.js",
@@ -163,13 +170,13 @@
     },
     {
       "matches": [
-        "*://www.ebay.com/lstng*",
-        "*://www.ebay.co.uk/lstng*",
-        "*://www.ebay.de/lstng*",
-        "*://www.ebay.fr/lstng*",
-        "*://www.ebay.com.au/lstng*",
-        "*://www.ebay.it/lstng*",
-        "*://www.ebay.es/lstng*"
+        "https://www.ebay.com/lstng*",
+        "https://www.ebay.co.uk/lstng*",
+        "https://www.ebay.de/lstng*",
+        "https://www.ebay.fr/lstng*",
+        "https://www.ebay.com.au/lstng*",
+        "https://www.ebay.it/lstng*",
+        "https://www.ebay.es/lstng*"
       ],
       "js": [
         "content_scripts/ebay_draft_sku_guard.js"
@@ -178,13 +185,13 @@
     },
     {
       "matches": [
-        "*://*.ebay.com/*",
-        "*://*.ebay.co.uk/*",
-        "*://*.ebay.de/*",
-        "*://*.ebay.fr/*",
-        "*://*.ebay.com.au/*",
-        "*://*.ebay.it/*",
-        "*://*.ebay.es/*"
+        "https://*.ebay.com/*",
+        "https://*.ebay.co.uk/*",
+        "https://*.ebay.de/*",
+        "https://*.ebay.fr/*",
+        "https://*.ebay.com.au/*",
+        "https://*.ebay.it/*",
+        "https://*.ebay.es/*"
       ],
       "js": [
         "common/listing-card-core.js",
@@ -221,27 +228,27 @@
     },
     {
       "matches": [
-        "*://www.ebay.com/sl/success*",
-        "*://www.ebay.com/lstng/success*",
-        "*://www.ebay.com/lstng*",
-        "*://www.ebay.co.uk/sl/success*",
-        "*://www.ebay.co.uk/lstng/success*",
-        "*://www.ebay.co.uk/lstng*",
-        "*://www.ebay.de/sl/success*",
-        "*://www.ebay.de/lstng/success*",
-        "*://www.ebay.de/lstng*",
-        "*://www.ebay.fr/sl/success*",
-        "*://www.ebay.fr/lstng/success*",
-        "*://www.ebay.fr/lstng*",
-        "*://www.ebay.com.au/sl/success*",
-        "*://www.ebay.com.au/lstng/success*",
-        "*://www.ebay.com.au/lstng*",
-        "*://www.ebay.it/sl/success*",
-        "*://www.ebay.it/lstng/success*",
-        "*://www.ebay.it/lstng*",
-        "*://www.ebay.es/sl/success*",
-        "*://www.ebay.es/lstng/success*",
-        "*://www.ebay.es/lstng*"
+        "https://www.ebay.com/sl/success*",
+        "https://www.ebay.com/lstng/success*",
+        "https://www.ebay.com/lstng*",
+        "https://www.ebay.co.uk/sl/success*",
+        "https://www.ebay.co.uk/lstng/success*",
+        "https://www.ebay.co.uk/lstng*",
+        "https://www.ebay.de/sl/success*",
+        "https://www.ebay.de/lstng/success*",
+        "https://www.ebay.de/lstng*",
+        "https://www.ebay.fr/sl/success*",
+        "https://www.ebay.fr/lstng/success*",
+        "https://www.ebay.fr/lstng*",
+        "https://www.ebay.com.au/sl/success*",
+        "https://www.ebay.com.au/lstng/success*",
+        "https://www.ebay.com.au/lstng*",
+        "https://www.ebay.it/sl/success*",
+        "https://www.ebay.it/lstng/success*",
+        "https://www.ebay.it/lstng*",
+        "https://www.ebay.es/sl/success*",
+        "https://www.ebay.es/lstng/success*",
+        "https://www.ebay.es/lstng*"
       ],
       "js": [
         "content_scripts/ebay_success.js"
@@ -265,78 +272,49 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "common/config.js",
-        "common/html-sanitizer.js",
-        "common/listing-draft.js",
-        "common/variation-normalizer.js",
-        "common/constants.js",
-        "common/performance.js",
-        "common/message-handler.js",
-        "common/storage.js",
-        "common/ui.js",
-        "common/analytics.js",
-        "common/undo-manager.js",
-        "common/editor-tools.js",
-        "common/image-renderer.js",
-        "common/auth-helper.js",
-        "common/ebay-photo-uploader.js",
-        "common/pricing-engine.js",
-        "common/sku-engine.js",
-        "common/ebay-listing-api.js",
-        "common/retry-helper.js",
-        "common/api-client.js",
-        "common/sync-utils.js",
         "ui/panel.html",
         "ui/panel.css",
         "ui/listing-card.css",
         "ui/editor-popup.html",
         "ui/editor_frame.html",
         "ui/editor-popup.css",
-        "ui/calculator.js",
-        "common/editor_core.js",
+        "ui/product-details-popup.html",
+        "ui/product-details-popup.css",
         "assets/logo.png",
         "assets/watermark.png",
+        "assets/preparing.gif",
         "assets/stickers/*",
-        "src/image-uploader.js",
-        "common/images/core/image-schema.js",
-        "common/images/core/image-normalizer.js",
-        "common/images/core/image-deduper.js",
-        "common/images/core/image-validator.js",
-        "common/images/core/image-cache.js",
-        "common/images/core/extraction-engine.js",
-        "common/images/adapters/amazon.image-adapter.js",
-        "common/images/adapters/walmart.image-adapter.js",
-        "common/images/fallback/modal-click-extractor.js",
-        "common/images/upload/ebay-image-uploader.js",
-        "content_scripts/description_paster.js",
-        "content_scripts/bridge.js",
         "sidepanel/side-panel.html",
-        "sidepanel/side-panel.css",
-        "sidepanel/panel-store.js",
-        "sidepanel/panel-main.js"
+        "sidepanel/side-panel.css"
       ],
       "matches": [
-        "*://amazon.com/*",
-        "*://*.amazon.com/*",
-        "*://amazon.co.uk/*",
-        "*://*.amazon.co.uk/*",
-        "*://amazon.de/*",
-        "*://*.amazon.de/*",
-        "*://amazon.ca/*",
-        "*://*.amazon.ca/*",
-        "*://amazon.com.au/*",
-        "*://*.amazon.com.au/*",
-        "*://*.ebay.com/*",
-        "*://*.walmart.com/*",
-        "*://*.walmart.ca/*",
+        "https://amazon.com/*",
+        "https://*.amazon.com/*",
+        "https://amazon.co.uk/*",
+        "https://*.amazon.co.uk/*",
+        "https://amazon.de/*",
+        "https://*.amazon.de/*",
+        "https://amazon.ca/*",
+        "https://*.amazon.ca/*",
+        "https://amazon.com.au/*",
+        "https://*.amazon.com.au/*",
+        "https://*.ebay.com/*",
+        "https://*.walmart.com/*",
+        "https://*.walmart.ca/*",
         "https://sellersuit.com/*",
         "https://*.sellersuit.com/*",
-        "*://aliexpress.com/*",
-        "*://*.aliexpress.com/*",
-        "*://aliexpress.ru/*",
-        "*://*.aliexpress.ru/*",
-        "*://aliexpress.us/*",
-        "*://*.aliexpress.us/*"
+        "https://aliexpress.com/*",
+        "https://*.aliexpress.com/*",
+        "https://aliexpress.ru/*",
+        "https://*.aliexpress.ru/*",
+        "https://aliexpress.us/*",
+        "https://*.aliexpress.us/*",
+        "https://aliexpress.com/*",
+        "https://*.aliexpress.com/*",
+        "https://aliexpress.ru/*",
+        "https://*.aliexpress.ru/*",
+        "https://aliexpress.us/*",
+        "https://*.aliexpress.us/*"
       ]
     }
   ],
@@ -344,5 +322,11 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'self'"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/side-panel.html"
   }
 }

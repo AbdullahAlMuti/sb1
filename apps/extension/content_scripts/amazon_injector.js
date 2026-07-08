@@ -37,6 +37,12 @@ function _ssSanitizeHtml(html) {
     }
 }
 
+// Plain-text HTML escape for scraped fields interpolated into innerHTML (M1).
+function _ssEscapeText(value) {
+  return String(value == null ? '' : value)
+    .replace(/[<>&"']/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 // ═══════════════════════════════════════════════════════════
 // 🛠️ UTILITY FUNCTIONS (with performance optimizations)
 // ═══════════════════════════════════════════════════════════
@@ -3167,8 +3173,8 @@ const addEventListenersToPanel = () => {
         ];
         scrapeSummaryEl.innerHTML = cards.map(c => `
             <div class="scrape-summary-card">
-                <div class="label">${c.label}</div>
-                <div class="value ${c.status}">${c.value}</div>
+                <div class="label">${_ssEscapeText(c.label)}</div>
+                <div class="value ${_ssEscapeText(c.status)}">${_ssEscapeText(c.value)}</div>
             </div>
         `).join('');
     };
@@ -3583,40 +3589,7 @@ const addEventListenersToPanel = () => {
         console.log('✅ Refresh images button listener added');
     }
 
-    // Description button
-    const descriptionBtn = document.getElementById('new-description-btn');
-    if (descriptionBtn) {
-        descriptionBtn.addEventListener('click', () => {
-            const productURL = window.location.href;
-            const targetWebsiteURL = 'https://gemini.google.com/gem/6dced44c5365?usp=sharing';
 
-            chrome.runtime.sendMessage({
-                action: 'openNewTabForDescription',
-                targetURL: targetWebsiteURL,
-                amazonURL: productURL
-            });
-            console.log('✅ Description button clicked');
-        });
-        console.log('✅ Description button listener added');
-    }
-
-    // Product Details button
-    const productDetailsBtn = document.getElementById('product-details-btn');
-    if (productDetailsBtn) {
-        productDetailsBtn.addEventListener('click', () => {
-            // Scrape the product title instead of URL
-            const productTitle = document.querySelector('#productTitle')?.innerText?.trim() || 'Product Title Not Found';
-            const targetWebsiteURL = 'https://gemini.google.com/gem/6dced44c5365?usp=sharing';
-
-            chrome.runtime.sendMessage({
-                action: 'openNewTabForProductDetails',
-                targetURL: targetWebsiteURL,
-                amazonTitle: productTitle
-            });
-            console.log('✅ Product Details button clicked - Title scraped:', productTitle);
-        });
-        console.log('✅ Product Details button listener added');
-    }
 
     // SKU Generator button
     const generateSkuBtn = document.getElementById('generate-sku-btn');

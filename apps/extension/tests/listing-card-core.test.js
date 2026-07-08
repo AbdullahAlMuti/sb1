@@ -190,8 +190,8 @@ describe('listing card manifest wiring', () => {
       assert.ok(block.css.includes('ui/listing-card.css'), `${name} must load card CSS`);
       
       // Verify search and homepage matches are registered via wildcards
-      assert.ok(block.matches.includes('*://*.ebay.com/*'), `${name} must include eBay wildcard pattern`);
-      assert.ok(block.matches.includes('*://*.ebay.co.uk/*'), `${name} must include eBay UK wildcard pattern`);
+      assert.ok(block.matches.includes('https://*.ebay.com/*'), `${name} must include eBay wildcard pattern`);
+      assert.ok(block.matches.includes('https://*.ebay.co.uk/*'), `${name} must include eBay UK wildcard pattern`);
     }
   });
 

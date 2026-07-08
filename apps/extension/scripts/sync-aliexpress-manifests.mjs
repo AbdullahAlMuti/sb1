@@ -23,11 +23,11 @@ function readRegistry() {
 }
 
 function productPatterns(domains) {
-  return domains.flatMap((domain) => [`*://${domain}/*`, `*://*.${domain}/*`]);
+  return domains.flatMap((domain) => [`https://${domain}/*`, `https://*.${domain}/*`]);
 }
 
 function imagePatterns(imageHosts) {
-  return imageHosts.map((host) => `*://${host}/*`);
+  return imageHosts.map((host) => `https://${host}/*`);
 }
 
 function addUnique(list, items) {

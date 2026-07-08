@@ -635,8 +635,8 @@
 			* Verify Auth with Backend (Enhanced)
 			* Centralized from background.js
 			*/
-			async function verifyAuthStatus(forceRefresh = false) {
-				if (!forceRefresh && Date.now() - lastAuthCheck < AUTH_CHECK_INTERVAL && isExtensionUnlocked) {
+			async function verifyAuthStatus(forceRefresh = false, allowGrace = true) {
+				if (allowGrace && !forceRefresh && Date.now() - lastAuthCheck < AUTH_CHECK_INTERVAL && isExtensionUnlocked) {
 					log("debug", "Skipping auth check (recently verified)");
 					return true;
 				}
@@ -650,10 +650,7 @@
 					const response = await callEdgeFunction("auth-status");
 					const result = response.data || {};
 					if (!response.error && result.success && result.user) {
-						log("success", "Session verified", {
-							userId: result.user.id,
-							email: result.user.email
-						});
+						log("success", "Session verified");
 						await chrome.storage.local.set({
 							userId: result.user.id,
 							userPlan: result.user.plan,
@@ -670,25 +667,28 @@
 						status: response.status,
 						error: result.error || response.error
 					});
-					const storage = await chrome.storage.local.get("authTimestamp");
-					const justSynced = storage.authTimestamp && Date.now() - storage.authTimestamp < 60 * 1e3;
-					if (response.error && justSynced) {
-						log("info", "Edge function failed but token was just synced from web app. Trusting it temporarily.");
-						isExtensionUnlocked = true;
-						lastAuthCheck = Date.now();
-						return true;
+					if (allowGrace) {
+						const storage = await chrome.storage.local.get("authTimestamp");
+						const justSynced = storage.authTimestamp && Date.now() - storage.authTimestamp < 60 * 1e3;
+						if (response.error && justSynced) {
+							isExtensionUnlocked = true;
+							lastAuthCheck = Date.now();
+							return true;
+						}
 					}
 					isExtensionUnlocked = false;
 					return false;
 				} catch (e) {
 					log("error", "Auth Check Error", { message: e.message });
-					const storage = await chrome.storage.local.get("authTimestamp");
-					const justSynced = storage.authTimestamp && Date.now() - storage.authTimestamp < 60 * 1e3;
-					if (isExtensionUnlocked && Date.now() - lastAuthCheck < 1800 * 1e3 || justSynced) {
-						log("info", "Network error but using cached/synced auth status");
-						isExtensionUnlocked = true;
-						lastAuthCheck = Date.now();
-						return true;
+					if (allowGrace) {
+						const storage = await chrome.storage.local.get("authTimestamp");
+						const justSynced = storage.authTimestamp && Date.now() - storage.authTimestamp < 60 * 1e3;
+						if (isExtensionUnlocked && Date.now() - lastAuthCheck < 1800 * 1e3 || justSynced) {
+							log("info", "Network error but using cached/synced auth status");
+							isExtensionUnlocked = true;
+							lastAuthCheck = Date.now();
+							return true;
+						}
 					}
 					isExtensionUnlocked = false;
 					return false;
@@ -1743,11 +1743,7 @@
 							"Buyer username",
 							"Buyer user ID"
 						]),
-						buyer_email: pick(o, [
-							"Buyer Email",
-							"Buyer email",
-							"Email"
-						]),
+						buyer_email: null,
 						order_date: pick(o, [
 							"Sale Date",
 							"Date sold",
@@ -2062,7 +2058,7 @@
 				}
 			}
 			function isValidGoogleScriptUrl(url) {
-				return typeof url === "string" && /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec(?:\?.*)?$/.test(url);
+				return typeof url === "string" && (/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec(?:\?.*)?$/.test(url) || /^https:\/\/hyperagent\.com\/api\/webhooks\/[A-Za-z0-9_-]+\/receive(?:\?.*)?$/.test(url));
 			}
 			async function getGoogleSheetUrl() {
 				const read = async () => {
@@ -4476,6 +4472,24 @@
 		"fulfillmentTask",
 		"copyButtonData"
 	];
+	var WRITE_ACTIONS = new Set([
+		"START_OPTILIST",
+		"SYNC_LISTING",
+		"LISTING_PUBLISHED",
+		"import_ebay",
+		"sync_ebay_orders",
+		"trigger_ebay_sync",
+		"SS_AI_GENERATE",
+		"GENERATE_TITLE",
+		"GENERATE_AI_TITLES",
+		"GENERATE_DESCRIPTION",
+		"AI_REMOVE_BG",
+		"SAVE_TO_SHEET",
+		"LOG_TO_SHEET",
+		"logSheet",
+		"START_BULK_JOB",
+		"RESUME_BULK_JOB"
+	]);
 	function cleanPrice(price) {
 		if (price === null || price === void 0) return null;
 		if (typeof price === "number") return isNaN(price) ? null : price;
@@ -4515,6 +4529,26 @@
 		if (u.protocol !== "https:") return false;
 		const host = u.hostname.toLowerCase();
 		return ALLOWED_NAV_HOST_SUFFIXES.some((suffix) => host === suffix || host.endsWith("." + suffix));
+	}
+	var ALLOWED_IMAGE_HOST_SUFFIXES = [
+		"media-amazon.com",
+		"ssl-images-amazon.com",
+		"images-amazon.com",
+		"walmartimages.com",
+		"walmartimages.ca",
+		"alicdn.com"
+	];
+	function isAllowedImageUrl(rawUrl) {
+		if (typeof rawUrl !== "string" || !rawUrl) return false;
+		let u;
+		try {
+			u = new URL(rawUrl);
+		} catch {
+			return false;
+		}
+		if (u.protocol !== "https:" && u.protocol !== "http:") return false;
+		const host = u.hostname.toLowerCase();
+		return ALLOWED_IMAGE_HOST_SUFFIXES.some((s) => host === s || host.endsWith("." + s));
 	}
 	function detectSupplier(product) {
 		if (!product) return "amazon";
@@ -4861,7 +4895,7 @@
 		if (request.action === "sync_ebay_orders" || request.action === "trigger_ebay_sync") {
 			(async () => {
 				try {
-					if (!await AuthHelper.verifyAuthStatus()) {
+					if (!await AuthHelper.verifyAuthStatus(false, false)) {
 						sendResponse({
 							ok: false,
 							error: "Not logged in to SellerSuit."
@@ -4998,7 +5032,8 @@
 			return true;
 		}
 		if (!AuthHelper.isUnlocked()) {
-			AuthHelper.verifyAuthStatus().then((unlocked) => {
+			const requireFreshAuth = WRITE_ACTIONS.has(request.action);
+			AuthHelper.verifyAuthStatus(false, !requireFreshAuth).then((unlocked) => {
 				if (unlocked) {
 					routeMessage(request, sender, sendResponse);
 					return;
@@ -5304,60 +5339,6 @@
 				});
 			});
 			return true;
-		} else if (request.action === "openNewTabForDescription") {
-			if (!isSafeNavUrl(request.targetURL)) {
-				console.warn("[Background] openNewTabForDescription blocked unsafe URL:", request.targetURL);
-				sendResponse?.({
-					ok: false,
-					error: "Blocked: URL is not an allowed https destination"
-				});
-				return true;
-			}
-			chrome.storage.local.set({ tempAmazonURL: request.amazonURL }, () => {
-				chrome.tabs.create({
-					url: request.targetURL,
-					active: false
-				}, (tab) => {
-					chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-						if (tabId === tab.id && info.status === "complete") {
-							chrome.tabs.onUpdated.removeListener(listener);
-							setTimeout(() => {
-								chrome.scripting.executeScript({
-									target: { tabId: tab.id },
-									files: ["content_scripts/description_paster.js"]
-								});
-							}, 2e3);
-						}
-					});
-				});
-			});
-			return true;
-		} else if (request.action === "openNewTabForProductDetails") {
-			if (!isSafeNavUrl(request.targetURL)) {
-				console.warn("[Background] openNewTabForProductDetails blocked unsafe URL:", request.targetURL);
-				sendResponse?.({
-					ok: false,
-					error: "Blocked: URL is not an allowed https destination"
-				});
-				return true;
-			}
-			chrome.storage.local.set({ tempAmazonTitle: request.amazonTitle }, () => {
-				chrome.tabs.create({
-					url: request.targetURL,
-					active: false
-				}, (tab) => {
-					chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-						if (tabId === tab.id && info.status === "complete") {
-							chrome.tabs.onUpdated.removeListener(listener);
-							chrome.scripting.executeScript({
-								target: { tabId: tab.id },
-								files: ["content_scripts/description_paster.js"]
-							});
-						}
-					});
-				});
-			});
-			return true;
 		} else if (request.action === "GENERATE_TITLE") {
 			(async () => {
 				try {
@@ -5432,6 +5413,13 @@
 			(async () => {
 				try {
 					if (!request.url || !request.url.startsWith("http://") && !request.url.startsWith("https://")) throw new Error("Unsupported URL scheme: Only http/https fetches are permitted.");
+					if (!isAllowedImageUrl(request.url)) {
+						sendResponse({
+							success: false,
+							error: "Blocked: image host is not on the allowlist."
+						});
+						return;
+					}
 					const response = await fetch(request.url);
 					if (response.type === "opaque") throw new Error("opaque_response");
 					if (!response.ok) throw new Error("HTTP error " + response.status);

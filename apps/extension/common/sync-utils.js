@@ -387,6 +387,12 @@ const SyncUtils = (() => {
     return csvText;
   }
 
+  // Buyer PII policy (data minimization). The eBay orders CSV contains rich buyer
+  // PII; collect ONLY fields with a concrete order-management need. buyer_email has
+  // no fulfillment need (eBay handles buyer messaging), so it is off by default.
+  // Flip only if a disclosed feature requires it AND it is in the privacy policy.
+  const COLLECT_BUYER_EMAIL = false;
+
   function parseEbayCsv(text) {
     const firstLine = text.substring(0, 1000).split('\n')[0];
     let delimiter = ',';
@@ -495,7 +501,7 @@ const SyncUtils = (() => {
           sales_record_number: salesRecordNumber,
           buyer_name: pick(o, ['Buyer Name', 'Buyer name', 'Ship to name']),
           buyer_username: pick(o, ['Buyer Username', 'Buyer username', 'Buyer user ID']),
-          buyer_email: pick(o, ['Buyer Email', 'Buyer email', 'Email']),
+          buyer_email: COLLECT_BUYER_EMAIL ? pick(o, ['Buyer Email', 'Buyer email', 'Email']) : null,
           order_date: pick(o, ['Sale Date', 'Date sold', 'Sold date']),
           date_paid: pick(o, ['Paid On Date', 'Date paid', 'Paid on date']),
           ship_by_date: pick(o, ['Ship By Date', 'Ship by date']),
@@ -798,12 +804,13 @@ const SyncUtils = (() => {
   //   every sender below becomes a no-op. This guarantees no listing data is
   //   ever silently transmitted to a developer-controlled server (W2 fix).
 
-  // Only accept a user-configured Google Apps Script webhook of the exact
-  // expected shape. Anything else (empty, http, other host) is rejected so we
-  // never POST user data to an unexpected origin.
+  // Only accept a user-configured Google Apps Script webhook or Hyperagent webhook.
+  // Anything else (empty, http, other host) is rejected so we never POST user data to an unexpected origin.
   function isValidGoogleScriptUrl(url) {
-    return typeof url === 'string' &&
-      /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec(?:\?.*)?$/.test(url);
+    return typeof url === 'string' && (
+      /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec(?:\?.*)?$/.test(url) ||
+      /^https:\/\/hyperagent\.com\/api\/webhooks\/[A-Za-z0-9_-]+\/receive(?:\?.*)?$/.test(url)
+    );
   }
 
   async function getGoogleSheetUrl() {

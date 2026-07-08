@@ -114,9 +114,7 @@
             transactionId: null,
             salesRecordNumber: null,
             addFee: null,
-            currency: 'USD',
-            buyer_name: null, // New field
-            buyer_zip: null  // New field
+            currency: 'USD'
         };
 
         try {
@@ -190,9 +188,7 @@
                 add_fee: orderData.addFee,
                 order_status: 'paid',
                 platform: 'eBay',
-                currency: orderData.currency,
-                buyer_name: orderData.buyer_name,
-                buyer_zip: orderData.buyer_zip
+                currency: orderData.currency
             }]
         };
 
