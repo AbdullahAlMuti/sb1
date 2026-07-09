@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
       };
     };
 
-    return jsonResponse({
+    return jsonResponse(req, {
       success: true,
       flags: {
         extensionNewAuthEnabled: pick("extension_new_auth_enabled"),
@@ -51,6 +51,6 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return jsonResponse({ success: false, error: message }, 500);
+    return jsonResponse(req, { success: false, error: message }, 500);
   }
 });

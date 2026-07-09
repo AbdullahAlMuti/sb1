@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
       .gte("created_at", since);
 
     if ((count ?? 0) > 120) {
-      return jsonResponse({ success: false, error: "Rate limit exceeded" }, 429);
+      return jsonResponse(req, { success: false, error: "Rate limit exceeded" }, 429);
     }
 
     await logExtensionActivity(supabase, {
@@ -69,9 +69,9 @@ Deno.serve(async (req) => {
       metadata,
     });
 
-    return jsonResponse({ success: true });
+    return jsonResponse(req, { success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return jsonResponse({ success: false, error: message }, 401);
+    return jsonResponse(req, { success: false, error: message }, 401);
   }
 });

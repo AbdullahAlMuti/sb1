@@ -1,10 +1,34 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveCorsHeaders } from "./cors.ts";
 
+// AUTH-P1-001: request-aware CORS. Prefer resolveCors(req) — it reflects the
+// request Origin only when it is allow-listed (see _shared/cors.ts) or is the
+// extension's own chrome-extension:// origin, rather than a blanket wildcard.
+//
+// The static `corsHeaders` below is DEPRECATED (still "*") and retained only for
+// functions not yet migrated to resolveCors(); do not use it in new code.
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
+
+export function resolveCors(req: Request): Record<string, string> {
+  const origin = req.headers.get("origin");
+  // The extension's own pages / service worker send a chrome-extension:// origin,
+  // which the web-origin allow-list in cors.ts does not cover — reflect it.
+  if (origin && origin.startsWith("chrome-extension://")) {
+    return {
+      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Vary": "Origin",
+    };
+  }
+  const headers = resolveCorsHeaders(req, { extension: true });
+  headers["Vary"] = "Origin";
+  return headers;
+}
 
 export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 export const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -13,19 +37,19 @@ export const SESSION_GRANT_TTL_SECONDS = 5 * 60;
 
 export type JsonRecord = Record<string, unknown>;
 
-export function jsonResponse(body: JsonRecord, status = 200): Response {
+export function jsonResponse(req: Request, body: JsonRecord, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...resolveCors(req), "Content-Type": "application/json" },
   });
 }
 
 export function requireMethod(req: Request, allowed: string[]): Response | null {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: resolveCors(req) });
   }
   if (!allowed.includes(req.method)) {
-    return jsonResponse({ success: false, error: "Method not allowed" }, 405);
+    return jsonResponse(req, { success: false, error: "Method not allowed" }, 405);
   }
   return null;
 }

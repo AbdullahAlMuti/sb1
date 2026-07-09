@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
       // explicitly omit install_id_hash
     }));
 
-    return jsonResponse({
+    return jsonResponse(req, {
       success: true,
       data: safeData,
       pagination: {
@@ -81,6 +81,6 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return jsonResponse({ success: false, error: message }, message === "Unauthorized" ? 403 : 400);
+    return jsonResponse(req, { success: false, error: message }, message === "Unauthorized" ? 403 : 400);
   }
 });

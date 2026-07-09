@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
     const settings = (profileSettings?.settings as Record<string, unknown>) || {};
     const selectedListingTemplateId = settings.selected_listing_template_id as string || 'default-professional';
 
-    return jsonResponse({
+    return jsonResponse(req, {
       success: true,
       user: {
         id: context.profile.id,
@@ -182,6 +182,6 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return jsonResponse({ success: false, error: message }, 401);
+    return jsonResponse(req, { success: false, error: message }, 401);
   }
 });

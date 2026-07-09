@@ -41,13 +41,13 @@ Deno.serve(async (req) => {
       updatedAt: f.updated_at,
     }));
 
-    return jsonResponse({
+    return jsonResponse(req, {
       success: true,
       data: safeFlags,
       warning: "WARNING: Modifying these flags can affect authentication for all extension users.",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return jsonResponse({ success: false, error: message }, message === "Unauthorized" ? 403 : 400);
+    return jsonResponse(req, { success: false, error: message }, message === "Unauthorized" ? 403 : 400);
   }
 });

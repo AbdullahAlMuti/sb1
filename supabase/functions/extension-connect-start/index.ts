@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
       .eq("install_id_hash", installIdHash)
       .gte("created_at", rateWindowStart);
     if ((recentRequestCount ?? 0) >= 10) {
-      return jsonResponse({ success: false, error: "Rate limit exceeded" }, 429);
+      return jsonResponse(req, { success: false, error: "Rate limit exceeded" }, 429);
     }
 
     const { workspace } = requestedWorkspaceId
@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
       newValues: { request_id: requestRow.id, workspace_id: workspace.id },
     });
 
-    return jsonResponse({
+    return jsonResponse(req, {
       success: true,
       requestId: requestRow.id,
       deviceId: device.id,
@@ -160,6 +160,6 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return jsonResponse({ success: false, error: message }, message.includes("authorization") || message.includes("session") ? 401 : 400);
+    return jsonResponse(req, { success: false, error: message }, message.includes("authorization") || message.includes("session") ? 401 : 400);
   }
 });

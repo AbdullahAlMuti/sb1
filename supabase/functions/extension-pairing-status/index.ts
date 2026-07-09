@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
 
     // If not found or deleted, treat as expired
     if (!requestRow) {
-      return jsonResponse({ success: true, status: "expired" });
+      return jsonResponse(req, { success: true, status: "expired" });
     }
 
     let status = requestRow.status;
@@ -58,12 +58,12 @@ Deno.serve(async (req) => {
       status = "expired";
     }
 
-    return jsonResponse({
+    return jsonResponse(req, {
       success: true,
       status: status,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return jsonResponse({ success: false, error: message }, 400);
+    return jsonResponse(req, { success: false, error: message }, 400);
   }
 });
