@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from '../_shared/extension-session.ts';
 import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
 import { buildPrompt, renderSections, sanitize, ensureMinimumLength, DescriptionConfig } from '../_shared/description.ts';
-import { validateUserPlan, deductUsage, createLimitExceededResponse } from '../_shared/plan-middleware.ts';
+import { validateUserPlan, deductUsage, refundUsage, createLimitExceededResponse } from '../_shared/plan-middleware.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -28,6 +28,11 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // BILLING-P1-002: track a reserved credit so the catch can refund it if
+  // generation fails after reservation (declared outside try for catch scope).
+  let creditReserved = false;
+  let reservedUserId: string | null = null;
 
   try {
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
@@ -227,6 +232,30 @@ Condition: {condition}`,
     const useDirectOpenAI = apiProvider === 'openai' && adminApiKey && adminApiKey.startsWith('sk-') && adminApiKey.length > 20;
     console.log(`[generate-description-v2] Using ${useDirectOpenAI ? 'Direct OpenAI' : 'Lovable AI Gateway'} with model: ${model}`);
 
+    // BILLING-P1-002: reserve the credit atomically BEFORE the paid LLM call so
+    // that N concurrent requests on a single credit cannot each trigger a paid
+    // generation. Refunded in the catch below if generation fails. Admins are
+    // exempt (validateUserPlan reports planName 'admin').
+    if (creditCheck.planName !== 'admin') {
+      const reserved = await deductUsage(supabase, userId, 'credit', DESCRIPTION_GENERATION_CREDIT_COST, {
+        description: 'AI description generation (reserved)',
+        feature: 'generate-description-v2',
+        phase: 'reserve',
+      });
+      if (!reserved) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Unable to reserve a credit for this generation. Please try again.',
+          code: 'CREDIT_DEDUCTION_FAILED',
+        }), {
+          status: 402,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      creditReserved = true;
+      reservedUserId = userId;
+    }
+
     let responseContent = '';
 
     if (useDirectOpenAI) {
@@ -334,23 +363,8 @@ Condition: {condition}`,
     // 6) Enforce minimum length of 500 characters
     finalDescription = ensureMinimumLength(finalDescription, config.output_format);
 
-    const deducted = await deductUsage(supabase, userId, 'credit', DESCRIPTION_GENERATION_CREDIT_COST, {
-      description: 'AI description generation',
-      feature: 'generate-description-v2',
-      provider: useDirectOpenAI ? 'openai' : 'lovable',
-      model,
-      length: finalDescription.length,
-    });
-    if (!deducted) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Unable to deduct credits for this generation. Please try again.',
-        code: 'CREDIT_DEDUCTION_FAILED',
-      }), {
-        status: 402,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    // Credit was already reserved before generation (BILLING-P1-002); nothing to
+    // deduct here. The reservation is only refunded if generation throws (catch).
 
     return new Response(JSON.stringify({ 
       success: true, 
@@ -365,8 +379,20 @@ Condition: {condition}`,
 
   } catch (error) {
     console.error('Error in generate-description-v2 function:', error);
-    return new Response(JSON.stringify({ 
-      success: false, 
+    // Refund the credit reserved before generation so a failure never burns it.
+    if (creditReserved && reservedUserId) {
+      try {
+        const sb = createServiceClient();
+        await refundUsage(sb, reservedUserId, 'credit', DESCRIPTION_GENERATION_CREDIT_COST, {
+          description: 'Refund: AI description generation failed',
+          feature: 'generate-description-v2',
+        });
+      } catch (refundErr) {
+        console.error('[generate-description-v2] Failed to refund reserved credit:', refundErr);
+      }
+    }
+    return new Response(JSON.stringify({
+      success: false,
       error: 'Failed to generate description. Please try again.'
     }), {
       status: 500,

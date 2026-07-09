@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from "../_shared/extension-session.ts";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
-import { validateUserPlan, deductUsage, createLimitExceededResponse } from "../_shared/plan-middleware.ts";
+import { validateUserPlan, deductUsage, refundUsage, createLimitExceededResponse } from "../_shared/plan-middleware.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,6 +63,11 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // BILLING-P1-002: track a reserved credit so it can be refunded if generation
+  // fails after reservation (declared outside try so early returns/catch see it).
+  let creditReserved = false;
+  let reservedUserId: string | null = null;
 
   try {
     // SECURITY: Authenticate user before processing
@@ -219,6 +224,29 @@ serve(async (req) => {
       .replace(/{category}/g, category)
       .replace(/{brand}/g, brand);
 
+    // BILLING-P1-002: reserve the credit atomically BEFORE the paid LLM call so
+    // concurrent requests on a single credit cannot each trigger a paid
+    // generation. Refunded on any failure path below. Admins are exempt.
+    if (creditCheck.planName !== "admin") {
+      const reserved = await deductUsage(supabase, userId, "credit", TITLE_GENERATION_CREDIT_COST, {
+        description: "AI title generation (reserved)",
+        feature: "generate-titles",
+        phase: "reserve",
+      });
+      if (!reserved) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Unable to reserve a credit for this generation. Please try again.",
+            code: "CREDIT_DEDUCTION_FAILED",
+          }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      creditReserved = true;
+      reservedUserId = userId;
+    }
+
     let responseContent = "";
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -249,6 +277,13 @@ serve(async (req) => {
         throw new Error("Invalid OpenAI API key. Please update ext_ai_api_key in Admin → Extension Settings.");
       }
       if (response.status === 429) {
+        // Non-thrown early return: refund the reserved credit before bailing.
+        if (creditReserved && reservedUserId) {
+          await refundUsage(supabase, reservedUserId, "credit", TITLE_GENERATION_CREDIT_COST, {
+            description: "Refund: AI title generation rate-limited",
+            feature: "generate-titles",
+          }).catch((e) => console.error("[generate-titles] refund failed:", e));
+        }
         return new Response(
           JSON.stringify({ success: false, error: "OpenAI rate limit exceeded. Please wait a moment and try again." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -330,28 +365,8 @@ serve(async (req) => {
     const apiName = "openai";
     const titlesArray = rankedTitles.map((t) => t.title);
 
-    if (creditCheck.planName !== 'admin') {
-      const deducted = await deductUsage(supabase, userId, "credit", TITLE_GENERATION_CREDIT_COST, {
-        description: "AI title generation",
-        feature: "generate-titles",
-        provider: "openai",
-        model,
-        title_count: rankedTitles.length,
-      });
-      if (!deducted) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "Unable to deduct credits for this generation. Please try again.",
-            code: "CREDIT_DEDUCTION_FAILED",
-          }),
-          {
-            status: 402,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          },
-        );
-      }
-    }
+    // Credit was already reserved before generation (BILLING-P1-002); nothing to
+    // deduct here. The reservation is refunded only if generation fails.
 
     return new Response(
       JSON.stringify({
@@ -374,6 +389,18 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("Error in generate-titles function:", error);
+    // Refund the credit reserved before generation so a failure never burns it.
+    if (creditReserved && reservedUserId) {
+      try {
+        const sb = createServiceClient();
+        await refundUsage(sb, reservedUserId, "credit", TITLE_GENERATION_CREDIT_COST, {
+          description: "Refund: AI title generation failed",
+          feature: "generate-titles",
+        });
+      } catch (refundErr) {
+        console.error("[generate-titles] Failed to refund reserved credit:", refundErr);
+      }
+    }
     return new Response(
       JSON.stringify({
         success: false,

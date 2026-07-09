@@ -644,6 +644,42 @@ export async function deductUsage(
 }
 
 /**
+ * Refund credits previously reserved via deductUsage (reserve-then-charge).
+ * Only credit refunds are supported; returns true on success.
+ */
+export async function refundUsage(
+  supabase: SupabaseLike,
+  userId: string,
+  action: LimitAction,
+  amount: number = 1,
+  metadata?: Record<string, unknown>
+): Promise<boolean> {
+  try {
+    if (action !== 'credit') {
+      return false;
+    }
+    if (!supabase.rpc) {
+      console.error('[plan-middleware] refund_user_credits RPC unavailable on Supabase client');
+      return false;
+    }
+    const { error } = await supabase.rpc('refund_user_credits', {
+      p_user_id: userId,
+      p_amount: amount,
+      p_description: String(metadata?.description || 'AI credit refund'),
+      p_metadata: metadata ?? {},
+    });
+    if (error) {
+      console.error('[plan-middleware] refund_user_credits RPC error:', error);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('[plan-middleware] refundUsage error:', error);
+    return false;
+  }
+}
+
+/**
  * Creates a standard 402 Payment Required response for limit exceeded
  */
 export function createLimitExceededResponse(
