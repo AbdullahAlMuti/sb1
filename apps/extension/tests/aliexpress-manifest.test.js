@@ -7,7 +7,9 @@ const registry = JSON.parse(readFileSync('suppliers/aliexpress/domains.generated
 const manifestNames = ['manifest.json', 'manifest.dev.json', 'manifest.prod.json'];
 
 function productPatterns() {
-  return registry.domains.flatMap((domain) => [`*://${domain}/*`, `*://*.${domain}/*`]);
+  // Match the tighter https-only scheme the sync script + manifests use
+  // (see scripts/sync-aliexpress-manifests.mjs productPatterns()).
+  return registry.domains.flatMap((domain) => [`https://${domain}/*`, `https://*.${domain}/*`]);
 }
 
 describe('AliExpress manifest integration', () => {
@@ -21,7 +23,7 @@ describe('AliExpress manifest integration', () => {
           `${pattern} host permission missing`
         );
       }
-      assert.ok(manifest.host_permissions.includes('*://*.alicdn.com/*'));
+      assert.ok(manifest.host_permissions.includes('https://*.alicdn.com/*'));
       const contentScript = manifest.content_scripts.find((entry) =>
         entry.js?.includes('build/aliexpress.bundle.js')
       );
