@@ -1,11 +1,7 @@
+import { resolveExtensionCors } from "../_shared/cors.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
 
 type Resource = "plans" | "plan_prices" | "plan_features";
 type Action = "create" | "update" | "delete";
@@ -70,13 +66,6 @@ const ALLOWED_COLUMNS: Record<Resource, Set<string>> = {
 };
 const RESOURCE_NAMES = new Set<Resource>(["plans", "plan_prices", "plan_features"]);
 
-function json(status: number, body: unknown) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
-
 function sanitizePayload(resource: Resource, payload: unknown): Record<string, unknown> {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return {};
   const allowed = ALLOWED_COLUMNS[resource];
@@ -90,6 +79,13 @@ function isResource(value: unknown): value is Resource {
 }
 
 serve(async (req) => {
+  const corsHeaders = resolveExtensionCors(req);
+  function json(status: number, body: unknown) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json(405, { error: "Method not allowed" });
 

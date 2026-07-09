@@ -1,3 +1,4 @@
+import { resolveExtensionCors } from "../_shared/cors.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "https://esm.sh/stripe@18.5.0";
@@ -6,19 +7,6 @@ import Stripe from "https://esm.sh/stripe@18.5.0";
 // Ensures one Stripe product per active plan (metadata.sellersuit_plan) and
 // the required prices (monthly/yearly recurring, one-time for trial), then
 // writes the price ids back to plans. Idempotent; supports { dryRun: true }.
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
-function json(status: number, body: unknown) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
 
 type PlanRow = {
   id: string;
@@ -66,6 +54,13 @@ function matchExistingPrice(prices: Stripe.Price[], spec: PriceSpec): Stripe.Pri
 }
 
 serve(async (req) => {
+  const corsHeaders = resolveExtensionCors(req);
+  function json(status: number, body: unknown) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {

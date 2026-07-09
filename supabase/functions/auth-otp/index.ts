@@ -1,11 +1,8 @@
+import { resolveExtensionCors } from "../_shared/cors.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8";
 import { checkRateLimit, getClientIp, rateLimitResponse, sha256 } from "../_shared/rate-limit.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
 
 const ADMIN_PANEL_ROLES = new Set(["admin", "super_admin", "moderator", "staff"]);
 type SupabaseLike = {
@@ -25,13 +22,6 @@ const ADMIN_PANEL_ROLE_ERROR =
 const OTP_TTL_MS = 15 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 const OTP_LOCKOUT_MS = 15 * 60 * 1000;
-
-function jsonResponse(body: Record<string, unknown>, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
 
 function normalizeEmail(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -174,6 +164,13 @@ async function sendVerificationEmail(email: string, verificationCode: string) {
 }
 
 serve(async (req) => {
+  const corsHeaders = resolveExtensionCors(req);
+  function jsonResponse(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

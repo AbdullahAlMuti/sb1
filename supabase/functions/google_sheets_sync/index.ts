@@ -1,11 +1,8 @@
+import { resolveExtensionCors } from "../_shared/cors.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { enforceActiveSubscription } from "../_shared/plan-middleware.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -109,6 +106,7 @@ function validateGoogleScriptUrl(urlString: string): { valid: boolean; error?: s
 }
 
 serve(async (req) => {
+  const corsHeaders = resolveExtensionCors(req);
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

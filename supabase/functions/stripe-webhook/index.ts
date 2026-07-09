@@ -1,3 +1,4 @@
+import { resolveExtensionCors } from "../_shared/cors.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.0";
@@ -5,10 +6,6 @@ import { sendBillingEmail } from "../_shared/email.ts";
 import { activateTrial } from "../_shared/trial-activation.ts";
 import { syncStripeData } from "../_shared/billing-sync.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, stripe-signature",
-};
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : "";
@@ -39,6 +36,7 @@ const sendErrorAlert = async (message: string, context?: Record<string, unknown>
 };
 
 serve(async (req) => {
+  const corsHeaders = resolveExtensionCors(req);
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

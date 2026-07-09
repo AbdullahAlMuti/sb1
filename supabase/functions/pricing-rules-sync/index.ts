@@ -1,17 +1,6 @@
+import { resolveExtensionCors } from "../_shared/cors.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { enforceActiveSubscription } from "../_shared/plan-middleware.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, if-none-match",
-};
-
-function json(data: unknown, status = 200, extra?: Record<string, string>) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json", ...extra },
-  });
-}
 
 async function sha256hex(text: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -19,6 +8,13 @@ async function sha256hex(text: string): Promise<string> {
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = resolveExtensionCors(req);
+  function json(data: unknown, status = 200, extra?: Record<string, string>) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json", ...extra },
+  });
+}
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
 
