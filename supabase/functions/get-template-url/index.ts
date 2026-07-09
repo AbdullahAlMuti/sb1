@@ -1,12 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.0";
-
-// ── CORS ──────────────────────────────────────────────────────────────────────
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { resolveExtensionCors } from "../_shared/cors.ts";
 
 // ── Plan hierarchy (mirrors store-design.types.ts) ────────────────────────────
 
@@ -28,16 +22,15 @@ const log = (step: string, details?: Record<string, unknown>) => {
   console.log(`[GET-TEMPLATE-URL] ${step}${d}`);
 };
 
-function errorResponse(message: string, status = 400): Response {
-  return new Response(JSON.stringify({ error: message }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-    status,
-  });
-}
-
 // ── Main handler ──────────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
+  const corsHeaders = resolveExtensionCors(req);
+  const errorResponse = (message: string, status = 400): Response =>
+    new Response(JSON.stringify({ error: message }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status,
+    });
   // Preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });

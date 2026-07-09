@@ -1,11 +1,8 @@
+import { resolveExtensionCors } from "../_shared/cors.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 import { enforceActiveSubscription } from "../_shared/plan-middleware.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
 
 // Helper to log PII access for security audit
 const logPIIAccess = async (
@@ -47,12 +44,6 @@ type DeleteRequest = {
 
 type RequestBody = ListRequest | DeleteRequest;
 
-const json = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-
 const clampInt = (value: unknown, fallback: number, min: number, max: number) => {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -76,6 +67,12 @@ const parseISODate = (value: unknown) => {
 const uuidish = /^[0-9a-fA-F-]{20,}$/;
 
 Deno.serve(async (req) => {
+  const corsHeaders = resolveExtensionCors(req);
+  const json = (status: number, body: unknown) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

@@ -101,3 +101,43 @@ export function getAllowedReturnOrigin(req: Request, options: CorsOptions = {}):
 
   return configured ?? "https://sellersuit.com";
 }
+
+// AUTH-P1-001 (follow-up): CORS for endpoints reachable from the extension while
+// it runs on marketplace pages. In addition to the configured web allow-list,
+// this reflects the extension's own chrome-extension:// origin and the
+// marketplace host origins the extension operates on (per the MV3
+// host_permissions), so content-script calls from those pages keep working —
+// without ever falling back to a "*" wildcard.
+const EXTENSION_MARKETPLACE_SUFFIXES = [
+  "ebay.com", "ebay.co.uk", "ebay.de", "ebay.fr", "ebay.com.au", "ebay.it", "ebay.es",
+  "amazon.com", "amazon.co.uk", "amazon.de", "amazon.ca", "amazon.com.au",
+  "walmart.com", "walmart.ca",
+  "aliexpress.com", "aliexpress.ru", "aliexpress.us",
+  "script.google.com",
+];
+
+export function isExtensionCallerOrigin(origin: string | null | undefined): boolean {
+  if (!origin) return false;
+  if (origin.startsWith("chrome-extension://")) return true;
+  let host: string;
+  try {
+    host = new URL(origin).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (host === "sellersuit.com" || host.endsWith(".sellersuit.com")) return true;
+  if (host === "localhost" || host === "127.0.0.1") return true;
+  return EXTENSION_MARKETPLACE_SUFFIXES.some((s) => host === s || host.endsWith("." + s));
+}
+
+export function resolveExtensionCors(req: Request, options: CorsOptions = {}): Record<string, string> {
+  const headers = resolveCorsHeaders(req, { ...options, extension: true });
+  headers["Vary"] = "Origin";
+  if (!headers["Access-Control-Allow-Origin"]) {
+    const rawOrigin = req.headers.get("origin");
+    if (isExtensionCallerOrigin(rawOrigin)) {
+      headers["Access-Control-Allow-Origin"] = normalizeOrigin(rawOrigin) ?? (rawOrigin as string);
+    }
+  }
+  return headers;
+}

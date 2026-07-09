@@ -1,4 +1,5 @@
-import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient, corsHeaders } from "../_shared/extension-session.ts";
+import { resolveExtensionCors } from "../_shared/cors.ts";
+import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from "../_shared/extension-session.ts";
 import { checkRateLimit, getClientIp as getRateLimitIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 interface EbayOrderPayload {
@@ -102,6 +103,7 @@ function maskPII(obj: any) {
 // -------------------------------------------------------------------------------------------------
 
 Deno.serve(async (req) => {
+  const corsHeaders = resolveExtensionCors(req);
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });

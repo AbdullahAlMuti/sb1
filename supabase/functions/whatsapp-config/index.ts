@@ -1,12 +1,9 @@
+import { resolveExtensionCors } from "../_shared/cors.ts";
 // Lightweight config endpoint for WhatsApp Click-to-Chat.
 // Exposes ONLY non-sensitive WhatsApp settings stored in admin_settings.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.0";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
 
 const KEYS = [
   "support_whatsapp_number",
@@ -28,6 +25,7 @@ function parseBool(val: unknown): boolean {
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = resolveExtensionCors(req);
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });

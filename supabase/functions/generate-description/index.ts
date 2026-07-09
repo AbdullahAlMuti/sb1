@@ -1,14 +1,10 @@
+import { resolveExtensionCors } from "../_shared/cors.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from '../_shared/extension-session.ts';
 import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
 import { buildPrompt, renderSections, sanitize, ensureMinimumLength, DescriptionConfig } from '../_shared/description.ts';
 import { validateUserPlan, deductUsage, refundUsage, createLimitExceededResponse } from '../_shared/plan-middleware.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, accept',
-};
 
 interface DescriptionRequest {
   title?: string;
@@ -25,6 +21,7 @@ interface DescriptionRequest {
 const DESCRIPTION_GENERATION_CREDIT_COST = 1;
 
 serve(async (req) => {
+  const corsHeaders = resolveExtensionCors(req);
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

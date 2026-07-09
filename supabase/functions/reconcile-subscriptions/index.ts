@@ -1,3 +1,4 @@
+import { resolveExtensionCors } from "../_shared/cors.ts";
 // Reconciliation cron — defense-in-depth for dropped/delayed Stripe webhooks.
 //
 // The webhook (primary) and check-subscription-v2 (per-load self-heal) already
@@ -14,10 +15,6 @@ import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.91.0";
 import { activateTrial } from "../_shared/trial-activation.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-secret",
-};
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : "";
@@ -31,6 +28,7 @@ const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 const BATCH_LIMIT = 50;
 
 serve(async (req) => {
+  const corsHeaders = resolveExtensionCors(req);
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

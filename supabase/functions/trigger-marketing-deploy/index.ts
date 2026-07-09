@@ -1,3 +1,4 @@
+import { resolveExtensionCors } from "../_shared/cors.ts";
 // trigger-marketing-deploy — admin-only. POSTs to the Vercel Deploy Hook so a newly
 // published blog post is statically prerendered and goes live (~1-2 min). Best-effort:
 // if the VERCEL_DEPLOY_HOOK_URL secret is not set, returns { triggered: false } with a
@@ -5,20 +6,14 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
-
-function json(status: number, body: unknown) {
+serve(async (req) => {
+  const corsHeaders = resolveExtensionCors(req);
+  function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
-
-serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {

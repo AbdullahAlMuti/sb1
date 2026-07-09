@@ -1,4 +1,5 @@
-import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient, corsHeaders } from '../_shared/extension-session.ts';
+import { resolveExtensionCors } from "../_shared/cors.ts";
+import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from '../_shared/extension-session.ts';
 
 function getSourceMarketplace(listing: any): string | null {
   if (!listing) return null;
@@ -42,6 +43,7 @@ function getSourceMarketplace(listing: any): string | null {
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = resolveExtensionCors(req);
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

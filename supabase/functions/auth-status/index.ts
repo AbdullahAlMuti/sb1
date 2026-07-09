@@ -1,7 +1,9 @@
+import { resolveExtensionCors } from "../_shared/cors.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { resolveExtensionOrLegacyAuth, createServiceClient, corsHeaders } from '../_shared/extension-session.ts';
+import { resolveExtensionOrLegacyAuth, createServiceClient } from '../_shared/extension-session.ts';
 
 Deno.serve(async (req) => {
+  const corsHeaders = resolveExtensionCors(req);
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

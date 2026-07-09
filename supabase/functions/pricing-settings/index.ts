@@ -1,3 +1,4 @@
+import { resolveExtensionCors } from "../_shared/cors.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { enforceActiveSubscription } from "../_shared/plan-middleware.ts";
 import {
@@ -7,18 +8,6 @@ import {
   validateNumericRange,
   validateNonNegative,
 } from "../_shared/pricing-validation.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-function json(data: unknown, status = 200, extra?: HeadersInit) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json", ...extra },
-  });
-}
 
 // Seed default rows for any missing suppliers (idempotent: skips existing rows).
 async function seedMissingSuppliers(
@@ -55,6 +44,13 @@ async function seedMissingSuppliers(
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = resolveExtensionCors(req);
+  function json(data: unknown, status = 200, extra?: HeadersInit) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json", ...extra },
+  });
+}
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
