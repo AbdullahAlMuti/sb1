@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, createServiceClient } from "../_shared/extension-session.ts";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
-import { validateUserPlan, deductUsage, createLimitExceededResponse } from "../_shared/plan-middleware.ts";
+import { validateUserPlan, deductUsage, refundUsage, createLimitExceededResponse } from "../_shared/plan-middleware.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,6 +13,10 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // BILLING-P1-002: track a reserved credit for refund-on-failure.
+  let creditReserved = false;
+  let reservedUserId: string | null = null;
 
   try {
     const supabase = createServiceClient();
@@ -62,6 +66,25 @@ serve(async (req) => {
       );
     }
 
+    // BILLING-P1-002: reserve the credit before the paid image-edit call.
+    if (planCheck.planName !== 'admin') {
+      const reserved = await deductUsage(supabase, authContext.userId, 'credit', 1, { description: 'AI image edit (reserved)', feature: 'ai-image-edit' });
+      if (!reserved) {
+        return new Response(
+          JSON.stringify({ error: "Unable to reserve a credit for this edit. Please try again.", code: "CREDIT_DEDUCTION_FAILED" }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      creditReserved = true;
+      reservedUserId = authContext.userId;
+    }
+    const refundReserved = async () => {
+      if (creditReserved) {
+        creditReserved = false;
+        await refundUsage(supabase, authContext.userId, 'credit', 1, { description: 'Refund: AI image edit failed', feature: 'ai-image-edit' }).catch((e) => console.error('[ai-image-edit] refund failed:', e));
+      }
+    };
+
     console.log("Processing AI image edit with prompt:", prompt.substring(0, 100));
 
     // Call Lovable AI Gateway for image editing (Nano banana model)
@@ -99,18 +122,21 @@ serve(async (req) => {
       console.error("AI Gateway error:", response.status, errorText);
       
       if (response.status === 429) {
+        await refundReserved();
         return new Response(
           JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       if (response.status === 402) {
+        await refundReserved();
         return new Response(
           JSON.stringify({ error: "AI credits exhausted. Please add more credits." }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      
+
+      await refundReserved();
       return new Response(
         JSON.stringify({ error: "AI service error" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -125,6 +151,7 @@ serve(async (req) => {
 
     if (!editedImageUrl) {
       console.error("No image in AI response:", JSON.stringify(data).substring(0, 500));
+      await refundReserved();
       return new Response(
         JSON.stringify({ error: "AI did not return an edited image. Try a different prompt." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -133,14 +160,7 @@ serve(async (req) => {
 
     console.log("Successfully processed AI image edit");
 
-    // Deduct 1 credit after confirmed success
-    const deducted = await deductUsage(supabase, authContext.userId, 'credit', 1, { description: 'AI image edit', feature: 'ai-image-edit' });
-    if (!deducted) {
-      return new Response(
-        JSON.stringify({ error: "Unable to deduct credits for this generation. Please try again.", code: "CREDIT_DEDUCTION_FAILED" }),
-        { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Credit was reserved before the edit (BILLING-P1-002); refunded only on failure.
 
     return new Response(
       JSON.stringify({
@@ -152,6 +172,14 @@ serve(async (req) => {
 
   } catch (error: unknown) {
     console.error("Error in ai-image-edit function:", error);
+    if (creditReserved && reservedUserId) {
+      try {
+        const sb = createServiceClient();
+        await refundUsage(sb, reservedUserId, 'credit', 1, { description: 'Refund: AI image edit failed', feature: 'ai-image-edit' });
+      } catch (refundErr) {
+        console.error("[ai-image-edit] Failed to refund reserved credit:", refundErr);
+      }
+    }
     const status = error instanceof Error && /(authorization|auth token|session)/i.test(error.message) ? 401 : 500;
     return new Response(
       JSON.stringify({ error: status === 401 ? "Authentication required" : "Image edit failed. Please try again." }),
