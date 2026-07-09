@@ -5,6 +5,7 @@
 
 const LOGOUT_STORAGE_KEYS = [
   "saasToken",
+  "saasRefreshToken",
   "saasUser",
   "userId",
   "userEmail",
@@ -537,6 +538,10 @@ function routeMessage(request, sender, sendResponse) {
           stopEbayOrderSyncInterval();
         }
         await chrome.storage.local.remove(LOGOUT_STORAGE_KEYS);
+        // Also clear the new-auth device-session tokens so a web-app logout
+        // cannot be silently revived via refreshLegacyToken() or the extension
+        // token-refresh path (EXT-P1-001).
+        await AuthHelper.clearNewAuthSession();
         AuthHelper.setUnlocked(false);
         AuthHelper.setLastCheck(0);
         sendResponse({ success: true });
