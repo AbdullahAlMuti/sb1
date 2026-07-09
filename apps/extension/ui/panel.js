@@ -918,7 +918,7 @@ function showTitleSelectionPopup(titles) {
           <span class="title-option-rank ${rankClass}">${rankLabel}</span>
           <span class="title-option-char-count">${charCount} characters</span>
         </div>
-        <div class="title-option-text">${titleValue || 'No title generated'}</div>
+        <div class="title-option-text">${titleValue ? escapeHtml(titleValue) : 'No title generated'}</div>
       </div>
     `;
   }).join('');
