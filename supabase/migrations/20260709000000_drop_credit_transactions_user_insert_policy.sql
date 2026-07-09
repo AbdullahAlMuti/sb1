@@ -1,0 +1,37 @@
+-- Migration: Drop client-writable INSERT policy on credit_transactions
+-- Security fix: BILLING-P0-001 / DB-P0-001 (credit self-mint / payment bypass)
+--
+-- Background
+-- ----------
+-- The policy "Users can insert their own credit transactions" (added in
+-- 20260123085249) allowed any authenticated user to INSERT arbitrary rows into
+-- public.credit_transactions with WITH CHECK (auth.uid() = user_id).
+--
+-- Because the AFTER INSERT trigger trg_sync_profile_credits ->
+-- sync_profile_credits_from_ledger() (SECURITY DEFINER) sets
+-- app.ledger_sync = 'true' and then updates profiles.credits to SUM(ledger),
+-- and the guard_profile_billing_columns() trigger returns NEW whenever
+-- app.ledger_sync = 'true' (20260617000000_admin_spine.sql), a user could
+-- POST directly to /rest/v1/credit_transactions and set their own credit
+-- balance to any value -- bypassing every edge-function paywall. Credits are
+-- the paid currency for AI generation and listing creation.
+--
+-- Fix
+-- ---
+-- Ledger writes must only ever originate from trusted server code. All
+-- legitimate credit mutations already run through SECURITY DEFINER RPCs
+-- (deduct_user_credits, adjust_user_credits_admin, create_listing_credit_deduction,
+-- set_user_credit_balance, reconcile_credit_balance_rpc, phase7 grant helpers)
+-- and via the "Service role can insert credit transactions" policy (edge
+-- functions using the service key). Those paths are unaffected by this change.
+--
+-- Retained policies on public.credit_transactions after this migration:
+--   * "Users can view own credit transactions"        (SELECT, auth.uid() = user_id)
+--   * "Users can view their own credit transactions"  (SELECT, auth.uid() = user_id)
+--   * "Admins can view all credit transactions"       (SELECT, is_admin(auth.uid()))
+--   * "Service role can insert credit transactions"   (INSERT, auth.role() = 'service_role')
+--
+-- Verification: supabase/tests/credit_transactions_rls_test.sql
+
+DROP POLICY IF EXISTS "Users can insert their own credit transactions"
+  ON public.credit_transactions;
