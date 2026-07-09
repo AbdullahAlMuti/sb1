@@ -8,6 +8,14 @@ type CorsOptions = {
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://sellersuit.com",
   "https://www.sellersuit.com",
+  // Canonical production app origins (docs/OPERATOR_ACTIONS.md). These are
+  // first-party and must work even when the APP_URL/ALLOWED_ORIGINS secrets
+  // are missing or drift — env vars extend this list, they don't replace it.
+  // Regression: checkout broke from app.sellersuit.com when the strict
+  // allow-list shipped without these defaults (supabase-js surfaced it as
+  // "Failed to send a request to the Edge Function").
+  "https://app.sellersuit.com",
+  "https://admin.sellersuit.com",
   "http://localhost:3000",
   "http://localhost:3001",
   "http://localhost:3002",
