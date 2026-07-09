@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
     if (block) return block;
 
     // Fetch only the fields the extension needs — no user_id, no billing data
-    const { data: rows, error: fetchErr } = await supabase
+    const { data: rowsData, error: fetchErr } = await supabase
       .from('user_pricing_settings')
       .select(
         'supplier_key, supplier_name, is_enabled, supplier_domains, rule_version, ' +
@@ -50,7 +50,11 @@ Deno.serve(async (req) => {
 
     if (fetchErr) return json({ error: 'Failed to fetch rules' }, 500);
 
-    const suppliers = (rows ?? []).map(r => ({
+    // Supabase infers a GenericStringError union for the select; the query is
+    // valid at runtime, so treat the rows as plain records for typing purposes.
+    const rows = (rowsData ?? []) as any[];
+
+    const suppliers = rows.map((r: any) => ({
       supplierKey:     r.supplier_key,
       supplierName:    r.supplier_name,
       isEnabled:       r.is_enabled,

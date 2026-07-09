@@ -11,7 +11,8 @@ import {
 
 // Seed default rows for any missing suppliers (idempotent: skips existing rows).
 async function seedMissingSuppliers(
-  supabaseAdmin: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any -- Supabase client generics are unset here; typed loosely to avoid a spurious never[] upsert error.
+  supabaseAdmin: any,
   userId: string,
   existingKeys: Set<string>,
 ) {
