@@ -37,8 +37,12 @@ dist-ssr
 .agents/
 agents/
 
-# GitHub workflows (ignored to allow OAuth app push without workflow scope)
-.github/
+# GitHub metadata: keep workflows tracked. NOTE: adding/updating files under
+# .github/workflows via an API token requires the `workflow` OAuth scope; if a
+# push is rejected, install the workflow manually (see docs/ci/README.md).
+.github/*
+!.github/workflows/
+!.github/workflows/**
 
 # Scratch scripts and temp screenshots
 scratch/
