@@ -193,7 +193,34 @@ function getFirstGeneratedTitle(result) {
 
 // Register the single message listener. Named so the auth gate can re-route a
 // request after a successful re-verification (see the unlock gate below).
+// EXT-P1-002: auth-sensitive actions must originate from the extension's own UI
+// (popup/sidepanel/options) or the first-party SellerSuit dashboard bridge —
+// never from a marketplace content script or any other page. Scraping and other
+// non-auth actions are unaffected and still work from content scripts.
+const AUTH_SENSITIVE_ACTIONS = new Set(['SYNC_TOKEN', 'LOGIN_SUCCESS', 'LOGOUT']);
+
+function isTrustedAuthSender(sender) {
+  if (!sender || sender.id !== chrome.runtime.id) return false;
+  const url = sender.url || '';
+  // Extension UI pages run from chrome-extension://<own id>/...
+  if (url.startsWith('chrome-extension://')) return true;
+  // Content-script relay (bridge.js): only trust first-party dashboard origins.
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    if (host === 'sellersuit.com' || host.endsWith('.sellersuit.com')) return true;
+    // Dev only — the prod build does not inject bridge.js on localhost.
+    if (host === 'localhost' || host === '127.0.0.1') return true;
+  } catch (_e) { /* no / invalid sender url */ }
+  return false;
+}
+
 function routeMessage(request, sender, sendResponse) {
+  if (AUTH_SENSITIVE_ACTIONS.has(request?.action) && !isTrustedAuthSender(sender)) {
+    console.warn('[message-router] Rejected auth-sensitive action from untrusted sender:', request?.action);
+    sendResponse({ success: false, error: 'Untrusted sender for auth action' });
+    return true;
+  }
+
   const urls = getUrls();
   const apiKeys = getApiKeys();
 
@@ -521,8 +548,15 @@ function routeMessage(request, sender, sendResponse) {
             if (typeof SSPricingRuleSync !== 'undefined') {
               SSPricingRuleSync.sync(true).catch(() => {});
             }
+          } else {
+            // EXT-P1-002: never leave an unverified session in storage. If the
+            // backend did not confirm the token, roll back everything just written.
+            await chrome.storage.local.remove([
+              'saasToken', 'saasRefreshToken', 'saasUser', 'userId', 'userEmail', 'authTimestamp'
+            ]);
+            AuthHelper.setUnlocked(false);
           }
-          sendResponse({ success: true, verified });
+          sendResponse({ success: verified, verified });
         } catch (err) {
           sendResponse({ success: false, error: err.message });
         }
