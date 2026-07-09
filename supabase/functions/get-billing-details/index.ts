@@ -102,7 +102,7 @@ serve(async (req) => {
       limit: 10,
     });
 
-    const parsedInvoices = invoices.data.map((inv) => ({
+    const parsedInvoices = invoices.data.map((inv: any) => ({
       id: inv.id,
       date: new Date(inv.created * 1000).toISOString(),
       amount_paid: inv.amount_paid,
