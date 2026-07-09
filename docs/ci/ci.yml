@@ -1,0 +1,79 @@
+name: CI
+
+# DEVOPS-P1: gate every PR/push on lint, types, unit tests, edge-function type
+# checks, database (pgTAP) tests and an e2e smoke. Some jobs need repository
+# secrets / Docker on the runner (noted per job).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: Lint, typecheck & extension unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck (web, admin, marketing)
+        run: npm run typecheck
+      - name: Extension unit tests
+        run: npm --workspace @sellersuit/extension run test
+
+  deno:
+    name: Deno typecheck (Supabase edge functions)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check edge functions
+        run: deno check "supabase/functions/**/*.ts"
+
+  db-tests:
+    name: pgTAP DB tests (RLS, billing idempotency, credit-mint regression)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start local Supabase stack
+        run: supabase start
+      - name: Run pgTAP tests (supabase/tests/*.sql)
+        run: supabase test db
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop
+
+  e2e:
+    name: Playwright e2e smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright (chromium)
+        run: npx playwright install --with-deps chromium
+      - name: Run e2e smoke
+        # Set E2E_BASE_URL (and optional E2E_APP_URL) as repo secrets to target a
+        # deployed preview; otherwise the spec skips checks that need a running app.
+        env:
+          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+          E2E_APP_URL: ${{ secrets.E2E_APP_URL }}
+        run: npx playwright test
