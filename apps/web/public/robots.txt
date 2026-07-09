@@ -1,14 +1,5 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
+# SellerSuit customer application — private, authenticated surface.
+# The public marketing site (sellersuit.com) handles SEO/indexing.
+# This app must not be crawled or indexed.
 User-agent: *
-Allow: /
+Disallow: /
