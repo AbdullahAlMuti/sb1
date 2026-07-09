@@ -125,6 +125,29 @@ serve(async (req) => {
       action === "grant" ? "revoke" :
       "manual_adjustment";
 
+    // ADMIN-P1-001: large credit changes require super_admin (lockout-safe),
+    // mirroring the threshold enforced inside the adjust_user_credits_admin RPC.
+    // This function writes via set_user_credit_balance, which would otherwise let
+    // any admin grant/set unlimited credits and bypass that gate. The requirement
+    // only takes effect once at least one super_admin exists, so it cannot lock
+    // out the first admins.
+    const LARGE_GRANT_THRESHOLD = 100;
+    if (action !== "reset_to_plan" && Math.abs(delta) > LARGE_GRANT_THRESHOLD) {
+      const callerIsSuperAdmin = roles.some((r) => r.role === "super_admin");
+      if (!callerIsSuperAdmin) {
+        const { data: superAdmins } = await supabaseAdmin
+          .from("user_roles")
+          .select("user_id")
+          .eq("role", "super_admin")
+          .limit(1);
+        if (superAdmins && superAdmins.length > 0) {
+          return json(403, {
+            error: `Adjustments over ${LARGE_GRANT_THRESHOLD} credits require super_admin`,
+          });
+        }
+      }
+    }
+
     const { error: creditErr } = await supabaseAdmin.rpc("set_user_credit_balance", {
       p_user_id: userId,
       p_target_balance: newCredits,
