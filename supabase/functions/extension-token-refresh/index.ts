@@ -1,7 +1,7 @@
 import {
   addSeconds,
   ACCESS_TOKEN_TTL_SECONDS,
-  corsHeaders,
+  resolveCors,
   createOpaqueToken,
   createServiceClient,
   getClientIp,
@@ -22,6 +22,7 @@ import {
 import { checkRateLimit, getClientIp as getRateLimitIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 Deno.serve(async (req) => {
+  const corsHeaders = resolveCors(req);
   const methodResponse = requireMethod(req, ["POST"]);
   if (methodResponse) return methodResponse;
 
@@ -172,7 +173,7 @@ Deno.serve(async (req) => {
       metadata: { previous_refresh_token_id: refreshRow.id, next_refresh_token_id: nextRefreshRow.id },
     });
 
-    return jsonResponse({
+    return jsonResponse(req, {
       success: true,
       tokenType: "Bearer",
       accessToken,
@@ -185,6 +186,6 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return jsonResponse({ success: false, error: message }, 401);
+    return jsonResponse(req, { success: false, error: message }, 401);
   }
 });

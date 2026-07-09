@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
       newValues: { request_id: requestRow.id, grant_id: grant.id, workspace_id: workspace.id },
     });
 
-    return jsonResponse({
+    return jsonResponse(req, {
       success: true,
       deviceId: device.id,
       workspaceId: workspace.id,
@@ -139,6 +139,6 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return jsonResponse({ success: false, error: message }, message.includes("session") ? 401 : 400);
+    return jsonResponse(req, { success: false, error: message }, message.includes("session") ? 401 : 400);
   }
 });

@@ -1,6 +1,6 @@
 import {
   createSessionTokens,
-  corsHeaders,
+  resolveCors,
   createServiceClient,
   getClientIp,
   getUserAgent,
@@ -18,6 +18,7 @@ import {
 import { checkRateLimit, getClientIp as getRateLimitIp, rateLimitResponse } from "../_shared/rate-limit.ts";
 
 Deno.serve(async (req) => {
+  const corsHeaders = resolveCors(req);
   const methodResponse = requireMethod(req, ["POST"]);
   if (methodResponse) return methodResponse;
 
@@ -163,7 +164,7 @@ Deno.serve(async (req) => {
       newValues: { device_id: redeemContext.deviceId, workspace_id: redeemContext.workspaceId },
     });
 
-    return jsonResponse({
+    return jsonResponse(req, {
       success: true,
       tokenType: "Bearer",
       accessToken: tokenSet.accessToken,
@@ -176,6 +177,6 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return jsonResponse({ success: false, error: message }, 401);
+    return jsonResponse(req, { success: false, error: message }, 401);
   }
 });

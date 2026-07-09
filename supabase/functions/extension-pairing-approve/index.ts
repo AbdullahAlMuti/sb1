@@ -137,14 +137,14 @@ Deno.serve(async (req) => {
       newValues: { request_id: requestRow.id, workspace_id: workspace.id },
     });
 
-    return jsonResponse({
+    return jsonResponse(req, {
       success: true,
       deviceId: device.id,
       workspaceId: workspace.id,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return jsonResponse(
+    return jsonResponse(req, 
       { success: false, error: message },
       message.includes("authorization") || message.includes("session") ? 401 : 400
     );

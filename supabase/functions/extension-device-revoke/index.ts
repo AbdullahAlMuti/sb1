@@ -89,9 +89,9 @@ Deno.serve(async (req) => {
       newValues: { status: "revoked", reason },
     });
 
-    return jsonResponse({ success: true, deviceId: device.id });
+    return jsonResponse(req, { success: true, deviceId: device.id });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return jsonResponse({ success: false, error: message }, message.includes("authorized") ? 403 : 400);
+    return jsonResponse(req, { success: false, error: message }, message.includes("authorized") ? 403 : 400);
   }
 });

@@ -73,9 +73,9 @@ Deno.serve(async (req) => {
       entityId: context.session.id,
     });
 
-    return jsonResponse({ success: true });
+    return jsonResponse(req, { success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return jsonResponse({ success: false, error: message }, 401);
+    return jsonResponse(req, { success: false, error: message }, 401);
   }
 });

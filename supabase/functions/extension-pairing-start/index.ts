@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
       .gte("created_at", rateWindowStart);
       
     if ((recentRequestCount ?? 0) >= 5) {
-      return jsonResponse({ success: false, error: "Rate limit exceeded. Try again later." }, 429);
+      return jsonResponse(req, { success: false, error: "Rate limit exceeded. Try again later." }, 429);
     }
 
     const pairingCode = generatePairingCode();
@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
 
     if (requestError || !requestRow) throw new Error(requestError?.message || "Failed to create pairing request");
 
-    return jsonResponse({
+    return jsonResponse(req, {
       success: true,
       pairingCode,
       connectToken,
@@ -104,6 +104,6 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return jsonResponse({ success: false, error: message }, 400);
+    return jsonResponse(req, { success: false, error: message }, 400);
   }
 });
