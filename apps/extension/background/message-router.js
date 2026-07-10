@@ -511,6 +511,26 @@ function routeMessage(request, sender, sendResponse) {
     return true;
   }
 
+  if (request.action === 'CHECK_EBAY_CONNECTION') {
+    (async () => {
+      try {
+        const helper = typeof window !== 'undefined' ? window.EbayListingApiHelper : (typeof self !== 'undefined' ? self.EbayListingApiHelper : null);
+        if (helper && typeof helper.checkEbayAuth === 'function') {
+          const connected = await helper.checkEbayAuth();
+          const data = await chrome.storage.local.get(['lastSyncTime']);
+          sendResponse({ connected, lastSyncTime: data.lastSyncTime || null });
+        } else {
+          console.warn('[Background] EbayListingApiHelper not available in background context');
+          sendResponse({ connected: false, lastSyncTime: null });
+        }
+      } catch (err) {
+        console.error('[Background] CHECK_EBAY_CONNECTION error:', err.message);
+        sendResponse({ connected: false, lastSyncTime: null, error: err.message });
+      }
+    })();
+    return true;
+  }
+
   if (request.action === 'get_ebay_orders') {
     (async () => {
       if (typeof SyncUtils !== 'undefined') {

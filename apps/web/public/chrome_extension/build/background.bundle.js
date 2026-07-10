@@ -2531,7 +2531,9 @@
 		return results;
 	}
 	function _getEbaySuffix() {
-		return window.location.host.split("ebay").pop()?.replace(".", "") || "com";
+		const host = window && window.location && window.location.host || "";
+		if (!host || !host.includes("ebay")) return "com";
+		return host.split("ebay").pop()?.replace(".", "") || "com";
 	}
 	function _sanitizeSupplierText(text) {
 		return text.replace(/\b(sold|fulfilled|dispatched|shipped|sponsored)\s+by\b[^.<\n]*/gi, "").replace(/\bships?\s+from\s+(amazon|walmart|target|bestbuy|wayfair|homedepot|costco)[^.<\n]*/gi, "").replace(/\bvisit\s+the\b[^.<\n]*\bstore\b[^.<\n]*/gi, "").replace(/\b(amazon\s*basics|amazon\s*brand|amazon\s*essentials|amazon\s*elements|amazon\s*commercial|amazoncommercial|amazonbasics)\b/gi, "").replace(/\bamazon'?s?\s+choice(?:\s+for\b[^.<\n]*)?/gi, "").replace(/#\s*\d+\s+best\s+seller(?:\s+in\b[^.<\n]*)?/gi, "").replace(/\bbest\s*seller\b/gi, "").replace(/\b(amazon|walmart|target|bestbuy|wayfair|homedepot|costco)\.com\b/gi, "").replace(/\b(ASIN|UPC|ISBN|Sales?\s*Rank|Seller\s*Rank|Available\s*at|Fulfilled\s*by|Sold\s*by)\b/gi, "").replace(/https?:\/\/[^\s<"]+/gi, "");
@@ -4973,6 +4975,32 @@
 					syncLog("error", "Manual sync request failed", { error: err.message });
 					sendResponse({
 						ok: false,
+						error: err.message
+					});
+				}
+			})();
+			return true;
+		}
+		if (request.action === "CHECK_EBAY_CONNECTION") {
+			(async () => {
+				try {
+					const helper = typeof window !== "undefined" ? window.EbayListingApiHelper : typeof self !== "undefined" ? self.EbayListingApiHelper : null;
+					if (helper && typeof helper.checkEbayAuth === "function") sendResponse({
+						connected: await helper.checkEbayAuth(),
+						lastSyncTime: (await chrome.storage.local.get(["lastSyncTime"])).lastSyncTime || null
+					});
+					else {
+						console.warn("[Background] EbayListingApiHelper not available in background context");
+						sendResponse({
+							connected: false,
+							lastSyncTime: null
+						});
+					}
+				} catch (err) {
+					console.error("[Background] CHECK_EBAY_CONNECTION error:", err.message);
+					sendResponse({
+						connected: false,
+						lastSyncTime: null,
 						error: err.message
 					});
 				}

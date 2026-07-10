@@ -5464,6 +5464,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         if (match && parseFloat(match.ebayPrice) > 0) {
                             fv.ebayPrice = match.ebayPrice;
                             fv.finalPrice = match.finalPrice || match.ebayPrice;
+                            // Restore provenance with the price: 'manual' edits stay
+                            // frozen, while 'calculated' prices are re-priced by the
+                            // _applyPricingToProduct call below with the CURRENT rules
+                            // (a restored price without provenance is treated as manual
+                            // for old-draft compatibility).
+                            if (match.price_source) fv.price_source = match.price_source;
                         }
                     });
                 }

@@ -110,6 +110,8 @@ window.SSVariationNormalizer = (() => {
     if (!_priceNumber(merged.finalPrice, merged.ebayPrice) && _priceNumber(next.finalPrice, next.ebayPrice)) {
       merged.finalPrice = next.finalPrice;
       merged.ebayPrice = next.ebayPrice;
+      // Carry price provenance with the price it describes (manual vs calculated)
+      if (next.price_source && !merged.price_source) merged.price_source = next.price_source;
     }
     if (!_priceNumber(merged.price, merged.raw_supplier_price) && _priceNumber(next.price, next.raw_supplier_price)) {
       merged.price = next.price;

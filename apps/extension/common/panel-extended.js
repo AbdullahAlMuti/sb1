@@ -316,6 +316,11 @@ function _ssxRenderVariantRows(variants, p) {
             // so an edit must win over any earlier auto-stamped ebayPrice.
             v.finalPrice = val;
             v.ebayPrice = val;
+            // Provenance: mark the variant as manually priced so SSPricingApply
+            // never overwrites this edit on a later re-price pass (rules-cache
+            // refresh, re-render, PREPARE_EBAY_LISTING). Mirrors the parent
+            // price handler, which stamps price_source = 'manual' the same way.
+            v.price_source = 'manual';
             const pr = val - supplier;
             const prPct = supplier > 0 ? (pr / supplier * 100) : 0;
             tdProfit.textContent = `${_ssxMoney(pr)} (${prPct.toFixed(1)}%)`;
