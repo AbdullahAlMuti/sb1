@@ -11,7 +11,7 @@
 -- or (worse) start mixing raw cost with selling price again.
 
 BEGIN;
-SELECT plan(16);
+SELECT plan(18);
 
 -- 1. Raw vs calculated price separation on listings
 SELECT has_column('public', 'listings', 'supplier_price',      'listings.supplier_price (raw cost) exists');
@@ -50,6 +50,10 @@ SELECT ok(
      WHERE schemaname='public' AND tablename='listings' AND indexname='idx_listings_user_supplier_pid'),
   'idx_listings_user_supplier_pid exists for idempotent imports'
 );
+
+-- 5. Versioned pricing formula (v2 sale-based gross-up) fields
+SELECT has_column('public', 'user_pricing_settings', 'formula_version', 'user_pricing_settings.formula_version exists');
+SELECT has_column('public', 'user_pricing_settings', 'per_order_fee',   'user_pricing_settings.per_order_fee exists');
 
 SELECT * FROM finish();
 ROLLBACK;

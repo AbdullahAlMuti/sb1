@@ -25,8 +25,8 @@ const DENO_FOOTER = `
 // ─── ES module exports for Deno edge functions (appended by sync-pricing-core.js) ───
 // In Deno Deploy, window === globalThis, so the IIFE above assigned window.SSPricingCore.
 // We re-export the members as named ES exports for clean import syntax.
-const { parseToIntCents, centsToDisplay, applyRoundingRule, calculatePrice } = window.SSPricingCore;
-export { parseToIntCents, centsToDisplay, applyRoundingRule, calculatePrice };
+const { parseToIntCents, centsToDisplay, applyRoundingRule, calculatePrice, calculatePriceV2 } = window.SSPricingCore;
+export { parseToIntCents, centsToDisplay, applyRoundingRule, calculatePrice, calculatePriceV2 };
 export default window.SSPricingCore;
 `;
 

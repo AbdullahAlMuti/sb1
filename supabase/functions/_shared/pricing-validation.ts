@@ -4,6 +4,14 @@
 export const VALID_SUPPLIER_KEYS = new Set(['amazon', 'walmart', 'aliexpress', 'temu', 'alibaba']);
 export const VALID_ROUNDING_RULES = new Set(['NONE', 'END_99', 'END_95', 'END_49', 'ROUND_UP']);
 
+// Honest eBay defaults used when seeding v2 rules. The marketplace fee is a
+// property of eBay (the selling venue), not of the supplier: ~13.25% of the
+// sale for most categories plus a $0.30 fixed per-order fee. Users adjust per
+// category / store tier in Supplier Pricing.
+export const EBAY_FEE_DEFAULT_PERCENT = 13.25;
+export const EBAY_PER_ORDER_FEE_DEFAULT = 0.30;
+export const PRICING_FORMULA_VERSIONS = new Set([1, 2]);
+
 export const SUPPLIER_DEFAULTS: Record<string, {
   supplierName: string;
   domains: string[];

@@ -18,7 +18,12 @@
 // the userId they resolved from verified auth (JWT / extension session).
 
 import { calculatePrice } from "./pricing-core.js";
-import { SUPPLIER_DEFAULTS, VALID_SUPPLIER_KEYS } from "./pricing-validation.ts";
+import {
+  EBAY_FEE_DEFAULT_PERCENT,
+  EBAY_PER_ORDER_FEE_DEFAULT,
+  SUPPLIER_DEFAULTS,
+  VALID_SUPPLIER_KEYS,
+} from "./pricing-validation.ts";
 
 // Minimal client surface so both supabase-js v2 clients type-check without
 // dragging generated Database generics into every caller.
@@ -35,6 +40,7 @@ export type PricingErrorCode =
   | "INVALID_SUPPLIER_PRICE"
   | "NO_ACTIVE_RULE"
   | "RULE_DISABLED"
+  | "FEES_TOO_HIGH"
   | "CALCULATION_FAILED";
 
 export class PricingError extends Error {
@@ -75,8 +81,10 @@ export interface PricingComputation {
   baseCost: string;
   marketplaceFee: string;
   currencyBuffer: string;
+  perOrderFee: string;              // "0.30" — v2 fixed fee; "0.00" under v1
   profit: string;
   marginPercent: number;
+  formulaVersion: number;           // 1 = legacy additive, 2 = sale-based gross-up
   appliedRules: AppliedPricingRuleStep[];
   supplierKey: string;
   settingsId: string | null;
@@ -98,10 +106,14 @@ interface PricingRuleRow {
   rounding_rule: string;
   rule_version: number;
   updated_at: string;
+  formula_version?: number;
+  per_order_fee?: number | string;
 }
 
 /** Default rule values seeded for a supplier the user has never configured.
- * Mirrors seedMissingSuppliers in the pricing-settings edge function. */
+ * Mirrors seedMissingSuppliers in the pricing-settings edge function.
+ * New seeds start on formula v2 (sale-based gross-up) with honest eBay
+ * defaults — the marketplace fee belongs to eBay, not the supplier. */
 export function defaultRuleForSupplier(userId: string, supplierKey: string) {
   const d = SUPPLIER_DEFAULTS[supplierKey];
   return {
@@ -114,10 +126,12 @@ export function defaultRuleForSupplier(userId: string, supplierKey: string) {
     minimum_profit: 5,
     shipping_buffer: 3,
     fixed_handling_fee: 0,
-    marketplace_fee_percent: d.marketplaceFeePercent,
+    marketplace_fee_percent: EBAY_FEE_DEFAULT_PERCENT,
     currency_buffer_percent: 2,
     rounding_rule: "END_99",
     rule_version: 1,
+    formula_version: 2,
+    per_order_fee: EBAY_PER_ORDER_FEE_DEFAULT,
   };
 }
 
@@ -155,7 +169,7 @@ export async function resolvePricingRule(
 
   const { data: existing, error: fetchErr } = await admin
     .from("user_pricing_settings")
-    .select("id, supplier_key, is_enabled, profit_margin_percent, minimum_profit, shipping_buffer, fixed_handling_fee, marketplace_fee_percent, currency_buffer_percent, rounding_rule, rule_version, updated_at")
+    .select("id, supplier_key, is_enabled, profit_margin_percent, minimum_profit, shipping_buffer, fixed_handling_fee, marketplace_fee_percent, currency_buffer_percent, rounding_rule, rule_version, updated_at, formula_version, per_order_fee")
     .eq("user_id", userId)
     .eq("supplier_key", supplierKey)
     .maybeSingle();
@@ -179,7 +193,7 @@ export async function resolvePricingRule(
 
   const { data: seeded, error: reErr } = await admin
     .from("user_pricing_settings")
-    .select("id, supplier_key, is_enabled, profit_margin_percent, minimum_profit, shipping_buffer, fixed_handling_fee, marketplace_fee_percent, currency_buffer_percent, rounding_rule, rule_version, updated_at")
+    .select("id, supplier_key, is_enabled, profit_margin_percent, minimum_profit, shipping_buffer, fixed_handling_fee, marketplace_fee_percent, currency_buffer_percent, rounding_rule, rule_version, updated_at, formula_version, per_order_fee")
     .eq("user_id", userId)
     .eq("supplier_key", supplierKey)
     .maybeSingle();
@@ -232,12 +246,16 @@ export function computeFromRule(rule: PricingRuleRow, input: PricingInput): Pric
     );
   }
 
+  const formulaVersion = Number(rule.formula_version ?? 1);
+
   let breakdown: ReturnType<typeof calculatePrice>;
   try {
     breakdown = calculatePrice(
       {
         supplierKey: rule.supplier_key,
         ruleVersion: rule.rule_version,
+        formulaVersion,
+        perOrderFee: Number(rule.per_order_fee ?? 0),
         profitMarginPercent: Number(rule.profit_margin_percent),
         minimumProfit: Number(rule.minimum_profit),
         shippingBuffer: Number(rule.shipping_buffer),
@@ -250,26 +268,47 @@ export function computeFromRule(rule: PricingRuleRow, input: PricingInput): Pric
       shipping,
     );
   } catch (e) {
-    throw new PricingError("CALCULATION_FAILED", `Calculation error: ${(e as Error).message}`);
+    const msg = (e as Error).message || "";
+    if (/fees too high/i.test(msg)) {
+      throw new PricingError("FEES_TOO_HIGH", `Calculation refused: ${msg}`);
+    }
+    throw new PricingError("CALCULATION_FAILED", `Calculation error: ${msg}`);
   }
 
   const b = breakdown.breakdown; // integer-cent internals from pricing-core
+  const perOrderFeeDisplay = (breakdown as { perOrderFee?: string }).perOrderFee ?? "0.00";
 
-  // Deterministic, documented rule order (matches pricing-core.js):
+  // Deterministic, documented rule order (matches pricing-core.js).
+  // v1 (legacy additive — fee bases are COST):
   //   1. baseCost = supplierPrice + shippingCost + shippingBuffer + fixedHandlingFee
   //   2. marketplaceFee = baseCost * marketplaceFeePercent%
   //   3. currencyBuffer = baseCost * currencyBufferPercent%
   //   4. targetProfit = max(baseCost * profitMarginPercent%, minimumProfit)
   //   5. rawFinal = baseCost + marketplaceFee + currencyBuffer + targetProfit
   //   6. finalPrice = rounding(rawFinal)  — rounding never reduces the price
-  const appliedRules: AppliedPricingRuleStep[] = [
-    { ruleType: "shipping_buffer",   label: "Shipping buffer",         configuredValue: Number(rule.shipping_buffer),          calculatedAmount: breakdown.shippingBuffer,   sequence: 1 },
-    { ruleType: "fixed_handling",    label: "Fixed handling fee",      configuredValue: Number(rule.fixed_handling_fee),       calculatedAmount: breakdown.fixedHandlingFee, sequence: 2 },
-    { ruleType: "marketplace_fee",   label: "Marketplace fee %",       configuredValue: Number(rule.marketplace_fee_percent),  calculatedAmount: breakdown.marketplaceFee,   sequence: 3 },
-    { ruleType: "currency_buffer",   label: "Currency buffer %",       configuredValue: Number(rule.currency_buffer_percent),  calculatedAmount: breakdown.currencyBuffer,   sequence: 4 },
-    { ruleType: "profit_margin",     label: "Profit (margin % vs minimum)", configuredValue: Number(rule.profit_margin_percent), calculatedAmount: (b.tgtProfit / 100).toFixed(2), sequence: 5 },
-    { ruleType: "rounding",          label: `Rounding (${rule.rounding_rule})`, configuredValue: rule.rounding_rule,            calculatedAmount: ((b.finalCents - b.rawFinal) / 100).toFixed(2), sequence: 6 },
-  ];
+  // v2 (sale-based gross-up — fee bases are the FINAL price):
+  //   1. totalCost = supplierPrice + shippingCost + shippingBuffer + fixedHandlingFee
+  //   2. price = max((totalCost*(1+profit%) + perOrderFee) / (1 - pctOfSale),
+  //                  (totalCost + perOrderFee + minimumProfit) / (1 - pctOfSale))
+  //   3. finalPrice = rounding(price), bump-verified so realized profit >= target
+  const appliedRules: AppliedPricingRuleStep[] = formulaVersion === 2
+    ? [
+      { ruleType: "shipping_buffer",  label: "Shipping buffer",                configuredValue: Number(rule.shipping_buffer),         calculatedAmount: breakdown.shippingBuffer,   sequence: 1 },
+      { ruleType: "fixed_handling",   label: "Fixed handling fee",             configuredValue: Number(rule.fixed_handling_fee),      calculatedAmount: breakdown.fixedHandlingFee, sequence: 2 },
+      { ruleType: "per_order_fee",    label: "Marketplace per-order fee",      configuredValue: Number(rule.per_order_fee ?? 0),      calculatedAmount: perOrderFeeDisplay,         sequence: 3 },
+      { ruleType: "marketplace_fee",  label: "Marketplace fee (% of sale)",    configuredValue: Number(rule.marketplace_fee_percent), calculatedAmount: breakdown.marketplaceFee,   sequence: 4 },
+      { ruleType: "currency_buffer",  label: "Currency buffer (% of sale)",    configuredValue: Number(rule.currency_buffer_percent), calculatedAmount: breakdown.currencyBuffer,   sequence: 5 },
+      { ruleType: "profit_margin",    label: "Realized profit (markup % vs minimum)", configuredValue: Number(rule.profit_margin_percent), calculatedAmount: breakdown.profit,     sequence: 6 },
+      { ruleType: "rounding",         label: `Rounding (${rule.rounding_rule})`, configuredValue: rule.rounding_rule,                 calculatedAmount: ((b.finalCents - b.rawFinal) / 100).toFixed(2), sequence: 7 },
+    ]
+    : [
+      { ruleType: "shipping_buffer",  label: "Shipping buffer",         configuredValue: Number(rule.shipping_buffer),          calculatedAmount: breakdown.shippingBuffer,   sequence: 1 },
+      { ruleType: "fixed_handling",   label: "Fixed handling fee",      configuredValue: Number(rule.fixed_handling_fee),       calculatedAmount: breakdown.fixedHandlingFee, sequence: 2 },
+      { ruleType: "marketplace_fee",  label: "Marketplace fee %",       configuredValue: Number(rule.marketplace_fee_percent),  calculatedAmount: breakdown.marketplaceFee,   sequence: 3 },
+      { ruleType: "currency_buffer",  label: "Currency buffer %",       configuredValue: Number(rule.currency_buffer_percent),  calculatedAmount: breakdown.currencyBuffer,   sequence: 4 },
+      { ruleType: "profit_margin",    label: "Profit (margin % vs minimum)", configuredValue: Number(rule.profit_margin_percent), calculatedAmount: (b.tgtProfit / 100).toFixed(2), sequence: 5 },
+      { ruleType: "rounding",         label: `Rounding (${rule.rounding_rule})`, configuredValue: rule.rounding_rule,            calculatedAmount: ((b.finalCents - b.rawFinal) / 100).toFixed(2), sequence: 6 },
+    ];
 
   return {
     finalPrice: breakdown.finalPrice,
@@ -281,8 +320,10 @@ export function computeFromRule(rule: PricingRuleRow, input: PricingInput): Pric
     baseCost: breakdown.baseCost,
     marketplaceFee: breakdown.marketplaceFee,
     currencyBuffer: breakdown.currencyBuffer,
+    perOrderFee: perOrderFeeDisplay,
     profit: breakdown.profit,
     marginPercent: breakdown.marginPercent,
+    formulaVersion,
     appliedRules,
     supplierKey: rule.supplier_key,
     settingsId: rule.id ?? null,
@@ -309,6 +350,7 @@ export async function priceForUser(
 export function breakdownForStorage(c: PricingComputation): Record<string, unknown> {
   return {
     engine: "pricing-core@cents",
+    formulaVersion: c.formulaVersion,
     supplierKey: c.supplierKey,
     ruleVersion: c.ruleVersion,
     settingsId: c.settingsId,
@@ -320,6 +362,7 @@ export function breakdownForStorage(c: PricingComputation): Record<string, unkno
     baseCost: c.baseCost,
     marketplaceFee: c.marketplaceFee,
     currencyBuffer: c.currencyBuffer,
+    perOrderFee: c.perOrderFee,
     profit: c.profit,
     marginPercent: c.marginPercent,
     finalPrice: c.finalPrice,

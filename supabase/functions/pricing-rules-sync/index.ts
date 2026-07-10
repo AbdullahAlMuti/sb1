@@ -43,7 +43,8 @@ Deno.serve(async (req) => {
       .select(
         'supplier_key, supplier_name, is_enabled, supplier_domains, rule_version, ' +
         'profit_margin_percent, minimum_profit, shipping_buffer, fixed_handling_fee, ' +
-        'marketplace_fee_percent, currency_buffer_percent, rounding_rule, updated_at'
+        'marketplace_fee_percent, currency_buffer_percent, rounding_rule, updated_at, ' +
+        'formula_version, per_order_fee'
       )
       .eq('user_id', user.id)
       .order('supplier_key');
@@ -68,6 +69,8 @@ Deno.serve(async (req) => {
         marketplaceFeePercent: Number(r.marketplace_fee_percent),
         currencyBufferPercent: Number(r.currency_buffer_percent),
         roundingRule:          r.rounding_rule,
+        formulaVersion:        Number(r.formula_version ?? 1),
+        perOrderFee:           Number(r.per_order_fee ?? 0),
       },
     }));
 

@@ -70,6 +70,8 @@ Deno.serve(async (req) => {
         {
           supplierKey:            rule.supplier_key,
           ruleVersion:            rule.rule_version,
+          formulaVersion:         Number(rule.formula_version ?? 1),
+          perOrderFee:            Number(rule.per_order_fee ?? 0),
           profitMarginPercent:    Number(rule.profit_margin_percent),
           minimumProfit:          Number(rule.minimum_profit),
           shippingBuffer:         Number(rule.shipping_buffer),

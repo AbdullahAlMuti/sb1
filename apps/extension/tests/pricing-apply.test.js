@@ -288,3 +288,59 @@ describe('explicit end-to-end expected values (user story from the spec)', () =>
     assert.equal(p.finalPrice, 26.99);
   });
 });
+
+describe('formula v2 rules flow through SSPricingApply unchanged', () => {
+  const AMAZON_RULE_V2 = {
+    supplierKey: 'amazon',
+    supplierName: 'Amazon',
+    isEnabled: true,
+    ruleVersion: 9,
+    calculationRule: {
+      formulaVersion: 2,
+      perOrderFee: 0.30,
+      profitMarginPercent: 20,
+      minimumProfit: 0,
+      shippingBuffer: 0,
+      fixedHandlingFee: 0,
+      marketplaceFeePercent: 13.25,
+      currencyBufferPercent: 0,
+      roundingRule: 'NONE',
+    },
+  };
+
+  test('v2 rule prices via the gross-up: $10 raw → $14.18, realized profit exactly $2.00', () => {
+    const win = loadApply();
+    const p = product({ price: 10.0 });
+    const out = win.SSPricingApply.applyWithRules(p, cacheWith([AMAZON_RULE_V2]), 'amazon');
+    assert.equal(out.priced, true);
+    assert.equal(p.finalPrice, 14.18);
+    assert.equal(p.price_source, 'calculated');
+    // Engine parity with a direct SSPricingCore call
+    const direct = win.SSPricingCore.calculatePrice(AMAZON_RULE_V2.calculationRule, 10.0, 0);
+    assert.equal(p.finalPrice, parseFloat(direct.finalPrice));
+    assert.equal(direct.profit, '2.00');
+  });
+
+  test('v2 fees-too-high rule → product left unpriced (guardrail propagates as no price)', () => {
+    const win = loadApply();
+    const p = product({ price: 10.0 });
+    const badRule = {
+      ...AMAZON_RULE_V2,
+      calculationRule: { ...AMAZON_RULE_V2.calculationRule, marketplaceFeePercent: 60, currencyBufferPercent: 20 },
+    };
+    const out = win.SSPricingApply.applyWithRules(p, cacheWith([badRule]), 'amazon');
+    assert.equal(out.priced, false, 'guardrail must refuse rather than price absurdly');
+    assert.equal(p.finalPrice, undefined);
+  });
+
+  test('mixed cache: v1 supplier and v2 supplier price independently', () => {
+    const win = loadApply();
+    const cache = cacheWith([AMAZON_RULE_USER_A, { ...AMAZON_RULE_V2, supplierKey: 'walmart', supplierName: 'Walmart' }]);
+    const pV1 = product({ price: 10 });
+    const pV2 = product({ price: 10 });
+    win.SSPricingApply.applyWithRules(pV1, cache, 'amazon');   // v1 rule
+    win.SSPricingApply.applyWithRules(pV2, cache, 'walmart');  // v2 rule
+    assert.equal(pV1.finalPrice, 14.0);   // legacy additive + ROUND_UP
+    assert.equal(pV2.finalPrice, 14.18);  // sale-based gross-up
+  });
+});
