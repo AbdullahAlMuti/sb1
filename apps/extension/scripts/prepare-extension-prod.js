@@ -100,6 +100,45 @@ bridgeContents = bridgeContents.replace(
 );
 fs.writeFileSync(bridgePath, bridgeContents);
 
+// 4b. Strip the dev-only localhost sender trust from the message router.
+// isTrustedAuthSender() accepts localhost/127.0.0.1 bridge senders so daily
+// development works — but the store artifact must not trust local origins for
+// auth-sensitive actions (SYNC_TOKEN / LOGIN_SUCCESS / LOGOUT), and verify:prod
+// hard-fails on the literal strings. The check exists in the raw source file
+// AND baked into the vite background bundle, so both dist copies are rewritten.
+// Loud failure on a miss: if a refactor moves or renames the check, the build
+// must break here rather than silently ship local-host trust to the store.
+// Matches both the raw source shape (comment line + single quotes) and the
+// vite bundle shape (comment stripped, double quotes, tab indentation).
+const DEV_HOST_TRUST = /(?:[ \t]*\/\/ Dev only[^\n]*\n)?[ \t]*if \(host === ["']localhost["'] \|\| host === ["']127\.0\.0\.1["']\) return true;[ \t]*\r?\n/g;
+const ROUTER_FILES = [
+  path.join(DIST_DIR, 'background', 'message-router.js'),
+  path.join(DIST_DIR, 'build', 'background.bundle.js'),
+];
+for (const routerPath of ROUTER_FILES) {
+  if (!fs.existsSync(routerPath)) {
+    console.error(`❌ Expected file missing from production build: ${routerPath}`);
+    process.exit(1);
+  }
+  let contents = fs.readFileSync(routerPath, 'utf8');
+  const before = contents;
+  contents = contents.replace(
+    DEV_HOST_TRUST,
+    '    // (dev-only host trust stripped for production by prepare-extension-prod.js)\n'
+  );
+  if (contents === before) {
+    console.error(`❌ Dev-only host-trust block not found in ${routerPath} — ` +
+      'the pattern in prepare-extension-prod.js is out of sync with background/message-router.js.');
+    process.exit(1);
+  }
+  if (contents.includes('localhost') || contents.includes('127.0.0.1')) {
+    console.error(`❌ ${routerPath} still contains local-host strings after stripping — refusing to build.`);
+    process.exit(1);
+  }
+  fs.writeFileSync(routerPath, contents);
+}
+console.log('✅ Stripped dev-only localhost sender trust from message router (source + bundle).');
+
 console.log(`✅ Production build ready in: ${DIST_DIR}`);
 
 // 5. Sync to web dashboard public assets

@@ -208,8 +208,7 @@ function isTrustedAuthSender(sender) {
   try {
     const host = new URL(url).hostname.toLowerCase();
     if (host === 'sellersuit.com' || host.endsWith('.sellersuit.com')) return true;
-    // Dev only — the prod build does not inject bridge.js on localhost.
-    if (host === 'localhost' || host === '127.0.0.1') return true;
+    // (dev-only host trust stripped for production by prepare-extension-prod.js)
   } catch (_e) { /* no / invalid sender url */ }
   return false;
 }
