@@ -964,6 +964,7 @@ window.EbayListingApiHelper = (() => {
         return {
           price:             priceValue,
           raw_supplier_price: supplierPrice,
+          price_source:      v.price_source || product.price_source || null,
           sku:               varSku,
           attrs,
           img:               v.img || v.image || null, // scraper uses v.img
@@ -984,6 +985,7 @@ window.EbayListingApiHelper = (() => {
       prod_variations = [{
         price:              finalPrice,
         raw_supplier_price: supplierPrice,
+        price_source:       product.price_source || null,
         sku,
         variant_asin:       sourceId || null
       }];
@@ -1317,6 +1319,7 @@ function _syncListingToDashboard(adapted, product, draftId) {
           ebay_sku_encoded:  (window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(v.sku || '') : ''),
           final_price:       v.price || 0,
           raw_supplier_price: v.raw_supplier_price || 0,
+          price_source:      v.price_source || null,
           currency:          product.currency || 'USD',
           stock_quantity:    1,
           variant_asin:      v.variant_asin || v.supplierVariantId || null,

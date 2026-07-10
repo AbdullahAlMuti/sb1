@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SellerSuit",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "SellerSuit helps eBay sellers create listings faster by importing product data from supported marketplaces (Amazon, Walmart, AliExpress) and syncing their eBay orders for order management.",
   "homepage_url": "http://localhost:3001",
   "permissions": [
@@ -125,7 +125,6 @@
       "js": [
         "common/config.js",
         "common/storage.js",
-        "common/pricing-engine.js",
         "common/sku-engine.js",
         "common/variation-normalizer.js",
         "common/retry-helper.js",
@@ -143,7 +142,6 @@
       "js": [
         "common/config.js",
         "common/storage.js",
-        "common/pricing-engine.js",
         "common/sku-engine.js",
         "common/variation-normalizer.js",
         "common/retry-helper.js",
@@ -161,7 +159,6 @@
       "js": [
         "common/config.js",
         "common/storage.js",
-        "common/pricing-engine.js",
         "common/sku-engine.js",
         "common/images/core/image-schema.js",
         "common/images/core/image-cache.js",

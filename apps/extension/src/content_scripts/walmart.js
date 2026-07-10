@@ -10,7 +10,8 @@
 import '../../common/config.js';
 import '../../common/html-sanitizer.js'; // exposes window.SSSanitizer before any HTML preview (W5)
 import '../../common/panel-extended.js';
-import '../../common/pricing-engine.js';
+import '../../suppliers/core/pricing-core.js'; // SSPricingCore — canonical integer-cent engine
+import '../../common/pricing-apply.js';        // SSPricingApply — applies synced dashboard rules
 import '../../common/sku-engine.js';
 import '../../common/variation-normalizer.js';
 import '../../common/performance.js';

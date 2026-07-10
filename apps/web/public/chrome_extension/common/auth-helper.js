@@ -151,7 +151,20 @@ const AuthHelper = (() => {
    */
   async function getAuthToken() {
     const config = await getRemoteConfig();
-    
+
+    // EXT-P2-001: decode a JWT's `exp` claim to enforce token expiry
+    // client-side. Returns false for anything that isn't a decodable JWT so the
+    // existing checks still apply.
+    const isJwtExpired = (jwt) => {
+      try {
+        const part = jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        const payload = JSON.parse(atob(part));
+        return typeof payload.exp === 'number' && (Date.now() / 1000) >= payload.exp;
+      } catch (_e) {
+        return false;
+      }
+    };
+
     return new Promise((resolve) => {
       chrome.storage.local.get([
         'saasToken', 'saasUser', 'authTimestamp',
@@ -178,14 +191,18 @@ const AuthHelper = (() => {
         const timestamp = result.authTimestamp || 0;
         
         if (config.extension_legacy_fallback_enabled && token) {
-          const isRecent = Date.now() - timestamp < 60 * 60 * 1000;
-          if (isRecent) {
-            log('debug', 'Token retrieved from storage (legacy)', { hasUser: !!user });
-            return resolve({ token, user, isValid: true, type: 'legacy' });
-          } else {
-            log('warn', 'Token exists but may be stale (legacy)');
-            return resolve({ token, user, isValid: true, type: 'legacy' });
+          // EXT-P2-001: reject tokens that are actually expired (by JWT exp)
+          // instead of reporting them valid.
+          if (isJwtExpired(token)) {
+            log('warn', 'Legacy token is expired (JWT exp); treating as invalid');
+            return resolve({ token: null, user: null, isValid: false, type: 'none' });
           }
+          const isRecent = Date.now() - timestamp < 60 * 60 * 1000;
+          if (!isRecent) {
+            log('warn', 'Legacy token past freshness window; server revalidation required');
+          }
+          log('debug', 'Token retrieved from storage (legacy)', { hasUser: !!user });
+          return resolve({ token, user, isValid: true, type: 'legacy' });
         }
         
         log('debug', 'No valid auth token found');

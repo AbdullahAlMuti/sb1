@@ -19,12 +19,6 @@
 				LOCAL_BACKEND: WEB_APP_DOMAIN,
 				AI_REMOVE_BG: `${WEB_APP_DOMAIN}/v1/ai/remove-bg`
 			});
-			console.log("🔧 [Config] ExtensionConfig initialized:", {
-				DOMAIN: WEB_APP_DOMAIN,
-				BASE: URLS.WEB_APP_BASE,
-				AUTH: URLS.WEB_APP_AUTH,
-				DASHBOARD: URLS.WEB_APP_DASHBOARD
-			});
 			const API_KEYS = Object.freeze({ SUPABASE_ANON: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qeHpzc29veWxteWR5c3RqdmRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYzMzY3NTgsImV4cCI6MjA4MTkxMjc1OH0.lQcFC2HryZamOEbGYONHpY37K0kTK4OOAa9MlluV7Dc" });
 			const TIMING = Object.freeze({
 				AUTH_CHECK_INTERVAL: 300 * 1e3,
@@ -361,6 +355,15 @@
 			*/
 			async function getAuthToken() {
 				const config = await getRemoteConfig();
+				const isJwtExpired = (jwt) => {
+					try {
+						const part = jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+						const payload = JSON.parse(atob(part));
+						return typeof payload.exp === "number" && Date.now() / 1e3 >= payload.exp;
+					} catch (_e) {
+						return false;
+					}
+				};
 				return new Promise((resolve) => {
 					chrome.storage.local.get([
 						"saasToken",
@@ -383,16 +386,18 @@
 						const token = result.saasToken;
 						const user = result.saasUser;
 						const timestamp = result.authTimestamp || 0;
-						if (config.extension_legacy_fallback_enabled && token) if (Date.now() - timestamp < 3600 * 1e3) {
+						if (config.extension_legacy_fallback_enabled && token) {
+							if (isJwtExpired(token)) {
+								log("warn", "Legacy token is expired (JWT exp); treating as invalid");
+								return resolve({
+									token: null,
+									user: null,
+									isValid: false,
+									type: "none"
+								});
+							}
+							if (!(Date.now() - timestamp < 3600 * 1e3)) log("warn", "Legacy token past freshness window; server revalidation required");
 							log("debug", "Token retrieved from storage (legacy)", { hasUser: !!user });
-							return resolve({
-								token,
-								user,
-								isValid: true,
-								type: "legacy"
-							});
-						} else {
-							log("warn", "Token exists but may be stale (legacy)");
 							return resolve({
 								token,
 								user,
@@ -2526,7 +2531,9 @@
 		return results;
 	}
 	function _getEbaySuffix() {
-		return window.location.host.split("ebay").pop()?.replace(".", "") || "com";
+		const host = window && window.location && window.location.host || "";
+		if (!host || !host.includes("ebay")) return "com";
+		return host.split("ebay").pop()?.replace(".", "") || "com";
 	}
 	function _sanitizeSupplierText(text) {
 		return text.replace(/\b(sold|fulfilled|dispatched|shipped|sponsored)\s+by\b[^.<\n]*/gi, "").replace(/\bships?\s+from\s+(amazon|walmart|target|bestbuy|wayfair|homedepot|costco)[^.<\n]*/gi, "").replace(/\bvisit\s+the\b[^.<\n]*\bstore\b[^.<\n]*/gi, "").replace(/\b(amazon\s*basics|amazon\s*brand|amazon\s*essentials|amazon\s*elements|amazon\s*commercial|amazoncommercial|amazonbasics)\b/gi, "").replace(/\bamazon'?s?\s+choice(?:\s+for\b[^.<\n]*)?/gi, "").replace(/#\s*\d+\s+best\s+seller(?:\s+in\b[^.<\n]*)?/gi, "").replace(/\bbest\s*seller\b/gi, "").replace(/\b(amazon|walmart|target|bestbuy|wayfair|homedepot|costco)\.com\b/gi, "").replace(/\b(ASIN|UPC|ISBN|Sales?\s*Rank|Seller\s*Rank|Available\s*at|Fulfilled\s*by|Sold\s*by)\b/gi, "").replace(/https?:\/\/[^\s<"]+/gi, "");
@@ -3105,6 +3112,7 @@
 					return {
 						price: ebayFinalPrice > 0 ? ebayFinalPrice : rawVariantPrice > 0 ? rawVariantPrice : basePrice,
 						raw_supplier_price: _cleanFloat(v.supplierPrice) || _cleanFloat(v.price) || basePrice,
+						price_source: v.price_source || product.price_source || null,
 						sku: varSku,
 						attrs,
 						img: v.img || v.image || null,
@@ -3115,10 +3123,14 @@
 				});
 			} else {
 				const ebayFinalPrice = _cleanFloat(product.ebayFinalPrice) || _cleanFloat(product.finalPrice);
+				const finalPrice = ebayFinalPrice > 0 ? ebayFinalPrice : basePrice;
+				const supplierPrice = _cleanFloat(product.supplierPrice) || _cleanFloat(product.raw_supplier_price) || _cleanFloat(product.price) || basePrice;
+				const sku = product.ebaySku || (window.SSSkuEngine ? window.SSSkuEngine.buildReadable(skuRoot, {}, window.SSSkuEngine.prefixFor(product.supplier)) : skuRoot);
 				prod_variations = [{
-					price: ebayFinalPrice > 0 ? ebayFinalPrice : basePrice,
-					raw_supplier_price: _cleanFloat(product.supplierPrice) || _cleanFloat(product.raw_supplier_price) || _cleanFloat(product.price) || basePrice,
-					sku: product.ebaySku || (window.SSSkuEngine ? window.SSSkuEngine.buildReadable(skuRoot, {}, window.SSSkuEngine.prefixFor(product.supplier)) : skuRoot),
+					price: finalPrice,
+					raw_supplier_price: supplierPrice,
+					price_source: product.price_source || null,
+					sku,
 					variant_asin: sourceId || null
 				}];
 			}
@@ -3388,6 +3400,7 @@
 						ebay_sku_encoded: window.SSSkuEngine ? window.SSSkuEngine.encodeForEbay(v.sku || "") : "",
 						final_price: v.price || 0,
 						raw_supplier_price: v.raw_supplier_price || 0,
+						price_source: v.price_source || null,
 						currency: product.currency || "USD",
 						stock_quantity: 1,
 						variant_asin: v.variant_asin || v.supplierVariantId || null,
@@ -4462,6 +4475,7 @@
 	*/
 	var LOGOUT_STORAGE_KEYS = [
 		"saasToken",
+		"saasRefreshToken",
 		"saasUser",
 		"userId",
 		"userEmail",
@@ -4633,7 +4647,31 @@
 		if (typeof first === "string") return first.trim();
 		return (first?.title || "").toString().trim();
 	}
+	var AUTH_SENSITIVE_ACTIONS = new Set([
+		"SYNC_TOKEN",
+		"LOGIN_SUCCESS",
+		"LOGOUT"
+	]);
+	function isTrustedAuthSender(sender) {
+		if (!sender || sender.id !== chrome.runtime.id) return false;
+		const url = sender.url || "";
+		if (url.startsWith("chrome-extension://")) return true;
+		try {
+			const host = new URL(url).hostname.toLowerCase();
+			if (host === "sellersuit.com" || host.endsWith(".sellersuit.com")) return true;
+    // (dev-only host trust stripped for production by prepare-extension-prod.js)
+		} catch (_e) {}
+		return false;
+	}
 	function routeMessage(request, sender, sendResponse) {
+		if (AUTH_SENSITIVE_ACTIONS.has(request?.action) && !isTrustedAuthSender(sender)) {
+			console.warn("[message-router] Rejected auth-sensitive action from untrusted sender:", request?.action);
+			sendResponse({
+				success: false,
+				error: "Untrusted sender for auth action"
+			});
+			return true;
+		}
 		const urls = getUrls();
 		const apiKeys = getApiKeys();
 		if (request.action === "GET_EXTENSION_AUTH_STATE") {
@@ -4943,6 +4981,32 @@
 			})();
 			return true;
 		}
+		if (request.action === "CHECK_EBAY_CONNECTION") {
+			(async () => {
+				try {
+					const helper = typeof window !== "undefined" ? window.EbayListingApiHelper : typeof self !== "undefined" ? self.EbayListingApiHelper : null;
+					if (helper && typeof helper.checkEbayAuth === "function") sendResponse({
+						connected: await helper.checkEbayAuth(),
+						lastSyncTime: (await chrome.storage.local.get(["lastSyncTime"])).lastSyncTime || null
+					});
+					else {
+						console.warn("[Background] EbayListingApiHelper not available in background context");
+						sendResponse({
+							connected: false,
+							lastSyncTime: null
+						});
+					}
+				} catch (err) {
+					console.error("[Background] CHECK_EBAY_CONNECTION error:", err.message);
+					sendResponse({
+						connected: false,
+						lastSyncTime: null,
+						error: err.message
+					});
+				}
+			})();
+			return true;
+		}
 		if (request.action === "get_ebay_orders") {
 			(async () => {
 				if (typeof SyncUtils !== "undefined") sendResponse({
@@ -4976,9 +5040,19 @@
 							if (typeof SyncUtils !== "undefined") setTimeout(() => SyncUtils.triggerEbayOrderSync("token_sync"), 5e3);
 							if (typeof startEbayOrderSyncInterval === "function") startEbayOrderSyncInterval();
 							if (typeof SSPricingRuleSync !== "undefined") SSPricingRuleSync.sync(true).catch(() => {});
+						} else {
+							await chrome.storage.local.remove([
+								"saasToken",
+								"saasRefreshToken",
+								"saasUser",
+								"userId",
+								"userEmail",
+								"authTimestamp"
+							]);
+							AuthHelper.setUnlocked(false);
 						}
 						sendResponse({
-							success: true,
+							success: verified,
 							verified
 						});
 					} catch (err) {
@@ -4996,6 +5070,7 @@
 				try {
 					if (typeof stopEbayOrderSyncInterval === "function") stopEbayOrderSyncInterval();
 					await chrome.storage.local.remove(LOGOUT_STORAGE_KEYS);
+					await AuthHelper.clearNewAuthSession();
 					AuthHelper.setUnlocked(false);
 					AuthHelper.setLastCheck(0);
 					sendResponse({ success: true });
@@ -5125,6 +5200,28 @@
 		} else if (request.action === "GET_TAB_ID") {
 			sendResponse({ tabId: sender.tab ? sender.tab.id : null });
 			return true;
+		} else if (request.action === "FORCE_PRICING_SYNC") {
+			(async () => {
+				try {
+					if (typeof SSPricingRuleSync !== "undefined") {
+						sendResponse({
+							success: true,
+							updatedAt: (await SSPricingRuleSync.sync(true))?.updatedAt || null
+						});
+						return;
+					}
+					sendResponse({
+						success: false,
+						error: "SSPricingRuleSync unavailable"
+					});
+				} catch (e) {
+					sendResponse({
+						success: false,
+						error: e?.message || "pricing sync failed"
+					});
+				}
+			})();
+			return true;
 		} else if (request.action === "START_OPTILIST") {
 			(async () => {
 				try {
@@ -5175,6 +5272,7 @@
 								supplier_id: request.sourceId || request.asin || null,
 								supplier_url: request.productURL,
 								supplier_price: parsedSupplierPrice,
+								price_source: request.price_source || null,
 								amazon_price: parsedSupplierPrice,
 								amazon_url: request.productURL,
 								amazon_asin: request.asin,
@@ -5470,36 +5568,11 @@
 	globalThis.getUrls = () => typeof globalThis.ExtensionConfig !== "undefined" ? globalThis.ExtensionConfig.URLS : null;
 	globalThis.getApiKeys = () => typeof globalThis.ExtensionConfig !== "undefined" ? globalThis.ExtensionConfig.API_KEYS : null;
 	chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
-	var SIDE_PANEL_DOMAINS = [
-		"amazon.com",
-		"amazon.co.uk",
-		"amazon.de",
-		"amazon.ca",
-		"amazon.com.au",
-		"walmart.com",
-		"walmart.ca",
-		"aliexpress.com",
-		"aliexpress.ru",
-		"aliexpress.us"
-	];
-	function isSidePanelUrl(url) {
-		if (!url) return false;
-		try {
-			const hostname = new URL(url).hostname;
-			return SIDE_PANEL_DOMAINS.some((d) => hostname === d || hostname.endsWith("." + d));
-		} catch (_) {
-			return false;
-		}
-	}
 	async function configureSidePanelForTab(tabId, url) {
-		if (isSidePanelUrl(url)) await chrome.sidePanel.setOptions({
+		await chrome.sidePanel.setOptions({
 			tabId,
 			path: "sidepanel/side-panel.html",
 			enabled: true
-		});
-		else await chrome.sidePanel.setOptions({
-			tabId,
-			enabled: false
 		});
 	}
 	chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {

@@ -5160,21 +5160,18 @@ const initializeApp = async () => {
 };
 
 // ─── _applyPricingToProduct ──────────────────────────────────────────────────
-// Reads pricing params from localStorage (same source as panel calculator),
-// runs SSPricingEngine.applyPricingToProduct.
-// Called at PREPARE_EBAY_LISTING time.
+// Prices the product with the user's DASHBOARD Supplier Pricing rule for
+// Amazon (user_pricing_settings, synced into chrome.storage.local by
+// pricing-rule-sync.js) via SSPricingApply/SSPricingCore — the same engine the
+// backend recomputes with in create-listing. No local formula, no localStorage
+// settings, no fabricated fallback cost.
 // adaptProduct in ebay-listing-api.js reads v.finalPrice, never touches raw v.price.
-function _applyPricingToProduct(product, extValues) {
-    if (!window.SSPricingEngine) return;
-
-    let savedValues = {};
-    try { savedValues = JSON.parse(localStorage.getItem('calculatorValues') || '{}'); } catch (_) {}
-    // extValues from chrome.storage.local (cross-context) take precedence over page localStorage
-    if (extValues && typeof extValues === 'object' && Object.keys(extValues).length > 0) {
-        savedValues = { ...savedValues, ...extValues };
+async function _applyPricingToProduct(product) {
+    if (!window.SSPricingApply) {
+        console.warn('[SS Pricing] SSPricingApply unavailable — product left unpriced.');
+        return { priced: false, reason: 'pricing_apply_unavailable', ruleVersion: null };
     }
-
-    window.SSPricingEngine.applyPricingToProduct(product, savedValues);
+    return window.SSPricingApply.applyToProduct(product, 'amazon');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5299,19 +5296,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 console.log('[SS SCRAPE_SINGLE] final images count:', product.images ? product.images.length : 0);
                 console.log('[SS SCRAPE_SINGLE] variants[0].img:', product.variants?.[0]?.img || null);
 
-                // Phase 3: apply pricing before storing.
-                // Read calculator values from chrome.storage.local (cross-context, set by saveCalculatorValues)
-                // so side-panel scan picks up user's saved settings even when old panel isn't injected.
+                // Phase 3: apply pricing before storing — dashboard Supplier
+                // Pricing rules via SSPricingApply (server-verified engine).
                 const rawPrice = parseFloat(product.price) || 0;
-                let _extCalcValues = {};
-                try {
-                    const _storedCalc = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
-                    _extCalcValues = _storedCalc.calculatorValues || {};
-                } catch (_) {}
-                _applyPricingToProduct(product, _extCalcValues);
-                console.log('[SS SCRAPE_SINGLE] raw price:', rawPrice, '| finalPrice:', product.finalPrice);
+                const _pricingOutcome = await _applyPricingToProduct(product);
+                console.log('[SS SCRAPE_SINGLE] raw price:', rawPrice, '| finalPrice:', product.finalPrice, '| ruleVersion:', _pricingOutcome.ruleVersion);
                 if (!product.finalPrice || product.finalPrice <= 0) {
-                    console.warn('[SS SCRAPE_SINGLE] finalPrice missing or zero — check calculator values');
+                    console.warn(`[SS SCRAPE_SINGLE] finalPrice missing (${_pricingOutcome.reason}) — configure Supplier Pricing in the dashboard`);
                 }
 
                 // Save to shared draft (also mirrors to currentProduct)
@@ -5344,19 +5335,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 console.log('[SS SCRAPE_VARIANTS] variants count:', product.variants ? product.variants.length : 0);
                 console.log('[SS SCRAPE_VARIANTS] images count:', product.images ? product.images.length : 0);
 
-                // Phase 3: apply pricing before storing.
-                // Read calculator values from chrome.storage.local (cross-context, set by saveCalculatorValues)
-                // so side-panel scan picks up user's saved settings even when old panel isn't injected.
+                // Phase 3: apply pricing before storing — dashboard Supplier
+                // Pricing rules via SSPricingApply (server-verified engine).
                 const rawPrice = parseFloat(product.price) || 0;
-                let _extCalcValues2 = {};
-                try {
-                    const _storedCalc2 = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
-                    _extCalcValues2 = _storedCalc2.calculatorValues || {};
-                } catch (_) {}
-                _applyPricingToProduct(product, _extCalcValues2);
-                console.log('[SS SCRAPE_VARIANTS] raw price:', rawPrice, '| finalPrice:', product.finalPrice);
+                const _pricingOutcome2 = await _applyPricingToProduct(product);
+                console.log('[SS SCRAPE_VARIANTS] raw price:', rawPrice, '| finalPrice:', product.finalPrice, '| ruleVersion:', _pricingOutcome2.ruleVersion);
                 if (!product.finalPrice || product.finalPrice <= 0) {
-                    console.warn('[SS SCRAPE_VARIANTS] finalPrice missing or zero — check calculator values');
+                    console.warn(`[SS SCRAPE_VARIANTS] finalPrice missing (${_pricingOutcome2.reason}) — configure Supplier Pricing in the dashboard`);
                 }
 
                 // Save to shared draft (also mirrors to currentProduct)
@@ -5451,11 +5436,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 }
                 const productDetails = scrapeProductDetails();
                 await storeWatermarkedImages();
-                let _extCalcValues3 = {};
-                try {
-                    const _storedCalc3 = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
-                    _extCalcValues3 = _storedCalc3.calculatorValues || {};
-                } catch (_) {}
 
                 // Restore manual price overrides from storage before applying pricing
                 const storedProduct = await new Promise(r => chrome.storage.local.get('currentProduct', r));
@@ -5484,11 +5464,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         if (match && parseFloat(match.ebayPrice) > 0) {
                             fv.ebayPrice = match.ebayPrice;
                             fv.finalPrice = match.finalPrice || match.ebayPrice;
+                            // Restore provenance with the price: 'manual' edits stay
+                            // frozen, while 'calculated' prices are re-priced by the
+                            // _applyPricingToProduct call below with the CURRENT rules
+                            // (a restored price without provenance is treated as manual
+                            // for old-draft compatibility).
+                            if (match.price_source) fv.price_source = match.price_source;
                         }
                     });
                 }
 
-                _applyPricingToProduct(fullData, _extCalcValues3);
+                await _applyPricingToProduct(fullData);
                 if (window.SSVariationNormalizer) {
                     fullData = window.SSVariationNormalizer.normalizeProduct(fullData, {
                         dedupe: true,

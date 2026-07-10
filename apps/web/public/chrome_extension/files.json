@@ -52,7 +52,7 @@
   "common/message-handler.js",
   "common/panel-extended.js",
   "common/performance.js",
-  "common/pricing-engine.js",
+  "common/pricing-apply.js",
   "common/pricing-overlay.js",
   "common/pricing-rule-sync.js",
   "common/retry-helper.js",

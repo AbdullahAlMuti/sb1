@@ -1051,21 +1051,13 @@ const renderGalleryFromUrls = async (urls = []) => {
 
 // ─── Scan-time pricing (parity with amazon_injector._applyPricingToProduct and
 // aliexpress_injector.applyPricing) ──────────────────────────────────────────
-// Stamps finalPrice + raw_supplier_price using the user's calculator settings.
-// Fill-only for manual edits: a manual top-level price or per-variant ebayPrice
-// must never be clobbered by recalculation.
-async function _wmStoredCalculatorValues() {
-    try {
-        const data = await chrome.storage.local.get('calculatorValues');
-        return data.calculatorValues || {};
-    } catch (_) {
-        return {};
-    }
-}
-
-function _wmApplyPricingToProduct(product, calculatorValues) {
-    if (!product || !window.SSPricingEngine) return product;
-    return window.SSPricingEngine.applyPricingToProduct(product, calculatorValues);
+// Stamps finalPrice + raw_supplier_price using the user's DASHBOARD Supplier
+// Pricing rule for Walmart via SSPricingApply (delegates to SSPricingCore —
+// the same engine the backend recomputes with). Fill-only for manual edits: a
+// manual top-level price or per-variant ebayPrice is never clobbered.
+async function _wmApplyPricingToProduct(product) {
+    if (!product || !window.SSPricingApply) return { priced: false, reason: 'pricing_apply_unavailable', ruleVersion: null };
+    return window.SSPricingApply.applyToProduct(product, 'walmart');
 }
 
 // Listen for messages from popup or panel
@@ -1101,7 +1093,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 // The side panel re-prices missing products itself, but the Bulk
                 // Lister consumes this response directly — without pricing here,
                 // every Walmart bulk item fails validateProductPricing.
-                _wmApplyPricingToProduct(product, await _wmStoredCalculatorValues());
+                await _wmApplyPricingToProduct(product);
                 await chrome.storage.local.set({ currentProduct: product, lastScraped: Date.now() });
                 sendResponse({ success: true, data: product });
             } catch (err) {

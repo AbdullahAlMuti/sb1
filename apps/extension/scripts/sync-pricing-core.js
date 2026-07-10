@@ -25,8 +25,8 @@ const DENO_FOOTER = `
 // ─── ES module exports for Deno edge functions (appended by sync-pricing-core.js) ───
 // In Deno Deploy, window === globalThis, so the IIFE above assigned window.SSPricingCore.
 // We re-export the members as named ES exports for clean import syntax.
-const { parseToIntCents, centsToDisplay, applyRoundingRule, calculatePrice } = window.SSPricingCore;
-export { parseToIntCents, centsToDisplay, applyRoundingRule, calculatePrice };
+const { parseToIntCents, centsToDisplay, applyRoundingRule, calculatePrice, calculatePriceV2 } = window.SSPricingCore;
+export { parseToIntCents, centsToDisplay, applyRoundingRule, calculatePrice, calculatePriceV2 };
 export default window.SSPricingCore;
 `;
 
@@ -34,8 +34,16 @@ function sha256(data) {
   return createHash('sha256').update(data).digest('hex');
 }
 
+// Deno 2 removed the `window` global (Deno 1 aliased it to globalThis). A
+// module-scoped `const window = globalThis` keeps the canonical extension
+// source untouched while making the generated copy correct on every Deno
+// version and on Supabase Edge Runtime.
+const DENO_HEADER = `// Deno 2 has no window global — module-scoped alias keeps the IIFE below portable.
+const window = globalThis;
+`;
+
 const src = fs.readFileSync(SRC, 'utf8');
-const destContent = src + DENO_FOOTER;
+const destContent = DENO_HEADER + src + DENO_FOOTER;
 
 // Check if destination is already up-to-date (skip noisy writes in watch mode)
 if (fs.existsSync(DEST)) {

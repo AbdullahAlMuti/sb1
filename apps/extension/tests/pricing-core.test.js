@@ -251,3 +251,125 @@ describe('calculatePrice – various supplier prices (smoke)', () => {
     });
   }
 });
+
+// ─── Formula v2 — sale-based fee gross-up ─────────────────────────────────────
+// eBay charges its final value fee as a % of the SALE price plus a fixed
+// per-order fee. v2 grosses the price up so the configured profit is the
+// profit actually REALIZED after those fees. All expectations below are
+// hand-computed in integer cents.
+
+function makeRuleV2(overrides = {}) {
+  return {
+    formulaVersion: 2,
+    profitMarginPercent: 20,
+    minimumProfit: 0,
+    shippingBuffer: 0,
+    fixedHandlingFee: 0,
+    marketplaceFeePercent: 13.25,
+    currencyBufferPercent: 0,
+    perOrderFee: 0.30,
+    roundingRule: 'NONE',
+    supplierKey: 'amazon',
+    ruleVersion: 1,
+    ...overrides,
+  };
+}
+
+describe('calculatePrice v2 – gross-up correctness (hand-computed)', () => {
+  test('$10 cost, 20% profit, 13.25% + $0.30 → price 14.18, realized profit exactly $2.00', () => {
+    // totalCost=1000c; candidate = ceil((1200 + 30) / 0.8675) = ceil(1417.87) = 1418
+    // fee at 1418 = round(187.885) = 188; realized = 1418 − 188 − 30 − 1000 = 200 ✓
+    const r = calculatePrice(makeRuleV2(), 10.00, 0);
+    assert.equal(r.finalPrice, '14.18');
+    assert.equal(r.profit, '2.00');
+    assert.equal(r.formulaVersion, 2);
+    assert.equal(r.perOrderFee, '0.30');
+  });
+
+  test('v1 with same inputs under-collects: realized profit lands below the $2.00 target', () => {
+    // The economic bug v2 fixes: v1 charges the 13.25% against COST, so the
+    // real eBay fee (charged on the sale) eats into the configured profit.
+    const v1 = calculatePrice(makeRuleV2({ formulaVersion: 1 }), 10.00, 0);
+    const price = v1.breakdown.finalCents;
+    const actualEbayFee = Math.round(price * 13.25 / 100) + 30;
+    const realizedAfterRealFees = price - actualEbayFee - 1000;
+    assert.ok(realizedAfterRealFees < 200,
+      `v1 must demonstrate the shortfall (realized ${realizedAfterRealFees}c < 200c target)`);
+  });
+
+  test('minimum REALIZED profit binds when markup profit is smaller', () => {
+    // profit 0%, min $5: candidate = ceil((1000 + 30 + 500) / 0.8675) = ceil(1763.98) = 1764
+    // fee = round(233.73) = 234; realized = 1764 − 234 − 30 − 1000 = 500 ✓ exactly $5.00
+    const r = calculatePrice(makeRuleV2({ profitMarginPercent: 0, minimumProfit: 5 }), 10.00, 0);
+    assert.equal(r.finalPrice, '17.64');
+    assert.equal(r.profit, '5.00');
+  });
+
+  test('shipping + buffers + handling join the cost base before gross-up', () => {
+    // totalCost = 1000 + 200 + 300 + 100 = 1600; candidate = ceil((1920+30)/0.8675) = ceil(2247.8) = 2248
+    // fee = round(297.86) = 298; realized = 2248 − 298 − 30 − 1600 = 320 = target (20% of 1600) ✓
+    const r = calculatePrice(makeRuleV2({ shippingBuffer: 3, fixedHandlingFee: 1 }), 10.00, 2.00);
+    assert.equal(r.finalPrice, '22.48');
+    assert.equal(r.profit, '3.20');
+  });
+
+  test('currency buffer is % of SALE in v2 and stacks with marketplace fee', () => {
+    // pct = 13.25 + 2 = 15.25 → denom 0.8475; candidate = ceil((1200+30)/0.8475) = ceil(1451.33) = 1452
+    // mkt = round(192.39) = 192; fx = round(29.04) = 29; realized = 1452−192−29−30−1000 = 201 ≥ 200 ✓
+    const r = calculatePrice(makeRuleV2({ currencyBufferPercent: 2 }), 10.00, 0);
+    assert.equal(r.finalPrice, '14.52');
+    assert.ok(parseFloat(r.profit) >= 2.00, `realized ${r.profit} must be >= 2.00 target`);
+  });
+
+  test('END_99 rounding never reduces price and realized profit only improves', () => {
+    const none = calculatePrice(makeRuleV2(), 10.00, 0);
+    const r99  = calculatePrice(makeRuleV2({ roundingRule: 'END_99' }), 10.00, 0);
+    assert.equal(r99.finalPrice, '14.99'); // 1418 → END_99 → 1499
+    assert.ok(r99.breakdown.finalCents >= none.breakdown.finalCents);
+    assert.ok(parseFloat(r99.profit) >= parseFloat(none.profit));
+  });
+
+  test('realized profit meets target across a price sweep (property)', () => {
+    for (const p of [0.99, 4.20, 9.99, 12.49, 19.99, 37.77, 49.99, 99.99, 149.5, 199.99]) {
+      const rule = makeRuleV2({ currencyBufferPercent: 2, roundingRule: 'END_99', minimumProfit: 3 });
+      const r = calculatePrice(rule, p, 0);
+      const totalCost = Math.round(p * 100);
+      const target = Math.max(Math.round(totalCost * 0.20), 300);
+      const realized = Math.round(parseFloat(r.profit) * 100);
+      assert.ok(realized >= target, `$${p}: realized ${realized}c must be >= target ${target}c`);
+    }
+  });
+
+  test('guardrail: combined sale-based fees > 75% are rejected, never silently priced', () => {
+    assert.throws(
+      () => calculatePrice(makeRuleV2({ marketplaceFeePercent: 60, currencyBufferPercent: 20 }), 10, 0),
+      /fees too high/,
+    );
+  });
+
+  test('per-order fee is recovered in full (zero-profit sanity)', () => {
+    // profit 0, min 0, fees 0%, perOrder $0.30 → price = cost + 0.30 exactly
+    const r = calculatePrice(makeRuleV2({ profitMarginPercent: 0, marketplaceFeePercent: 0, perOrderFee: 0.30 }), 10.00, 0);
+    assert.equal(r.finalPrice, '10.30');
+    assert.equal(r.profit, '0.00');
+  });
+
+  test('missing formulaVersion or explicit 1 both take the untouched v1 path (regression lock)', () => {
+    const rule = { profitMarginPercent: 25, minimumProfit: 5, shippingBuffer: 3, fixedHandlingFee: 0,
+                   marketplaceFeePercent: 13, currencyBufferPercent: 2, roundingRule: 'END_99' };
+    const implicit = calculatePrice(rule, 19.99, 4.99);
+    const explicit = calculatePrice({ ...rule, formulaVersion: 1 }, 19.99, 4.99);
+    assert.deepEqual(implicit.breakdown, explicit.breakdown);
+    assert.equal(implicit.finalPrice, explicit.finalPrice);
+    assert.equal(implicit.formulaVersion, 1);
+    // v1 ignores perOrderFee entirely — adding it must not change v1 output
+    const withPo = calculatePrice({ ...rule, perOrderFee: 0.30 }, 19.99, 4.99);
+    assert.equal(withPo.finalPrice, implicit.finalPrice);
+  });
+
+  test('v2 rejects invalid input identically to v1 (no fabricated prices)', () => {
+    assert.throws(() => calculatePrice(makeRuleV2(), -1, 0), RangeError);
+    assert.throws(() => calculatePrice(makeRuleV2(), NaN, 0), RangeError);
+    assert.throws(() => calculatePrice(makeRuleV2(), 0, 0), RangeError);
+  });
+});

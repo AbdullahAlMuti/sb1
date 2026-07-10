@@ -1,6 +1,6 @@
 // load-global.js — test helper to load a `window.X = ...` extension module into
 // a fake window object, without a browser. Lets node:test exercise content-script
-// globals (SSPricingEngine, SSSkuEngine, EbayListingApiHelper, SSListingDraft).
+// globals (SSPricingCore, SSPricingApply, SSSkuEngine, EbayListingApiHelper, SSListingDraft).
 //
 // Usage:
 //   const win = makeWindow();

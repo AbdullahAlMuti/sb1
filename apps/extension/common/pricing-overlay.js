@@ -105,6 +105,12 @@ window.SSPricingOverlay = (() => {
   }
 
   function _breakdown(r, rule) {
+    // v2 (sale-based gross-up) also recovers eBay's fixed per-order fee; the
+    // profit shown is the REALIZED profit after all sale-based fees.
+    const perOrder = r.formulaVersion === 2 && r.perOrderFee && r.perOrderFee !== '0.00'
+      ? `<span class="ss-pricing-sep">+</span>
+    <span>Order $${r.perOrderFee}</span>`
+      : '';
     return `
 <div class="ss-pricing-result">
   <div class="ss-pricing-row ss-pricing-main">
@@ -121,9 +127,9 @@ window.SSPricingOverlay = (() => {
     <span class="ss-pricing-sep">+</span>
     <span>Ship $${r.shippingCost}</span>
     <span class="ss-pricing-sep">+</span>
-    <span>Fee $${r.marketplaceFee}</span>
+    <span>Fee $${r.marketplaceFee}</span>${perOrder}
     <span class="ss-pricing-sep">·</span>
-    <span class="ss-pricing-rule-label">${rule.supplierName || 'v' + (rule.ruleVersion || 1)}</span>
+    <span class="ss-pricing-rule-label">${rule.supplierName || ''} ${r.formulaVersion === 2 ? 'v2' : 'v1'}</span>
   </div>
 </div>`;
   }

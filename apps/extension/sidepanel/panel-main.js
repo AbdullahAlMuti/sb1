@@ -10,6 +10,7 @@
   let _variations = [];   // [{ label, values: [string] }]
   let _busy = false;      // main button in-flight guard
   let _mode = 'single';      // 'single' | 'all'
+  let _autoPriceAttemptKey = null; // loop guard: one auto-price attempt per product (reset on rules sync)
 
   /* ── Views ────────────────────────────────── */
   const vLoading  = document.getElementById('view-loading');
@@ -148,8 +149,7 @@
         btnMainAction.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span> Loading…';
         const product = await doScan(_mode);
         if (product) {
-          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
-          const updatedProduct = recalculateProductPricing(product, stored.calculatorValues);
+          const updatedProduct = await recalculateProductPricing(product);
           await chrome.storage.local.set({ currentProduct: updatedProduct });
           
           if (typeof window.SSListingDraft !== 'undefined') {
@@ -867,6 +867,12 @@
     initAuthLinks();
     initDirtyTracking();
 
+    // Refresh the Supplier Pricing rules whenever the panel opens so scan-time
+    // pricing uses the latest dashboard settings (ETag-cached — cheap no-op
+    // when nothing changed). Fire-and-forget: scan pricing falls back to the
+    // last synced cache if this is still in flight.
+    try { chrome.runtime.sendMessage({ action: 'FORCE_PRICING_SYNC' }, () => void chrome.runtime.lastError); } catch (_) {}
+
     document.getElementById('btn-sign-in').addEventListener('click', doSignIn);
     document.getElementById('btn-log-out').addEventListener('click', doLogOut);
 
@@ -908,15 +914,27 @@
       _state = state;
       if (state.product) {
         const needsPricing = !state.product.finalPrice || (Array.isArray(state.product.variants) && state.product.variants.length > 1 && state.product.variants.some(v => !v.finalPrice));
-        if (needsPricing && !_busy) {
-          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
-          const updatedProduct = recalculateProductPricing(state.product, stored.calculatorValues);
-          await chrome.storage.local.set({ currentProduct: updatedProduct });
-          if (typeof window.SSListingDraft !== 'undefined') {
-            await window.SSListingDraft.patchDraft({
-              variants: updatedProduct.variants || [],
-              variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
-            });
+        const productKey = state.product.sourceId || state.product.asin || state.product.parentAsin || state.product.url || state.product.title || 'unknown';
+        // LOOP GUARD: one auto-price attempt per product. Writing currentProduct
+        // re-fires panel-store → this subscriber; when no pricing rules are
+        // synced yet (logged out / first run) the product stays unpriced, and
+        // an unconditional write here spun storage-write → notify → re-price
+        // forever, pegging the CPU. A later rules sync re-prices via the
+        // pricingRulesCache listener below, which resets this key.
+        if (needsPricing && !_busy && _autoPriceAttemptKey !== productKey) {
+          _autoPriceAttemptKey = productKey;
+          const before = JSON.stringify(state.product);
+          const updatedProduct = await recalculateProductPricing(state.product);
+          // Write back ONLY if pricing actually changed the product — an
+          // unchanged write would re-trigger this subscriber for nothing.
+          if (JSON.stringify(updatedProduct) !== before) {
+            await chrome.storage.local.set({ currentProduct: updatedProduct });
+            if (typeof window.SSListingDraft !== 'undefined') {
+              await window.SSListingDraft.patchDraft({
+                variants: updatedProduct.variants || [],
+                variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
+              });
+            }
           }
         }
       }
@@ -928,10 +946,19 @@
     renderAuth(snap);
 
     chrome.storage.onChanged.addListener(async (changes, area) => {
-      if (area === 'local' && changes.calculatorValues) {
+      // Re-price the current product whenever the synced Supplier Pricing
+      // rules change (dashboard save → pricing-rule-sync → this listener).
+      if (area === 'local' && changes[window.SSPricingApply ? window.SSPricingApply.CACHE_KEY : 'pricingRulesCache']) {
+        // Fresh rules → allow the subscriber's auto-price to try again.
+        _autoPriceAttemptKey = null;
         const data = await new Promise(r => chrome.storage.local.get('currentProduct', r));
         if (data.currentProduct) {
-          const updatedProduct = recalculateProductPricing(data.currentProduct, changes.calculatorValues.newValue);
+          const before = JSON.stringify(data.currentProduct);
+          const updatedProduct = await recalculateProductPricing(data.currentProduct);
+          // Idempotent re-price (same rules, same prices) must not write —
+          // pricing-rule-sync refreshes the cache timestamp even on 304s, and
+          // an unconditional write here would churn storage on every sync.
+          if (JSON.stringify(updatedProduct) === before) return;
           await chrome.storage.local.set({ currentProduct: updatedProduct });
           if (typeof window.SSListingDraft !== 'undefined') {
             await window.SSListingDraft.patchDraft({
@@ -955,8 +982,7 @@
         
         const product = await doScan('single');
         if (product) {
-          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
-          const updatedProduct = recalculateProductPricing(product, stored.calculatorValues);
+          const updatedProduct = await recalculateProductPricing(product);
           await chrome.storage.local.set({ currentProduct: updatedProduct });
           
           if (typeof window.SSListingDraft !== 'undefined') {
@@ -1009,8 +1035,7 @@
         
         const product = await doScan('single');
         if (product) {
-          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
-          const updatedProduct = recalculateProductPricing(product, stored.calculatorValues);
+          const updatedProduct = await recalculateProductPricing(product);
           await chrome.storage.local.set({ currentProduct: updatedProduct });
           
           if (typeof window.SSListingDraft !== 'undefined') {
@@ -1116,9 +1141,15 @@
     }
   }
 
-  function recalculateProductPricing(product, calculatorValues) {
-    if (!product || !window.SSPricingEngine) return product;
-    return window.SSPricingEngine.applyPricingToProduct(product, calculatorValues);
+  // Prices via the user's synced DASHBOARD Supplier Pricing rules
+  // (SSPricingApply → SSPricingCore — same engine the backend verifies with).
+  // Supplier resolution (scan-time key → supplier field → registry URL match
+  // → ASIN) lives inside SSPricingApply.resolveSupplierKey — shared by every
+  // caller so no product is ever priced (or logged) under a "null" supplier.
+  async function recalculateProductPricing(product) {
+    if (!product || !window.SSPricingApply) return product;
+    await window.SSPricingApply.applyToProduct(product, null);
+    return product;
   }
 
   if (document.readyState === 'loading') {

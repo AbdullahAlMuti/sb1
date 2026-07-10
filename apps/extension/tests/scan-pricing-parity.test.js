@@ -39,19 +39,35 @@ describe('scan-time pricing parity across supplier injectors', () => {
 
   test('aliexpress_injector applies pricing in its scan path', () => {
     const src = read('content_scripts/aliexpress_injector.js');
-    assert.match(src, /applyPricing\(product,/, 'aliexpress must stamp finalPrice at scan time');
+    assert.match(src, /applyPricing\(product\)/, 'aliexpress must stamp finalPrice at scan time');
   });
 
   test('walmart pricing helper respects manual edits (fill-only)', () => {
     const src = read('content_scripts/walmart_injector.js');
-    assert.match(src, /SSPricingEngine\.applyPricingToProduct/,
-      'delegates to applyPricingToProduct which preserves manual edits');
+    assert.match(src, /SSPricingApply\.applyToProduct/,
+      'delegates to SSPricingApply.applyToProduct which preserves manual edits');
   });
 
-  test('walmart pricing helper uses SSPricingEngine (no duplicated math)', () => {
+  test('walmart pricing helper uses SSPricingApply (no duplicated math)', () => {
     const src = read('content_scripts/walmart_injector.js');
-    assert.match(src, /SSPricingEngine\.applyPricingToProduct/,
+    assert.match(src, /SSPricingApply\.applyToProduct/,
       'must delegate to the shared pricing engine, not reimplement the formula');
+  });
+
+  test('every injector delegates to SSPricingApply — no local pricing formula', () => {
+    for (const f of ['content_scripts/amazon_injector.js', 'content_scripts/walmart_injector.js', 'content_scripts/aliexpress_injector.js']) {
+      const src = read(f);
+      assert.match(src, /SSPricingApply\.applyToProduct/, `${f} must delegate to SSPricingApply`);
+      assert.doesNotMatch(src, /SSPricingEngine/, `${f} must not reference the removed legacy engine`);
+    }
+  });
+
+  test('injector bundles include pricing-core + pricing-apply (load-bearing imports)', () => {
+    for (const f of ['src/content_scripts/amazon.js', 'src/content_scripts/walmart.js', 'src/content_scripts/aliexpress.js']) {
+      const src = read(f);
+      assert.match(src, /suppliers\/core\/pricing-core\.js/, `${f} must bundle SSPricingCore`);
+      assert.match(src, /common\/pricing-apply\.js/, `${f} must bundle SSPricingApply`);
+    }
   });
 
   test('ui/calculator.js keeps its load-bearing window assignment', () => {

@@ -15,7 +15,8 @@ import { makeWindow, loadInto } from './helpers/load-global.js';
 
 function loadPipeline() {
   const win = makeWindow();
-  loadInto(win, 'common/pricing-engine.js');
+  loadInto(win, 'suppliers/core/pricing-core.js');
+  loadInto(win, 'common/pricing-apply.js');
   loadInto(win, 'common/sku-engine.js');
   loadInto(win, 'common/variation-normalizer.js');
   loadInto(win, 'common/ebay-listing-api.js');
@@ -24,17 +25,23 @@ function loadPipeline() {
 
 // Simulates the scan-time pricing stamp all three injectors perform
 // (amazon _applyPricingToProduct / walmart _wmApplyPricingToProduct /
-// aliexpress applyPricing): finalPrice from SSPricingEngine.
-function stampPricing(win, product, cfg) {
-  const p = { ...product };
-  p.finalPrice = win.SSPricingEngine.calculatePrice(p.price, cfg);
+// aliexpress applyPricing): SSPricingApply with the user's synced dashboard
+// Supplier Pricing rules — the same engine create-listing verifies with.
+function stampPricing(win, product, rulesCache) {
+  const p = { ...product, variants: (product.variants || []).map(v => ({ ...v })) };
+  win.SSPricingApply.applyWithRules(p, rulesCache, p.supplier || 'amazon');
   p.ebayFinalPrice = p.finalPrice;
   p.supplierPrice = p.price;
   return p;
 }
 
-const CFG_DEFAULT = null; // engine falls back to DEFAULTS
-const CFG_HIGH_PROFIT = { taxPercent: 9, trackingFee: 0.20, ebayFeePercent: 20, promoFeePercent: 10, desiredProfit: 15, paymentFixedFee: 0.30 };
+// Rule caches in the shape pricing-rule-sync.js stores (pricingRulesCache).
+function rules(amazonRule) {
+  return { suppliers: [{ supplierKey: 'amazon', supplierName: 'Amazon', isEnabled: true, ruleVersion: 1, calculationRule: amazonRule }] };
+}
+
+const CFG_DEFAULT = rules({ profitMarginPercent: 25, minimumProfit: 5, shippingBuffer: 3, fixedHandlingFee: 0, marketplaceFeePercent: 13, currencyBufferPercent: 2, roundingRule: 'END_99' });
+const CFG_HIGH_PROFIT = rules({ profitMarginPercent: 60, minimumProfit: 15, shippingBuffer: 3, fixedHandlingFee: 0, marketplaceFeePercent: 13, currencyBufferPercent: 2, roundingRule: 'END_99' });
 
 const BASE = {
   isSingleMode: true,
@@ -50,11 +57,11 @@ const BASE = {
 };
 
 describe('E2E case: normal price → dashboard-calculated eBay price, never supplier price', () => {
-  test('final eBay price equals the pricing-engine output for the user settings', () => {
+  test('final eBay price equals the pricing-core output for the user settings', () => {
     const win = loadPipeline();
     const staged = stampPricing(win, BASE, CFG_DEFAULT);
     const adapted = win.EbayListingApiHelper.adaptProduct(staged);
-    const expected = win.SSPricingEngine.calculatePrice(12.49, CFG_DEFAULT);
+    const expected = parseFloat(win.SSPricingCore.calculatePrice(CFG_DEFAULT.suppliers[0].calculationRule, 12.49, 0).finalPrice);
     assert.equal(adapted.prod_variations[0].price, expected);
     assert.notEqual(adapted.prod_variations[0].price, 12.49, 'supplier price must never be the eBay price');
     assert.equal(adapted.prod_variations[0].raw_supplier_price, 12.49);
@@ -70,7 +77,7 @@ describe('E2E case: normal price → dashboard-calculated eBay price, never supp
 });
 
 describe('E2E case: changed dashboard pricing rules affect the next listing', () => {
-  test('same product, higher desiredProfit → strictly higher eBay price', () => {
+  test('same product, higher profit margin rule → strictly higher eBay price', () => {
     const win = loadPipeline();
     const before = win.EbayListingApiHelper.adaptProduct(stampPricing(win, BASE, CFG_DEFAULT));
     const after = win.EbayListingApiHelper.adaptProduct(stampPricing(win, BASE, CFG_HIGH_PROFIT));
