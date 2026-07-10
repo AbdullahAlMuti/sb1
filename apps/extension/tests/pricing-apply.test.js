@@ -344,3 +344,41 @@ describe('formula v2 rules flow through SSPricingApply unchanged', () => {
     assert.equal(pV2.finalPrice, 14.18);  // sale-based gross-up
   });
 });
+
+describe('supplier key resolution (no "null" supplier pricing or warnings)', () => {
+  test('missing supplier entirely → distinct no_supplier_key outcome, product untouched', () => {
+    const win = loadApply();
+    const p = product(); // no supplierKey/supplier/url/asin
+    const out = win.SSPricingApply.applyWithRules(p, cacheWith([AMAZON_RULE_USER_A]), null);
+    assert.equal(out.priced, false);
+    assert.equal(out.reason, 'no_supplier_key');
+    assert.equal(p.finalPrice, undefined);
+  });
+
+  test('resolveSupplierKey: scan-time key wins, then supplier field, then ASIN', () => {
+    const win = loadApply();
+    const r = win.SSPricingApply.resolveSupplierKey;
+    assert.equal(r({ supplierKey: 'walmart', supplier: 'amazon' }), 'walmart');
+    assert.equal(r({ supplier: 'aliexpress' }), 'aliexpress');
+    assert.equal(r({ asin: 'B0TEST123' }), 'amazon');
+    assert.equal(r({ parentAsin: 'B0TEST123' }), 'amazon');
+    assert.equal(r({ title: 'nothing else' }), null);
+    assert.equal(r(null), null);
+  });
+
+  test('resolveSupplierKey: registry URL match when available', () => {
+    const win = loadApply();
+    win.SSSupplierRegistry = { match: (url) => url.includes('walmart.') ? { supplierId: 'walmart' } : null };
+    assert.equal(win.SSPricingApply.resolveSupplierKey({ url: 'https://www.walmart.com/ip/x/1' }), 'walmart');
+    assert.equal(win.SSPricingApply.resolveSupplierKey({ url: 'https://example.com/x' }), null);
+  });
+
+  test('applyWithRules resolves the supplier itself when the caller passes null', () => {
+    const win = loadApply();
+    const p = product({ asin: 'B0TEST123' }); // resolvable via ASIN
+    const out = win.SSPricingApply.applyWithRules(p, cacheWith([AMAZON_RULE_USER_A]), null);
+    assert.equal(out.priced, true);
+    assert.equal(p.supplierKey, 'amazon');
+    assert.equal(p.finalPrice, 14.0);
+  });
+});

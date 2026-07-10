@@ -54,6 +54,27 @@
   }
 
   /**
+   * Resolve which supplier's rule governs a product when the caller doesn't
+   * already know. Preference: key stamped at scan time → supplier field →
+   * registry URL match → ASIN implies Amazon. Null = cannot price (callers
+   * get a clean 'no_supplier_key' outcome — never a guessed formula).
+   */
+  function resolveSupplierKey(product) {
+    if (!product) return null;
+    if (product.supplierKey) return product.supplierKey;
+    if (product.supplier) return product.supplier;
+    const url = product.url || product.amazonUrl || '';
+    if (url && root.SSSupplierRegistry && typeof root.SSSupplierRegistry.match === 'function') {
+      try {
+        const adapter = root.SSSupplierRegistry.match(url);
+        if (adapter && adapter.supplierId) return adapter.supplierId;
+      } catch (_) { /* registry not ready — fall through */ }
+    }
+    if (product.asin || product.parentAsin || product.ASIN) return 'amazon';
+    return null;
+  }
+
+  /**
    * Compute one selling price from a RAW supplier price. Returns a number or
    * null (never throws, never invents input).
    */
@@ -84,16 +105,19 @@
   function applyWithRules(product, rulesCache, supplierKey) {
     if (!product) return { priced: false, reason: 'no_product', ruleVersion: null };
 
-    const key = supplierKey || product.supplierKey || product.supplier || null;
-    const ruleEntry = ruleFromCache(rulesCache, key);
+    const key = supplierKey || resolveSupplierKey(product);
 
     // Stamp supplier identity so every downstream consumer (panel, uploader,
     // create-listing payload) knows which rule governs this product.
     if (key) {
       product.supplierKey = key;
       if (!product.supplier) product.supplier = key;
+    } else {
+      // Distinct outcome — never look up (or log) a "null" supplier.
+      return { priced: false, reason: 'no_supplier_key', ruleVersion: null };
     }
 
+    const ruleEntry = ruleFromCache(rulesCache, key);
     if (!ruleEntry) {
       return { priced: false, reason: 'no_rule_synced', ruleVersion: null };
     }
@@ -170,14 +194,19 @@
     const outcome = applyWithRules(product, rulesCache, supplierKey);
     if (!outcome.priced && outcome.reason === 'no_rule_synced') {
       console.warn(
-        `[SSPricingApply] No synced pricing rule for "${supplierKey}". ` +
+        `[SSPricingApply] No synced pricing rule for "${product && product.supplierKey}". ` +
         'Log in and configure Supplier Pricing in the dashboard — products are NOT priced with defaults.'
+      );
+    } else if (!outcome.priced && outcome.reason === 'no_supplier_key') {
+      console.warn(
+        '[SSPricingApply] Could not determine the supplier for this product ' +
+        '(no supplierKey/supplier/url/ASIN) — it was left unpriced.'
       );
     }
     return outcome;
   }
 
-  const api = { applyToProduct, applyWithRules, priceFromRaw, getRulesCache, CACHE_KEY };
+  const api = { applyToProduct, applyWithRules, priceFromRaw, resolveSupplierKey, getRulesCache, CACHE_KEY };
 
   root.SSPricingApply = api;
   if (typeof module !== 'undefined' && module.exports) {

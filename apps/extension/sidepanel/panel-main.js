@@ -1141,27 +1141,14 @@
     }
   }
 
-  // Resolve which supplier's dashboard pricing rule governs this product.
-  // Preference: key stamped at scan time → supplier field → registry URL match
-  // → ASIN implies Amazon. Null means "cannot price" (never guess a formula).
-  function _resolveSupplierKey(product) {
-    if (!product) return null;
-    if (product.supplierKey) return product.supplierKey;
-    if (product.supplier) return product.supplier;
-    const url = product.url || product.amazonUrl || '';
-    if (url && window.SSSupplierRegistry && typeof window.SSSupplierRegistry.match === 'function') {
-      const adapter = window.SSSupplierRegistry.match(url);
-      if (adapter && adapter.supplierId) return adapter.supplierId;
-    }
-    if (product.asin || product.parentAsin || product.ASIN) return 'amazon';
-    return null;
-  }
-
   // Prices via the user's synced DASHBOARD Supplier Pricing rules
   // (SSPricingApply → SSPricingCore — same engine the backend verifies with).
+  // Supplier resolution (scan-time key → supplier field → registry URL match
+  // → ASIN) lives inside SSPricingApply.resolveSupplierKey — shared by every
+  // caller so no product is ever priced (or logged) under a "null" supplier.
   async function recalculateProductPricing(product) {
     if (!product || !window.SSPricingApply) return product;
-    await window.SSPricingApply.applyToProduct(product, _resolveSupplierKey(product));
+    await window.SSPricingApply.applyToProduct(product, null);
     return product;
   }
 
