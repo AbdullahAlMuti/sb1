@@ -1,10 +1,17 @@
-// calculator.js — Single source of truth for all calculator math
+// calculator.js — math for the WHAT-IF calculator popup only.
+//
+// This is a scratch/preview tool for exploring fee scenarios on supplier
+// pages. It does NOT price imports: scan-time and upload pricing go through
+// common/pricing-apply.js (SSPricingApply) using the user's synced dashboard
+// Supplier Pricing rules, verified server-side by create-listing. Any price a
+// user applies manually from this popup travels as an explicit manual
+// override (price_source === 'manual').
 //
 // IMPORTANT: the window assignment at the bottom of this file is load-bearing.
 // This file is imported for side effects by the Vite IIFE bundles
 // (src/content_scripts/*.js). A module with only bare declarations and no side
 // effects gets dropped from the bundle entirely — which silently removed
-// calculateSellingPrice and disabled all scan-time pricing (the callers'
+// calculateSellingPrice and disabled the popup (the callers'
 // `typeof calculateSellingPrice !== 'function'` guards masked the failure).
 
 const CALCULATOR_DEFAULTS = {
@@ -26,9 +33,12 @@ function round2(value) {
 
 function calculateSellingPrice(params) {
   const p = params || {};
-  let sourcePrice = parseFloat(p.sourcePrice);
+  const sourcePrice = parseFloat(p.sourcePrice);
+  // A missing/invalid supplier price must produce NO result — never a
+  // fabricated cost. (This previously defaulted to $50 and silently priced
+  // products off invented numbers.)
   if (isNaN(sourcePrice) || sourcePrice <= 0) {
-    sourcePrice = 50;
+    return null;
   }
   const {
     taxPercent = CALCULATOR_DEFAULTS.taxPercent,

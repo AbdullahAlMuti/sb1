@@ -1,3 +1,5 @@
+// Deno 2 has no window global — module-scoped alias keeps the IIFE below portable.
+const window = globalThis;
 // pricing-core.js — single source of truth for the supplier-wise price calculation.
 //
 // RULES:

@@ -1708,7 +1708,7 @@ function initPanelControls() {
     });
   }
 
-  function _renderPanelCombinations(product) {
+  async function _renderPanelCombinations(product) {
     const container = document.getElementById('ext-variations');
     if (!container) return;
 
@@ -1734,14 +1734,12 @@ function initPanelControls() {
     const variants = product.variants || [];
     if (!variants.length) return;
 
-    const calcSettings = {
-      taxPercent: parseFloat(document.getElementById('tax-percent')?.value) || 9,
-      trackingFee: parseFloat(document.getElementById('tracking-fee')?.value) || 0.20,
-      ebayFeePercent: parseFloat(document.getElementById('ebay-fee-percent')?.value) || 20,
-      promoFeePercent: parseFloat(document.getElementById('promo-fee-percent')?.value) || 10,
-      desiredProfit: parseFloat(document.getElementById('desired-profit')?.value) || 0,
-      paymentFixedFee: parseFloat(document.getElementById('payment-fixed-fee')?.value) || 0.30
-    };
+    // Price every variant from its RAW supplier price using the user's synced
+    // DASHBOARD Supplier Pricing rule (SSPricingApply → SSPricingCore) — the
+    // same engine the backend verifies with. Manual per-variant edits win.
+    if (window.SSPricingApply) {
+      await window.SSPricingApply.applyToProduct(product, product.supplierKey || product.supplier || null);
+    }
 
     const skuPrefix = document.getElementById('sku-prefix')?.value || 'AB';
     // Supplier-neutral id first; legacy Amazon fields as fallback
@@ -1766,12 +1764,11 @@ function initPanelControls() {
       });
       row.appendChild(attrHeader);
 
-      // Calculate marked-up price & build readable SKU
-      const markedupPrice = window.SSPricingEngine.calculatePrice(v.price, calcSettings);
+      // Price comes from SSPricingApply above (fill-only; manual edits kept)
+      const markedupPrice = parseFloat(v.ebayPrice || v.finalPrice) || 0;
       const readableSku = window.SSSkuEngine.buildReadable(parentAsin, v.attrs, skuPrefix);
 
-      // Save fields back into the variant object
-      v.ebayPrice = markedupPrice;
+      // Save SKU back into the variant object
       v.sku = readableSku;
 
       // 2. Info block: SKU and Price side-by-side
@@ -1783,7 +1780,7 @@ function initPanelControls() {
       skuLabel.style.cssText = 'font-family:monospace;color:var(--ss-muted,#94a3b8);flex:1;';
       
       const priceLabel = document.createElement('span');
-      priceLabel.textContent = `eBay Price: $${markedupPrice.toFixed(2)}`;
+      priceLabel.textContent = markedupPrice > 0 ? `eBay Price: $${markedupPrice.toFixed(2)}` : 'eBay Price: — (set Supplier Pricing)';
       priceLabel.style.cssText = 'font-weight:600;color:#22c55e;';
 
       info.appendChild(skuLabel);

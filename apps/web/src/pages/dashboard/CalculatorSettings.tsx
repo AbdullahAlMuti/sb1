@@ -239,6 +239,14 @@ export default function CalculatorSettings() {
       setLastSavedAt(new Date());
       setTick(0);
       toast.success(`${currentSupplier.name} settings saved`);
+      // Tell the extension (bridge.js content script) to re-sync its cached
+      // pricing rules right away, so the very next scan/import uses these
+      // settings instead of waiting for the periodic sync alarm.
+      try {
+        window.postMessage({ type: "SS_PRICING_RULES_UPDATED", supplierKey: selectedKey }, window.location.origin);
+      } catch {
+        // Extension not installed — periodic sync will pick the change up.
+      }
     } catch {
       toast.error(`Failed to save ${currentSupplier.name} settings`);
     } finally {

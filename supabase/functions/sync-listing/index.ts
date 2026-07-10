@@ -2,6 +2,14 @@ import { resolveExtensionCors } from "../_shared/cors.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { enforceActiveSubscription, validateUserPlan } from '../_shared/plan-middleware.ts';
 import { checkRateLimit, getClientIp, rateLimitResponse } from '../_shared/rate-limit.ts';
+import {
+  PricingError,
+  breakdownForStorage,
+  computeFromRule,
+  inferSupplierFromUrl,
+  resolvePricingRule,
+} from '../_shared/pricing-service.ts';
+import { VALID_SUPPLIER_KEYS } from '../_shared/pricing-validation.ts';
 
 
 interface ListingPayload {
@@ -17,6 +25,14 @@ interface ListingPayload {
   amazon_asin?: string;
   ebay_item_id?: string;
   status?: string;
+
+  // Supplier-neutral raw fields (preferred going forward)
+  supplier?: string;
+  supplier_id?: string;
+  supplier_url?: string;
+  supplier_price?: number | string;
+  supplier_currency?: string;
+  price_source?: string;
 
   // Raw metadata blobs (for dashboard backfill/debug)
   amazon_data?: unknown;
@@ -243,6 +259,62 @@ Deno.serve(async (req) => {
           updateFields.ebay_data = { ...existingEbay, ...ebayData };
         } else if (!existingListing) {
           updateFields.ebay_data = ebayData;
+        }
+
+        // ── Supplier-neutral raw data + expected-price audit ─────────────────
+        // sync-listing records the price that actually exists on eBay (external
+        // reality — it never overwrites it), but we still resolve the user's
+        // active Supplier Pricing rule server-side, store the raw supplier data
+        // separately from the selling price, and persist the expected price
+        // breakdown + drift so pricing is auditable end to end.
+        const supplierUrlSync = (listing.supplier_url ?? amazonUrl ?? null) as string | null;
+        const requestedSupplierSync = typeof listing.supplier === 'string' ? listing.supplier.trim().toLowerCase() : null;
+        const supplierKeySync =
+          (requestedSupplierSync && VALID_SUPPLIER_KEYS.has(requestedSupplierSync) ? requestedSupplierSync : null) ??
+          inferSupplierFromUrl(supplierUrlSync) ??
+          (asinVal ? 'amazon' : null);
+        const supplierPriceSync = (() => {
+          const raw = listing.supplier_price ?? amazonPrice;
+          const n = typeof raw === 'string' ? parseFloat(raw) : Number(raw);
+          return isFinite(n) && n > 0 ? n : null;
+        })();
+
+        if (supplierKeySync) updateFields.supplier = supplierKeySync;
+        if (listing.supplier_id) updateFields.supplier_product_id = String(listing.supplier_id).substring(0, 100);
+        else if (asinVal) updateFields.supplier_product_id = asinVal;
+        if (supplierUrlSync) updateFields.supplier_url = supplierUrlSync;
+        if (supplierPriceSync != null) updateFields.supplier_price = supplierPriceSync;
+        if (listing.supplier_currency) updateFields.supplier_currency = String(listing.supplier_currency).toUpperCase().substring(0, 3);
+        if (typeof listing.price_source === 'string') updateFields.price_source = listing.price_source.substring(0, 50);
+
+        if (supplierKeySync && supplierPriceSync != null && listing.price_source !== 'manual') {
+          try {
+            const rule = await resolvePricingRule(supabase, user.id, supplierKeySync);
+            const computation = computeFromRule(rule, {
+              supplierKey: supplierKeySync,
+              supplierPrice: supplierPriceSync,
+              supplierShippingCost: 0,
+              sourceCurrency: (listing.supplier_currency as string) || 'USD',
+            });
+            updateFields.pricing_breakdown    = breakdownForStorage(computation);
+            updateFields.pricing_rule_version = computation.ruleVersion;
+            updateFields.price_calculated_at  = computation.calculatedAt;
+            const recordedPrice = Number(updateFields.ebay_price);
+            if (isFinite(recordedPrice) && recordedPrice > 0) {
+              const drift = Math.round(recordedPrice * 100) - computation.finalPriceCents;
+              updateFields.pricing_drift_cents = drift;
+              if (Math.abs(drift) > 1) {
+                console.warn(`[sync-listing] pricing drift user=${user.id} supplier=${supplierKeySync} ebay=${recordedPrice} expected=${computation.finalPrice} drift=${drift}c`);
+              }
+            }
+          } catch (pe) {
+            if (pe instanceof PricingError) {
+              // Audit-only path: never block the post-upload sync on pricing.
+              console.warn(`[sync-listing] expected-price audit unavailable (${pe.code}): ${pe.message}`);
+            } else {
+              throw pe;
+            }
+          }
         }
 
         listingsToProcess.push({ updateFields, existingListing, original: listing });

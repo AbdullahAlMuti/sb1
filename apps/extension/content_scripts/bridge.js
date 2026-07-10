@@ -220,46 +220,6 @@
             }, window.location.origin);
         }
 
-        // Check eBay Connection Status
-        if (data.type === 'CHECK_EBAY_CONNECTION') {
-            log('debug', 'Checking eBay connection status...');
-            if (chrome?.runtime?.sendMessage) {
-                chrome.runtime.sendMessage({ action: 'CHECK_EBAY_CONNECTION' }, (resp) => {
-                    window.postMessage({
-                        type: 'SELLERSUIT_EBAY_STATUS',
-                        connected: resp?.connected || false,
-                        lastSyncTime: resp?.lastSyncTime || null
-                    }, window.location.origin);
-                });
-            } else {
-                window.postMessage({
-                    type: 'SELLERSUIT_EBAY_STATUS',
-                    connected: false,
-                    lastSyncTime: null
-                }, window.location.origin);
-            }
-        }
-
-        // Trigger eBay Sync
-        if (data.type === 'TRIGGER_EBAY_SYNC') {
-            log('info', 'Triggering eBay sync...');
-            if (chrome?.runtime?.sendMessage) {
-                chrome.runtime.sendMessage({ action: 'trigger_ebay_sync' }, (resp) => {
-                    window.postMessage({
-                        type: 'SELLERSUIT_EBAY_SYNC_RESULT',
-                        success: resp?.ok || resp?.success || false,
-                        error: resp?.error || null
-                    }, window.location.origin);
-                });
-            } else {
-                window.postMessage({
-                    type: 'SELLERSUIT_EBAY_SYNC_RESULT',
-                    success: false,
-                    error: 'Extension runtime not available'
-                }, window.location.origin);
-            }
-        }
-
         // Forward token refresh requests
         if (data.type === 'REFRESH_EXTENSION_TOKEN') {
             const tokenData = extractTokenData();
@@ -274,6 +234,16 @@
             if (chrome?.storage?.local) {
                 chrome.storage.local.set({ selectedListingTemplateId: data.templateId });
             }
+        }
+
+        // Dashboard saved Supplier Pricing settings — refresh the synced rules
+        // immediately so the next scan/import prices with the new values
+        // (otherwise the alarm-based sync could lag up to 10 minutes).
+        if (data.type === 'SS_PRICING_RULES_UPDATED') {
+            log('info', 'Supplier Pricing updated in dashboard — forcing rule sync');
+            try {
+                chrome.runtime.sendMessage({ action: 'FORCE_PRICING_SYNC' }, () => void chrome.runtime.lastError);
+            } catch (_) { /* extension context invalidated — alarm sync will catch up */ }
         }
 
         // Forward background tab requests

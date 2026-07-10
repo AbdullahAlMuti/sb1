@@ -1,5 +1,13 @@
 import { resolveExtensionCors } from "../_shared/cors.ts";
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import {
+  PricingError,
+  breakdownForStorage,
+  computeFromRule,
+  inferSupplierFromUrl,
+  resolvePricingRule,
+} from '../_shared/pricing-service.ts';
+import { VALID_SUPPLIER_KEYS } from '../_shared/pricing-validation.ts';
 
 // ── cors / helpers ────────────────────────────────────────────────────────────
 
@@ -314,6 +322,7 @@ interface VariationRow {
   parent_asin?: string;
   attributes?: Record<string, unknown>;
   image_url?: string | null;
+  price_source?: string;
 }
 
 interface ListingPayload {
@@ -329,6 +338,14 @@ interface ListingPayload {
   amazon_data?: unknown;
   ebay_data?: unknown;
   variations?: VariationRow[];
+  // Supplier-neutral raw fields (preferred going forward)
+  supplier?: string;
+  supplier_id?: string; supplier_product_id?: string;
+  supplier_url?: string;
+  supplier_price?: number | string;
+  supplier_currency?: string;
+  supplier_shipping_cost?: number | string;
+  price_source?: string;
 }
 
 function safeJson(val: unknown) {
@@ -442,8 +459,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    const ebayPrice   = cleanPrice(body.ebayPrice   ?? body.ebay_price);
-    const amazonPrice = cleanPrice(body.amazonPrice ?? body.amazon_price);
+    const clientEbayPrice = cleanPrice(body.ebayPrice ?? body.ebay_price);
+    const amazonPrice     = cleanPrice(body.amazonPrice ?? body.amazon_price);
 
     const rawVars: VariationRow[] = Array.isArray(body.variations) ? body.variations : [];
     const normVars = rawVars
@@ -459,7 +476,139 @@ Deno.serve(async (req) => {
         parent_asin:        v.parent_asin || normAsin,
         attributes:         v.attributes || {},
         image_url:          v.image_url || null,
+        price_source:       typeof v.price_source === 'string' ? v.price_source.substring(0, 50) : null,
+        pricing_rule_version: null as number | null,
       }));
+
+    // ── Server-side authoritative pricing ────────────────────────────────────
+    // The selling price is derived on the server from the AUTHENTICATED user's
+    // active Supplier Pricing rule (user_pricing_settings) and the RAW supplier
+    // price. The client's locally-computed price is never trusted as the source
+    // of truth: on import/draft writes the server value is persisted; on
+    // post-upload writes (a real ebay_item_id exists) the eBay price is recorded
+    // as marketplace reality while the expected server price + drift are stored
+    // for audit. Explicit manual overrides (price_source === 'manual') are the
+    // one documented exception and are honored + flagged.
+    const supplierUrl  = (body.supplier_url ?? body.amazonUrl ?? body.amazon_url ?? null) as string | null;
+    const supplierProductId = ((body.supplier_id ?? body.supplier_product_id) as string | undefined)?.trim().substring(0, 100) || normAsin || null;
+    const requestedSupplier = typeof body.supplier === 'string' ? body.supplier.trim().toLowerCase() : null;
+    const supplierKey =
+      (requestedSupplier && VALID_SUPPLIER_KEYS.has(requestedSupplier) ? requestedSupplier : null) ??
+      inferSupplierFromUrl(supplierUrl) ??
+      (normAsin ? 'amazon' : null);
+
+    const supplierPrice    = cleanPrice(body.supplier_price) ?? amazonPrice; // legacy amazon_price = supplier cost
+    const supplierCurrency = (typeof body.supplier_currency === 'string' ? body.supplier_currency : 'USD').toUpperCase().substring(0, 3);
+    const supplierShipping = cleanPrice(body.supplier_shipping_cost) ?? 0;
+
+    const hasEbayItem  = !!((body.ebay_item_id ?? body.ebayItemId)?.trim());
+    const manualParent = (body.price_source ?? (body as any).price_source) === 'manual';
+
+    let ebayPrice: number | null = clientEbayPrice;
+    let pricingBreakdown: Record<string, unknown> | null = null;
+    let pricingRuleVersion: number | null = null;
+    let priceCalculatedAt: string | null = null;
+    let pricingDriftCents: number | null = null;
+    let effectivePriceSource: string | null =
+      typeof (body as any).price_source === 'string' ? (body as any).price_source.substring(0, 50) : null;
+
+    if (supplierKey && supplierPrice != null && supplierPrice > 0 && !manualParent) {
+      try {
+        const rule = await resolvePricingRule(supabase, userId, supplierKey);
+        const computation = computeFromRule(rule, {
+          supplierKey,
+          supplierPrice,
+          supplierShippingCost: supplierShipping ?? 0,
+          sourceCurrency: supplierCurrency,
+        });
+
+        const serverPrice = computation.finalPriceCents / 100;
+        pricingBreakdown   = breakdownForStorage(computation);
+        pricingRuleVersion = computation.ruleVersion;
+        priceCalculatedAt  = computation.calculatedAt;
+
+        if (clientEbayPrice != null && clientEbayPrice > 0) {
+          pricingDriftCents = Math.round(clientEbayPrice * 100) - computation.finalPriceCents;
+        }
+
+        if (hasEbayItem && clientEbayPrice != null && clientEbayPrice > 0) {
+          // Post-upload sync: the price on eBay is external reality — record it,
+          // keep the expected server price in the breakdown, audit any drift.
+          ebayPrice = clientEbayPrice;
+          effectivePriceSource = effectivePriceSource || 'ebay_upload';
+        } else {
+          // Import/draft path: the server-computed price is authoritative.
+          ebayPrice = serverPrice;
+          effectivePriceSource = 'calculated';
+        }
+
+        if (pricingDriftCents !== null && Math.abs(pricingDriftCents) > 1) {
+          console.warn(`[create-listing] pricing drift user=${userId} supplier=${supplierKey} client=${clientEbayPrice} server=${computation.finalPrice} drift=${pricingDriftCents}c`);
+          // Best-effort audit — never block the listing on logging.
+          supabase.from('admin_audit_logs').insert({
+            admin_id:       userId,
+            target_user_id: userId,
+            action:         'pricing_drift',
+            entity_type:    'listing_import',
+            entity_id:      supplierProductId || normSku || 'unknown',
+            old_value:      String(clientEbayPrice),
+            new_value:      computation.finalPrice,
+            reason:         `create-listing drift ${pricingDriftCents}c (ruleVersion=${computation.ruleVersion}, source=${hasEbayItem ? 'post_upload' : 'import'})`,
+          }).then(() => {/* fire-and-forget */});
+        }
+
+        // Re-price every variation from its RAW supplier price with the same
+        // rule (never from a previously computed final price — this is what
+        // makes re-imports idempotent and double-markup impossible).
+        for (const v of normVars) {
+          if (v.price_source === 'manual') continue;
+          if (!(v.raw_supplier_price > 0)) continue; // cannot price without raw cost — keep client value
+          try {
+            const vComp = computeFromRule(rule, {
+              supplierKey,
+              supplierPrice: v.raw_supplier_price,
+              supplierShippingCost: 0,
+              sourceCurrency: v.currency || supplierCurrency,
+            });
+            const vServer = vComp.finalPriceCents / 100;
+            if (!hasEbayItem || !(v.final_price > 0)) {
+              v.final_price = vServer;
+              v.price_source = 'calculated';
+            }
+            v.pricing_rule_version = vComp.ruleVersion;
+          } catch (ve) {
+            if (ve instanceof PricingError && ve.code === 'UNSUPPORTED_CURRENCY') {
+              // Keep the client value but flag it — never guess an FX rate.
+              v.price_source = v.price_source || 'client_unverified';
+              console.warn(`[create-listing] variation ${v.sku}: ${ve.message}`);
+            } else {
+              throw ve;
+            }
+          }
+        }
+      } catch (pe) {
+        if (pe instanceof PricingError) {
+          const hasClientFallback = (clientEbayPrice != null && clientEbayPrice > 0) ||
+            normVars.some(v => v.final_price > 0);
+          if (!hasClientFallback) {
+            // Nothing valid to save — refuse rather than fabricate a price.
+            return json({ success: false, code: pe.code, error: pe.message }, 422);
+          }
+          // A client price exists (e.g. rule disabled, unsupported currency):
+          // keep it, but mark it unverified and log — never silently pretend
+          // it came from the calculator.
+          console.warn(`[create-listing] pricing unavailable (${pe.code}): ${pe.message} — storing client price as unverified`);
+          effectivePriceSource = effectivePriceSource === 'manual' ? 'manual' : (effectivePriceSource || 'client_unverified');
+        } else {
+          throw pe;
+        }
+      }
+    } else if (manualParent) {
+      effectivePriceSource = 'manual';
+    } else if (!effectivePriceSource && clientEbayPrice != null) {
+      // Legacy payload without supplier data (e.g. eBay-side CSV sync).
+      effectivePriceSource = 'client';
+    }
 
     const varCount  = normVars.length;
     const priceLow  = varCount > 1 ? Math.min(...normVars.map(v => v.final_price)) : (ebayPrice ?? null);
@@ -468,7 +617,6 @@ Deno.serve(async (req) => {
     // Phase 7: source flags (nullable text fields)
     const titleSource       = typeof (body as any).title_source       === 'string' ? (body as any).title_source.substring(0, 50)       : null;
     const descriptionSource = typeof (body as any).description_source === 'string' ? (body as any).description_source.substring(0, 50) : null;
-    const priceSource       = typeof (body as any).price_source       === 'string' ? (body as any).price_source.substring(0, 50)       : null;
     const skuSource         = typeof (body as any).sku_source         === 'string' ? (body as any).sku_source.substring(0, 50)         : null;
 
     const listingPayload = {
@@ -489,11 +637,23 @@ Deno.serve(async (req) => {
       ebay_data:          ebayData,
       price_low:          priceLow,
       price_high:         priceHigh,
+      // Supplier-neutral raw data (kept separate from the calculated price)
+      supplier:               supplierKey,
+      supplier_product_id:    supplierProductId,
+      supplier_url:           supplierUrl,
+      supplier_price:         supplierPrice,
+      supplier_currency:      supplierCurrency,
+      supplier_shipping_cost: supplierShipping,
+      // Auditable pricing result
+      pricing_breakdown:    pricingBreakdown,
+      pricing_rule_version: pricingRuleVersion,
+      price_calculated_at:  priceCalculatedAt,
+      pricing_drift_cents:  pricingDriftCents,
       // Phase 7: source flags
-      ...(titleSource       ? { title_source:       titleSource       } : {}),
-      ...(descriptionSource ? { description_source: descriptionSource } : {}),
-      ...(priceSource       ? { price_source:       priceSource       } : {}),
-      ...(skuSource         ? { sku_source:         skuSource         } : {}),
+      ...(titleSource          ? { title_source:       titleSource          } : {}),
+      ...(descriptionSource    ? { description_source: descriptionSource    } : {}),
+      ...(effectivePriceSource ? { price_source:       effectivePriceSource } : {}),
+      ...(skuSource            ? { sku_source:         skuSource            } : {}),
     };
 
     // Atomic upsert: parent + all children in one RPC call

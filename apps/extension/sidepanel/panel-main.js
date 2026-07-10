@@ -148,8 +148,7 @@
         btnMainAction.innerHTML = '<span class="btn-spinner btn-spinner-sm"></span> Loading…';
         const product = await doScan(_mode);
         if (product) {
-          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
-          const updatedProduct = recalculateProductPricing(product, stored.calculatorValues);
+          const updatedProduct = await recalculateProductPricing(product);
           await chrome.storage.local.set({ currentProduct: updatedProduct });
           
           if (typeof window.SSListingDraft !== 'undefined') {
@@ -867,6 +866,12 @@
     initAuthLinks();
     initDirtyTracking();
 
+    // Refresh the Supplier Pricing rules whenever the panel opens so scan-time
+    // pricing uses the latest dashboard settings (ETag-cached — cheap no-op
+    // when nothing changed). Fire-and-forget: scan pricing falls back to the
+    // last synced cache if this is still in flight.
+    try { chrome.runtime.sendMessage({ action: 'FORCE_PRICING_SYNC' }, () => void chrome.runtime.lastError); } catch (_) {}
+
     document.getElementById('btn-sign-in').addEventListener('click', doSignIn);
     document.getElementById('btn-log-out').addEventListener('click', doLogOut);
 
@@ -909,8 +914,7 @@
       if (state.product) {
         const needsPricing = !state.product.finalPrice || (Array.isArray(state.product.variants) && state.product.variants.length > 1 && state.product.variants.some(v => !v.finalPrice));
         if (needsPricing && !_busy) {
-          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
-          const updatedProduct = recalculateProductPricing(state.product, stored.calculatorValues);
+          const updatedProduct = await recalculateProductPricing(state.product);
           await chrome.storage.local.set({ currentProduct: updatedProduct });
           if (typeof window.SSListingDraft !== 'undefined') {
             await window.SSListingDraft.patchDraft({
@@ -928,10 +932,12 @@
     renderAuth(snap);
 
     chrome.storage.onChanged.addListener(async (changes, area) => {
-      if (area === 'local' && changes.calculatorValues) {
+      // Re-price the current product whenever the synced Supplier Pricing
+      // rules change (dashboard save → pricing-rule-sync → this listener).
+      if (area === 'local' && changes[window.SSPricingApply ? window.SSPricingApply.CACHE_KEY : 'pricingRulesCache']) {
         const data = await new Promise(r => chrome.storage.local.get('currentProduct', r));
         if (data.currentProduct) {
-          const updatedProduct = recalculateProductPricing(data.currentProduct, changes.calculatorValues.newValue);
+          const updatedProduct = await recalculateProductPricing(data.currentProduct);
           await chrome.storage.local.set({ currentProduct: updatedProduct });
           if (typeof window.SSListingDraft !== 'undefined') {
             await window.SSListingDraft.patchDraft({
@@ -955,8 +961,7 @@
         
         const product = await doScan('single');
         if (product) {
-          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
-          const updatedProduct = recalculateProductPricing(product, stored.calculatorValues);
+          const updatedProduct = await recalculateProductPricing(product);
           await chrome.storage.local.set({ currentProduct: updatedProduct });
           
           if (typeof window.SSListingDraft !== 'undefined') {
@@ -1009,8 +1014,7 @@
         
         const product = await doScan('single');
         if (product) {
-          const stored = await new Promise(r => chrome.storage.local.get('calculatorValues', r));
-          const updatedProduct = recalculateProductPricing(product, stored.calculatorValues);
+          const updatedProduct = await recalculateProductPricing(product);
           await chrome.storage.local.set({ currentProduct: updatedProduct });
           
           if (typeof window.SSListingDraft !== 'undefined') {
@@ -1116,9 +1120,28 @@
     }
   }
 
-  function recalculateProductPricing(product, calculatorValues) {
-    if (!product || !window.SSPricingEngine) return product;
-    return window.SSPricingEngine.applyPricingToProduct(product, calculatorValues);
+  // Resolve which supplier's dashboard pricing rule governs this product.
+  // Preference: key stamped at scan time → supplier field → registry URL match
+  // → ASIN implies Amazon. Null means "cannot price" (never guess a formula).
+  function _resolveSupplierKey(product) {
+    if (!product) return null;
+    if (product.supplierKey) return product.supplierKey;
+    if (product.supplier) return product.supplier;
+    const url = product.url || product.amazonUrl || '';
+    if (url && window.SSSupplierRegistry && typeof window.SSSupplierRegistry.match === 'function') {
+      const adapter = window.SSSupplierRegistry.match(url);
+      if (adapter && adapter.supplierId) return adapter.supplierId;
+    }
+    if (product.asin || product.parentAsin || product.ASIN) return 'amazon';
+    return null;
+  }
+
+  // Prices via the user's synced DASHBOARD Supplier Pricing rules
+  // (SSPricingApply → SSPricingCore — same engine the backend verifies with).
+  async function recalculateProductPricing(product) {
+    if (!product || !window.SSPricingApply) return product;
+    await window.SSPricingApply.applyToProduct(product, _resolveSupplierKey(product));
+    return product;
   }
 
   if (document.readyState === 'loading') {

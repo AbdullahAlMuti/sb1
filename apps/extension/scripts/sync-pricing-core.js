@@ -34,8 +34,16 @@ function sha256(data) {
   return createHash('sha256').update(data).digest('hex');
 }
 
+// Deno 2 removed the `window` global (Deno 1 aliased it to globalThis). A
+// module-scoped `const window = globalThis` keeps the canonical extension
+// source untouched while making the generated copy correct on every Deno
+// version and on Supabase Edge Runtime.
+const DENO_HEADER = `// Deno 2 has no window global — module-scoped alias keeps the IIFE below portable.
+const window = globalThis;
+`;
+
 const src = fs.readFileSync(SRC, 'utf8');
-const destContent = src + DENO_FOOTER;
+const destContent = DENO_HEADER + src + DENO_FOOTER;
 
 // Check if destination is already up-to-date (skip noisy writes in watch mode)
 if (fs.existsSync(DEST)) {

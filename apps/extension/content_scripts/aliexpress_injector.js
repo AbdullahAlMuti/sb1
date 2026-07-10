@@ -16,18 +16,12 @@
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
-  async function storedCalculatorValues() {
-    try {
-      const data = await new Promise((resolve) => chrome.storage.local.get('calculatorValues', resolve));
-      return data.calculatorValues || {};
-    } catch (_) {
-      return {};
-    }
-  }
-
-  function applyPricing(product, calculatorValues) {
-    if (!product || !window.SSPricingEngine) return product;
-    return window.SSPricingEngine.applyPricingToProduct(product, calculatorValues);
+  // Prices the product with the user's DASHBOARD Supplier Pricing rule for
+  // AliExpress via SSPricingApply/SSPricingCore — same engine as the backend.
+  async function applyPricing(product) {
+    if (!product || !window.SSPricingApply) return product;
+    await window.SSPricingApply.applyToProduct(product, 'aliexpress');
+    return product;
   }
 
   async function saveProduct(product, mode) {
@@ -44,7 +38,7 @@
     if (!adapter) throw new Error('No AliExpress supplier adapter for this page');
     const raw = mode === 'single' ? await adapter.scrapeProduct(options) : await adapter.scrapeVariants(options);
     const product = adapter.normalize(raw);
-    applyPricing(product, await storedCalculatorValues());
+    await applyPricing(product);
     await saveProduct(product, mode);
     return product;
   }

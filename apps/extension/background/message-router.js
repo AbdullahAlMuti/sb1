@@ -511,26 +511,6 @@ function routeMessage(request, sender, sendResponse) {
     return true;
   }
 
-  if (request.action === 'CHECK_EBAY_CONNECTION') {
-    (async () => {
-      try {
-        const helper = typeof window !== 'undefined' ? window.EbayListingApiHelper : (typeof self !== 'undefined' ? self.EbayListingApiHelper : null);
-        if (helper && typeof helper.checkEbayAuth === 'function') {
-          const connected = await helper.checkEbayAuth();
-          const data = await chrome.storage.local.get(['lastSyncTime']);
-          sendResponse({ connected, lastSyncTime: data.lastSyncTime || null });
-        } else {
-          console.warn('[Background] EbayListingApiHelper not available in background context');
-          sendResponse({ connected: false, lastSyncTime: null });
-        }
-      } catch (err) {
-        console.error('[Background] CHECK_EBAY_CONNECTION error:', err.message);
-        sendResponse({ connected: false, lastSyncTime: null, error: err.message });
-      }
-    })();
-    return true;
-  }
-
   if (request.action === 'get_ebay_orders') {
     (async () => {
       if (typeof SyncUtils !== 'undefined') {
@@ -730,6 +710,23 @@ function routeMessage(request, sender, sendResponse) {
     // Content scripts call this to discover their own tabId
     sendResponse({ tabId: sender.tab ? sender.tab.id : null });
     return true;
+  } else if (request.action === "FORCE_PRICING_SYNC") {
+    // Panel open / dashboard "Supplier Pricing saved" relay (bridge.js) —
+    // refresh the synced rules immediately so the next scan prices with the
+    // latest dashboard settings. ETag makes this a cheap 304 when unchanged.
+    (async () => {
+      try {
+        if (typeof SSPricingRuleSync !== 'undefined') {
+          const cache = await SSPricingRuleSync.sync(true);
+          sendResponse({ success: true, updatedAt: cache?.updatedAt || null });
+          return;
+        }
+        sendResponse({ success: false, error: 'SSPricingRuleSync unavailable' });
+      } catch (e) {
+        sendResponse({ success: false, error: e?.message || 'pricing sync failed' });
+      }
+    })();
+    return true;
   } else if (request.action === "START_OPTILIST") {
     // Sync-only handler — listing is now handled by import_ebay
     (async () => {
@@ -785,6 +782,7 @@ function routeMessage(request, sender, sendResponse) {
               supplier_id: request.sourceId || request.asin || null,
               supplier_url: request.productURL,
               supplier_price: parsedSupplierPrice,
+              price_source: request.price_source || null,
               // Legacy Amazon-named fields — kept until backend/DB migrates
               amazon_price: parsedSupplierPrice,
               amazon_url: request.productURL, amazon_asin: request.asin,
