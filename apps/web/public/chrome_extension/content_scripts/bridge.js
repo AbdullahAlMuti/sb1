@@ -234,6 +234,16 @@
             }
         }
 
+        // Dashboard saved Supplier Pricing settings — refresh the synced rules
+        // immediately so the next scan/import prices with the new values
+        // (otherwise the alarm-based sync could lag up to 10 minutes).
+        if (data.type === 'SS_PRICING_RULES_UPDATED') {
+            log('info', 'Supplier Pricing updated in dashboard — forcing rule sync');
+            try {
+                chrome.runtime.sendMessage({ action: 'FORCE_PRICING_SYNC' }, () => void chrome.runtime.lastError);
+            } catch (_) { /* extension context invalidated — alarm sync will catch up */ }
+        }
+
         // Forward background tab requests
         if (data.type === 'OPEN_BACKGROUND_TAB') {
             log('info', 'Background tab requested', { url: data.url });

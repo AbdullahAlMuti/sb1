@@ -41,12 +41,8 @@ const ExtensionConfig = (() => {
     AI_REMOVE_BG: `${WEB_APP_DOMAIN}/v1/ai/remove-bg`
   });
 
-  console.log('🔧 [Config] ExtensionConfig initialized:', {
-    DOMAIN: WEB_APP_DOMAIN,
-    BASE: URLS.WEB_APP_BASE,
-    AUTH: URLS.WEB_APP_AUTH,
-    DASHBOARD: URLS.WEB_APP_DASHBOARD
-  });
+  // (Removed config-init console.log that printed app URLs on every load in
+  // production content-script contexts — EXT P3 log hygiene.)
 
   // ═══════════════════════════════════════════════════════════
   // 🔑 API KEYS (Public/Anon only - secrets in storage)

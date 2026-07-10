@@ -5,6 +5,7 @@
 
 const LOGOUT_STORAGE_KEYS = [
   "saasToken",
+  "saasRefreshToken",
   "saasUser",
   "userId",
   "userEmail",
@@ -192,7 +193,34 @@ function getFirstGeneratedTitle(result) {
 
 // Register the single message listener. Named so the auth gate can re-route a
 // request after a successful re-verification (see the unlock gate below).
+// EXT-P1-002: auth-sensitive actions must originate from the extension's own UI
+// (popup/sidepanel/options) or the first-party SellerSuit dashboard bridge —
+// never from a marketplace content script or any other page. Scraping and other
+// non-auth actions are unaffected and still work from content scripts.
+const AUTH_SENSITIVE_ACTIONS = new Set(['SYNC_TOKEN', 'LOGIN_SUCCESS', 'LOGOUT']);
+
+function isTrustedAuthSender(sender) {
+  if (!sender || sender.id !== chrome.runtime.id) return false;
+  const url = sender.url || '';
+  // Extension UI pages run from chrome-extension://<own id>/...
+  if (url.startsWith('chrome-extension://')) return true;
+  // Content-script relay (bridge.js): only trust first-party dashboard origins.
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    if (host === 'sellersuit.com' || host.endsWith('.sellersuit.com')) return true;
+    // Dev only — the prod build does not inject bridge.js on localhost.
+    if (host === 'localhost' || host === '127.0.0.1') return true;
+  } catch (_e) { /* no / invalid sender url */ }
+  return false;
+}
+
 function routeMessage(request, sender, sendResponse) {
+  if (AUTH_SENSITIVE_ACTIONS.has(request?.action) && !isTrustedAuthSender(sender)) {
+    console.warn('[message-router] Rejected auth-sensitive action from untrusted sender:', request?.action);
+    sendResponse({ success: false, error: 'Untrusted sender for auth action' });
+    return true;
+  }
+
   const urls = getUrls();
   const apiKeys = getApiKeys();
 
@@ -520,8 +548,15 @@ function routeMessage(request, sender, sendResponse) {
             if (typeof SSPricingRuleSync !== 'undefined') {
               SSPricingRuleSync.sync(true).catch(() => {});
             }
+          } else {
+            // EXT-P1-002: never leave an unverified session in storage. If the
+            // backend did not confirm the token, roll back everything just written.
+            await chrome.storage.local.remove([
+              'saasToken', 'saasRefreshToken', 'saasUser', 'userId', 'userEmail', 'authTimestamp'
+            ]);
+            AuthHelper.setUnlocked(false);
           }
-          sendResponse({ success: true, verified });
+          sendResponse({ success: verified, verified });
         } catch (err) {
           sendResponse({ success: false, error: err.message });
         }
@@ -537,6 +572,10 @@ function routeMessage(request, sender, sendResponse) {
           stopEbayOrderSyncInterval();
         }
         await chrome.storage.local.remove(LOGOUT_STORAGE_KEYS);
+        // Also clear the new-auth device-session tokens so a web-app logout
+        // cannot be silently revived via refreshLegacyToken() or the extension
+        // token-refresh path (EXT-P1-001).
+        await AuthHelper.clearNewAuthSession();
         AuthHelper.setUnlocked(false);
         AuthHelper.setLastCheck(0);
         sendResponse({ success: true });
@@ -671,6 +710,23 @@ function routeMessage(request, sender, sendResponse) {
     // Content scripts call this to discover their own tabId
     sendResponse({ tabId: sender.tab ? sender.tab.id : null });
     return true;
+  } else if (request.action === "FORCE_PRICING_SYNC") {
+    // Panel open / dashboard "Supplier Pricing saved" relay (bridge.js) —
+    // refresh the synced rules immediately so the next scan prices with the
+    // latest dashboard settings. ETag makes this a cheap 304 when unchanged.
+    (async () => {
+      try {
+        if (typeof SSPricingRuleSync !== 'undefined') {
+          const cache = await SSPricingRuleSync.sync(true);
+          sendResponse({ success: true, updatedAt: cache?.updatedAt || null });
+          return;
+        }
+        sendResponse({ success: false, error: 'SSPricingRuleSync unavailable' });
+      } catch (e) {
+        sendResponse({ success: false, error: e?.message || 'pricing sync failed' });
+      }
+    })();
+    return true;
   } else if (request.action === "START_OPTILIST") {
     // Sync-only handler — listing is now handled by import_ebay
     (async () => {
@@ -726,6 +782,7 @@ function routeMessage(request, sender, sendResponse) {
               supplier_id: request.sourceId || request.asin || null,
               supplier_url: request.productURL,
               supplier_price: parsedSupplierPrice,
+              price_source: request.price_source || null,
               // Legacy Amazon-named fields — kept until backend/DB migrates
               amazon_price: parsedSupplierPrice,
               amazon_url: request.productURL, amazon_asin: request.asin,

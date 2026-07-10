@@ -122,7 +122,6 @@
       "js": [
         "common/config.js",
         "common/storage.js",
-        "common/pricing-engine.js",
         "common/sku-engine.js",
         "common/variation-normalizer.js",
         "common/retry-helper.js",
@@ -140,7 +139,6 @@
       "js": [
         "common/config.js",
         "common/storage.js",
-        "common/pricing-engine.js",
         "common/sku-engine.js",
         "common/variation-normalizer.js",
         "common/retry-helper.js",
@@ -158,7 +156,6 @@
       "js": [
         "common/config.js",
         "common/storage.js",
-        "common/pricing-engine.js",
         "common/sku-engine.js",
         "common/images/core/image-schema.js",
         "common/images/core/image-cache.js",
