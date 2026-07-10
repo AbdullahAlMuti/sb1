@@ -302,3 +302,31 @@ describe('dev extension AI generation wiring', () => {
     assert.ok(aiRoutes.includes('normalizeAiEdgeResult'), 'AI generation routes must normalize edge errors');
   });
 });
+
+// ─── Auto-price loop guards (regression: hung PC on unpriced products) ────────
+// panel-main's store subscriber auto-prices products missing finalPrice and
+// writes currentProduct back. panel-store re-notifies on every currentProduct
+// write, so when NO pricing rules are synced (logged out / first run) the
+// product stays unpriced and an unconditional write spun
+// write → notify → re-price forever, pegging the CPU. These locks keep the
+// two guards that break the cycle in place.
+describe('panel-main auto-price loop guards', () => {
+  const src = read('sidepanel/panel-main.js');
+
+  test('one auto-price attempt per product (guard variable present and used)', () => {
+    assert.match(src, /let _autoPriceAttemptKey/,
+      'loop-guard variable must exist');
+    assert.match(src, /_autoPriceAttemptKey !== productKey/,
+      'subscriber must skip products it already attempted');
+    assert.match(src, /_autoPriceAttemptKey = null/,
+      'rules-cache listener must reset the guard so fresh rules retry pricing');
+  });
+
+  test('currentProduct is only written back when pricing changed it', () => {
+    // Both re-price paths must diff before writing — an unchanged write
+    // re-fires the subscriber for nothing (and looped forever pre-guard).
+    const writes = src.match(/JSON\.stringify\(updatedProduct\) [!=]== before/g) || [];
+    assert.ok(writes.length >= 2,
+      `both auto-price paths must compare before/after (found ${writes.length} of 2)`);
+  });
+});
