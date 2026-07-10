@@ -4657,7 +4657,7 @@
 		try {
 			const host = new URL(url).hostname.toLowerCase();
 			if (host === "sellersuit.com" || host.endsWith(".sellersuit.com")) return true;
-			if (host === "localhost" || host === "127.0.0.1") return true;
+    // (dev-only host trust stripped for production by prepare-extension-prod.js)
 		} catch (_e) {}
 		return false;
 	}
