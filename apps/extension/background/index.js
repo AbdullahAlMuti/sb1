@@ -46,11 +46,9 @@ function isSidePanelUrl(url) {
 }
 
 async function configureSidePanelForTab(tabId, url) {
-  if (isSidePanelUrl(url)) {
-    await chrome.sidePanel.setOptions({ tabId, path: 'sidepanel/side-panel.html', enabled: true });
-  } else {
-    await chrome.sidePanel.setOptions({ tabId, enabled: false });
-  }
+  // Always keep the side panel enabled globally so it's active on installation
+  // and allows the user to open it to log in or read supplier onboarding instructions.
+  await chrome.sidePanel.setOptions({ tabId, path: 'sidepanel/side-panel.html', enabled: true });
 }
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {

@@ -5568,36 +5568,11 @@
 	globalThis.getUrls = () => typeof globalThis.ExtensionConfig !== "undefined" ? globalThis.ExtensionConfig.URLS : null;
 	globalThis.getApiKeys = () => typeof globalThis.ExtensionConfig !== "undefined" ? globalThis.ExtensionConfig.API_KEYS : null;
 	chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
-	var SIDE_PANEL_DOMAINS = [
-		"amazon.com",
-		"amazon.co.uk",
-		"amazon.de",
-		"amazon.ca",
-		"amazon.com.au",
-		"walmart.com",
-		"walmart.ca",
-		"aliexpress.com",
-		"aliexpress.ru",
-		"aliexpress.us"
-	];
-	function isSidePanelUrl(url) {
-		if (!url) return false;
-		try {
-			const hostname = new URL(url).hostname;
-			return SIDE_PANEL_DOMAINS.some((d) => hostname === d || hostname.endsWith("." + d));
-		} catch (_) {
-			return false;
-		}
-	}
 	async function configureSidePanelForTab(tabId, url) {
-		if (isSidePanelUrl(url)) await chrome.sidePanel.setOptions({
+		await chrome.sidePanel.setOptions({
 			tabId,
 			path: "sidepanel/side-panel.html",
 			enabled: true
-		});
-		else await chrome.sidePanel.setOptions({
-			tabId,
-			enabled: false
 		});
 	}
 	chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
