@@ -56,9 +56,9 @@ export function OnboardingStepper() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Questionnaire State
-  const [startedSelling, setStartedSelling] = useState<boolean | null>(null);
-  const [selectedChannels, setSelectedChannels] = useState<string[]>(["ebay"]);
-  const [selectedAccomplishments, setSelectedAccomplishments] = useState<string[]>(["niches", "listings", "vero"]);
+  const [experienceType, setExperienceType] = useState<"pro" | "new" | "explore" | null>(null);
+  const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
+  const [selectedAccomplishments, setSelectedAccomplishments] = useState<string[]>([]);
 
   // Simulated setup step states
   const [initStepIdx, setInitStepIdx] = useState(0);
@@ -100,7 +100,7 @@ export function OnboardingStepper() {
   };
 
   const handleNext = () => {
-    if (step === 1 && startedSelling !== null) {
+    if (step === 1 && experienceType !== null) {
       setStep(2);
     } else if (step === 2 && selectedChannels.length > 0) {
       setStep(3);
@@ -128,7 +128,8 @@ export function OnboardingStepper() {
           onboarding_status: "completed",
           settings: {
             onboarding_answers: {
-              started_selling: startedSelling,
+              started_selling: experienceType === "pro",
+              experience_type: experienceType,
               sales_channels: selectedChannels,
               accomplish_goals: selectedAccomplishments,
             },
@@ -151,8 +152,8 @@ export function OnboardingStepper() {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 backdrop-blur-md p-4 overflow-y-auto">
-      <div className="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[24px] border border-slate-200/80 dark:border-slate-800/80 shadow-2xl p-8 md:p-10 flex flex-col justify-between min-h-[490px]">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/25 backdrop-blur-[2px] p-4 overflow-y-auto transition-all duration-300">
+      <div className="w-full max-w-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-[24px] border border-slate-200/60 dark:border-slate-800/60 shadow-[0_0_50px_-12px_rgba(16,185,129,0.12)] dark:shadow-[0_0_50px_-12px_rgba(16,185,129,0.08)] p-8 md:p-10 flex flex-col justify-between min-h-[500px] transition-all duration-300">
         
         {/* ─── TOP STATUS & PROGRESS BAR INDICATOR ─── */}
         <div className="w-full space-y-4 mb-6">
@@ -173,9 +174,9 @@ export function OnboardingStepper() {
           </div>
           
           {/* Progress bar */}
-          <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+          <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-full overflow-hidden">
             <div 
-              className="h-full bg-emerald-500 transition-all duration-500 ease-out shadow-[0_0_8px_rgba(16,185,129,0.3)]" 
+              className="h-full bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500 transition-all duration-500 ease-out shadow-[0_0_10px_rgba(16,185,129,0.5)]" 
               style={{ width: `${(step / 4) * 100}%` }}
             />
           </div>
@@ -221,45 +222,41 @@ export function OnboardingStepper() {
                     {[
                       { 
                         id: "pro", 
-                        val: true,
                         title: "Active Professional Seller", 
                         desc: "I have stores and want repricing, order sync & VERO tools.",
                         icon: Cpu
                       },
                       { 
                         id: "new", 
-                        val: false,
                         title: "Starting a New Store", 
                         desc: "I am new and want product sourcing & competitor research.",
                         icon: Sparkles
                       },
                       { 
                         id: "explore", 
-                        val: false,
                         title: "Explore Features First", 
                         desc: "I want to explore metrics and settings before connecting.",
                         icon: Search
                       }
                     ].map((option) => {
-                      const isSelected = startedSelling === option.val;
+                      const isSelected = experienceType === option.id;
                       return (
                         <button
                           key={option.id}
                           onClick={() => {
-                            setStartedSelling(option.val);
-                            setStep(2);
+                            setExperienceType(option.id as any);
                           }}
                           className={cn(
-                            "w-full text-left p-4.5 border rounded-2xl transition-all duration-200 relative flex gap-4 items-start focus:outline-none",
+                            "w-full text-left p-4.5 border rounded-2xl transition-all duration-300 relative flex gap-4 items-start focus:outline-none hover:scale-[1.01] active:scale-[0.995]",
                             isSelected
-                              ? "border-emerald-500 bg-emerald-500/5 dark:bg-emerald-500/5 shadow-sm text-emerald-950 dark:text-emerald-400"
-                              : "border-slate-200 dark:border-slate-800 hover:border-slate-350 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40"
+                              ? "border-emerald-500 bg-emerald-500/[0.03] dark:bg-emerald-400/[0.02] shadow-[0_0_20px_-8px_rgba(16,185,129,0.25)] text-slate-900 dark:text-white"
+                              : "border-slate-200/80 dark:border-slate-800/85 hover:border-slate-350 dark:hover:border-slate-700 hover:bg-slate-50/80 dark:hover:bg-slate-800/60 bg-white/40 dark:bg-slate-900/40 text-slate-750 dark:text-slate-300 shadow-sm hover:shadow-md"
                           )}
                         >
                           <div className={cn(
-                            "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors",
+                            "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300 shadow-inner",
                             isSelected 
-                              ? "bg-emerald-500 text-white" 
+                              ? "bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-emerald-500/20" 
                               : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
                           )}>
                             <option.icon className="w-5 h-5 stroke-[2]" />
@@ -273,16 +270,27 @@ export function OnboardingStepper() {
                             </p>
                           </div>
                           <div className={cn(
-                            "absolute top-1/2 -translate-y-1/2 right-4 w-5 h-5 rounded-full border flex items-center justify-center transition-all shrink-0",
+                            "absolute top-1/2 -translate-y-1/2 right-4 w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-300 shrink-0",
                             isSelected 
-                              ? "border-emerald-500 bg-emerald-500 text-white" 
-                              : "border-slate-300 dark:border-slate-700"
+                              ? "border-emerald-500 bg-emerald-500 text-white scale-110 shadow-[0_0_8px_rgba(16,185,129,0.4)]" 
+                              : "border-slate-300 dark:border-slate-700 scale-100"
                           )}>
                             {isSelected && <Check className="w-3.5 h-3.5 stroke-[3.5]" />}
                           </div>
                         </button>
                       );
                     })}
+                  </div>
+
+                  <div className="pt-2 flex justify-center">
+                    <Button
+                      onClick={handleNext}
+                      disabled={experienceType === null}
+                      className="w-56 h-12 bg-gradient-to-r from-emerald-500 to-teal-600 disabled:from-slate-200 disabled:to-slate-300 dark:disabled:from-slate-850 dark:disabled:to-slate-800 text-white disabled:text-slate-400 dark:disabled:text-slate-600 hover:opacity-95 font-bold rounded-full flex items-center justify-center gap-2 group text-sm font-sans shadow-lg hover:shadow-emerald-500/20 active:scale-98 transition-all duration-200"
+                    >
+                      Next
+                      <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                    </Button>
                   </div>
                 </motion.div>
               )}
@@ -314,10 +322,10 @@ export function OnboardingStepper() {
                           key={channel.id}
                           onClick={() => toggleChannel(channel.id)}
                           className={cn(
-                            "p-3.5 border rounded-2xl text-left flex items-center justify-between gap-3 h-[64px] transition-all duration-200 relative focus:outline-none",
+                            "p-3.5 border rounded-2xl text-left flex items-center justify-between gap-3 h-[64px] transition-all duration-350 relative focus:outline-none hover:scale-[1.01] active:scale-[0.995]",
                             isSelected
-                              ? "border-emerald-500 bg-emerald-500/5 dark:bg-emerald-500/5 shadow-sm text-emerald-950 dark:text-emerald-400"
-                              : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 text-slate-750 dark:text-slate-300"
+                              ? "border-emerald-500 bg-emerald-500/[0.03] dark:bg-emerald-400/[0.02] shadow-[0_0_20px_-8px_rgba(16,185,129,0.25)] text-slate-900 dark:text-white"
+                              : "border-slate-200/80 dark:border-slate-800/85 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50/80 dark:hover:bg-slate-800/60 bg-white/40 dark:bg-slate-900/40 text-slate-750 dark:text-slate-300 shadow-sm hover:shadow-md"
                           )}
                         >
                           <div className="flex items-center gap-3.5">
@@ -334,10 +342,10 @@ export function OnboardingStepper() {
                           </div>
 
                           <div className={cn(
-                            "w-5 h-5 rounded border flex items-center justify-center transition-all shrink-0",
+                            "w-5 h-5 rounded border flex items-center justify-center transition-all duration-300 shrink-0",
                             isSelected 
-                              ? "bg-emerald-500 border-emerald-500 text-white" 
-                              : "border-slate-350 dark:border-slate-700 bg-white dark:bg-slate-900"
+                              ? "bg-emerald-500 border-emerald-500 text-white scale-110 shadow-[0_0_8px_rgba(16,185,129,0.4)]" 
+                              : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 scale-100"
                           )}>
                             {isSelected && <Check className="w-3.5 h-3.5 stroke-[3.5]" />}
                           </div>
@@ -350,7 +358,7 @@ export function OnboardingStepper() {
                     <Button
                       onClick={handleNext}
                       disabled={selectedChannels.length === 0}
-                      className="w-56 h-12 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 font-bold rounded-full flex items-center justify-center gap-2 group text-sm font-sans shadow-md"
+                      className="w-56 h-12 bg-gradient-to-r from-emerald-500 to-teal-600 disabled:from-slate-200 disabled:to-slate-300 dark:disabled:from-slate-850 dark:disabled:to-slate-800 text-white disabled:text-slate-400 dark:disabled:text-slate-600 hover:opacity-95 font-bold rounded-full flex items-center justify-center gap-2 group text-sm font-sans shadow-lg hover:shadow-emerald-500/20 active:scale-98 transition-all duration-200"
                     >
                       Next
                       <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
@@ -386,10 +394,10 @@ export function OnboardingStepper() {
                           key={item.id}
                           onClick={() => toggleAccomplishment(item.id)}
                           className={cn(
-                            "w-full px-5 py-4 border rounded-2xl flex items-center justify-between text-left transition-all duration-200 focus:outline-none relative group",
+                            "w-full px-5 py-4 border rounded-2xl flex items-center justify-between text-left transition-all duration-355 focus:outline-none relative group hover:scale-[1.01] active:scale-[0.995]",
                             isSelected
-                              ? "border-emerald-500 bg-emerald-500/5 dark:bg-emerald-500/5 text-emerald-950 dark:text-emerald-400"
-                              : "border-slate-200 dark:border-slate-800 hover:border-slate-355 dark:hover:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 text-slate-750 dark:text-slate-300"
+                              ? "border-emerald-500 bg-emerald-500/[0.03] dark:bg-emerald-400/[0.02] shadow-[0_0_20px_-8px_rgba(16,185,129,0.25)] text-slate-900 dark:text-white"
+                              : "border-slate-200/80 dark:border-slate-800/85 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50/80 dark:hover:bg-slate-800/60 bg-white/40 dark:bg-slate-900/40 text-slate-750 dark:text-slate-300 shadow-sm hover:shadow-md"
                           )}
                         >
                           <span className="text-xs font-bold leading-snug block">
@@ -397,10 +405,10 @@ export function OnboardingStepper() {
                           </span>
 
                           <div className={cn(
-                            "w-5 h-5 rounded border flex items-center justify-center transition-all shrink-0 ml-3.5",
+                            "w-5 h-5 rounded border flex items-center justify-center transition-all duration-300 shrink-0 ml-3.5",
                             isSelected 
-                              ? "bg-emerald-500 border-emerald-500 text-white" 
-                              : "border-slate-350 dark:border-slate-700 bg-white dark:bg-slate-900"
+                              ? "bg-emerald-500 border-emerald-500 text-white scale-110 shadow-[0_0_8px_rgba(16,185,129,0.4)]" 
+                              : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 scale-100"
                           )}>
                             {isSelected && <Check className="w-3.5 h-3.5 stroke-[3.5]" />}
                           </div>
@@ -413,7 +421,7 @@ export function OnboardingStepper() {
                     <Button
                       onClick={startInitialization}
                       disabled={selectedAccomplishments.length === 0}
-                      className="w-56 h-12 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 font-bold rounded-full flex items-center justify-center gap-2 group text-sm font-sans shadow-md"
+                      className="w-56 h-12 bg-gradient-to-r from-emerald-500 to-teal-600 disabled:from-slate-200 disabled:to-slate-300 dark:disabled:from-slate-850 dark:disabled:to-slate-800 text-white disabled:text-slate-400 dark:disabled:text-slate-600 hover:opacity-95 font-bold rounded-full flex items-center justify-center gap-2 group text-sm font-sans shadow-lg hover:shadow-emerald-500/20 active:scale-98 transition-all duration-200"
                     >
                       Next
                       <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
@@ -432,11 +440,11 @@ export function OnboardingStepper() {
                   className="space-y-6 w-full"
                 >
                   <div className="space-y-2 text-center">
-                    <div className="w-14 h-14 rounded-full bg-emerald-500/10 border border-emerald-500 flex items-center justify-center mx-auto shadow-[0_0_12px_rgba(16,185,129,0.1)] animate-pulse">
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-emerald-500/10 to-teal-500/20 border border-emerald-500/30 flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(16,185,129,0.15)] animate-pulse">
                       <Cpu className="w-7 h-7 text-emerald-400 stroke-[2]" />
                     </div>
                     <div className="space-y-0.5">
-                      <h2 className="font-display text-xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-tight">
+                      <h2 className="font-display text-xl font-extrabold tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300 bg-clip-text text-transparent leading-tight">
                         Deploying Secure Vault
                       </h2>
                       <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
@@ -446,7 +454,7 @@ export function OnboardingStepper() {
                   </div>
 
                   {/* Progress Logs */}
-                  <div className="bg-slate-950 p-4.5 rounded-xl border border-slate-800/80 font-mono text-xs space-y-3 shadow-lg">
+                  <div className="bg-slate-950/90 dark:bg-slate-950/80 p-4.5 rounded-xl border border-slate-800/60 dark:border-slate-850/80 font-mono text-xs space-y-3 shadow-2xl backdrop-blur-sm">
                     <div className="flex items-center justify-between text-slate-500 border-b border-slate-900 pb-2 mb-2">
                       <span className="font-semibold uppercase tracking-wider text-[10px]">Status</span>
                       <span className="text-[9px] bg-slate-900 px-1.5 py-0.5 rounded text-emerald-400 border border-slate-850 font-bold">SECURE SSL</span>

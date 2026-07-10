@@ -87,3 +87,8 @@ npm run prepare:prod     # production build → dist/extension-prod/
 - Verify previewable web changes via the preview workflow (don't ask the user to
   check manually).
 - Keep Shopify out of any new user-facing surface, report, or roadmap.
+
+## 5. Billing & Credit Rules
+
+- **Listing Credit Deduction**: Every new listing created decreases exactly **one credit** from the user's account. This is enforced at the database level via the `create_listing_with_variations` RPC and the `trg_enforce_listing_credit_gate` trigger, which inserts a usage transaction of `-1` into `credit_transactions` and automatically updates the profile's cached credit balance. Ensure that any new code creating a listing complies with this one-credit deduction rule and checks for sufficient credit balance beforehand.
+

@@ -1,73 +1,113 @@
-# Welcome to your Lovable project
+# SellerSuit — eBay Dropshipping & Listing Automation SaaS
 
-## Project info
+SellerSuit is a production-grade monorepo containing an eBay dropshipping toolkit. It enables dropshippers to import products from suppliers (like Amazon and Walmart) via a Chrome extension, normalize them into structured products, and list/manage them directly on eBay using a unified dashboard.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+---
 
-## How can I edit this code?
+## 📌 Core Product Scope (eBay-Only)
 
-There are several ways of editing your application.
+> [!IMPORTANT]
+> **Active Marketplace Scope: eBay only.**
+>
+> Shopify code and tables exist in the codebase but are **completely disabled and hidden**.
+> - Do not write or modify Shopify integrations/workflows unless requested.
+> - Do **never** delete Shopify code, drop Shopify tables, or remove Shopify database migrations.
+> - For full scope details, please consult [AI_AGENT_SCOPE_EBAY_ONLY.md](file:///d:/eBay%20Software/2026sellersuit/sb1/AI_AGENT_SCOPE_EBAY_ONLY.md).
 
-**Use Lovable**
+---
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## 🏗️ Repository Architecture
 
-Changes made via Lovable will be committed automatically to this repo.
+SellerSuit is structured as a monorepo containing applications, shared packages, and a Supabase backend configuration.
 
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+├── apps/
+│   ├── web/          # React SPA (Marketing site + authenticated User Dashboard; port 3001)
+│   ├── extension/    # Manifest V3 Chrome Extension (Amazon/Walmart/Aliexpress scrapers & auto-lister)
+│   ├── admin/        # Admin Panel (System management, user plans, config; port 3002)
+│   └── marketing/    # Front-facing marketing site (port 3000)
+│
+├── packages/         # Shared `@repo/*` workspaces
+│   ├── auth/         # React Auth context, custom useAuth hook, and ProtectedRoute guards
+│   ├── api-client/   # Supabase API client singleton wrapping the Supabase JS SDK
+│   ├── ui/           # Shared shadcn/ui components and design tokens
+│   ├── types/        # TypeScript type declarations and generated Supabase database types
+│   ├── marketplace-core/ # Common listing, calculation, pricing-engine, and variation logic
+│   ├── config/       # Shared monorepo configuration files (ESLint, TSConfig, Prettier)
+│   └── utils/        # Common utilities (formatting, parsing, error recovery)
+│
+└── supabase/         # Backend Database & Functions
+    ├── functions/    # ~50 Deno Edge Functions (Stripe, eBay API calls, data sync, queues)
+    └── migrations/   # Sequential PostgreSQL database migrations
 ```
 
-**Edit a file directly in GitHub**
+---
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## 📦 Key Components
 
-**Use GitHub Codespaces**
+### 1. Web Application (`apps/web`)
+The client SPA built with React, Vite, and Tailwind CSS.
+- **Port:** `3001`
+- **Purpose:** Serve the user dashboard where sellers manage their eBay listings, sync orders, monitor pricing alerts, view reports, and manage subscription/billing credits.
+- **Environment:** Reads configurations from the root `.env` or `.env.local` files.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### 2. Chrome Extension (`apps/extension`)
+A Manifest V3 extension built in vanilla JavaScript and bundled with Vite.
+- **Purpose:** Runs on supplier sites (Amazon, Walmart, AliExpress). It scrapes product info (titles, descriptions, pricing, variations, images) and communicates directly with the Supabase backend to push normalized products into the SellerSuit listing lifecycle.
+- **Watch/Dev output:** Build logs generate outputs under `dist/extension-dev/` for local loading.
 
-## What technologies are used for this project?
+### 3. Admin Panel (`apps/admin`)
+A separate administrative dashboard for managing the SaaS platform.
+- **Port:** `3002`
+- **Purpose:** Manage billing limits, view platform analytics, update system configs, and troubleshoot user issues.
 
-This project is built with:
+### 4. Supabase Backend (`supabase/`)
+The persistence, auth, and serverless compute layer.
+- **Database:** PostgreSQL with Row Level Security (RLS) rules enabled on user-facing tables.
+- **Edge Functions:** Handle server-side logic such as calling the eBay APIs, processing Stripe webhook payments, managing queue items, and background pricing updates.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+---
 
-## How can I deploy this project?
+## 🚀 Local Development Setup
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+### 1. Prerequisites
+- **Node.js** (v18+ recommended) & **npm**
+- **Supabase CLI** (optional, for local DB development)
 
-## Can I connect a custom domain to my Lovable project?
+### 2. Environment Variables
+Create a `.env` (or `.env.local`) in the **repo root** directory:
+```env
+VITE_SUPABASE_URL=https://ojxzssooylmydystjvdo.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<your-supabase-publishable-key>
+```
 
-Yes, you can!
+### 3. Run Development Servers
+To run all applications (Marketing, Web Dashboard, Admin Panel) and the Chrome Extension builder concurrently, run:
+```bash
+npm run dev:local
+```
+This runs the extension file watcher and mounts the web applications:
+- Marketing: [http://localhost:3000](http://localhost:3000)
+- Web App: [http://localhost:3001](http://localhost:3001)
+- Admin App: [http://localhost:3002](http://localhost:3002)
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+To start individual components:
+```bash
+npm run dev            # Start only the Web App (port 3001)
+npm run dev:admin      # Start only the Admin Panel (port 3002)
+npm run dev:marketing  # Start only the Marketing site (port 3000)
+```
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+---
+
+## 🤖 Guide for AI Coding Agents
+
+When working on this repository, please adhere to these core workflows:
+
+1. **Read Scope Documents First**: Consult [AI_AGENT_SCOPE_EBAY_ONLY.md](file:///d:/eBay%20Software/2026sellersuit/sb1/AI_AGENT_SCOPE_EBAY_ONLY.md) and [AGENTS.md](file:///d:/eBay%20Software/2026sellersuit/sb1/AGENTS.md) before implementing features.
+2. **Shopify Gating**: Shopify is disabled. Do not expose Shopify in the UI, do not recommend Shopify plans, but **do not delete** existing Shopify files or drop Shopify tables.
+3. **Local-first Validation**: Always verify code changes locally before staging.
+4. **Pre-release Quality Gates**: Run checks before preparing production builds:
+   - `npm run check:local` (env check + typecheck + lint + build)
+   - `npm run qa:local` (runs all validation gates + prepares dev extension)
+   - `npm run typecheck` (tsc validation)
