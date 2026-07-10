@@ -2,6 +2,9 @@ import { resolveExtensionCors } from "../_shared/cors.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { enforceActiveSubscription } from "../_shared/plan-middleware.ts";
 import {
+  EBAY_FEE_DEFAULT_PERCENT,
+  EBAY_PER_ORDER_FEE_DEFAULT,
+  PRICING_FORMULA_VERSIONS,
   SUPPLIER_DEFAULTS,
   validateSupplierKey,
   validateRoundingRule,
@@ -10,6 +13,8 @@ import {
 } from "../_shared/pricing-validation.ts";
 
 // Seed default rows for any missing suppliers (idempotent: skips existing rows).
+// New seeds start on formula v2 (sale-based gross-up) with honest eBay defaults —
+// the marketplace fee belongs to eBay (the selling venue), not the supplier.
 async function seedMissingSuppliers(
   // deno-lint-ignore no-explicit-any -- Supabase client generics are unset here; typed loosely to avoid a spurious never[] upsert error.
   supabaseAdmin: any,
@@ -29,10 +34,12 @@ async function seedMissingSuppliers(
     minimum_profit: 5,
     shipping_buffer: 3,
     fixed_handling_fee: 0,
-    marketplace_fee_percent: d.marketplaceFeePercent,
+    marketplace_fee_percent: EBAY_FEE_DEFAULT_PERCENT,
     currency_buffer_percent: 2,
     rounding_rule: 'END_99',
     rule_version: 1,
+    formula_version: 2,
+    per_order_fee: EBAY_PER_ORDER_FEE_DEFAULT,
   }));
 
   // ignoreDuplicates prevents overwriting rows another request may have inserted
@@ -118,19 +125,33 @@ Deno.serve(async (req) => {
         validateNonNegative(body.fixedHandlingFee,    'fixedHandlingFee');
         validateNumericRange(body.marketplaceFeePercent, 0, 100, 'marketplaceFeePercent');
         validateNumericRange(body.currencyBufferPercent,  0, 100, 'currencyBufferPercent');
+        if (body.formulaVersion !== undefined && !PRICING_FORMULA_VERSIONS.has(Number(body.formulaVersion))) {
+          throw new RangeError(`formulaVersion must be one of: ${[...PRICING_FORMULA_VERSIONS].join(', ')}`);
+        }
+        if (body.perOrderFee !== undefined) {
+          validateNumericRange(body.perOrderFee, 0, 10, 'perOrderFee');
+        }
       } catch (e: unknown) {
         return json({ error: (e as Error).message }, 400);
       }
 
-      // Fetch current rule_version so we can bump it
+      // Fetch the current row so we can bump rule_version and preserve the
+      // formula fields when the client omits them (older dashboard versions
+      // must never silently downgrade a v2 rule back to v1).
       const { data: existing } = await supabase
         .from('user_pricing_settings')
-        .select('rule_version')
+        .select('rule_version, formula_version, per_order_fee')
         .eq('user_id', user.id)
         .eq('supplier_key', supplierKey)
         .maybeSingle();
 
       const nextVersion = ((existing?.rule_version ?? 0) as number) + 1;
+      const formulaVersion = body.formulaVersion !== undefined
+        ? Number(body.formulaVersion)
+        : Number(existing?.formula_version ?? 2); // brand-new rows default to v2
+      const perOrderFee = body.perOrderFee !== undefined
+        ? Number(body.perOrderFee)
+        : Number(existing?.per_order_fee ?? EBAY_PER_ORDER_FEE_DEFAULT);
 
       const { data: saved, error: saveErr } = await supabase
         .from('user_pricing_settings')
@@ -148,6 +169,8 @@ Deno.serve(async (req) => {
           currency_buffer_percent: Number(body.currencyBufferPercent),
           rounding_rule:           String(body.roundingRule),
           rule_version:            nextVersion,
+          formula_version:         formulaVersion,
+          per_order_fee:           perOrderFee,
           notes:                   typeof body.notes === 'string' ? body.notes : null,
         }, { onConflict: 'user_id,supplier_key' })
         .select()

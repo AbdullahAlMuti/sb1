@@ -135,12 +135,15 @@ interface FormState extends SupplierPricingRule {
   ruleVersion?: number;
 }
 
+// Defaults are formula v2 (sale-based): the eBay marketplace fee is a property
+// of eBay — ~13.25% of the SALE price + $0.30 per order — regardless of which
+// supplier the product was sourced from.
 const DEFAULT_RULES: Record<SupplierKey, FormState> = {
-  amazon:     { isEnabled: true, profitMarginPercent: 25, minimumProfit: 5,  shippingBuffer: 3,  fixedHandlingFee: 0.5, marketplaceFeePercent: 13, currencyBufferPercent: 0, roundingRule: "END_99" },
-  walmart:    { isEnabled: true, profitMarginPercent: 25, minimumProfit: 5,  shippingBuffer: 2,  fixedHandlingFee: 0,   marketplaceFeePercent: 8,  currencyBufferPercent: 0, roundingRule: "END_99" },
-  aliexpress: { isEnabled: true, profitMarginPercent: 25, minimumProfit: 5,  shippingBuffer: 5,  fixedHandlingFee: 0,   marketplaceFeePercent: 5,  currencyBufferPercent: 3, roundingRule: "END_99" },
-  temu:       { isEnabled: true, profitMarginPercent: 30, minimumProfit: 3,  shippingBuffer: 8,  fixedHandlingFee: 0,   marketplaceFeePercent: 8,  currencyBufferPercent: 5, roundingRule: "END_99" },
-  alibaba:    { isEnabled: true, profitMarginPercent: 30, minimumProfit: 10, shippingBuffer: 10, fixedHandlingFee: 2,   marketplaceFeePercent: 5,  currencyBufferPercent: 8, roundingRule: "END_99" },
+  amazon:     { isEnabled: true, profitMarginPercent: 25, minimumProfit: 5,  shippingBuffer: 3,  fixedHandlingFee: 0.5, marketplaceFeePercent: 13.25, currencyBufferPercent: 0, roundingRule: "END_99", formulaVersion: 2, perOrderFee: 0.30 },
+  walmart:    { isEnabled: true, profitMarginPercent: 25, minimumProfit: 5,  shippingBuffer: 2,  fixedHandlingFee: 0,   marketplaceFeePercent: 13.25, currencyBufferPercent: 0, roundingRule: "END_99", formulaVersion: 2, perOrderFee: 0.30 },
+  aliexpress: { isEnabled: true, profitMarginPercent: 25, minimumProfit: 5,  shippingBuffer: 5,  fixedHandlingFee: 0,   marketplaceFeePercent: 13.25, currencyBufferPercent: 3, roundingRule: "END_99", formulaVersion: 2, perOrderFee: 0.30 },
+  temu:       { isEnabled: true, profitMarginPercent: 30, minimumProfit: 3,  shippingBuffer: 8,  fixedHandlingFee: 0,   marketplaceFeePercent: 13.25, currencyBufferPercent: 5, roundingRule: "END_99", formulaVersion: 2, perOrderFee: 0.30 },
+  alibaba:    { isEnabled: true, profitMarginPercent: 30, minimumProfit: 10, shippingBuffer: 10, fixedHandlingFee: 2,   marketplaceFeePercent: 13.25, currencyBufferPercent: 8, roundingRule: "END_99", formulaVersion: 2, perOrderFee: 0.30 },
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -198,6 +201,8 @@ export default function CalculatorSettings() {
             currencyBufferPercent: Number(row.currency_buffer_percent),
             roundingRule:          String(row.rounding_rule),
             ruleVersion:           row.rule_version,
+            formulaVersion:        (Number(row.formula_version ?? 1) === 2 ? 2 : 1),
+            perOrderFee:           Number(row.per_order_fee ?? 0.30),
           };
         }
         setRules((prev) => ({ ...prev, ...updates }));
@@ -227,6 +232,8 @@ export default function CalculatorSettings() {
           marketplaceFeePercent:  rule.marketplaceFeePercent,
           currencyBufferPercent:  rule.currencyBufferPercent,
           roundingRule:           rule.roundingRule,
+          formulaVersion:         rule.formulaVersion ?? 1,
+          perOrderFee:            rule.perOrderFee ?? 0.30,
         },
       });
       if (error) throw error;
@@ -284,12 +291,41 @@ export default function CalculatorSettings() {
     }));
   }
 
+  // ── Formula v2 upgrade ────────────────────────────────────────────────────
+
+  const isLegacyFormula = Number(currentRule?.formulaVersion ?? 1) !== 2;
+
+  function upgradeToV2() {
+    setRules((prev) => ({
+      ...prev,
+      [selectedKey]: {
+        ...prev[selectedKey],
+        formulaVersion: 2,
+        perOrderFee: prev[selectedKey]?.perOrderFee || 0.30,
+      },
+    }));
+    toast.info(
+      "Switched to sale-based pricing (not yet saved). Review your eBay fee % — under v2 it's charged on the sale price; 13.25% is typical.",
+    );
+  }
+
   // ── Live preview ──────────────────────────────────────────────────────────
 
   const breakdown = useMemo(
     () => tryCalculatePrice(currentRule, productPrice, shippingCost),
     [currentRule, productPrice, shippingCost],
   );
+
+  // What the same inputs would list at under v2 — shown in the upgrade banner
+  // so legacy users see the concrete difference before switching.
+  const v2Preview = useMemo(() => {
+    if (!isLegacyFormula) return null;
+    return tryCalculatePrice(
+      { ...currentRule, formulaVersion: 2, perOrderFee: currentRule?.perOrderFee ?? 0.30 },
+      productPrice,
+      shippingCost,
+    );
+  }, [isLegacyFormula, currentRule, productPrice, shippingCost]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -398,6 +434,42 @@ export default function CalculatorSettings() {
 
           <CardContent className="pt-5 space-y-5">
 
+            {/* FORMULA VERSION — legacy rules get an explicit, opt-in upgrade */}
+            {isLegacyFormula && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                  <div className="text-xs text-amber-900 leading-relaxed">
+                    <span className="font-semibold">This supplier uses the legacy formula (v1)</span>, which
+                    charges the eBay fee against your <span className="font-semibold">cost</span>. eBay actually
+                    charges ~13.25% of the <span className="font-semibold">sale price</span> + $0.30 per order,
+                    so your realized profit lands below the profit you configured. The sale-based formula (v2)
+                    grosses the price up so you pocket exactly the profit you set.
+                    {v2Preview && breakdown && (
+                      <span className="block mt-1">
+                        Example at your preview inputs: v1 lists <span className="font-semibold">${breakdown.finalPrice}</span>,
+                        v2 would list <span className="font-semibold">${v2Preview.finalPrice}</span> with
+                        <span className="font-semibold"> ${v2Preview.realizedProfit}</span> real profit after fees.
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" className="h-7 text-xs border-amber-300 bg-white hover:bg-amber-100" onClick={upgradeToV2}>
+                  <TrendingUp className="h-3.5 w-3.5 mr-1.5" />
+                  Switch to sale-based pricing (v2)
+                </Button>
+              </div>
+            )}
+            {!isLegacyFormula && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                Sale-based formula (v2): fees are modeled on the final price, so the configured profit is the
+                profit you actually realize.
+              </div>
+            )}
+
+            <SectionDivider />
+
             {/* PROFIT GOALS */}
             <FormSection label="Profit Goals">
               <div className="grid grid-cols-2 gap-3">
@@ -427,18 +499,30 @@ export default function CalculatorSettings() {
                 <FieldItem
                   prefix="%"
                   label="eBay Marketplace Fee"
-                  hint="Includes listing + transaction"
-                  value={currentRule?.marketplaceFeePercent ?? 13}
+                  hint={isLegacyFormula ? "v1: charged on cost (legacy)" : "% of the final sale price"}
+                  value={currentRule?.marketplaceFeePercent ?? 13.25}
                   onChange={(e) => setNum("marketplaceFeePercent", e.target.value)}
                 />
                 <FieldItem
                   prefix="%"
                   label="Currency Buffer"
-                  hint="FX volatility hedge"
+                  hint={isLegacyFormula ? "FX volatility hedge" : "% of sale — covers FX on payout"}
                   value={currentRule?.currencyBufferPercent ?? 0}
                   onChange={(e) => setNum("currencyBufferPercent", e.target.value)}
                 />
               </div>
+              {!isLegacyFormula && (
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <FieldItem
+                    prefix="$"
+                    label="Per-Order Fee"
+                    hint="eBay's fixed fee per order ($0.30)"
+                    value={currentRule?.perOrderFee ?? 0.30}
+                    onChange={(e) => setNum("perOrderFee", e.target.value)}
+                    step="0.01"
+                  />
+                </div>
+              )}
             </FormSection>
 
             <SectionDivider />

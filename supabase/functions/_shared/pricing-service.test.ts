@@ -127,7 +127,9 @@ Deno.test("defaultRuleForSupplier: seeds the documented defaults", () => {
   const d = defaultRuleForSupplier("user-1", "walmart");
   assertEquals(d.profit_margin_percent, 25);
   assertEquals(d.minimum_profit, 5);
-  assertEquals(d.marketplace_fee_percent, 8); // walmart-specific default
+  // The marketplace fee belongs to eBay (the selling venue), not the supplier:
+  // all new seeds use the honest eBay default, on formula v2.
+  assertEquals(d.marketplace_fee_percent, 13.25);
   assertEquals(d.rounding_rule, "END_99");
   assertEquals(d.rule_version, 1);
 });
@@ -141,4 +143,66 @@ Deno.test("breakdownForStorage: auditable, JSON-serializable, carries rule ident
   assertEquals(roundTrip.settingsId, "rule-1");
   assertEquals(roundTrip.engine, "pricing-core@cents");
   assert(Array.isArray(roundTrip.appliedRules) && roundTrip.appliedRules.length === 6);
+});
+
+// ─── Formula v2 — sale-based gross-up ─────────────────────────────────────────
+
+const RULE_V2 = (over: Record<string, unknown> = {}) =>
+  RULE({
+    formula_version: 2,
+    per_order_fee: 0.30,
+    fixed_handling_fee: 0,
+    marketplace_fee_percent: 13.25,
+    rounding_rule: "NONE",
+    ...over,
+  });
+
+Deno.test("v2: $10 cost, 20% profit, 13.25% of sale + $0.30 → 14.18 with exactly $2.00 realized", () => {
+  const c = computeFromRule(RULE_V2(), { supplierKey: "amazon", supplierPrice: 10 });
+  assertEquals(c.finalPrice, "14.18");
+  assertEquals(c.profit, "2.00");
+  assertEquals(c.formulaVersion, 2);
+  assertEquals(c.perOrderFee, "0.30");
+  assert(c.appliedRules.length === 7, "v2 documents a 7-step rule order");
+});
+
+Deno.test("v2: minimum REALIZED profit binds ($5 floor → 17.64)", () => {
+  const c = computeFromRule(RULE_V2({ profit_margin_percent: 0, minimum_profit: 5 }), {
+    supplierKey: "amazon",
+    supplierPrice: 10,
+  });
+  assertEquals(c.finalPrice, "17.64");
+  assertEquals(c.profit, "5.00");
+});
+
+Deno.test("v2: fees too high → FEES_TOO_HIGH domain error (never a silent fallback)", () => {
+  assertThrowsCode(
+    () =>
+      computeFromRule(RULE_V2({ marketplace_fee_percent: 60, currency_buffer_percent: 20 }), {
+        supplierKey: "amazon",
+        supplierPrice: 10,
+      }),
+    "FEES_TOO_HIGH",
+  );
+});
+
+Deno.test("v2: breakdownForStorage carries formulaVersion + perOrderFee for the audit trail", () => {
+  const c = computeFromRule(RULE_V2(), { supplierKey: "amazon", supplierPrice: 10 });
+  const b = JSON.parse(JSON.stringify(breakdownForStorage(c)));
+  assertEquals(b.formulaVersion, 2);
+  assertEquals(b.perOrderFee, "0.30");
+});
+
+Deno.test("v1 rows are untouched: missing formula_version defaults to the legacy path", () => {
+  const c = computeFromRule(RULE(), { supplierKey: "amazon", supplierPrice: 12.5 });
+  assertEquals(c.formulaVersion, 1);
+  assertEquals(c.finalPrice, "17.00"); // same hand-computed v1 value as before
+  assertEquals(c.perOrderFee, "0.00"); // v1 ignores the per-order fee entirely
+});
+
+Deno.test("v2 seeding defaults: eBay-honest fee + per-order fee + formula_version 2", () => {
+  const d = defaultRuleForSupplier("user-1", "amazon") as Record<string, unknown>;
+  assertEquals(d.formula_version, 2);
+  assertEquals(d.per_order_fee, 0.30);
+  assertEquals(d.marketplace_fee_percent, 13.25);
 });

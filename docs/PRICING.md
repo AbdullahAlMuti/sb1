@@ -19,32 +19,68 @@ settings source**:
 | Rule resolution + server pricing | `supabase/functions/_shared/pricing-service.ts` — resolves the authenticated user's rule, validates input, computes, returns an auditable breakdown | Deno edge functions |
 
 Settings live in **`user_pricing_settings`** (one row per user per supplier,
-RLS-enforced, `rule_version` bumped on every save). They are edited in the
-dashboard at **Dashboard → eBay → Supplier Pricing** (`CalculatorSettings.tsx`
-→ `pricing-settings` edge function).
+RLS-enforced, `rule_version` bumped on every save, `formula_version` selecting
+v1 legacy / v2 sale-based math, `per_order_fee` for eBay's fixed fee). They
+are edited in the dashboard at **Dashboard → eBay → Supplier Pricing**
+(`CalculatorSettings.tsx` → `pricing-settings` edge function).
 
 There is deliberately **no pricing formula** in: supplier adapters, content
 scripts, the background worker, React components, controllers, or DB triggers.
 `ui/calculator.js` is a what-if popup only; a price applied from it travels as
 an explicit manual override.
 
-## Formula and deterministic rule order
+## Formula versions and deterministic rule order
 
 All math in integer cents. Parsing happens once at entry, display formatting
-once at exit. Rounding never reduces the price.
+once at exit. Rounding never reduces the price. The version lives on each
+`user_pricing_settings` row (`formula_version`) and is stamped into every
+stored breakdown, so any listing can be traced to the exact math that priced
+it.
+
+### v2 — sale-based gross-up (default for new users, recommended)
+
+eBay charges its final value fee as a **percentage of the sale price plus a
+fixed per-order fee** (~13.25% + $0.30 for most categories). v2 models exactly
+that, so the profit a user configures is the profit actually realized:
+
+```
+1. totalCost   = supplierPrice + shippingCost + shippingBuffer + fixedHandlingFee
+2. pctOfSale   = marketplaceFeePercent + currencyBufferPercent      // % of FINAL price
+   denominator = 1 − pctOfSale/100      // rejected when ≤ 0.25 → FEES_TOO_HIGH
+3. price       = max( ceil((totalCost × (1 + profitMarginPercent%) + perOrderFee) / denominator),   // profit = markup on cost
+                      ceil((totalCost + perOrderFee + minimumProfit) / denominator) )               // minimum REALIZED profit
+4. finalPrice  = applyRounding(price)   // NONE | END_99 | END_95 | END_49 | ROUND_UP
+                 // bump-verified: realized profit ≥ target even across
+                 // per-component fee-rounding boundaries
+5. realizedProfit = finalPrice − round(finalPrice×mkt%) − round(finalPrice×fx%)
+                    − perOrderFee − totalCost      // ≥ target by construction
+```
+
+Worked example ($10 cost, 20% profit, 13.25% + $0.30): v2 lists **$14.18** and
+realizes **exactly $2.00** after fees. The same settings under v1 list $13.30
+and realize only ~$1.24 after real eBay fees — the shortfall v2 exists to fix.
+
+### v1 — legacy additive (existing rules, preserved exactly)
 
 ```
 1. baseCost        = supplierPrice + shippingCost + shippingBuffer + fixedHandlingFee
-2. marketplaceFee  = round(baseCost × marketplaceFeePercent%)
+2. marketplaceFee  = round(baseCost × marketplaceFeePercent%)     // fee on COST — understates real fees
 3. currencyBuffer  = round(baseCost × currencyBufferPercent%)
 4. targetProfit    = max(round(baseCost × profitMarginPercent%), minimumProfit)
 5. rawFinal        = baseCost + marketplaceFee + currencyBuffer + targetProfit
-6. finalPrice      = applyRounding(rawFinal)   // NONE | END_99 | END_95 | END_49 | ROUND_UP
+6. finalPrice      = applyRounding(rawFinal)
 ```
 
-Invalid input (missing/zero/negative/NaN price, unsupported currency) throws —
-**a product is never silently priced from a fabricated cost.** (The legacy
-engine's `$50` default is gone.)
+v1 stays bit-identical for every existing rule (locked by regression tests).
+Existing users see an **opt-in upgrade banner** on the Supplier Pricing page
+with a side-by-side price preview; switching bumps `rule_version` and
+propagates to the extension immediately. `per_order_fee` exists on every row
+but is inert under v1.
+
+Invalid input (missing/zero/negative/NaN price, unsupported currency,
+fees ≥ guardrail) throws — **a product is never silently priced from a
+fabricated cost or an absurd gross-up.** (The legacy engine's `$50` default is
+gone.)
 
 Currency: only `USD` sources are supported today. Non-USD raw prices are
 rejected with `UNSUPPORTED_CURRENCY` — no FX rate is ever guessed. When
