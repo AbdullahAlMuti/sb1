@@ -3,12 +3,31 @@ import { Button } from '@repo/ui/components/ui/button';
 import { useSubscription } from '@repo/auth/hooks/useSubscription';
 import { useTheme } from '@repo/ui/theme/useTheme';
 import { useAuth } from '@repo/auth/hooks/useAuth';
+import { useEbayConnection } from '../../hooks/useEbayConnection';
 
 export function EbayHeader() {
   const { user, profile } = useAuth();
   const { usage, subscribed, planName } = useSubscription();
   const { theme, toggleTheme } = useTheme();
+  const { ebayConnected, lastSyncTime, isSyncing, syncNow } = useEbayConnection();
   const creditsRemaining = subscribed ? (usage?.credits_remaining ?? 0) : 0;
+
+  const getLastSyncText = () => {
+    if (!lastSyncTime) return 'Last sync: Never';
+    const diffMs = Date.now() - lastSyncTime;
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return 'Last sync: Just now';
+    if (diffMins === 1) return 'Last sync: 1 min ago';
+    if (diffMins < 60) return `Last sync: ${diffMins} min ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours === 1) return 'Last sync: 1 hour ago';
+    if (diffHours < 24) return `Last sync: ${diffHours} hours ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return 'Last sync: 1 day ago';
+    return `Last sync: ${diffDays} days ago`;
+  };
+
+  const lastSyncText = getLastSyncText();
 
   return (
     <div className="flex items-center justify-between w-full">
@@ -29,17 +48,19 @@ export function EbayHeader() {
       </div>
 
       {/* Center Connected Status Info */}
-      <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-muted/40 text-xs font-semibold text-muted-foreground/95 ml-4">
-        <span className="text-[#e53238] font-bold tracking-tight">e</span>
-        <span className="text-[#0064d2] font-bold tracking-tight -ml-0.5">b</span>
-        <span className="text-[#f5af02] font-bold tracking-tight -ml-0.5">a</span>
-        <span className="text-[#86b817] font-bold tracking-tight -ml-0.5">y</span>
-        <span className="text-foreground ml-1">eBay US</span>
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-1" />
-        <span className="text-emerald-600 dark:text-emerald-400">Connected</span>
-        <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
-        <span className="text-[10px] font-normal text-muted-foreground/80">Last sync: 4 min ago</span>
-      </div>
+      {ebayConnected && (
+        <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border bg-muted/40 text-xs font-semibold text-muted-foreground/95 ml-4">
+          <span className="text-[#e53238] font-bold tracking-tight">e</span>
+          <span className="text-[#0064d2] font-bold tracking-tight -ml-0.5">b</span>
+          <span className="text-[#f5af02] font-bold tracking-tight -ml-0.5">a</span>
+          <span className="text-[#86b817] font-bold tracking-tight -ml-0.5">y</span>
+          <span className="text-foreground ml-1">eBay US</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-1" />
+          <span className="text-emerald-600 dark:text-emerald-400">Connected</span>
+          <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+          <span className="text-[10px] font-normal text-muted-foreground/80">{lastSyncText}</span>
+        </div>
+      )}
 
       {/* Right Action Controls */}
       <div className="flex items-center gap-2.5 ml-4">
@@ -47,10 +68,12 @@ export function EbayHeader() {
         {/* Sync Now Button */}
         <Button 
           size="sm" 
-          className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs border-0"
+          onClick={syncNow}
+          disabled={isSyncing}
+          className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs border-0 disabled:opacity-75"
         >
-          <RefreshCw size={13} />
-          <span>Sync Now</span>
+          <RefreshCw size={13} className={isSyncing ? "animate-spin" : ""} />
+          <span>{isSyncing ? "Syncing..." : "Sync Now"}</span>
         </Button>
 
         {/* Credits Counter Button */}

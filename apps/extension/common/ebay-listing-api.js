@@ -28,7 +28,9 @@ function _extractAllMatches(regex, str) {
 }
 
 function _getEbaySuffix() {
-  return window.location.host.split('ebay').pop()?.replace('.', '') || 'com';
+  const host = (window && window.location && window.location.host) || '';
+  if (!host || !host.includes('ebay')) return 'com';
+  return host.split('ebay').pop()?.replace('.', '') || 'com';
 }
 
 // Strips supplier-identifying phrases and brand names from a text or HTML string.
