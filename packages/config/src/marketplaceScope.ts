@@ -30,10 +30,10 @@ export const marketplaceScope = {
     currentScope: true,
   },
   shopify: {
-    enabled: false,
-    active: false,
-    currentScope: false,
-    futureScope: true,
+    enabled: true,
+    active: true,
+    currentScope: true,
+    futureScope: false,
   },
 } as const satisfies Record<string, MarketplaceFlags>;
 
