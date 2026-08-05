@@ -304,6 +304,7 @@ serve(async (req) => {
             is_active: true,
             pending_plan_id: planId || null,
             onboarding_completed: false,
+            ...(goal ? { settings: { goal } } : {}),
           })
           .eq("id", userId);
         if (updateError) throw updateError;

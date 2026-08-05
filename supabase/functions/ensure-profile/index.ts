@@ -59,6 +59,16 @@ Deno.serve(async (req) => {
     }
 
     if (existingProfile) {
+      const metaGoal = (user.user_metadata && (user.user_metadata as any).goal) || null;
+      const currentGoal = (existingProfile.settings as Record<string, unknown> | null)?.goal;
+      if (metaGoal && !currentGoal) {
+        const newSettings = { ...((existingProfile.settings as object) || {}), goal: metaGoal };
+        await supabaseAdmin
+          .from('profiles')
+          .update({ settings: newSettings })
+          .eq('id', user.id);
+        existingProfile.settings = newSettings;
+      }
       return new Response(
         JSON.stringify({ success: true, profile: existingProfile }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

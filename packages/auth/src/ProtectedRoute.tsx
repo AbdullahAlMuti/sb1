@@ -46,7 +46,10 @@ export function ProtectedRoute({
 
   // Redirect based on user's registered goal (eBay vs. Shopify)
   if (profile && !requireAdmin && !requireSuperAdmin && !isAdmin && !isSuperAdmin) {
-    const userGoal = (profile.settings as any)?.goal as string | undefined;
+    const userGoal = (profile.settings as any)?.goal as string | undefined ||
+      (user?.user_metadata as any)?.goal as string | undefined ||
+      localStorage.getItem('selectedGoal') ||
+      undefined;
     const isShopifyRoute = location.pathname.startsWith('/dashboard/shopify');
 
     if (!SHOPIFY_ENABLED) {
