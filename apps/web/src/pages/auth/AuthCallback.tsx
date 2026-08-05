@@ -91,7 +91,8 @@ export default function AuthCallback() {
       if (subscriptionLoading) return;
       if (routed.current) return;
 
-      const userGoal = (profile.settings as Record<string, unknown> | null)?.goal as string | undefined;
+      const userGoal = (profile.settings as Record<string, unknown> | null)?.goal as string | undefined ||
+        localStorage.getItem('selectedGoal') || undefined;
       const planToken = getPlanIntent() || profile.pending_plan_id || null;
       const hasAccess = access === 'active' || access === 'trial';
       const next = resolveNextStep({
