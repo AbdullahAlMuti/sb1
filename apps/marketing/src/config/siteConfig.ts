@@ -254,10 +254,8 @@ export const siteConfig: SiteConfig = {
         tagline: "Complex logic and multi-app orchestration without fragile code",
         description:
           "Connect CRMs, inventory systems, databases, and communication channels into reliable, automated event chains. Self-healing node execution with automated retries, error routing, and dead-letter queues.",
-        videoSrc:
-          "https://videos.ctfassets.net/spoqsaf9291f/NbFul3fpx8iFqd92FdjZb/2a0b3f2e96fdcd6623bf0f97064bfc1c/web-qa-agent-4x3_final.mp4",
-        posterSrc:
-          "https://images.ctfassets.net/spoqsaf9291f/5Isk6wP7mwgbI1uuPOXCDT/9971afbbf0f81172ac8c0af85bb1877c/web-qa-agent-4x3_final.jpg",
+        videoSrc: "/videos/n8n.mp4",
+        posterSrc: "/videos/n8n-poster.jpg",
         capabilities: [
           "Visual multi-branch flow builder with 500+ pre-built connectors",
           "Deterministic webhooks and scheduled cron triggers",
