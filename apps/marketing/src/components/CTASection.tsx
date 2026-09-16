@@ -4,7 +4,7 @@ const CTASection = () => {
   const { finalCta } = siteConfig;
 
   return (
-    <section style={{ maxWidth: 1180, margin: "0 auto", padding: "104px 26px", textAlign: "center" }}>
+    <section id="cta-section" style={{ maxWidth: 1180, margin: "0 auto", padding: "104px 26px", textAlign: "center" }}>
       <h2
         style={{
           fontFamily: "'Source Serif 4', Georgia, serif",

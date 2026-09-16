@@ -7,6 +7,7 @@ import { cn } from "@repo/ui/lib/utils";
 import { siteConfig } from "@/config/siteConfig";
 import { track } from "@/lib/analytics";
 import { CtaButton } from "@/components/primitives/CtaButton";
+import { ProductsDropdown } from "./ProductsDropdown";
 
 const Navbar = () => {
   const { nav } = siteConfig;
@@ -49,6 +50,7 @@ const Navbar = () => {
           </Link>
 
           <div className="hidden items-center gap-1 lg:flex">
+            <ProductsDropdown />
             {nav.links.map((link) => (
               <Link
                 key={link.label}
@@ -96,6 +98,7 @@ const Navbar = () => {
         {isMobileMenuOpen && (
           <div className="mt-3 rounded-lg border border-border bg-card p-3 shadow-soft-lg lg:hidden">
             <div className="grid gap-1">
+              <ProductsDropdown isMobile onItemClick={() => setIsMobileMenuOpen(false)} />
               {nav.links.map((link) => (
                 <Link
                   key={link.label}

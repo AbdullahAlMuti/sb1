@@ -5,109 +5,6 @@ import { AutomationWorkflowItem } from "@/config/types";
 import { track } from "@/lib/analytics";
 import { cn } from "@repo/ui/lib/utils";
 
-const FALLBACK_ITEMS: AutomationWorkflowItem[] = [
-  {
-    id: "n8n-workflows",
-    badge: "Workflow Orchestration",
-    title: "N8n Multi-Step Workflow Engine",
-    tagline: "Complex logic and multi-app orchestration without fragile code",
-    description:
-      "Connect CRMs, inventory systems, databases, and communication channels into reliable, automated event chains. Self-healing node execution with automated retries, error routing, and dead-letter queues.",
-    videoSrc:
-      "https://videos.ctfassets.net/spoqsaf9291f/NbFul3fpx8iFqd92FdjZb/2a0b3f2e96fdcd6623bf0f97064bfc1c/web-qa-agent-4x3_final.mp4",
-    posterSrc:
-      "https://images.ctfassets.net/spoqsaf9291f/5Isk6wP7mwgbI1uuPOXCDT/9971afbbf0f81172ac8c0af85bb1877c/web-qa-agent-4x3_final.jpg",
-    capabilities: [
-      "Visual multi-branch flow builder with 500+ pre-built connectors",
-      "Deterministic webhooks and scheduled cron triggers",
-      "Error handling, retry backoffs, and execution audit logs",
-      "Self-hosted privacy or cloud-native high-throughput deployment",
-    ],
-    accentColor: "#ea580c",
-    ctaText: "Request Custom Automation →",
-  },
-  {
-    id: "hermes-agent",
-    badge: "Autonomous Decisioning",
-    title: "Hermes Self-Learning Decision Agent",
-    tagline: "Context-aware AI reasoning for non-deterministic operations",
-    description:
-      "Deploy autonomous reasoning agents capable of evaluating context, reconciling disparate records, drafting customer communications, and executing authorized decisions within human-defined guardrails.",
-    videoSrc:
-      "https://videos.ctfassets.net/spoqsaf9291f/1OLb7tmvBV87BCaVvTUhsO/bf8b7aa035add8cb4482c840342aa2f6/web-create-your-own-4x3_final.mp4",
-    posterSrc:
-      "https://images.ctfassets.net/spoqsaf9291f/15uVF5m1kQriPMlHagIwWY/8aa8519f91779b95d414502d04e29f5f/web-create-your-own-4x3_final.jpg",
-    capabilities: [
-      "Dynamic prompt synthesis and vector memory recall",
-      "Human-in-the-loop review triggers and compliance bounds",
-      "Automated ticket resolution and customer triage",
-      "Multi-modal input parsing for invoices, emails, and attachments",
-    ],
-    accentColor: "#3b82f6",
-    ctaText: "Request Custom Automation →",
-  },
-  {
-    id: "openclaw-scraper",
-    badge: "Resilient Web Scraping",
-    title: "OpenClaw Resilient Web Scraper",
-    tagline: "Fault-tolerant data harvesting that circumvents anti-bot shields",
-    description:
-      "Extract structured catalog, pricing, and availability data from complex supplier portals and JavaScript SPAs. Features rotating proxies, headless browser clusters, and adaptive DOM selectors.",
-    videoSrc:
-      "https://videos.ctfassets.net/spoqsaf9291f/NbFul3fpx8iFqd92FdjZb/2a0b3f2e96fdcd6623bf0f97064bfc1c/web-qa-agent-4x3_final.mp4",
-    posterSrc:
-      "https://images.ctfassets.net/spoqsaf9291f/5Isk6wP7mwgbI1uuPOXCDT/9971afbbf0f81172ac8c0af85bb1877c/web-qa-agent-4x3_final.jpg",
-    capabilities: [
-      "Anti-bot bypass with fingerprint randomization and residential IP rotation",
-      "Dynamic JavaScript rendering via stealth browser clusters",
-      "Schema-conforming JSON transformation and validation pipelines",
-      "Real-time change detection and delta webhooks",
-    ],
-    accentColor: "#10b981",
-    ctaText: "Request Custom Automation →",
-  },
-  {
-    id: "multi-agent-swarms",
-    badge: "Swarm Intelligence",
-    title: "Coordinated Multi-Agent Swarms",
-    tagline: "Collaborative agent networks decomposing multi-disciplinary projects",
-    description:
-      "Harness specialized agents (analyst, copywriter, auditor, executor) operating in continuous consensus. Solves complex tasks that exceed single LLM capabilities through peer validation and handoffs.",
-    videoSrc:
-      "https://videos.ctfassets.net/spoqsaf9291f/1OLb7tmvBV87BCaVvTUhsO/bf8b7aa035add8cb4482c840342aa2f6/web-create-your-own-4x3_final.mp4",
-    posterSrc:
-      "https://images.ctfassets.net/spoqsaf9291f/15uVF5m1kQriPMlHagIwWY/8aa8519f91779b95d414502d04e29f5f/web-create-your-own-4x3_final.jpg",
-    capabilities: [
-      "Hierarchical agent orchestration with supervisor routing",
-      "Stateful shared memory bus and tool execution sandboxes",
-      "Peer-review cycles to eliminate hallucinations and drift",
-      "Parallel sub-task execution with deterministic synthesis",
-    ],
-    accentColor: "#8b5cf6",
-    ctaText: "Request Custom Automation →",
-  },
-  {
-    id: "erp-webhook-bridge",
-    badge: "Enterprise Integration",
-    title: "Real-Time Event Broker & ERP Bridge",
-    tagline: "Zero-latency synchronization between legacy ERPs and modern platforms",
-    description:
-      "Bridge NetSuite, SAP, Shopify, and custom database backends with bidirectional event streaming. Guarantees FIFO delivery, payload encryption, deduplication, and schema validation.",
-    videoSrc:
-      "https://videos.ctfassets.net/spoqsaf9291f/NbFul3fpx8iFqd92FdjZb/2a0b3f2e96fdcd6623bf0f97064bfc1c/web-qa-agent-4x3_final.mp4",
-    posterSrc:
-      "https://images.ctfassets.net/spoqsaf9291f/5Isk6wP7mwgbI1uuPOXCDT/9971afbbf0f81172ac8c0af85bb1877c/web-qa-agent-4x3_final.jpg",
-    capabilities: [
-      "Sub-100ms bidirectional event propagation and webhook queuing",
-      "Automatic schema mapping and idempotency key deduplication",
-      "Legacy ERP connectors (NetSuite, SAP, Microsoft Dynamics)",
-      "End-to-end payload encryption and SOC2-compliant logging",
-    ],
-    accentColor: "#06b6d4",
-    ctaText: "Request Custom Automation →",
-  },
-];
-
 export const AutomationServicesSection = () => {
   const config = siteConfig.automationServices;
   const eyebrow = config?.eyebrow || "Automate Everything";
@@ -115,7 +12,7 @@ export const AutomationServicesSection = () => {
   const subheading =
     config?.subheading ||
     "Eliminate repetitive manual tasks with custom enterprise automation pipelines, autonomous agent decision engines, and resilient data extractors engineered to scale.";
-  const items = config?.items && config.items.length > 0 ? config.items : FALLBACK_ITEMS;
+  const items = config?.items ?? [];
 
   const handleCtaClick = (item: AutomationWorkflowItem, e: React.MouseEvent<HTMLAnchorElement>) => {
     track("click_automation_cta", { automation: item.id, title: item.title });
