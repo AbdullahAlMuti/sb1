@@ -396,7 +396,8 @@ const HeroSection = () => {
               autoPlay
               playsInline
               preload="metadata"
-              src="https://videos.ctfassets.net/spoqsaf9291f/1EL7UZIXfcqngxsNSbL8tR/291f61f56f29dd8e788deaec8561d882/web-homepage-hero-1920x1200_final.mp4"
+              poster="/videos/homepage-poster.jpg"
+              src="/videos/homepage.mp4"
               style={{ width: "100%", height: "auto", display: "block" }}
             />
           </div>
