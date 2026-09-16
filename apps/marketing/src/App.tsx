@@ -32,7 +32,6 @@ const Calculator = lazy(() => import("./pages/Calculator"));
 const Pricing = lazy(() => import("./pages/Pricing"));
 const FAQPage = lazy(() => import("./pages/FAQ"));
 const EbayFeesCalculator = lazy(() => import("./pages/resources/EbayFeesCalculator"));
-const Services = lazy(() => import("./pages/Services"));
 const AutomationServices = lazy(() => import("./pages/AutomationServices"));
 
 const queryClient = new QueryClient();
@@ -78,7 +77,6 @@ const App = () => (
             <Suspense fallback={<PageLoader />}>
               <Routes>
                 <Route path="/" element={<Index />} />
-                <Route path="/services" element={<Services />} />
                 <Route path="/automation-services" element={<AutomationServices />} />
                 <Route path="/how-it-works" element={<HowItWorks />} />
                 <Route path="/features" element={<Features />} />
