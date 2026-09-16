@@ -223,6 +223,8 @@ export const AutomationServicesSection = () => {
                         muted
                         playsInline
                         preload="metadata"
+                        aria-label={`Demo video: ${item.title}`}
+                        title={item.title}
                         className="w-full h-full object-cover rounded-b-xl"
                       />
                       {/* Inner frame shadow/highlight */}
