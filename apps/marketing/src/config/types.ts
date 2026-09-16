@@ -22,6 +22,51 @@ export interface NavLink {
   event: string;
 }
 
+export interface ProductItem {
+  id?: string;
+  name: string;
+  tagline: string;
+  href: string;
+  status: "live" | "beta" | "coming_soon";
+  statusLabel?: string;
+  iconName: "Sparkles" | "ArrowUpDown" | "FileText" | string;
+  isExternal: boolean;
+  color?: string;
+}
+
+export interface ServiceItem {
+  id: string;
+  title: string; // STRICTLY ALL CAPITALS
+  tagline: string;
+  description: string;
+  deliverables: string[];
+  accentColor: string;
+  bgGradient: string;
+  previewImage?: string;
+  iconName: string;
+  category?: string;
+}
+
+export interface AutomationWorkflowItem {
+  id: string;
+  badge: string;
+  title: string;
+  tagline: string;
+  description: string;
+  videoSrc: string;
+  posterSrc?: string;
+  capabilities: string[];
+  accentColor: string;
+  ctaText?: string;
+}
+
+export interface AutomationServicesConfig {
+  eyebrow: string;
+  heading: string;
+  subheading: string;
+  items: AutomationWorkflowItem[];
+}
+
 export interface BrandConfig {
   name: string;
   domain: string;
@@ -174,8 +219,17 @@ export interface FooterColumn {
   links: FooterLink[];
 }
 
+export interface OfficeLocation {
+  country: string;
+  label: string;
+  address: string;
+  flag?: string;
+}
+
 export interface FooterConfig {
   tagline: string;
+  email?: string;
+  offices?: OfficeLocation[];
   columns: FooterColumn[];
   copyright: string;
 }
@@ -189,6 +243,9 @@ export interface NavConfig {
 export interface SiteConfig {
   brand: BrandConfig;
   nav: NavConfig;
+  products: ProductItem[];
+  services: ServiceItem[];
+  automationServices?: AutomationServicesConfig;
   hero: HeroConfig;
   trustBar: TrustBarConfig;
   howItWorks: HowItWorksConfig;
