@@ -38,8 +38,9 @@ export interface OfficeLocation {
   label: string;
   address: string;
   flag: string;
-  imageSrc: string;
+  imageSrc?: string;
   email?: string;
+  phone?: string;
 }
 
 export interface TestimonialItem {
@@ -364,22 +365,22 @@ export const aboutConfig: AboutConfig = {
       "Headquartered in the United States and Bangladesh, supporting clients across North America, Europe, and Asia.",
     locations: [
       {
-        country: "USA",
-        city: "Deltona, Florida",
-        label: "United States HQ",
-        address: "491 Fort Smith Blvd, Deltona, FL 32738, United States",
-        flag: "🇺🇸",
-        imageSrc: "/images/about/office-usa.jpg",
-        email: "contact@sellersuit.com",
-      },
-      {
         country: "Bangladesh",
         city: "Dhaka",
         label: "Asia Operations & R&D Hub",
         address: "195, Fakirapool (2nd Floor), Motijheel, Dhaka-1000, Bangladesh",
         flag: "🇧🇩",
-        imageSrc: "/images/about/office-bd.jpg",
         email: "contact@sellersuit.com",
+        phone: "+880 1798-008784",
+      },
+      {
+        country: "USA",
+        city: "Deltona, Florida",
+        label: "United States HQ",
+        address: "491 Fort Smith Blvd, Deltona, FL 32738, United States",
+        flag: "🇺🇸",
+        email: "contact@sellersuit.com",
+        phone: "+1 606 773 7443",
       },
     ],
   },
