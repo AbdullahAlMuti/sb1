@@ -148,11 +148,6 @@ export default function Team() {
                         alt={member.name}
                         className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
                       />
-                      <div className="absolute top-2.5 left-2.5">
-                        <span className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-background/90 text-foreground backdrop-blur-sm shadow-xs border border-border/40">
-                          {member.departmentLabel}
-                        </span>
-                      </div>
                     </div>
 
                     {/* Content */}
