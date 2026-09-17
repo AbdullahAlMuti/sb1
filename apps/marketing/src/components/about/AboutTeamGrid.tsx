@@ -1,9 +1,11 @@
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Linkedin, Twitter, Github } from "lucide-react";
+import { Linkedin, Twitter, Github, ArrowRight } from "lucide-react";
 import { aboutConfig } from "@/config/aboutConfig";
 
 export const AboutTeamGrid = () => {
   const { team } = aboutConfig;
+  const displayedMembers = team.members.slice(0, 4);
 
   return (
     <section className="py-24 sm:py-32 bg-background">
@@ -21,9 +23,9 @@ export const AboutTeamGrid = () => {
           </p>
         </div>
 
-        {/* Team Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6 sm:gap-8">
-          {team.members.map((member, idx) => (
+        {/* Team Grid - 4 pictures simultaneously in a single row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
+          {displayedMembers.map((member, idx) => (
             <motion.div
               key={member.id}
               initial={{ opacity: 0, y: 20 }}
@@ -89,6 +91,17 @@ export const AboutTeamGrid = () => {
               )}
             </motion.div>
           ))}
+        </div>
+
+        {/* Action Button: See All */}
+        <div className="mt-12 sm:mt-16 text-center">
+          <Link
+            to="/team"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full text-sm font-semibold bg-foreground text-background hover:bg-foreground/90 transition-all duration-200 shadow-soft-sm hover:shadow-soft-md group"
+          >
+            <span>See All</span>
+            <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+          </Link>
         </div>
       </div>
     </section>

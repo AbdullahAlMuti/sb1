@@ -59,7 +59,7 @@ export const siteConfig: SiteConfig = {
     links: [
       { label: "Our Services", href: "/services", event: "nav_services" },
       { label: "Automation Services", href: "/automation-services", event: "nav_automation_services" },
-      { label: "How it works", href: "/how-it-works", event: "nav_how_it_works" },
+      { label: "About Us", href: "/about", event: "nav_about" },
       { label: "Features", href: "/features", event: "nav_features" },
       { label: "Pricing", href: "/pricing", event: "nav_pricing" },
     ],
@@ -646,7 +646,8 @@ export const siteConfig: SiteConfig = {
       {
         title: "Company",
         links: [
-          { label: "About", href: "/about" },
+          { label: "About Us", href: "/about" },
+          { label: "Team", href: "/team" },
           { label: "Contact", href: "/contact" },
         ],
       },
