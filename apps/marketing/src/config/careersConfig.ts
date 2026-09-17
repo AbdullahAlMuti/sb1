@@ -12,7 +12,7 @@ export interface JobPosition {
   departmentLabel: string;
   workArrangement: string; // e.g. "Onsite · Full time", "Hybrid · Full time", "Remote / Hybrid"
   experience: string; // e.g. "3–7 years", "Fresher / Student"
-  salaryRange: string; // e.g. "90k–200k BDT/month"
+  salaryRange?: string; // Optional — omitted for internships
   location: string;
   techTags: string[];
   description: string;
@@ -390,7 +390,6 @@ export const careersConfig: CareersConfig = {
       departmentLabel: "Internships",
       workArrangement: "Onsite · Full time / Part time",
       experience: "Fresher / Student",
-      salaryRange: "20k–35k BDT/month",
       location: "Lalmatia, Dhaka",
       techTags: ["n8n", "AI Workflows", "Prompt Engineering", "Python Basics"],
       description:
@@ -404,7 +403,6 @@ export const careersConfig: CareersConfig = {
       departmentLabel: "Internships",
       workArrangement: "Onsite · Full time / Part time",
       experience: "Fresher / Student",
-      salaryRange: "20k–35k BDT/month",
       location: "Lalmatia, Dhaka",
       techTags: ["JavaScript", "TypeScript", "React", "Node.js", "Git"],
       description:
@@ -418,7 +416,6 @@ export const careersConfig: CareersConfig = {
       departmentLabel: "Internships",
       workArrangement: "Onsite · Full time / Part time",
       experience: "Fresher / Student",
-      salaryRange: "18k–30k BDT/month",
       location: "Lalmatia, Dhaka",
       techTags: ["Market Research", "Social Media", "Content Drafting", "Lead Prospecting"],
       description:
