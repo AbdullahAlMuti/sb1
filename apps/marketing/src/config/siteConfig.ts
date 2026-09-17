@@ -32,6 +32,8 @@ export const ACTIVE_SCROLLING_LOGOS = [
   BRAND_LOGOS.amazon,
   BRAND_LOGOS.walmart,
   BRAND_LOGOS.ebay,
+  BRAND_LOGOS.shopify,
+  BRAND_LOGOS.facebook,
   BRAND_LOGOS.aliexpress,
   BRAND_LOGOS.alibaba,
   BRAND_LOGOS.temu,
@@ -370,11 +372,13 @@ export const siteConfig: SiteConfig = {
 
   trustBar: {
     heading: "Source from the suppliers you already use",
-    proof: "Trusted by 50,000+ resellers",
+    proof: "Trusted by 100+ eBay, Amazon, Walmart, Shopify resellers worldwide",
     logos: [
       BRAND_LOGOS.amazon,
       BRAND_LOGOS.walmart,
       BRAND_LOGOS.ebay,
+      BRAND_LOGOS.shopify,
+      BRAND_LOGOS.facebook,
     ],
   },
 

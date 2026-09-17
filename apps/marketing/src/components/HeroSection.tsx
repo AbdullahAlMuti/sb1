@@ -110,9 +110,11 @@ const Avatar7 = () => (
 );
 
 const AVATARS = [
-  { src: "/logos/amazon-icon.svg", name: "Amazon", border: "2px solid #ff9900", z: 10 },
-  { src: "/logos/walmart-spark.svg", name: "Walmart", border: "2px solid #0071dc", z: 9 },
-  { src: "/logos/ebay.svg", name: "eBay", border: "2px solid #e53238", z: 8 },
+  { src: "/logos/amazon-icon.svg", name: "Amazon", border: "2px solid #ff9900", z: 12 },
+  { src: "/logos/walmart-spark.svg", name: "Walmart", border: "2px solid #0071dc", z: 11 },
+  { src: "/logos/ebay.svg", name: "eBay", border: "2px solid #e53238", z: 10 },
+  { src: "/logos/shopify.svg", name: "Shopify", border: "2px solid #95bf47", z: 9 },
+  { src: "/logos/facebook.svg", name: "Facebook", border: "2px solid #0866ff", z: 8 },
   { src: "/logos/aliexpress.svg", name: "AliExpress", border: "2px solid #e62e04", z: 7 },
   { src: "/logos/etsy.svg", name: "Etsy", border: "2px solid #d5641c", z: 6 },
   { src: "/logos/tiktok.svg", name: "TikTok", border: "2px solid #000000", z: 5 },
@@ -407,7 +409,7 @@ const HeroSection = () => {
       {/* Trust strip */}
       <section style={{ position: "relative", zIndex: 2, maxWidth: 1180, margin: "0 auto", padding: "64px 26px 88px", textAlign: "center" }}>
         <p style={{ fontSize: 15, fontWeight: 600, color: "#8e8b83", margin: "0 0 36px", letterSpacing: "-0.01em" }}>
-          Trusted by 50,000+ eBay resellers worldwide
+          Trusted by 100+ eBay, Amazon, Walmart, Shopify resellers worldwide
         </p>
         
         <div style={{ position: "relative", overflow: "hidden", padding: "16px 0" }}>
