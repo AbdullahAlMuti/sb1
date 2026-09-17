@@ -8,8 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@repo
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@repo/ui/components/ui/accordion";
 import { useSeo } from "@/lib/useSeo";
 
-const SUPPORT_EMAIL = "muti.sellersuit@gmail.com";
-const SUPPORT_WHATSAPP = "+8801798008784";
+const SUPPORT_EMAIL = "contact@sellersuit.com";
+const SUPPORT_WHATSAPP = "+8801338356197";
 
 export default function Documentation() {
   useSeo({

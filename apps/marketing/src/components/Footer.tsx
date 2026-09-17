@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Mail, MapPin } from "lucide-react";
+import { Mail, MapPin, Phone } from "lucide-react";
 import SellerSuitLogo from "@repo/ui/brand/SellerSuitLogo";
 import { siteConfig } from "@/config/siteConfig";
 
@@ -59,6 +59,17 @@ const Footer = () => {
                       <p className="text-xs leading-relaxed text-muted-foreground pl-5 font-normal">
                         {office.address}
                       </p>
+                      {office.phone && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground pl-5 mt-1 font-normal">
+                          <Phone className="h-3 w-3 text-orange-600 dark:text-orange-400 shrink-0" />
+                          <a
+                            href={`tel:${office.phone.replace(/[\s\-()]/g, "")}`}
+                            className="hover:text-foreground transition-colors"
+                          >
+                            {office.phone}
+                          </a>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -238,7 +238,7 @@ export const AboutOffices = () => {
                       <div className="flex items-center justify-center sm:justify-start gap-2 text-slate-400 font-normal">
                         <Phone className="w-3.5 h-3.5 shrink-0 opacity-80" />
                         <a
-                          href={`tel:${loc.phone.replace(/[\s-]/g, "")}`}
+                          href={`tel:${loc.phone.replace(/[\s\-()]/g, "")}`}
                           className="hover:text-slate-200 transition-colors"
                         >
                           {loc.phone}

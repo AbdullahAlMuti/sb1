@@ -616,12 +616,14 @@ export const siteConfig: SiteConfig = {
         label: "Bangladesh Office",
         address: "195, Fakirapool (2nd Floor), Motijheel, Dhaka-1000",
         flag: "🇧🇩",
+        phone: "+880 1338-356197",
       },
       {
         country: "USA",
         label: "USA Office",
         address: "491 Fort Smith Blvd, Deltona, FL 32738, United States",
         flag: "🇺🇸",
+        phone: "+1 (516) 951-7773",
       },
     ],
     columns: [

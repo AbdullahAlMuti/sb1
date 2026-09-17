@@ -2,7 +2,6 @@ import Navbar from "@/components/Navbar";
 import HeroSection from "@/components/HeroSection";
 import AgentCapabilitiesSection from "@/components/AgentCapabilitiesSection";
 import VeroCheckSection from "@/components/VeroCheckSection";
-import CTASection from "@/components/CTASection";
 import Footer from "@/components/Footer";
 import { useSeo } from "@/lib/useSeo";
 
@@ -20,7 +19,6 @@ const Index = () => {
         <HeroSection />
         <AgentCapabilitiesSection />
         <VeroCheckSection />
-        <CTASection />
       </main>
       <Footer />
     </div>

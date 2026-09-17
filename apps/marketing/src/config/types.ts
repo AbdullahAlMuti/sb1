@@ -224,6 +224,7 @@ export interface OfficeLocation {
   label: string;
   address: string;
   flag?: string;
+  phone?: string;
 }
 
 export interface FooterConfig {

@@ -371,7 +371,7 @@ export const aboutConfig: AboutConfig = {
         address: "195, Fakirapool (2nd Floor), Motijheel, Dhaka-1000, Bangladesh",
         flag: "🇧🇩",
         email: "contact@sellersuit.com",
-        phone: "+880 1798-008784",
+        phone: "+880 1338-356197",
       },
       {
         country: "USA",
@@ -380,7 +380,7 @@ export const aboutConfig: AboutConfig = {
         address: "491 Fort Smith Blvd, Deltona, FL 32738, United States",
         flag: "🇺🇸",
         email: "contact@sellersuit.com",
-        phone: "+1 606 773 7443",
+        phone: "+1 (516) 951-7773",
       },
     ],
   },

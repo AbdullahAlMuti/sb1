@@ -6,7 +6,6 @@ import { AboutFounderWord } from "@/components/about/AboutFounderWord";
 import { AboutTeamGrid } from "@/components/about/AboutTeamGrid";
 import { AboutTestimonials } from "@/components/about/AboutTestimonials";
 import { AboutOffices } from "@/components/about/AboutOffices";
-import CTASection from "@/components/CTASection";
 import Footer from "@/components/Footer";
 import { useSeo } from "@/lib/useSeo";
 
@@ -28,7 +27,6 @@ export default function About() {
         <AboutTeamGrid />
         <AboutTestimonials />
         <AboutOffices />
-        <CTASection />
       </main>
       <Footer />
     </div>
