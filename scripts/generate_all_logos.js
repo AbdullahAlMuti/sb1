@@ -9,105 +9,98 @@ const ROOT_DIR = resolve(__dirname, '..');
 // Helper to define absolute paths relative to root
 const rootPath = (...args) => resolve(ROOT_DIR, ...args);
 
-const targets = [
-  // Marketing App Assets
-  { path: rootPath('apps/marketing/public/favicon.png'), size: 96 },
-  { path: rootPath('apps/marketing/public/logo.png'), size: 512 },
-  { path: rootPath('apps/marketing/public/apple-touch-icon.png'), size: 180 },
-  { path: rootPath('apps/marketing/public/favicon.ico'), size: 32 },
-
-  // Web App Assets
-  { path: rootPath('apps/web/public/favicon.png'), size: 96 },
-  { path: rootPath('apps/web/public/logo.png'), size: 512 },
-  { path: rootPath('apps/web/public/apple-touch-icon.png'), size: 180 },
-  { path: rootPath('apps/web/public/favicon.ico'), size: 32 },
-
-  // Admin App Assets
-  { path: rootPath('apps/admin/public/favicon.png'), size: 96 },
-  { path: rootPath('apps/admin/public/logo.png'), size: 512 },
-  { path: rootPath('apps/admin/public/apple-touch-icon.png'), size: 180 },
-  { path: rootPath('apps/admin/public/favicon.ico'), size: 32 },
-
-  // Chrome Extension Assets
-  { path: rootPath('apps/extension/icons/icon16.png'), size: 16 },
-  { path: rootPath('apps/extension/icons/icon48.png'), size: 48 },
-  { path: rootPath('apps/extension/icons/icon128.png'), size: 128 },
-  { path: rootPath('apps/extension/assets/logo.png'), size: 512 },
-];
-
 async function run() {
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        * {
-          box-sizing: border-box;
-        }
-        body, html {
-          margin: 0;
-          padding: 0;
-          width: 100%;
-          height: 100%;
-          overflow: hidden;
-          background: transparent;
-        }
-        .logo-container {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        svg {
-          width: 100%;
-          height: 100%;
-          display: block;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="logo-container">
-        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="32" height="32" rx="8" fill="#0f172a" />
-          <g transform="translate(16, 16) scale(1.25) translate(-16, -16)">
-            <path
-              d="M9 13C9 10.791 10.791 9 13 9h6.4c2.209 0 4 1.791 4 4v0c0 1.326-1.074 2.4-2.4 2.4H13c-2.209 0-4 1.791-4 4v0c0 2.209 1.791 4 4 4h6.4c2.209 0 4-1.791 4-4"
-              stroke="white"
-              stroke-width="1.8"
-              stroke-linecap="round"
-            />
-          </g>
-        </svg>
-      </div>
-    </body>
-    </html>
-  `;
-
-  console.log('Launching browser...');
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
-  
-  await page.setContent(htmlContent);
+  const masterLogoPath = rootPath('packages/ui/src/brand/logo.png');
+  const masterBase64 = fs.readFileSync(masterLogoPath).toString('base64');
+  const dataUri = `data:image/png;base64,${masterBase64}`;
 
-  for (const target of targets) {
-    console.log(`Rendering logo size ${target.size}x${target.size} for path: ${target.path}`);
-    
-    // Ensure parent directories exist
-    const parentDir = dirname(target.path);
-    if (!fs.existsSync(parentDir)) {
-      fs.mkdirSync(parentDir, { recursive: true });
+  async function resizeImage(targetSize) {
+    const pngBase64 = await page.evaluate(async ({ dataUri, targetSize }) => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = targetSize;
+          canvas.height = targetSize;
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, targetSize, targetSize);
+          resolve(canvas.toDataURL('image/png').split(',')[1]);
+        };
+        img.src = dataUri;
+      });
+    }, { dataUri, targetSize });
+
+    return Buffer.from(pngBase64, 'base64');
+  }
+
+  function createIco(images) {
+    const header = Buffer.alloc(6);
+    header.writeUInt16LE(0, 0);
+    header.writeUInt16LE(1, 2);
+    header.writeUInt16LE(images.length, 4);
+
+    let offset = 6 + (images.length * 16);
+    const entries = [];
+    const datas = [];
+
+    for (const img of images) {
+      const entry = Buffer.alloc(16);
+      entry.writeUInt8(img.width >= 256 ? 0 : img.width, 0);
+      entry.writeUInt8(img.height >= 256 ? 0 : img.height, 1);
+      entry.writeUInt8(0, 2);
+      entry.writeUInt8(0, 3);
+      entry.writeUInt16LE(1, 4);
+      entry.writeUInt16LE(32, 6);
+      entry.writeUInt32LE(img.buffer.length, 8);
+      entry.writeUInt32LE(offset, 12);
+
+      entries.push(entry);
+      datas.push(img.buffer);
+      offset += img.buffer.length;
     }
-    
-    await page.setViewportSize({ width: target.size, height: target.size });
-    // Wait a brief moment for size adjustments to layout
-    await page.waitForTimeout(50);
-    
-    const buffer = await page.screenshot({ type: 'png', omitBackground: true });
-    fs.writeFileSync(target.path, buffer);
-    
-    const stats = fs.statSync(target.path);
-    console.log(`Saved successfully. Size: ${(stats.size / 1024).toFixed(2)} KB`);
+
+    return Buffer.concat([header, ...entries, ...datas]);
+  }
+
+  console.log('Generating crisp favicon assets from master logo.png...');
+  const png16 = await resizeImage(16);
+  const png32 = await resizeImage(32);
+  const png48 = await resizeImage(48);
+  const png96 = await resizeImage(96);
+  const png128 = await resizeImage(128);
+  const png180 = await resizeImage(180);
+
+  const icoBuffer = createIco([
+    { width: 16, height: 16, buffer: png16 },
+    { width: 32, height: 32, buffer: png32 },
+    { width: 48, height: 48, buffer: png48 }
+  ]);
+
+  const appDirs = [
+    rootPath('apps/marketing/public'),
+    rootPath('apps/web/public'),
+    rootPath('apps/admin/public')
+  ];
+
+  for (const dir of appDirs) {
+    fs.writeFileSync(resolve(dir, 'favicon.ico'), icoBuffer);
+    fs.writeFileSync(resolve(dir, 'favicon.png'), png96);
+    fs.writeFileSync(resolve(dir, 'apple-touch-icon.png'), png180);
+  }
+
+  fs.writeFileSync(rootPath('apps/extension/icons/icon16.png'), png16);
+  fs.writeFileSync(rootPath('apps/extension/icons/icon48.png'), png48);
+  fs.writeFileSync(rootPath('apps/extension/icons/icon128.png'), png128);
+
+  const servedExtDir = rootPath('apps/web/public/chrome_extension/icons');
+  if (fs.existsSync(servedExtDir)) {
+    fs.writeFileSync(resolve(servedExtDir, 'icon16.png'), png16);
+    fs.writeFileSync(resolve(servedExtDir, 'icon48.png'), png48);
+    fs.writeFileSync(resolve(servedExtDir, 'icon128.png'), png128);
   }
 
   await browser.close();
