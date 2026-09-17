@@ -62,7 +62,7 @@ export const teamConfig: TeamConfig = {
     {
       id: "ceo",
       name: "Abdullah Al Noman",
-      role: "Founder & Chief Executive Officer",
+      role: "Chief Executive Officer",
       department: "leadership",
       departmentLabel: "Leadership",
       imageSrc: "/images/about/ceo.png",
@@ -88,7 +88,7 @@ export const teamConfig: TeamConfig = {
     },
     {
       id: "coo",
-      name: "ABUL BASHAR",
+      name: "Abul Bashar",
       role: "Chief Operating Officer",
       department: "leadership",
       departmentLabel: "Leadership",

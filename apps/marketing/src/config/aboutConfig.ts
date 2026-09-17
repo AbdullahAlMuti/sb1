@@ -9,6 +9,7 @@ export interface TeamMember {
   name: string;
   role: string;
   imageSrc: string;
+  location: string;
   bio?: string;
   socialLinks?: {
     linkedin?: string;
@@ -226,14 +227,14 @@ export const aboutConfig: AboutConfig = {
 
   founder: {
     eyebrow: "Leadership",
-    heading: "A Word from the Founder",
+    heading: "A Word from the CEO",
     paragraphs: [
       "When we started SellerSuit, marketplace operators were drowning in fragmented spreadsheets, brittle browser extensions, and unreliable scrapers that broke every time an e-commerce catalog updated.",
       "We assembled a world-class engineering team to build what we wished existed: a rock-solid, cloud-native orchestration platform that treats dropshipping, catalog syncing, and listing automation with true enterprise rigor.",
       "Our commitment to you remains unwavering: we will continue to pioneer AI decision agents, autonomous workflows, and real-time data engines so your business stays ahead of marketplace shifts.",
     ],
     founderName: "Abdullah Al Noman",
-    founderRole: "Founder & Chief Executive Officer",
+    founderRole: "Chief Executive Officer",
     founderImage: "/images/about/ceo.png",
     signatureText: "Abdullah Al Noman",
   },
@@ -248,6 +249,7 @@ export const aboutConfig: AboutConfig = {
         id: "ceo",
         name: "Abdullah Al Noman",
         role: "Chief Executive Officer",
+        location: "New York, United States",
         imageSrc: "/images/about/ceo.png",
         socialLinks: { linkedin: "https://linkedin.com", twitter: "https://twitter.com" },
       },
@@ -255,13 +257,15 @@ export const aboutConfig: AboutConfig = {
         id: "cfo",
         name: "MD Raihan Islam",
         role: "Chief Financial Officer",
+        location: "Dhaka, Bangladesh",
         imageSrc: "/images/about/cfo.png",
         socialLinks: { linkedin: "https://linkedin.com" },
       },
       {
         id: "coo",
-        name: "ABUL BASHAR",
+        name: "Abul Bashar",
         role: "Chief Operating Officer",
+        location: "Dhaka, Bangladesh",
         imageSrc: "/images/about/coo.png",
         socialLinks: { linkedin: "https://linkedin.com" },
       },
@@ -269,6 +273,7 @@ export const aboutConfig: AboutConfig = {
         id: "head-of-engineering",
         name: "Morshed Khan Rana",
         role: "Head of Engineering",
+        location: "Dhaka, Bangladesh",
         imageSrc: "/images/about/head-of-engineering.jpg",
         socialLinks: { linkedin: "https://linkedin.com", github: "https://github.com" },
       },
@@ -276,6 +281,7 @@ export const aboutConfig: AboutConfig = {
         id: "hr",
         name: "Rezaul Karim",
         role: "Head of Human Resources",
+        location: "Spain",
         imageSrc: "/images/about/hr.png",
         socialLinks: { linkedin: "https://linkedin.com" },
       },

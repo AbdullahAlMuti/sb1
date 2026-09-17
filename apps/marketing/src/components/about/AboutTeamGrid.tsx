@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Linkedin, Twitter, Github, ArrowRight } from "lucide-react";
+import { Linkedin, Twitter, Github, ArrowRight, MapPin } from "lucide-react";
 import { aboutConfig } from "@/config/aboutConfig";
 
 export const AboutTeamGrid = () => {
@@ -50,6 +50,14 @@ export const AboutTeamGrid = () => {
               <p className="text-xs text-muted-foreground font-medium mt-0.5">
                 {member.role}
               </p>
+
+              {/* Location / Address */}
+              {member.location && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1.5">
+                  <MapPin className="w-3.5 h-3.5 shrink-0 text-primary/70" />
+                  <span>{member.location}</span>
+                </div>
+              )}
 
               {/* Social Links */}
               {member.socialLinks && (

@@ -167,8 +167,8 @@ export default function Team() {
                       </p>
 
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3">
-                        <MapPin className="w-3 h-3 shrink-0 opacity-70" />
-                        <span>{member.location}</span>
+                        <MapPin className="w-3.5 h-3.5 shrink-0 text-primary/80" />
+                        <span className="font-medium text-foreground/80">{member.location}</span>
                       </div>
 
                       <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed flex-1 mb-4">
