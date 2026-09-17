@@ -166,7 +166,7 @@ export const teamConfig: TeamConfig = {
     heading: "Think you'd be a great fit?",
     description:
       "We're always looking for ambitious engineers, product thinkers, and marketplace operators who want to tackle complex distributed automation challenges.",
-    ctaLabel: "Contact Our Talent Team",
-    ctaHref: "/contact",
+    ctaLabel: "View Open Positions",
+    ctaHref: "/careers",
   },
 };

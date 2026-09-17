@@ -648,6 +648,7 @@ export const siteConfig: SiteConfig = {
         links: [
           { label: "About Us", href: "/about" },
           { label: "Team", href: "/team" },
+          { label: "Careers", href: "/careers" },
           { label: "Contact", href: "/contact" },
         ],
       },

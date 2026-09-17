@@ -11,6 +11,7 @@ import { ThemeProvider } from "@repo/ui/theme/useTheme";
 const Index = lazy(() => import("./pages/Index"));
 const About = lazy(() => import("./pages/About"));
 const Team = lazy(() => import("./pages/Team"));
+const Careers = lazy(() => import("./pages/Careers"));
 const Contact = lazy(() => import("./pages/Contact"));
 const Documentation = lazy(() => import("./pages/Documentation"));
 const BlogIndex = lazy(() => import("./pages/blog/BlogIndex"));
@@ -93,6 +94,8 @@ const App = () => (
                 <Route path="/documentation" element={<Documentation />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/team" element={<Team />} />
+                <Route path="/careers" element={<Careers />} />
+                <Route path="/career" element={<Careers />} />
                 <Route path="/contact" element={<Contact />} />
                 <Route path="/privacy" element={<PrivacyPolicy />} />
                 <Route path="/privacy-policy" element={<PrivacyPolicy />} />
