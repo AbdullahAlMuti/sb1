@@ -247,9 +247,16 @@ export default function Careers() {
                                 </span>
                               )}
                             </div>
-                            <h3 className="text-lg sm:text-xl font-bold text-foreground group-hover:text-primary transition-colors leading-snug">
-                              {job.title}
-                            </h3>
+                            <a
+                              href={job.applyUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block focus:outline-none"
+                            >
+                              <h3 className="text-lg sm:text-xl font-bold text-foreground group-hover:text-primary transition-colors leading-snug">
+                                {job.title}
+                              </h3>
+                            </a>
                           </div>
                         </div>
 
