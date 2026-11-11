@@ -111,6 +111,12 @@ verify_jwt = false
 [functions.create-listing]
 verify_jwt = false
 
+[functions.check-duplicate]
+verify_jwt = false # Handler validates extension session token / legacy JWT itself.
+
+[functions.check-vero]
+verify_jwt = false # Handler validates extension session token / legacy JWT itself.
+
 [functions.create-auto-order]
 verify_jwt = false
 

@@ -921,16 +921,33 @@ function routeMessage(request, sender, sendResponse) {
     (async () => {
       try {
         const asin = request.asin;
-        if (!asin) { sendResponse({ duplicate: false }); return; }
+        if (!asin) { sendResponse({ duplicate: false, checked: true }); return; }
         const resp = await AuthHelper.callEdgeFunction('check-duplicate', { asin });
-        if (resp.error) {
-          // Fail-open: don't block listing on auth/infra error
-          sendResponse({ duplicate: false, error: resp.error });
+        if (resp.error || !resp.data || typeof resp.data.duplicate !== 'boolean') {
+          // checked:false — the caller decides (it blocks); never report a
+          // check that did not run as "not a duplicate".
+          sendResponse({ duplicate: false, checked: false, error: resp.error || 'Malformed check-duplicate response' });
           return;
         }
-        sendResponse(resp.data || { duplicate: false });
+        sendResponse({ ...resp.data, checked: true });
       } catch (e) {
-        sendResponse({ duplicate: false, error: e?.message || 'check-duplicate failed' });
+        sendResponse({ duplicate: false, checked: false, error: e?.message || 'check-duplicate failed' });
+      }
+    })();
+    return true;
+  } else if (request.action === "CHECK_VERO") {
+    (async () => {
+      try {
+        const title = request.title;
+        if (!title) { sendResponse({ flagged: false, matches: [], checked: true }); return; }
+        const resp = await AuthHelper.callEdgeFunction('check-vero', { title });
+        if (resp.error || !resp.data || typeof resp.data.flagged !== 'boolean') {
+          sendResponse({ flagged: false, matches: [], checked: false, error: resp.error || 'Malformed check-vero response' });
+          return;
+        }
+        sendResponse({ ...resp.data, checked: true });
+      } catch (e) {
+        sendResponse({ flagged: false, matches: [], checked: false, error: e?.message || 'check-vero failed' });
       }
     })();
     return true;

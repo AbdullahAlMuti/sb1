@@ -278,13 +278,18 @@ async function processNextBulkItem() {
       // 3. Duplicate pre-check — bulk runs unattended, so skip instead of modal.
       const dupId = product.parentAsin || product.asin || product.sourceId || null;
       if (dupId && typeof AuthHelper !== 'undefined') {
-        try {
-          const dupResp = await AuthHelper.callEdgeFunction('check-duplicate', { asin: dupId });
-          if (dupResp && dupResp.data && dupResp.data.duplicate) {
-            await finishItem(item.id, { status: 'skipped', error: 'Already listed (duplicate supplier ID)' });
-            return scheduleNext();
-          }
-        } catch (_) { /* fail-open like the panel path */ }
+        const dupResp = await AuthHelper.callEdgeFunction('check-duplicate', { asin: dupId });
+        if (!dupResp || dupResp.error || !dupResp.data || typeof dupResp.data.duplicate !== 'boolean') {
+          // Fail closed: an unattended run must not double-list because the
+          // duplicate check was down.
+          throw new Error('Duplicate check could not run (' + ((dupResp && dupResp.error) || 'no response') + ') — item not listed');
+        }
+        if (dupResp.data.duplicate) {
+          await finishItem(item.id, { status: 'skipped', error: 'Already listed (duplicate supplier ID)' });
+          return scheduleNext();
+        }
+        // Verified here — the uploader need not ask again.
+        product = { ...product, forceDuplicateOverride: true };
       }
 
       // 4. Data priority: user-edited dashboard overrides win over scraped data.

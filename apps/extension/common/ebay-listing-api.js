@@ -1047,45 +1047,38 @@ window.EbayListingApiHelper = (() => {
   }
 
   // ── checkVero ──────────────────────────────────────────────────────────────
-  // Screen title against VeRO brand DB (check-vero edge fn). Returns
-  // { flagged, matches:[{brand,risk,category}] }. Network/error → not flagged
-  // (never block listing on infra failure).
+  // Screen the title against the owner-maintained protected-brand list
+  // (check-vero edge fn, called by the background so it carries auth).
+  // Returns { checked, flagged, matches:[{brand,risk,category}], error? }.
+  // checked:false means the screen DID NOT RUN — callers must not treat that
+  // as "clean" (the old behaviour silently allowed every listing).
+  function _askBackground(message, fallback) {
+    return new Promise(resolve => {
+      try {
+        chrome.runtime.sendMessage(message, resp => {
+          if (chrome.runtime.lastError) {
+            resolve({ ...fallback, checked: false, error: chrome.runtime.lastError.message });
+            return;
+          }
+          resolve(resp || { ...fallback, checked: false, error: 'No response from extension background' });
+        });
+      } catch (err) {
+        resolve({ ...fallback, checked: false, error: err && err.message ? err.message : String(err) });
+      }
+    });
+  }
+
   async function checkVero(title) {
-    if (!title) return { flagged: false, matches: [] };
-    try {
-      const base   = (typeof ExtensionConfig !== 'undefined')
-        ? ExtensionConfig.getSupabaseFunctionUrl('check-vero')
-        : 'https://ojxzssooylmydystjvdo.supabase.co/functions/v1/check-vero';
-      const apikey = (typeof ExtensionConfig !== 'undefined')
-        ? ExtensionConfig.API_KEYS.SUPABASE_ANON : '';
-      const resp = await fetch(base, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': apikey },
-        body:    JSON.stringify({ title })
-      });
-      if (!resp.ok) return { flagged: false, matches: [] };
-      return await resp.json();
-    } catch (err) {
-      console.warn('[SS VeRO] check failed (allowing):', err.message);
-      return { flagged: false, matches: [] };
-    }
+    if (!title) return { checked: true, flagged: false, matches: [] };
+    return _askBackground({ action: 'CHECK_VERO', title }, { flagged: false, matches: [] });
   }
 
   // ── checkDuplicate ─────────────────────────────────────────────────────────
-  // Asks background (has auth) to query listings by amazon_asin for this user.
-  // Returns { duplicate, listing }. Fail-open on any error.
+  // Asks background (has auth) whether this user already listed the product.
+  // Returns { checked, duplicate, listing?, error? } — same checked contract.
   async function checkDuplicate(asin) {
-    if (!asin) return { duplicate: false };
-    return new Promise(resolve => {
-      chrome.runtime.sendMessage({ action: 'CHECK_DUPLICATE', asin }, resp => {
-        if (chrome.runtime.lastError) {
-          console.warn('[SS Dup] check failed (allowing):', chrome.runtime.lastError.message);
-          resolve({ duplicate: false });
-          return;
-        }
-        resolve(resp || { duplicate: false });
-      });
-    });
+    if (!asin) return { checked: true, duplicate: false };
+    return _askBackground({ action: 'CHECK_DUPLICATE', asin }, { duplicate: false });
   }
 
   // ── AI helpers (2.1/2.2) ─────────────────────────────────────────────────
@@ -1453,7 +1446,68 @@ function validateProductPricing(product) {
   }
 }
 
+// Pre-upload safety screens. Both FAIL CLOSED: a check that could not run
+// blocks the upload exactly like a real hit, and is overridable only by the
+// same explicit user flags (forceVeroOverride / forceDuplicateOverride).
+async function _runSafetyChecks(product) {
+  const api = window.EbayListingApiHelper;
+
+  if (!product.forceVeroOverride) {
+    console.log('[SS Uploader] Running VeRO brand check...');
+    const vero = await api.checkVero(product.title || '');
+    if (vero.checked === false) {
+      const err = new Error(
+        `Brand safety (VeRO) check could not run (${vero.error || 'unknown error'}). ` +
+        `The listing was NOT uploaded. Retry, or enable "List anyway" to skip the check.`
+      );
+      err.isVeroBlock = true;
+      err.isCheckUnavailable = true;
+      err.veroMatches = [];
+      throw err;
+    }
+    if (vero.flagged && vero.matches?.length) {
+      const brands = vero.matches.map(m => m.brand).join(', ');
+      const err = new Error(
+        `VeRO risk: this product matches protected brand(s): ${brands}. ` +
+        `Listing it may get your eBay account suspended. Remove the brand from the title, ` +
+        `or enable "List anyway" to override.`
+      );
+      err.veroMatches = vero.matches;
+      err.isVeroBlock = true;
+      throw err;
+    }
+  }
+
+  const dupAsin = product.parentAsin || product.asin || product.sourceId || '';
+  if (dupAsin && !product.forceDuplicateOverride) {
+    console.log('[SS Uploader] Checking for duplicate listing...');
+    const dup = await api.checkDuplicate(dupAsin);
+    if (dup.checked === false) {
+      const err = new Error(
+        `Duplicate check could not run (${dup.error || 'unknown error'}). ` +
+        `The listing was NOT uploaded. Retry, or choose "List again" to skip the check.`
+      );
+      err.isDuplicateBlock = true;
+      err.isCheckUnavailable = true;
+      err.duplicateListing = null;
+      throw err;
+    }
+    if (dup.duplicate) {
+      const when = dup.listing?.created_at
+        ? new Date(dup.listing.created_at).toLocaleDateString() : 'previously';
+      const err = new Error(
+        `Duplicate: you already listed this product (ASIN ${dupAsin}) ${when}. ` +
+        `List again to create a second listing, or cancel.`
+      );
+      err.isDuplicateBlock = true;
+      err.duplicateListing = dup.listing || null;
+      throw err;
+    }
+  }
+}
+
 window.SellerSuitUploader = {
+  _runSafetyChecks,
   async run(product) {
     const api = window.EbayListingApiHelper;
     console.log('[SS Uploader] Starting programmatic upload for:', product.title?.substring(0, 60));
@@ -1493,40 +1547,8 @@ window.SellerSuitUploader = {
       throw new Error('You are not logged into eBay. Open eBay.com, sign in, then retry listing.');
     }
 
-    // 0b. VeRO brand screen (1.3) — block flagged brands unless user overrides
-    if (!product.forceVeroOverride) {
-      console.log('[SS Uploader] Running VeRO brand check...');
-      const vero = await api.checkVero(product.title || '');
-      if (vero.flagged && vero.matches?.length) {
-        const brands = vero.matches.map(m => m.brand).join(', ');
-        const err = new Error(
-          `VeRO risk: this product matches protected brand(s): ${brands}. ` +
-          `Listing it may get your eBay account suspended. Remove the brand from the title, ` +
-          `or enable "List anyway" to override.`
-        );
-        err.veroMatches = vero.matches;
-        err.isVeroBlock = true;
-        throw err;
-      }
-    }
-
-    // 0c. Duplicate check (1.2) — warn if this ASIN already listed by user
-    const dupAsin = product.parentAsin || product.asin || '';
-    if (dupAsin && !product.forceDuplicateOverride) {
-      console.log('[SS Uploader] Checking for duplicate listing...');
-      const dup = await api.checkDuplicate(dupAsin);
-      if (dup.duplicate) {
-        const when = dup.listing?.created_at
-          ? new Date(dup.listing.created_at).toLocaleDateString() : 'previously';
-        const err = new Error(
-          `Duplicate: you already listed this product (ASIN ${dupAsin}) ${when}. ` +
-          `List again to create a second listing, or cancel.`
-        );
-        err.isDuplicateBlock = true;
-        err.duplicateListing = dup.listing || null;
-        throw err;
-      }
-    }
+    // 0b/0c. VeRO brand screen + duplicate check — fail closed.
+    await _runSafetyChecks(product);
 
     // 0d. Optional AI optimization (2.1/2.2) — opt-in via flags from panel.
     if (product.useAiTitle) {
