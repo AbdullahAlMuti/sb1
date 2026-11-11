@@ -361,3 +361,34 @@ describe('_detectCondition', () => {
     assert.equal(_detectCondition('Renewal Serum for Used Look Jeans Dye', 'Brand: Acme', ''), 'New');
   });
 });
+
+// Live finding 2026-11-12: after ~130 variant fetches in a few minutes Amazon
+// served its "We're noticing unusual browser activity — I am human" checkpoint
+// (/checkpoint/continue). The fetch tier did not recognise it and would have
+// kept requesting.
+describe('Amazon bot checkpoint', () => {
+  test('_isBotCheck recognises the checkpoint by URL and by page text', () => {
+    const { _isBotCheck } = load(docWithPrices({}))._internals;
+    const blank = { querySelector: () => null, body: { textContent: '' } };
+    assert.equal(_isBotCheck(blank, 'https://www.amazon.com/checkpoint/continue?token=x'), true);
+    assert.equal(_isBotCheck(blank, 'https://www.amazon.com/errors/validateCaptcha'), true);
+    assert.equal(_isBotCheck({ querySelector: () => null, body: { textContent: "We're noticing unusual browser activity" } }, 'https://www.amazon.com/dp/B0AAA11111'), true);
+    assert.equal(_isBotCheck({ querySelector: (s) => (s.includes('validateCaptcha') ? {} : null), body: { textContent: '' } }, ''), true);
+    assert.equal(_isBotCheck(blank, 'https://www.amazon.com/dp/B0AAA11111'), false);
+  });
+
+  test('a checkpoint redirect stops the fetch tier and flags the scan', async () => {
+    const { doc } = scanDoc({ n: 6, pageBuybox: 10, iframePrice: () => null });
+    const prevFetch = globalThis.fetch, prevParser = globalThis.DOMParser;
+    let calls = 0;
+    globalThis.fetch = async () => { calls++; return { ok: true, status: 200, url: 'https://www.amazon.com/checkpoint/continue?token=t', text: async () => '' }; };
+    globalThis.DOMParser = class { parseFromString() { return { querySelector: () => null, querySelectorAll: () => [], body: { textContent: '' } }; } };
+    try {
+      await assert.rejects(
+        () => load(doc).scrapeProductWithVariants({ allowLowQty: true, variantTimeoutMs: 300, variantBudgetMs: 600 }),
+        /Amazon CAPTCHA|unusual activity/i
+      );
+      assert.ok(calls <= 2, `kept requesting after the checkpoint (${calls} calls)`);
+    } finally { globalThis.fetch = prevFetch; globalThis.DOMParser = prevParser; }
+  });
+});

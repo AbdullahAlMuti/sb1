@@ -561,11 +561,26 @@
     return 'New';
   }
 
+  // Amazon's bot checks: the classic image CAPTCHA and the newer
+  // "We're noticing unusual browser activity — I am human" checkpoint
+  // (/checkpoint/continue), seen live after a burst of variant requests.
+  function _isBotCheck(doc, url) {
+    try {
+      if (/\/checkpoint\/|\/errors\/validateCaptcha/i.test(String(url || ''))) return true;
+      if (!doc) return false;
+      if (doc.querySelector && doc.querySelector('form[action*="validateCaptcha"]')) return true;
+      const body = doc.body;
+      const text = body ? String(body.innerText || body.textContent || '') : '';
+      return /unusual browser activity|confirm you.?re human|Type the characters you see in this image/i.test(text.slice(0, 6000));
+    } catch (_) { return false; }
+  }
+
+  const BOT_CHECK_MESSAGE = 'Amazon CAPTCHA detected — Amazon is asking you to confirm you are human. Complete the check on Amazon, wait a few minutes, then try again';
+
   function _captchaGuard() {
-    if (
-      document.querySelector('form[action*="validateCaptcha"]') ||
-      (document.body && document.body.innerText.includes('Type the characters you see in this image'))
-    ) throw new Error('Amazon CAPTCHA detected — please solve it and try again');
+    let url = '';
+    try { url = location.href || ''; } catch (_) {}
+    if (_isBotCheck(document, url)) throw new Error(BOT_CHECK_MESSAGE);
   }
 
   function _baseFields() {
@@ -770,7 +785,7 @@
       });
       if (!resp || !resp.ok) return resp && (resp.status === 503 || resp.status === 429) ? { captcha: true } : null;
       const doc = new DOMParser().parseFromString(await resp.text(), 'text/html');
-      if (doc.querySelector('form[action*="validateCaptcha"]')) return { captcha: true };
+      if (_isBotCheck(doc, resp.url)) return { captcha: true };
       const cur = doc.querySelector('input#ASIN, input#asin')?.value || '';
       if (cur.toUpperCase() !== String(asin).toUpperCase()) return null; // redirected to a sibling — not this variant's data
       const bb = _getBuyboxFromDom(asin, doc);
@@ -1113,7 +1128,10 @@
       // variant is attempted (the old cap of 24 left the rest on a guessed
       // price); a small worker pool plus a total time budget bound the scan.
       const IFRAME_CONCURRENCY = 2;
-      const FETCH_CONCURRENCY = 3;
+      // 2, not more: a burst of parallel product-page requests is what trips
+      // Amazon's bot checkpoint. Slower scans beat a blocked account.
+      const FETCH_CONCURRENCY = 2;
+      const FETCH_GAP_MS = options.variantGapMs != null ? options.variantGapMs : 300;
       const totalBudgetMs = options.variantBudgetMs || 90000; // ~90 variants at 3 parallel fetches (measured live)
       const perVariantMs = options.variantTimeoutMs || 9000;
       const scanStart = Date.now();
@@ -1122,7 +1140,10 @@
       // A CAPTCHA/throttle response stops ALL further variant requests: more
       // requests only deepen the block, and the rest stay unverified.
       try {
-        const pendingFetch = variants.filter(v => !v._enriched && !v._unavailable && v.supplierVariantId);
+        const fetchAvailable = typeof fetch === 'function' && typeof DOMParser !== 'undefined';
+        const pendingFetch = fetchAvailable
+          ? variants.filter(v => !v._enriched && !v._unavailable && v.supplierVariantId)
+          : [];
         let fc = 0;
         const fetchWorker = async () => {
           while (fc < pendingFetch.length && !variantScanBlocked) {
@@ -1130,8 +1151,9 @@
             const left = totalBudgetMs - (Date.now() - scanStart);
             if (left <= 0) return;
             const enr = await _fetchScrapeVariant(v.supplierVariantId, Math.min(perVariantMs, left));
+            if (enr && enr.captcha) { variantScanBlocked = true; return; }
+            if (FETCH_GAP_MS > 0) await _sleep(FETCH_GAP_MS);
             if (!enr) continue;
-            if (enr.captcha) { variantScanBlocked = true; return; }
             if (enr.price != null) {
               v.price = enr.price;
               v.priceVerified = true;
@@ -1197,6 +1219,9 @@
       console.log(`[SS ScraperV2] variant pricing: ${variants.length} total — ${nClick} click/live-verified, ${nIframe} iframe-verified, ${nSwatch} swatch-priced, ${nUnverified} UNVERIFIED (excluded from listing)`);
 
       if (!variants.some(v => v.priceVerified)) {
+        // Blocked by Amazon's bot check: say so (callers treat CAPTCHA as a
+        // stop-everything condition) instead of a generic scan failure.
+        if (variantScanBlocked) throw new Error(BOT_CHECK_MESSAGE);
         throw new Error('Could not read a price for any variation — reload the Amazon page and scan again');
       }
 
@@ -1363,5 +1388,6 @@
     _imageForVariant,
     _baseFields,
     _detectCondition,
+    _isBotCheck,
   };
 })();
