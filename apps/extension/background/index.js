@@ -91,6 +91,7 @@ import '../common/sku-engine.js';
 import '../common/ebay-image-helper.js';
 import '../common/ebay-listing-api.js';
 import './bulk-core.js';
+import './sync-queue.js';
 import './listing-runner.js';
 import './alarm-handler.js';
 import './message-router.js';

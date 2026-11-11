@@ -334,7 +334,9 @@ const AuthHelper = (() => {
           return {
             data: null,
             error: clipped || 'Rate limit exceeded. Please try again in a moment.',
-            status: response.status
+            status: response.status,
+            // Seconds the server asked us to wait (used by the sync retry queue).
+            retryAfter: Number(response.headers.get('Retry-After')) || null
           };
         }
 

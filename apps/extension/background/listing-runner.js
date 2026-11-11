@@ -504,7 +504,32 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === BULK_ALARM_NEXT || alarm.name === BULK_ALARM_RESUME) {
     processNextBulkItem();
   }
+  if (window.SSSyncQueue && alarm.name === window.SSSyncQueue.ALARM) {
+    flushListingSyncQueue();
+  }
 });
+
+// Retry parked dashboard syncs (see background/sync-queue.js).
+async function flushListingSyncQueue() {
+  try {
+    const out = await window.SSSyncQueue.flush(
+      (payload) => postCreateListing(payload, 'sync-queue', { fromQueue: true })
+    );
+    if (out.sent) console.log(`[listing-sync] retry queue: ${out.sent} synced, ${out.remaining} remaining`);
+  } catch (e) {
+    console.warn('[listing-sync] retry queue flush failed:', e?.message || e);
+  }
+}
+
+// A restart must not strand queued syncs until the next failure.
+(async () => {
+  try {
+    if (!window.SSSyncQueue) return;
+    const data = await chrome.storage.local.get(window.SSSyncQueue.STORAGE_KEY);
+    const q = data[window.SSSyncQueue.STORAGE_KEY];
+    if (Array.isArray(q) && q.length) chrome.alarms.create(window.SSSyncQueue.ALARM, { delayInMinutes: 1 });
+  } catch (_) { /* non-fatal */ }
+})();
 
 // On SW (re)start: recover a persisted running job. Items stuck mid-flight are
 // requeued (scraping) or failed with guidance (uploading — ambiguous outcome).
@@ -577,7 +602,7 @@ async function recordListingSyncError({ source = 'background', status = null, er
   }
 }
 
-async function postCreateListing(payload, source = 'background') {
+async function postCreateListing(payload, source = 'background', opts = {}) {
   if (typeof AuthHelper === 'undefined') {
     const error = 'AuthHelper is not defined.';
     await recordListingSyncError({ source, status: 500, error, payload });
@@ -591,7 +616,17 @@ async function postCreateListing(payload, source = 'background') {
   if (response.error) {
     const error = response.error || `create-listing failed with HTTP ${status}`;
     await recordListingSyncError({ source, status, error, details: data, payload });
-    return { success: false, source, status, error, details: data };
+    const failure = { success: false, source, status, error, details: data, retryAfter: response.retryAfter || null };
+    // The listing may already exist on eBay — park transient failures for an
+    // automatic retry instead of losing the dashboard row.
+    if (!opts.fromQueue && window.SSSyncQueue) {
+      try {
+        failure.queued = await window.SSSyncQueue.add(payload, failure);
+      } catch (e) {
+        console.warn('[listing-sync] could not queue retry:', e?.message || e);
+      }
+    }
+    return failure;
   }
 
   return {

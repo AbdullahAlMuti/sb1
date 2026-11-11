@@ -56,11 +56,13 @@ describe('ebay_prelist tabId fallback TTL guard', () => {
 });
 
 describe('ebay_success draftId resolution', () => {
-  test('picks the newest staging by stagedAt instead of first key match', () => {
+  test('links only when exactly one recent staged draft exists — never guesses the newest', () => {
     const src = read('content_scripts/ebay_success.js');
-    assert.match(src, /entry\.stagedAt \|\| 0/, 'must rank candidates by stagedAt');
-    assert.match(src, /at > latest\.at/, 'must keep the newest candidate');
-    assert.ok(!/latestDraftId = entry\.draftId;\s*\r?\n\s*break;/.test(src),
+    assert.match(src, /candidates\.size === 1/, 'must require a single unambiguous candidate');
+    assert.match(src, /entry\.stagedAt \|\| 0/, 'must only consider recently staged drafts');
+    assert.ok(!/at > latest\.at/.test(src), 'newest-staging guess must be gone');
+    assert.ok(!/latestDraftId = entry\.draftId;\s*?
+\s*break;/.test(src),
       'first-match break must be gone');
   });
 });

@@ -1407,7 +1407,9 @@ function _syncListingToDashboard(adapted, product, draftId) {
           // Don't swallow — the listing went to eBay but the dashboard write
           // failed. Tell the user so they don't discover it weeks later.
           console.error('[SS Sync] Dashboard sync FAILED:', resp.status || '', resp.error || 'unknown error');
-          const syncErrMsg = 'Listed on eBay, but saving to your dashboard failed: ' + (resp.error || 'unknown error');
+          const syncErrMsg = resp.queued
+            ? 'Saved on eBay. Your dashboard could not be updated yet (' + (resp.error || 'temporary error') + ') — SellerSuit will retry automatically.'
+            : 'Saved on eBay, but saving to your dashboard failed: ' + (resp.error || 'unknown error');
           if (window.UIHelper?.showToast) {
             window.UIHelper.showToast(syncErrMsg, 'error');
           } else {

@@ -866,6 +866,9 @@ function routeMessage(request, sender, sendResponse) {
         if (typeof postCreateListing === 'function') {
           const result = await postCreateListing(request.payload || {}, 'background');
           sendResponse(result);
+        } else {
+          // Always answer — an unanswered message leaves the uploader hanging.
+          sendResponse({ success: false, source: 'background', error: 'Listing sync is unavailable in this extension build' });
         }
       } catch (e) {
         if (typeof recordListingSyncError === 'function') {
