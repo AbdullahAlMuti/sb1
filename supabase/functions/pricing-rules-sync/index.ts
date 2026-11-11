@@ -1,5 +1,5 @@
 import { resolveExtensionCors } from "../_shared/cors.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createServiceClient, resolveExtensionOrLegacyAuth } from "../_shared/extension-session.ts";
 import { enforceActiveSubscription } from "../_shared/plan-middleware.ts";
 
 async function sha256hex(text: string): Promise<string> {
@@ -19,20 +19,22 @@ Deno.serve(async (req) => {
   if (req.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
 
   try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return json({ error: 'No authorization header' }, 401);
-
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const anonKey    = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
-    const supabase = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const supabaseAdmin = createClient(supabaseUrl, serviceKey);
-
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !user) return json({ error: 'Unauthorized' }, 401);
+    // Accept BOTH auth modes. This endpoint used supabase.auth.getUser(), which
+    // only understands a Supabase JWT, so an extension session token (ssat_…)
+    // gets a 401 and the extension keeps an empty rules cache. Observed live
+    // 2026-11-12: scans logged "no_rule_synced" while the dashboard had an
+    // enabled Amazon rule (token type in that session was not confirmed).
+    const supabaseAdmin = createServiceClient();
+    let userId: string;
+    try {
+      const auth = await resolveExtensionOrLegacyAuth(supabaseAdmin, req);
+      userId = auth.userId;
+    } catch (authErr) {
+      return json({ error: authErr instanceof Error ? authErr.message : 'Unauthorized' }, 401);
+    }
+    const user = { id: userId };
+    // Service-role client: every query below is explicitly scoped to userId.
+    const supabase = supabaseAdmin;
 
     const block = await enforceActiveSubscription(supabaseAdmin, user.id);
     if (block) return block;
