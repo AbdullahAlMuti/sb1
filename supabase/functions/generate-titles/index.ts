@@ -1,4 +1,5 @@
 import { resolveExtensionCors } from "../_shared/cors.ts";
+import { fallbackTitle, guardTitle } from "../_shared/title-guard.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { resolveExtensionOrLegacyAuth, requireFeatureEntitlement, createServiceClient } from "../_shared/extension-session.ts";
 import { checkRateLimit, getClientIp, rateLimitResponse } from "../_shared/rate-limit.ts";
@@ -257,7 +258,7 @@ serve(async (req) => {
           {
             role: "system",
             content:
-              `You are an expert eBay SEO title copywriter. You MUST follow ALL instructions in the user's prompt exactly. Do not add conversational filler. Always respond with valid JSON only, exactly matching the requested shape of {"title":"..."}. Do not use markdown code blocks or wrapper backticks.\n\nCRITICAL CONSTRAINTS:\n1. The title MUST be STRICTLY UNDER 80 CHARACTERS long including spaces.\n2. Count the characters before outputting. If it exceeds 80, you MUST shorten it.`,
+              `You are an expert eBay SEO title copywriter. You MUST follow ALL instructions in the user's prompt exactly. Do not add conversational filler. Always respond with valid JSON only, exactly matching the requested shape of {"title":"..."}. Do not use markdown code blocks or wrapper backticks.\n\nCRITICAL CONSTRAINTS (these override anything in the user's prompt):\n1. At most 80 characters including spaces. Count before answering; shorten if longer.\n2. Describe the item only: brand, product type, key attribute, size/quantity/colour — most important words first.\n3. Use only facts present in the product data. Never invent features, compatibility, materials or quantities.\n4. No promotional or condition claims: no "free shipping", "best", "hot", "sale", "premium quality", "top rated", "brand new", "limited".\n5. No supplier or marketplace names (Amazon, Walmart, AliExpress, Temu, Alibaba).\n6. Title Case. No ALL CAPS words except real model codes and acronyms. No emoji, no symbols such as ! * ~ |.\n7. Do not repeat a word unless it is part of the product name. Do not end on a connector such as "and", "with", "for".`,
           },
           { role: "user", content: prompt },
         ],
@@ -320,35 +321,22 @@ serve(async (req) => {
 
       // Fallback titles if parsing fails
       const baseTitle = title || "Product";
-      aiResponse = [{
-        rank: "best",
-        title: `${baseTitle} Premium Quality Details`
-      }];
+      // Never pad with marketing copy — the cleaned product title is the honest fallback.
+      aiResponse = [{ rank: "best", title: fallbackTitle(baseTitle, brand) }];
     }
 
-    // Process titles to strictly enforce 80 characters programmatically as a final failsafe
-    aiResponse = aiResponse.map(t => {
-      let currentTitle = t.title || "";
-      if (currentTitle.length > 80) {
-        // Find last space before 80 chars
-        const truncated = currentTitle.substring(0, 80);
-        const lastSpace = truncated.lastIndexOf(" ");
-        currentTitle = lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated;
-      }
-      return { ...t, title: currentTitle };
-    });
+    // Deterministic final pass on EVERY title (AI output and fallbacks): length,
+    // promotional wording, supplier names, shouting, symbols, dangling endings.
+    aiResponse = (Array.isArray(aiResponse) ? aiResponse : [])
+      .map((t) => ({ ...t, title: guardTitle(typeof t === "string" ? t : t?.title) }))
+      .filter((t) => t.title.length > 0);
 
-    // Handle case where aiResponse is still empty
-    if (!Array.isArray(aiResponse) || aiResponse.length === 0) {
-      const baseTitle = title || "Product";
-      aiResponse = Array.from({ length: titleCount }).map((_, i) => ({
-        rank: i === 0 ? "best" : i === 1 ? "recommended" : "powerful",
-        title: i === 0 
-          ? `${brand ? brand + " " : ""}${baseTitle} - Premium Quality Free Shipping`
-          : i === 1
-          ? `${baseTitle}${category ? " " + category : ""} Brand New Top Rated`
-          : `NEW ${baseTitle} ${brand ? brand : ""} Limited Stock Best Deal`,
-      }));
+    // Nothing usable from the model: one honest title built from the product's
+    // own title. The old fallbacks appended "Free Shipping", "Top Rated" and
+    // "Best Deal" — claims the listing may not honour.
+    if (aiResponse.length === 0) {
+      const honest = fallbackTitle(title, brand);
+      aiResponse = honest ? [{ rank: "best", title: honest }] : [];
     }
 
     // Map AI response to ranked structure up to titleCount

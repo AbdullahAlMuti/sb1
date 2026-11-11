@@ -116,12 +116,12 @@ serve(async (req) => {
     // Fallback default config if DB config is missing
     const defaultSections = [
       { key: "title", type: "opening", order: 1, title: "Title", enabled: true, ai_guidance: "Produce a clean, readable buyer-facing product heading based on {title}. Remove keyword stuffing, duplicate words, and any supplier or marketplace references. Do not add a brand that is not present in the source data.", static_html: null },
-      { key: "opening", type: "opening", order: 2, title: "Introduction", enabled: true, ai_guidance: "Write a compelling introduction of at least 3-4 sentences (minimum 500 characters total) giving a comprehensive overview of the product and its main benefits. Do not mention any supplier or marketplace name.", static_html: null },
-      { key: "features", type: "features", order: 3, title: "✨ Key Features", enabled: true, ai_guidance: "Return 4-8 short, punchy, benefit-led bullet points as an array of strings. One feature per item, no leading symbols.", static_html: null },
-      { key: "specifications", type: "specifications", order: 4, title: "📋 Specifications", enabled: true, ai_guidance: "Return an array of label/value objects for technical specifications found in the source data only. Do not invent values.", static_html: null },
-      { key: "shipping", type: "shipping", order: 5, title: "📦 Shipping & Handling", enabled: true, ai_guidance: null, static_html: "<p>• Fast & Free Shipping on all orders</p>\n<p>• Tracking number provided within 24 hours</p>\n<p>• Professionally packaged for safe delivery</p>" },
-      { key: "returns", type: "returns", order: 6, title: "✅ Returns Policy", enabled: true, ai_guidance: null, static_html: "<p>30-day hassle-free returns. If you're not satisfied, return for a full refund.</p>" },
-      { key: "contact", type: "contact", order: 7, title: "⭐ Thank you for shopping with us! ⭐", enabled: true, ai_guidance: null, static_html: "<p style=\"margin: 0; color: #e65100;\"><strong>⭐ Thank you for shopping with us! ⭐</strong></p>\n<p style=\"margin: 5px 0 0 0; font-size: 12px;\">Questions? Message us anytime - we respond within 24 hours!</p>" }
+      { key: "opening", type: "opening", order: 2, title: "Introduction", enabled: true, ai_guidance: "Write a plain 2-3 sentence introduction: what the item is, who it is for, and its main use. Use only facts in the source data. No superlatives, no promises, no supplier or marketplace names.", static_html: null },
+      { key: "features", type: "features", order: 3, title: "Key features", enabled: true, ai_guidance: "Return 4-8 short factual bullet points as an array of strings, each one feature stated in the source data. One feature per item, no leading symbols, no marketing adjectives.", static_html: null },
+      { key: "specifications", type: "specifications", order: 4, title: "Specifications", enabled: true, ai_guidance: "Return an array of label/value objects for technical specifications found in the source data only. Do not invent values.", static_html: null },
+      { key: "shipping", type: "shipping", order: 5, title: "Shipping", enabled: true, ai_guidance: null, static_html: "<p>Shipping cost, handling time and the delivery estimate are shown in the Shipping section of this listing.</p>" },
+      { key: "returns", type: "returns", order: 6, title: "Returns", enabled: true, ai_guidance: null, static_html: "<p>Our return policy for this item is shown in the Returns section of this listing.</p>" },
+      { key: "contact", type: "contact", order: 7, title: "Questions", enabled: true, ai_guidance: null, static_html: "<p>Questions about this item? Send us a message through eBay and we will reply as soon as we can.</p>" },
     ];
 
     const defaultExclusions = {

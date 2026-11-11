@@ -127,16 +127,11 @@ test("sanitize: strips unwanted elements according to exclusion rules", () => {
   assert.doesNotMatch(cleanHtml, /lifetime warranty/i);
 });
 
-test("ensureMinimumLength: appends padding if plain text length is under 650 words", () => {
-  const shortDescription = "<div class='desc'><h3>My Product</h3><p>This is a short description.</p></div>";
-  const padded = ensureMinimumLength(shortDescription, "html_ebay_safe");
-  
-  const plainText = padded.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  const words = plainText.split(/\s+/).filter(w => w.length > 0);
-  
-  assert.ok(words.length >= 650, `Expected word count >= 650, but got ${words.length}`);
-  assert.match(padded, /Quality Assurance/);
-  assert.match(padded, /We are dedicated to providing our customers/);
+test("ensureMinimumLength: never pads a short description with stock seller claims", () => {
+  const shortDescription = "<div><p>Stainless steel bottle, 24 oz.</p></div>";
+  const result = ensureMinimumLength(shortDescription, "html_ebay_safe");
+  assert.strictEqual(result, shortDescription);
+  assert.ok(!/temperature-controlled|five-star|within 24 hours|eco-friendly/i.test(result));
 });
 
 test("ensureMinimumLength: does not modify if plain text length is already over 650 words", () => {
