@@ -129,3 +129,48 @@ describe('source guards', () => {
     assert.equal(/\|\|\s*0\.99\b/.test(src), false);
   });
 });
+
+// Live finding 2026-11-12: scans stayed unpriced with "no_rule_synced" and the
+// extension gave no reason. A scan now forces one rule sync and, if it still
+// cannot price, carries the reason to the panel.
+describe('applyToProduct — self-heals a missing rules cache and explains failures', () => {
+  function winWith({ storage, onForce }) {
+    const win = makeWindow();
+    win.chrome = {
+      storage: { local: { get: (keys, cb) => {
+        const out = {};
+        [].concat(keys).forEach(k => { if (storage[k] !== undefined) out[k] = storage[k]; });
+        cb(out);
+      } } },
+      runtime: { lastError: undefined, sendMessage: (msg, cb) => { cb(onForce(msg, storage)); } },
+    };
+    loadInto(win, 'suppliers/core/pricing-core.js');
+    loadInto(win, 'common/pricing-apply.js');
+    return win;
+  }
+
+  test('an empty cache triggers one forced sync, then prices', async () => {
+    let forced = 0;
+    const win = winWith({ storage: {}, onForce: (msg, storage) => {
+      if (msg.action === 'FORCE_PRICING_SYNC') { forced++; storage.pricingRulesCache = RULES; return { success: true }; }
+    } });
+    const product = { supplier: 'amazon', price: 20, currency: 'USD' };
+    const out = await win.SSPricingApply.applyToProduct(product, 'amazon');
+    assert.equal(forced, 1);
+    assert.equal(out.priced, true);
+    assert.ok(product.finalPrice > 20);
+    assert.equal(product.pricingIssue, undefined);
+  });
+
+  test('when the sync fails the product carries the reason', async () => {
+    const win = winWith({ storage: {}, onForce: (msg, storage) => {
+      storage.pricingRulesSyncStatus = { ok: false, reason: 'http', status: 401, message: 'Invalid extension session' };
+      return { success: false };
+    } });
+    const product = { supplier: 'amazon', price: 20, currency: 'USD' };
+    const out = await win.SSPricingApply.applyToProduct(product, 'amazon');
+    assert.equal(out.priced, false);
+    assert.equal(product.pricingIssue.reason, 'no_rule_synced');
+    assert.equal(product.pricingIssue.sync.status, 401);
+  });
+});

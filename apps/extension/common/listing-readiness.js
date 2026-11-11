@@ -16,6 +16,35 @@
     return Number.isFinite(n) ? n : 0;
   }
 
+  /** Turn SSPricingApply's reason (+ last rule-sync status) into one actionable sentence. */
+  function describePricingIssue(issue) {
+    const fallback = 'No eBay price — check Supplier Pricing in the dashboard';
+    if (!issue || !issue.reason) return fallback;
+    const sync = issue.sync;
+    switch (issue.reason) {
+      case 'rule_disabled':
+        return 'No eBay price — pricing for this supplier is disabled in Supplier Pricing';
+      case 'unsupported_currency':
+        return 'No eBay price — the supplier price is not in USD';
+      case 'no_valid_raw_price':
+        return 'No eBay price — the supplier price could not be read from the page';
+      case 'no_rule_synced':
+        if (!sync) return 'No eBay price — pricing rules have not synced yet. Open Supplier Pricing in the dashboard, save, and scan again';
+        if (sync.ok) {
+          const keys = Array.isArray(sync.supplierKeys) ? sync.supplierKeys : [];
+          return keys.length
+            ? `No eBay price — this account has no Amazon rule (rules found for: ${keys.join(', ')}). Is the extension logged in to the same account as the dashboard?`
+            : 'No eBay price — this account has no pricing rules. Open Supplier Pricing in the dashboard and save. Is the extension logged in to the same account?';
+        }
+        if (sync.reason === 'not_logged_in') return 'No eBay price — the extension is not logged in to SellerSuit. Open the dashboard and log in';
+        if (sync.reason === 'network') return 'No eBay price — could not reach SellerSuit to load your pricing rules';
+        if (sync.reason === 'http') return `No eBay price — pricing rules could not be loaded (HTTP ${sync.status}${sync.message ? ': ' + sync.message : ''})`;
+        return fallback;
+      default:
+        return fallback;
+    }
+  }
+
   function _sellableVariants(product) {
     const list = Array.isArray(product.variants) ? product.variants : [];
     return list.filter(v => v && v.isDeleted !== true && v.deleted !== true &&
@@ -74,7 +103,9 @@
         add('variants', 'ok', `${sellable.length} variations`);
       }
       if (sellable.length > 0 && unpriced > 0) {
-        add('price', 'block', `${unpriced} variation${unpriced === 1 ? ' has' : 's have'} no eBay price — check Supplier Pricing in the dashboard`);
+        add('price', 'block', product.pricingIssue
+          ? describePricingIssue(product.pricingIssue)
+          : `${unpriced} variation${unpriced === 1 ? ' has' : 's have'} no eBay price — check Supplier Pricing in the dashboard`);
       } else if (sellable.length > 0) {
         add('price', 'ok', 'All listed variations are priced');
       }
@@ -82,7 +113,7 @@
       const supplier = _num(product.raw_supplier_price) || _num(product.price);
       const final = _num(product.ebayFinalPrice) || _num(product.finalPrice);
       if (!(supplier > 0)) add('price', 'block', 'Supplier price could not be read from the page');
-      else if (!(final > 0)) add('price', 'block', 'No eBay price — check Supplier Pricing in the dashboard');
+      else if (!(final > 0)) add('price', 'block', describePricingIssue(product.pricingIssue));
       else if (final <= supplier && product.price_source !== 'manual') add('price', 'block', 'eBay price is not above the supplier price');
       else add('price', 'ok', `eBay price $${final.toFixed(2)}`);
     }
@@ -101,7 +132,7 @@
     return { ready: !items.some(i => i.level === 'block'), items };
   }
 
-  const api = { check, EBAY_TITLE_MAX };
+  const api = { check, describePricingIssue, EBAY_TITLE_MAX };
   root.SSListingReadiness = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -14,6 +14,16 @@ window.SSPricingRuleSync = (() => {
 
   const CACHE_KEY = 'pricingRulesCache';
   const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes — matches Cache-Control: max-age=300
+  const STATUS_KEY = 'pricingRulesSyncStatus';
+
+  // Every sync attempt records its outcome. Without this a failed sync was
+  // invisible: products silently stayed unpriced ("no_rule_synced") and
+  // nothing told the seller whether it was auth, network, or missing rules.
+  async function _recordStatus(status) {
+    try {
+      await chrome.storage.local.set({ [STATUS_KEY]: { ...status, at: Date.now() } });
+    } catch (_) { /* diagnostics only */ }
+  }
 
   /**
    * Sync pricing rules from the backend.
@@ -37,11 +47,17 @@ window.SSPricingRuleSync = (() => {
 
       // Need a valid token before hitting the endpoint
       const { token, isValid } = await AuthHelper.getAuthToken();
-      if (!token || !isValid) return cache;
+      if (!token || !isValid) {
+        await _recordStatus({ ok: false, reason: 'not_logged_in' });
+        return cache;
+      }
 
       const urls = getUrls();
       const apiKeys = getApiKeys();
-      if (!urls || !apiKeys) return cache;
+      if (!urls || !apiKeys) {
+        await _recordStatus({ ok: false, reason: 'config_missing' });
+        return cache;
+      }
 
       const headers = {
         'Authorization': `Bearer ${token}`,
@@ -61,6 +77,7 @@ window.SSPricingRuleSync = (() => {
         );
       } catch (networkErr) {
         console.warn('[SSPricingRuleSync] network error:', networkErr?.message || networkErr);
+        await _recordStatus({ ok: false, reason: 'network', message: String(networkErr?.message || networkErr).slice(0, 200) });
         return cache;
       }
 
@@ -73,6 +90,12 @@ window.SSPricingRuleSync = (() => {
 
       if (!response.ok) {
         console.warn('[SSPricingRuleSync] server error:', response.status);
+        let serverMessage = '';
+        try {
+          const text = await response.text();
+          try { const j = JSON.parse(text); serverMessage = j.error || j.message || text; } catch (_) { serverMessage = text; }
+        } catch (_) { /* body unreadable */ }
+        await _recordStatus({ ok: false, reason: 'http', status: response.status, message: String(serverMessage || '').slice(0, 200) });
         return cache;
       }
 
@@ -81,6 +104,10 @@ window.SSPricingRuleSync = (() => {
 
       const newCache = { ...data, etag, fetchedAt: Date.now() };
       await chrome.storage.local.set({ [CACHE_KEY]: newCache });
+      await _recordStatus({
+        ok: true,
+        supplierKeys: Array.isArray(data && data.suppliers) ? data.suppliers.map(s => s.supplierKey) : []
+      });
       return newCache;
 
     } catch (err) {

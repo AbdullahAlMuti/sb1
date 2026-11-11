@@ -738,7 +738,12 @@ function routeMessage(request, sender, sendResponse) {
       try {
         if (typeof SSPricingRuleSync !== 'undefined') {
           const cache = await SSPricingRuleSync.sync(true);
-          sendResponse({ success: true, updatedAt: cache?.updatedAt || null });
+          const st = await chrome.storage.local.get('pricingRulesSyncStatus');
+          sendResponse({
+            success: !!(cache && Array.isArray(cache.suppliers)),
+            updatedAt: cache?.updatedAt || null,
+            status: st.pricingRulesSyncStatus || null
+          });
           return;
         }
         sendResponse({ success: false, error: 'SSPricingRuleSync unavailable' });

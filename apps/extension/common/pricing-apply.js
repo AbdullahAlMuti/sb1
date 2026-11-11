@@ -213,9 +213,51 @@
    * @param {string} supplierKey
    * @returns {Promise<{ priced: boolean, reason: string|null, ruleVersion: number|null }>}
    */
+  /** Ask the background to sync the rules now. Resolves false on any failure. */
+  function _forceRuleSync() {
+    return new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage({ action: 'FORCE_PRICING_SYNC' }, (resp) => {
+          void chrome.runtime.lastError;
+          resolve(!!(resp && resp.success));
+        });
+      } catch (_) {
+        resolve(false);
+      }
+    });
+  }
+
+  async function _getSyncStatus() {
+    try {
+      const stored = await new Promise((resolve) => chrome.storage.local.get('pricingRulesSyncStatus', resolve));
+      return stored.pricingRulesSyncStatus || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   async function applyToProduct(product, supplierKey) {
-    const rulesCache = await getRulesCache();
-    const outcome = applyWithRules(product, rulesCache, supplierKey);
+    let rulesCache = await getRulesCache();
+    let outcome = applyWithRules(product, rulesCache, supplierKey);
+
+    // No rule for this supplier yet (fresh install, reload, or a sync that
+    // never succeeded): sync once right now and re-apply, instead of leaving
+    // the product unpriced until a background alarm happens to run.
+    if (!outcome.priced && outcome.reason === 'no_rule_synced') {
+      await _forceRuleSync();
+      rulesCache = await getRulesCache();
+      outcome = applyWithRules(product, rulesCache, supplierKey);
+    }
+
+    // Carry WHY it is unpriced to the panel (rendered by SSListingReadiness).
+    if (product) {
+      if (outcome.priced) {
+        delete product.pricingIssue;
+      } else {
+        product.pricingIssue = { reason: outcome.reason };
+        if (outcome.reason === 'no_rule_synced') product.pricingIssue.sync = await _getSyncStatus();
+      }
+    }
     if (!outcome.priced && outcome.reason === 'no_rule_synced') {
       console.warn(
         `[SSPricingApply] No synced pricing rule for "${product && product.supplierKey}". ` +

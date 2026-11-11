@@ -82,3 +82,16 @@ describe('condition', () => {
     assert.equal(item(check({ ...SINGLE, condition: 'New' }), 'condition'), undefined);
   });
 });
+
+describe('pricing issue explanation', () => {
+  const base = { ...SINGLE, finalPrice: 0 };
+  test('each cause gets its own actionable message', () => {
+    const msg = (issue) => item(check({ ...base, pricingIssue: issue }), 'price').message;
+    assert.match(msg({ reason: 'no_rule_synced', sync: { ok: false, reason: 'http', status: 401, message: 'Invalid extension session' } }), /401.*Invalid extension session/);
+    assert.match(msg({ reason: 'no_rule_synced', sync: { ok: false, reason: 'not_logged_in' } }), /not logged in/i);
+    assert.match(msg({ reason: 'no_rule_synced', sync: { ok: false, reason: 'network' } }), /could not reach/i);
+    assert.match(msg({ reason: 'no_rule_synced', sync: { ok: true, supplierKeys: ['walmart'] } }), /no Amazon rule.*walmart/i);
+    assert.match(msg({ reason: 'rule_disabled' }), /disabled/i);
+    assert.match(msg({ reason: 'no_rule_synced' }), /Supplier Pricing/);
+  });
+});
