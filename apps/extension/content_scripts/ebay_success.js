@@ -46,19 +46,38 @@
     reported = true;
     console.log('[SS] Scraped details:', details);
 
+    // eBay item IDs are numeric — never trust a URL parameter as HTML/ID.
+    if (!/^\d{9,15}$/.test(String(details.itemId || ''))) {
+      console.warn('[SS] Ignoring non-numeric item id from success page');
+      return;
+    }
+
     if (!details.draftId) {
+      // The success URL did not carry the draftId. Only link when it is
+      // UNAMBIGUOUS: exactly one draft was staged recently. Picking "the newest
+      // staged draft" attached the eBay item ID to the wrong dashboard row
+      // whenever more than one draft was open.
+      const RECENT_MS = 2 * 60 * 60 * 1000;
       const storage = await chrome.storage.local.get(null);
-      let latest = null;
+      const candidates = new Set();
       for (const key of Object.keys(storage)) {
         const entry = storage[key];
-        if (entry && typeof entry === 'object' && entry.isImported && entry.draftId) {
-          const at = entry.stagedAt || 0;
-          if (!latest || at > latest.at) latest = { draftId: entry.draftId, at };
+        if (entry && typeof entry === 'object' && entry.isImported && entry.draftId &&
+            Date.now() - (entry.stagedAt || 0) < RECENT_MS) {
+          candidates.add(String(entry.draftId));
         }
       }
-      if (latest) {
-        details.draftId = latest.draftId;
-        console.log('[SS] Resolved draftId from storage (newest staging):', details.draftId);
+      if (candidates.size === 1) {
+        details.draftId = [...candidates][0];
+        console.log('[SS] Resolved draftId from the single recent staged draft:', details.draftId);
+      } else {
+        console.warn(`[SS] Cannot link published item ${details.itemId}: ${candidates.size} recent drafts — not guessing.`);
+        _showNotice(
+          'Published on eBay — not linked in SellerSuit',
+          `Item ${details.itemId} could not be matched to one draft. Open Listings in your dashboard and sync.`,
+          false
+        );
+        return;
       }
     }
 
@@ -78,8 +97,33 @@
         _showSuccessOverlay(details.itemId);
       } else {
         console.error('[SS] Dashboard promotion failed:', resp?.error || 'unknown error');
+        _showNotice('Published on eBay — dashboard update failed',
+          String(resp?.error || 'unknown error').slice(0, 160), false);
       }
     });
+  }
+
+  // Text-only notice (textContent, no HTML) for outcomes the seller must see.
+  function _showNotice(title, detail, ok) {
+    try {
+      const div = document.createElement('div');
+      div.setAttribute('superSolid', 'true');
+      div.style.cssText = [
+        'position:fixed', 'bottom:24px', 'right:24px', 'z-index:999999',
+        `background:${ok ? '#10b981' : '#b45309'}`, 'color:#fff', 'padding:14px 18px',
+        'border-radius:12px', 'font-family:sans-serif', 'font-size:13px', 'max-width:360px',
+        'box-shadow:0 10px 25px -5px rgba(0,0,0,.2)'
+      ].join(';');
+      const strong = document.createElement('strong');
+      strong.style.cssText = 'display:block;font-size:14px;margin-bottom:2px';
+      strong.textContent = title;
+      const span = document.createElement('span');
+      span.textContent = detail;
+      div.appendChild(strong);
+      div.appendChild(span);
+      document.body.appendChild(div);
+      setTimeout(() => div.remove(), 12000);
+    } catch (_) { /* console record above stands */ }
   }
 
   function _showSuccessOverlay(itemId) {

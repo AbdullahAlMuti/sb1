@@ -119,7 +119,8 @@ const STATUS_META: Record<ItemStatus, { label: string; cls: string }> = {
   queued:    { label: 'Queued',    cls: 'bg-muted text-muted-foreground border-border' },
   scraping:  { label: 'Scraping',  cls: 'bg-blue-50 text-blue-700 border-blue-200' },
   uploading: { label: 'Uploading', cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
-  listed:    { label: 'Listed',    cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  // The extension creates an eBay DRAFT; it does not publish. Say so.
+  listed:    { label: 'Draft on eBay', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   failed:    { label: 'Failed',    cls: 'bg-red-50 text-red-700 border-red-200' },
   skipped:   { label: 'Skipped',   cls: 'bg-amber-50 text-amber-700 border-amber-200' },
 };
@@ -267,7 +268,7 @@ export default function BulkLister() {
         if (known && known.status === p.status && (known.error ?? null) === (p.error ?? null) && known.title === (p.title ?? known.title)) return;
         await patchItemDb(p.itemId, patch);
         const label = known?.title || p.title || known?.supplier_url || p.itemId;
-        if (p.status === 'listed') pushActivity('success', 'Listed on eBay', label);
+        if (p.status === 'listed') pushActivity('success', 'Draft created on eBay — review & publish it there', label);
         else if (p.status === 'failed') pushActivity('failed', p.error || 'Failed', label);
         else if (p.status === 'skipped') pushActivity('info', p.error || 'Skipped', label);
         else pushActivity('processing', STATUS_META[p.status as ItemStatus]?.label ?? p.status, label);
@@ -590,7 +591,7 @@ export default function BulkLister() {
 
         <div className="flex-1 grid grid-cols-2 sm:grid-cols-5 gap-2 w-full">
           {([
-            { n: stats.listed, label: 'Listed', icon: <CheckCircle2 className="w-4 h-4" />, cls: 'bg-emerald-50 text-emerald-600' },
+            { n: stats.listed, label: 'Drafts created', icon: <CheckCircle2 className="w-4 h-4" />, cls: 'bg-emerald-50 text-emerald-600' },
             { n: stats.processing, label: 'Processing', icon: <RefreshCw className={`w-4 h-4 ${stats.processing > 0 ? 'animate-spin' : ''}`} />, cls: 'bg-blue-50 text-blue-600' },
             { n: stats.queued, label: 'Queued', icon: <Clock className="w-4 h-4" />, cls: 'bg-amber-50 text-amber-600' },
             { n: stats.skipped, label: 'Skipped', icon: <SkipForward className="w-4 h-4" />, cls: 'bg-orange-50 text-orange-600' },
@@ -823,7 +824,7 @@ export default function BulkLister() {
                           <td className="px-4 py-2">
                             <div className="flex items-center justify-end gap-1">
                               {status === 'listed' && (
-                                <Button size="icon" variant="ghost" className="h-6 w-6" title="View in Listings"
+                                <Button size="icon" variant="ghost" className="h-6 w-6" title="View draft in Listings"
                                   onClick={() => navigate('/dashboard/listings')}>
                                   <ExternalLink className="w-3 h-3" />
                                 </Button>

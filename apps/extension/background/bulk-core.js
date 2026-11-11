@@ -169,6 +169,9 @@ window.SSBulkCore = (() => {
     return { state: changed ? { ...state, items, currentItemId: null, updatedAt: Date.now() } : state, changed };
   }
 
+  // Must NOT match isJobBlockingError — one slow page fails one item only.
+  const SCRAPE_TIMEOUT_MESSAGE = 'Scraping timed out — the supplier page did not finish loading';
+
   /** Detects errors that should pause the whole job, not just fail one item. */
   function isJobBlockingError(message) {
     const m = String(message || '');
@@ -181,6 +184,7 @@ window.SSBulkCore = (() => {
   return {
     MIN_INTERVAL_MS,
     DEFAULT_INTERVAL_MS,
+    SCRAPE_TIMEOUT_MESSAGE,
     sanitizeIntervalMs,
     createState,
     nextQueuedItem,

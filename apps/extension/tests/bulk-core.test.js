@@ -174,6 +174,9 @@ describe('isJobBlockingError', () => {
   test('ordinary item errors do not pause the job', () => {
     assert.ok(!Core.isJobBlockingError('Could not find draftId in eBay response'));
     assert.ok(!Core.isJobBlockingError('Zero variations found'));
+    // A plain scrape timeout on one slow page must not pause the whole job.
+    assert.ok(!Core.isJobBlockingError(Core.SCRAPE_TIMEOUT_MESSAGE));
+    assert.ok(!/captcha/i.test(Core.SCRAPE_TIMEOUT_MESSAGE));
     assert.ok(!Core.isJobBlockingError(null));
   });
 });

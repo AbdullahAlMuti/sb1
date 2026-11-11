@@ -25,7 +25,8 @@ const BULK_LOCK_KEY   = 'bulkUploadLock';
 const BULK_ALARM_NEXT = 'ss-bulk-next';
 const BULK_ALARM_RESUME = 'ss-bulk-resume';
 
-const SCRAPE_TIMEOUT_MS  = 90 * 1000;   // variant scrape clicks through options — give it room
+// Variant scan budget is 75s (amazon-scraper-v2) + page load + pricing.
+const SCRAPE_TIMEOUT_MS  = 150 * 1000;
 const UPLOAD_TIMEOUT_MS  = 5 * 60 * 1000;
 const LOCK_STALE_MS      = 5 * 60 * 1000;
 
@@ -396,7 +397,9 @@ function scrapeSupplierProduct(url, settings) {
       if (done) return;
       done = true;
       cleanup();
-      reject(new Error('Scraping timed out — page stuck, blocked, or CAPTCHA'));
+      // Wording matters: bulk-core pauses the WHOLE job on blocking errors, and
+      // a plain timeout on one slow page must only fail that one item.
+      reject(new Error(window.SSBulkCore.SCRAPE_TIMEOUT_MESSAGE));
     }, SCRAPE_TIMEOUT_MS);
 
     chrome.tabs.create({ url, active: true }, (tab) => {
