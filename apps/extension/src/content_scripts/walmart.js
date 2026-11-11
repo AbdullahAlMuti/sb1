@@ -9,6 +9,8 @@
 // ── Common utilities ──────────────────────────────────────────────────────────
 import '../../common/config.js';
 import '../../common/html-sanitizer.js'; // exposes window.SSSanitizer before any HTML preview (W5)
+import '../../common/title-quality.js';      // SSTitleQuality — live eBay title rules
+import '../../common/listing-readiness.js';   // SSListingReadiness — pre-upload checklist + pricing explanations
 import '../../common/panel-extended.js';
 import '../../suppliers/core/pricing-core.js'; // SSPricingCore — canonical integer-cent engine
 import '../../common/pricing-apply.js';        // SSPricingApply — applies synced dashboard rules

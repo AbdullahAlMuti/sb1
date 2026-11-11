@@ -35,10 +35,10 @@ const UIHelper = (() => {
     toast.className = `toast ${type}`;
 
     const icons = {
-      success: '✅',
-      error: '❌',
+      success: '✓',
+      error: '✕',
       info: 'ℹ️',
-      warning: '⚠️'
+      warning: '!'
     };
 
     const icon = document.createElement('span');

@@ -2633,7 +2633,8 @@ const addEventListenersToPanel = () => {
     if (titleDisplay && titleCounter) {
         titleDisplay.addEventListener('input', () => {
             const currentText = titleDisplay.innerText || '';
-            titleCounter.textContent = `${currentText.length} / 80 chars`;
+            if (typeof window._ssxUpdateTitleMeter === 'function') window._ssxUpdateTitleMeter();
+            else titleCounter.textContent = `${currentText.length} / 80 characters`;
             // Phase 5: patch draft — manual title edit
             if (typeof window.SSListingDraft !== 'undefined') {
                 window.SSListingDraft.patchDraft({

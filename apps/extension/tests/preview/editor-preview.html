@@ -85,7 +85,7 @@
       document.body.prepend(document.importNode(root, true));
       const load = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.body.appendChild(s); });
       for (const f of ['common/sku-engine.js', 'suppliers/core/pricing-core.js', 'common/pricing-apply.js',
-        'common/listing-readiness.js', 'common/panel-extended.js']) await load('../../' + f);
+        'common/listing-readiness.js', 'common/title-quality.js', 'common/panel-extended.js']) await load('../../' + f);
       await window.showSidebarExtended({ force: true });
       document.documentElement.setAttribute('data-preview-ready', '1');
     })().catch(e => { document.body.insertAdjacentHTML('beforeend', '<pre style="color:red">' + e + '</pre>'); });

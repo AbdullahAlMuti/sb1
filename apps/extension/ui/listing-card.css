@@ -2,7 +2,7 @@
    Copied into each stylesheet by scripts/sync-design-tokens.js; edit ONLY here. */
 :root,
 .ss-panel-wrapper,
-.ss-lc-root {
+.sb1c-card {
   /* Neutrals (slate) */
   --ds-white: #ffffff;
   --ds-n-50: #f8fafc;
@@ -128,7 +128,7 @@
 .sb1c-card {
   display: block !important;
   border: 1px solid rgba(0, 0, 0, 0.08) !important;
-  border-left: 3px solid #F97316 !important; /* Orange accent border */
+  border-left: 3px solid var(--ds-brand) !important;
   border-radius: 8px !important;
   padding: 10px !important;
   background: #ffffff !important;
@@ -229,14 +229,14 @@
 }
 
 .sb1c-card button.sb1c-upload {
-  color: #ffffff !important;
-  background-color: #F97316 !important;
-  border: 1px solid #F97316 !important;
+  color: var(--ds-on-brand) !important;
+  background-color: var(--ds-brand) !important;
+  border: 1px solid var(--ds-brand) !important;
 }
 
 .sb1c-card button.sb1c-upload:hover {
-  background-color: #ea580c !important;
-  border-color: #ea580c !important;
+  background-color: var(--ds-brand-hover) !important;
+  border-color: var(--ds-brand-hover) !important;
 }
 
 .sb1c-card button.sb1c-plus {
@@ -246,9 +246,10 @@
 }
 
 .sb1c-card button.sb1c-plus:hover {
-  color: #ffffff !important;
-  background-color: #2563EB !important;
-  border-color: #2563EB !important;
+  /* Secondary stays secondary on hover — only the primary is filled. */
+  color: var(--ds-text) !important;
+  background-color: var(--ds-bg-muted) !important;
+  border-color: var(--ds-border-strong) !important;
 }
 
 /* 6. Details Container */
@@ -434,4 +435,12 @@
   align-items: center !important;
   gap: 2px !important;
   margin-left: auto !important;
+}
+
+
+/* Design-system layer for the on-page card. */
+.sb1c-card { font-family: var(--ds-font) !important; }
+.sb1c-card button:focus-visible, .sb1c-card a:focus-visible { box-shadow: var(--ds-focus-ring) !important; }
+@media (prefers-reduced-motion: reduce) {
+  .sb1c-card, .sb1c-card * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

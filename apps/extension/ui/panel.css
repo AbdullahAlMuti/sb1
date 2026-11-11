@@ -2,7 +2,7 @@
    Copied into each stylesheet by scripts/sync-design-tokens.js; edit ONLY here. */
 :root,
 .ss-panel-wrapper,
-.ss-lc-root {
+.sb1c-card {
   /* Neutrals (slate) */
   --ds-white: #ffffff;
   --ds-n-50: #f8fafc;
@@ -102,34 +102,35 @@ body.ss-panel-page {
 }
 
 .ss-panel-wrapper {
-  --ss-bg: #ffffff;
-  --ss-surface: #ffffff;
-  --ss-surface-soft: #f8fafc;
-  --ss-surface-muted: #f1f5f9;
-  --ss-border: #e2e8f0;
-  --ss-border-strong: #e2e8f0;
-  --ss-text: #0f172a;
-  --ss-muted: #64748b;
-  --ss-subtle: #94a3b8;
-  --ss-blue: #2563eb;
-  --ss-blue-strong: #1d4ed8;
-  --ss-blue-soft: #eff6ff;
-  --ss-green: #059669;
-  --ss-green-strong: #047857;
-  --ss-green-soft: #ecfdf5;
-  --ss-orange: #ea580c;
-  --ss-orange-soft: #fff7ed;
-  --ss-amber: #d97706;
-  --ss-amber-soft: #fffbeb;
-  --ss-danger: #dc2626;
-  --ss-danger-soft: #fef2f2;
-  --ss-slate: #334155;
-  --ss-teal: #0d9488;
-  --ss-radius: 10px;
-  --ss-control: 36px;
-  --ss-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04);
-  --ss-shadow-sticky: 0 -1px 12px rgba(0, 0, 0, 0.06);
-  --ss-shadow-float: 0 20px 60px rgba(0, 0, 0, 0.12);
+  /* Re-pointed at the shared design tokens (--ds-*). */
+  --ss-bg: var(--ds-bg);
+  --ss-surface: var(--ds-bg);
+  --ss-surface-soft: var(--ds-bg-subtle);
+  --ss-surface-muted: var(--ds-bg-muted);
+  --ss-border: var(--ds-border);
+  --ss-border-strong: var(--ds-border-strong);
+  --ss-text: var(--ds-text);
+  --ss-muted: var(--ds-text-muted);
+  --ss-subtle: var(--ds-n-400);
+  --ss-blue: var(--ds-brand);
+  --ss-blue-strong: var(--ds-brand-hover);
+  --ss-blue-soft: var(--ds-brand-soft);
+  --ss-green: var(--ds-success);
+  --ss-green-strong: var(--ds-success);
+  --ss-green-soft: var(--ds-success-soft);
+  --ss-orange: var(--ds-warning);
+  --ss-orange-soft: var(--ds-warning-soft);
+  --ss-amber: var(--ds-warning);
+  --ss-amber-soft: var(--ds-warning-soft);
+  --ss-danger: var(--ds-danger);
+  --ss-danger-soft: var(--ds-danger-soft);
+  --ss-slate: var(--ds-n-700);
+  --ss-teal: var(--ds-success);
+  --ss-radius: var(--ds-radius-md);
+  --ss-control: var(--ds-control-md);
+  --ss-shadow-card: var(--ds-shadow-sm);
+  --ss-shadow-sticky: 0 -1px 0 var(--ds-border);
+  --ss-shadow-float: var(--ds-shadow-lg);
   --ss-panel-width: 100%;
   --ss-panel-height: auto;
   --ss-panel-top: 0;
@@ -163,8 +164,8 @@ body.ss-panel-page {
   overflow-x: hidden;
   padding: 0;
   color: var(--ss-text);
-  font-family: 'Inter', 'Segoe UI', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: 13.5px;
+  font-family: var(--ds-font);
+  font-size: var(--ds-text-sm);
   line-height: 1.5;
   letter-spacing: -0.01em;
   background: var(--ss-bg);
@@ -1766,25 +1767,26 @@ body.ss-dark-mode .ss-panel-wrapper .ss-scrape-overlay {
    EXTENDED EDITOR (.ssx) — reference layout, self-contained light theme
    ════════════════════════════════════════════════════════════ */
 .ssx {
-  --x-bg: #ffffff;
-  --x-card: #ffffff;
-  --x-border: #e2e8f0;
-  --x-border-hover: #cbd5e1;
-  --x-text: #0f172a;
-  --x-muted: #475569;
-  --x-primary: #3b82f6;
-  --x-primary-hover: #2563eb;
-  --x-primary-ring: rgba(59, 130, 246, 0.05);
-  --x-green: #10b981;
-  --x-green-text: #059669;
-  --x-green-soft: #ecfdf5;
-  --x-amber: #f59e0b;
-  --x-violet: #6366f1;
-  --x-orange: #f97316;
-  --x-radius: 0px;
+  /* Re-pointed at the shared design tokens (--ds-*). */
+  --x-bg: var(--ds-bg);
+  --x-card: var(--ds-bg);
+  --x-border: var(--ds-border);
+  --x-border-hover: var(--ds-border-strong);
+  --x-text: var(--ds-text);
+  --x-muted: var(--ds-text-secondary);
+  --x-primary: var(--ds-brand);
+  --x-primary-hover: var(--ds-brand-hover);
+  --x-primary-ring: color-mix(in srgb, var(--ds-brand) 16%, transparent);
+  --x-green: var(--ds-success);
+  --x-green-text: var(--ds-success);
+  --x-green-soft: var(--ds-success-soft);
+  --x-amber: var(--ds-warning);
+  --x-violet: var(--ds-brand);
+  --x-orange: var(--ds-warning);
+  --x-radius: var(--ds-radius-md);
   --x-shadow-card: none;
   --x-shadow-card-hover: none;
-  --x-font: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --x-font: var(--ds-font);
 
   display: none;
   background: var(--x-bg);
@@ -3382,3 +3384,91 @@ body.ss-panel-page {
 
 /* Keep description text clear of the corner Copy chip at every width. */
 .ssx .ssx-mount > #description-preview { padding-right: 78px; }
+
+
+/* ════════════════════════════════════════════════════════════════════════
+   Design-system layer for the full editor — tokens only (--ds-*).
+   ════════════════════════════════════════════════════════════════════════ */
+
+.ss-panel-wrapper { -webkit-font-smoothing: antialiased; }
+.ssx, .ssx button, .ssx input, .ssx select, .ssx textarea { font-family: var(--ds-font); }
+
+/* Focus: visible on keyboard, quiet on mouse. */
+.ss-panel-wrapper :focus { outline: none; }
+.ss-panel-wrapper :focus-visible { outline: none; box-shadow: var(--ds-focus-ring); border-radius: var(--ds-radius-sm); }
+.ssx input:focus-visible, .ssx textarea:focus-visible, .ssx select:focus-visible,
+.ssx [contenteditable="true"]:focus-visible {
+  border-color: var(--ds-brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ds-brand) 18%, transparent);
+}
+
+/* Buttons: one shape, one height scale, flat fills. */
+.ssx .ssx-btn {
+  min-height: var(--ds-control-md);
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-medium);
+  box-shadow: none;
+  transition: background-color var(--ds-duration-fast) var(--ds-ease),
+              border-color var(--ds-duration-fast) var(--ds-ease),
+              color var(--ds-duration-fast) var(--ds-ease);
+}
+.ssx .ssx-btn-primary { background: var(--ds-brand); background-image: none; border-color: var(--ds-brand); color: var(--ds-on-brand); min-height: var(--ds-control-lg); font-weight: var(--ds-weight-semibold); }
+.ssx .ssx-btn-primary:hover { background: var(--ds-brand-hover); border-color: var(--ds-brand-hover); }
+.ssx .ssx-btn-primary:active { background: var(--ds-brand-active); }
+.ssx .ssx-btn-outline { background: var(--ds-bg); border: 1px solid var(--ds-border-strong); color: var(--ds-text-secondary); }
+.ssx .ssx-btn-outline:hover { background: var(--ds-bg-muted); color: var(--ds-text); }
+.ssx .ssx-btn:disabled { background: var(--ds-bg-muted); border-color: var(--ds-border); color: var(--ds-n-400); cursor: not-allowed; }
+
+/* "AI" actions are ordinary secondary actions with a sparkle icon — no
+   gradient, no glow, no special colour. */
+.ssx .ssx-btn-ai {
+  background: var(--ds-brand-soft);
+  background-image: none;
+  border: 1px solid var(--ds-brand-border);
+  color: var(--ds-brand-hover);
+  border-radius: var(--ds-radius-sm);
+  box-shadow: none;
+}
+.ssx .ssx-btn-ai:hover { background: #dbeafe; }
+.ssx .ssx-btn svg, .ssx .ssx-btn-ai svg { width: 14px; height: 14px; flex: 0 0 auto; }
+.ssx .ssx-ai-tag { background: var(--ds-bg-muted); color: var(--ds-text-muted); border-radius: var(--ds-radius-sm); font-weight: var(--ds-weight-medium); }
+
+/* Labels and data. */
+.ssx .ssx-field label { font-size: var(--ds-text-2xs); font-weight: var(--ds-weight-medium); color: var(--ds-text-muted); letter-spacing: 0.04em; }
+.ssx .ssx-readout, .ssx input.ssx-readout-input, .ssx .ssx-table td { font-variant-numeric: tabular-nums; }
+.ssx .ssx-card-title { font-size: var(--ds-text-md); font-weight: var(--ds-weight-semibold); color: var(--ds-text); }
+.ssx .ssx-head-title { font-size: var(--ds-text-lg); font-weight: var(--ds-weight-semibold); }
+
+/* Title character counter states (set by SSTitleQuality). */
+.ssx .ssx-count-ok { color: var(--ds-success); }
+.ssx .ssx-count-warn { color: var(--ds-warning); }
+.ssx .ssx-count-over { color: var(--ds-danger); font-weight: var(--ds-weight-semibold); }
+.ssx .ssx-title-tips { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.ssx .ssx-title-tips li { font-size: var(--ds-text-2xs); line-height: 1.4; color: var(--ds-warning); overflow-wrap: anywhere; }
+.ssx .ssx-title-tips li.is-block { color: var(--ds-danger); }
+
+/* Inline alert + field errors use the semantic tokens. */
+.ssx-inline-alert { border-color: var(--ds-danger-border); background: var(--ds-danger-soft); color: var(--ds-danger); border-radius: var(--ds-radius-md); font-size: var(--ds-text-xs); }
+.ssx-field-hint { color: var(--ds-warning); font-size: var(--ds-text-2xs); }
+.ssx .ssx-field-error, .ssx input.ssx-readout-input.ssx-field-error { border-color: var(--ds-danger) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ds-danger) 16%, transparent) !important; }
+.ssx .ssx-row-error > td { background: var(--ds-danger-soft); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ss-panel-wrapper *, .ss-panel-wrapper *::before, .ss-panel-wrapper *::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important;
+  }
+}
+
+/* Busy indicator for AI actions: a plain ring spinner (was a spinning glyph). */
+.ssx .ssx-ai-fast-spin {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: ssx-ring-spin 0.8s linear infinite;
+  vertical-align: -2px;
+}
+@keyframes ssx-ring-spin { to { transform: rotate(360deg); } }

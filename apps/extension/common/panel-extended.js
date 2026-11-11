@@ -356,7 +356,7 @@ async function _handleSidebarUpload() {
             product: uploadProduct,
             uploadType: 'classic'
         });
-        if (btn) btn.textContent = '✅ Opening eBay…';
+        if (btn) btn.textContent = 'Opening eBay…';
         setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = 'Upload'; } }, 3000);
     } catch (err) {
         console.error('[SidebarUpload] error:', err);
@@ -681,7 +681,7 @@ async function _ssxRenderExtended(p) {
                 if (actionWrap) {
                     actionWrap.innerHTML = `
                         <div class="ssx-ai-loading-status" id="ssx-title-loading-status" style="display: flex; align-items: center; gap: 6px;">
-                            <span class="ssx-ai-fast-spin">✦</span>
+                            <span class="ssx-ai-fast-spin" aria-hidden="true"></span>
                             <span style="font-size: 11px; font-weight: 600; color: var(--x-primary); text-transform: uppercase; letter-spacing: 0.04em;">AI Writing...</span>
                         </div>
                     `;
@@ -710,7 +710,7 @@ async function _ssxRenderExtended(p) {
                 if (actionWrap) {
                     actionWrap.innerHTML = `
                         <div class="ssx-ai-loading-status" id="ssx-desc-loading-status" style="display: flex; align-items: center; gap: 6px;">
-                            <span class="ssx-ai-fast-spin">✦</span>
+                            <span class="ssx-ai-fast-spin" aria-hidden="true"></span>
                             <span style="font-size: 11px; font-weight: 600; color: var(--x-primary); text-transform: uppercase; letter-spacing: 0.04em;">AI Writing...</span>
                         </div>
                     `;
@@ -787,7 +787,7 @@ async function _ssxRenderExtended(p) {
                         const actionWrap = document.getElementById('ssx-title-action-wrap');
                         if (actionWrap) {
                             actionWrap.innerHTML = `
-                                <button class="ssx-btn ssx-btn-ai" id="ssx-ai-title-btn" type="button">✦ Regenerate</button>
+                                <button class="ssx-btn ssx-btn-ai" id="ssx-ai-title-btn" type="button">Regenerate</button>
                             `;
                             // Re-bind click event to the new button
                             setTimeout(() => initAiTriggers(), 50);
@@ -821,7 +821,7 @@ async function _ssxRenderExtended(p) {
             const actionWrap = document.getElementById('ssx-desc-action-wrap');
             if (actionWrap) {
                 actionWrap.innerHTML = `
-                    <button class="ssx-btn ssx-btn-ai" id="ssx-ai-desc-btn" type="button">✦ Regenerate Description</button>
+                    <button class="ssx-btn ssx-btn-ai" id="ssx-ai-desc-btn" type="button">Regenerate description</button>
                 `;
                 // Re-bind click event to the new button
                 setTimeout(() => initAiTriggers(), 50);
@@ -879,6 +879,51 @@ async function _ssxRenderExtended(p) {
 // opts.force — render whenever currentProduct exists, regardless of panelSource.
 // Used by the standalone panel.html tab (universal editor); the inline-injected
 // path keeps the panelSource === 'sidebar' guard.
+// ─── Title meter ──────────────────────────────────────────────────────────────
+// Live character count + eBay title tips under the title. Also fixes the
+// counter reading "0 / 80" until the first keystroke: it was only updated by
+// an input listener, never when the title was first filled in.
+function _ssxUpdateTitleMeter() {
+    const titleEl = document.getElementById('ai-generated-title');
+    const counter = document.getElementById('ai-title-counter');
+    if (!titleEl || !counter || !window.SSTitleQuality) return;
+    const text = ('value' in titleEl && titleEl.tagName !== 'DIV' ? titleEl.value : (titleEl.innerText || titleEl.textContent || '')).replace(/\s+/g, ' ').trim();
+    const r = window.SSTitleQuality.check(text);
+    counter.textContent = `${r.counter} characters`;
+    counter.classList.remove('ssx-count-ok', 'ssx-count-warn', 'ssx-count-over');
+    counter.classList.add(r.level === 'over' ? 'ssx-count-over' : r.level === 'warn' ? 'ssx-count-warn' : 'ssx-count-ok');
+    counter.style.color = '';
+
+    let tips = document.getElementById('ssx-title-tips');
+    if (!tips) {
+        tips = document.createElement('ul');
+        tips.id = 'ssx-title-tips';
+        tips.className = 'ssx-title-tips';
+        tips.setAttribute('aria-live', 'polite');
+        const mount = document.getElementById('ssx-title-mount') || titleEl.parentElement;
+        if (mount) mount.appendChild(tips);
+    }
+    tips.textContent = '';
+    r.tips.forEach(t => {
+        const li = document.createElement('li');
+        if (t.level === 'block') li.className = 'is-block';
+        li.textContent = t.message;
+        tips.appendChild(li);
+    });
+}
+
+function _ssxBindTitleMeter() {
+    const titleEl = document.getElementById('ai-generated-title');
+    if (!titleEl || titleEl._ssxMeterBound) { _ssxUpdateTitleMeter(); return; }
+    titleEl._ssxMeterBound = true;
+    titleEl.addEventListener('input', _ssxUpdateTitleMeter);
+    try {
+        // AI generation replaces the text without firing "input".
+        new MutationObserver(_ssxUpdateTitleMeter).observe(titleEl, { childList: true, characterData: true, subtree: true });
+    } catch (_) { /* observer unavailable — input listener still covers typing */ }
+    _ssxUpdateTitleMeter();
+}
+
 async function showSidebarExtended(opts = {}) {
     const d = await chrome.storage.local.get(['currentProduct', 'panelSource']);
     if (!d.currentProduct) return;
@@ -908,6 +953,7 @@ async function showSidebarExtended(opts = {}) {
 
     const mainTitle = document.getElementById('ai-generated-title');
     if (mainTitle && p.title) { mainTitle.textContent = p.title; }
+    _ssxBindTitleMeter();
 
     // Load and populate saved description
     const descDisplay = document.getElementById('description-preview');
@@ -953,7 +999,7 @@ async function showSidebarExtended(opts = {}) {
                         <div class="ss-desc-empty description-placeholder description-empty-state" contenteditable="false">
                           <svg class="ss-empty-icon" viewBox="0 0 24 24" fill="none" stroke="var(--ss-green)" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
                           <h4 class="ss-empty-title">No description yet</h4>
-                          <p class="ss-empty-subtitle">Click AI Write Description to generate.</p>
+                          <p class="ss-empty-subtitle">Select “Write description” to generate one.</p>
                         </div>
                     `;
                 }
@@ -1070,3 +1116,4 @@ window._ssxRenderExtended = _ssxRenderExtended;
 window._saveExtEdits = _saveExtEdits;
 window._handleSidebarUpload = _handleSidebarUpload;
 window.ssxValidateUpload = ssxValidateUpload;
+window._ssxUpdateTitleMeter = _ssxUpdateTitleMeter;

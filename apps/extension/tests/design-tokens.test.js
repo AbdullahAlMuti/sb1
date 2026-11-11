@@ -51,3 +51,19 @@ describe('no emoji icons in the interface markup', () => {
     });
   }
 });
+
+describe('no emoji injected through CSS content', () => {
+  for (const rel of TARGETS) {
+    test(rel, () => {
+      const css = read(rel).replace(/\/\*[\s\S]*?\*\//g, '');
+      const rules = css.match(/content:\s*['"][^'"]*['"]/g) || [];
+      const bad = rules.filter(r => EMOJI.test(r));
+      // editor-popup.css keeps the legacy rule but the design-system layer disables it.
+      if (rel === 'ui/editor-popup.css') {
+        assert.match(css, /\.editor-header h3::before[^{]*\{\s*content:\s*none\s*!important/);
+      } else {
+        assert.deepEqual(bad, []);
+      }
+    });
+  }
+});

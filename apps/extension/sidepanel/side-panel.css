@@ -2,7 +2,7 @@
    Copied into each stylesheet by scripts/sync-design-tokens.js; edit ONLY here. */
 :root,
 .ss-panel-wrapper,
-.ss-lc-root {
+.sb1c-card {
   /* Neutrals (slate) */
   --ds-white: #ffffff;
   --ds-n-50: #f8fafc;
