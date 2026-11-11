@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<!--
+  Dev-only preview of the full editor (ui/panel.html + common/panel-extended.js)
+  outside the extension, with chrome.* stubbed. Lets the layout be checked at
+  any width without loading the extension:
+     cd apps/extension && python -m http.server 8766
+     http://127.0.0.1:8766/tests/preview/editor-preview.html?mode=single|variants&priced=0|1
+  Not shipped: tests/ is not part of the extension build.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SellerSuit editor preview</title>
+  <link rel="stylesheet" href="../../ui/panel.css">
+  <style>
+    /* Stand-in for the host (Amazon) page behind the panel. */
+    body { margin: 0; font-family: Arial, sans-serif; background: #eaeded; }
+    .host-page { padding: 24px; color: #0f1111; }
+  </style>
+</head>
+<body>
+  <div class="host-page"><h1>Host page</h1><p>Amazon content would be here.</p></div>
+  <script>
+    const q = new URLSearchParams(location.search);
+    const mode = q.get('mode') || 'single';
+    const priced = q.get('priced') === '1';
+    const img = (n) => `https://picsum.photos/seed/ss${n}/600/600`;
+    const variant = (color, size, price, i) => ({
+      attrs: { Color: { productName: color }, Size: { productName: size } },
+      price, raw_supplier_price: price, priceVerified: true, quantity: 12, inStock: true,
+      finalPrice: priced ? +(price * 1.45).toFixed(2) : undefined,
+      ebayPrice: priced ? +(price * 1.45).toFixed(2) : undefined,
+      price_source: priced ? 'calculated' : undefined,
+      img: img(i), sku: `AMZ-B00FLYWNYQ-${color.slice(0, 3).toUpperCase()}-${size}`, supplierVariantId: 'B0VAR0000' + i,
+    });
+    const product = {
+      asin: 'B00FLYWNYQ', parentAsin: 'B0GXKV5FHP', sourceId: 'B0GXKV5FHP', supplier: 'amazon', supplierKey: 'amazon',
+      title: 'Instant Pot Duo 6 Qt 7-in-1 Electric Pressure Cooker, Stainless Steel, Slow Cooker, Rice Cooker',
+      brand: 'Instant Pot', price: 109.99, raw_supplier_price: 109.99, currency: 'USD', shippingCost: 0, quantity: 30,
+      finalPrice: priced ? 159.99 : undefined, price_source: priced ? 'calculated' : undefined,
+      ebaySku: 'AMZ-B0GXKV5FHP', url: 'https://www.amazon.com/dp/B00FLYWNYQ', condition: 'New',
+      images: [1, 2, 3, 4, 5, 6, 7, 8].map(img),
+      bulletPoints: ['7-in-1 functionality', 'Stainless steel inner pot', 'Over 10 safety features'],
+      description: 'Slow cooks, makes rice and yogurt, steams, sautés, warms and sterilizes.',
+      specs: { Brand: 'Instant Pot', Capacity: '5.68 liters', Material: 'Stainless steel' },
+      hasVariants: mode === 'variants', isSingleMode: mode === 'single', scrapedAt: Date.now(),
+      pricingIssue: priced ? undefined : { reason: 'no_rule_synced', sync: { ok: false, reason: 'http', status: 500, message: 'Failed to fetch rules' } },
+      variants: mode === 'variants'
+        ? [variant('Black', '3 Quarts', 89.99, 11), variant('Black', '6 Quarts', 109.99, 12), variant('Stainless Steel', '6 Quarts', 109.99, 13),
+           variant('Stainless Steel', '8 Quarts', 139.99, 14), variant('Red', '6 Quarts', 119.99, 15)]
+        : [{ attrs: {}, price: 109.99, priceVerified: true, quantity: 30, finalPrice: priced ? 159.99 : undefined, img: img(1), supplierVariantId: 'B00FLYWNYQ' }],
+    };
+    const store = { currentProduct: product, panelSource: 'sidebar' };
+    const pick = (keys) => {
+      if (keys == null) return { ...store };
+      const out = {};
+      [].concat(typeof keys === 'object' && !Array.isArray(keys) ? Object.keys(keys) : keys).forEach(k => { if (store[k] !== undefined) out[k] = store[k]; });
+      return out;
+    };
+    window.chrome = {
+      storage: {
+        local: {
+          get: (keys, cb) => { const r = pick(keys); if (cb) { cb(r); return; } return Promise.resolve(r); },
+          set: (obj, cb) => { Object.assign(store, obj); if (cb) cb(); return Promise.resolve(); },
+          remove: (keys, cb) => { [].concat(keys).forEach(k => delete store[k]); if (cb) cb(); return Promise.resolve(); },
+        },
+        session: { set: () => Promise.resolve(), get: () => Promise.resolve({}) },
+        onChanged: { addListener() {} },
+      },
+      runtime: {
+        lastError: undefined,
+        getURL: (p) => '../../' + p,
+        sendMessage: (msg, cb) => { console.log('[preview] sendMessage', msg); window.__lastMessage = msg; if (cb) cb({ success: false }); },
+        onMessage: { addListener() {} },
+      },
+    };
+  </script>
+  <script>
+    (async () => {
+      const html = await (await fetch('../../ui/panel.html')).text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const root = doc.getElementById('snipe-root-wrapper');
+      root.querySelectorAll('img').forEach(i => { const s = i.getAttribute('src'); if (s && s.startsWith('../')) i.src = '../../' + s.replace(/^\.\.\//, ''); });
+      document.body.prepend(document.importNode(root, true));
+      const load = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.body.appendChild(s); });
+      for (const f of ['common/sku-engine.js', 'suppliers/core/pricing-core.js', 'common/pricing-apply.js',
+        'common/listing-readiness.js', 'common/panel-extended.js']) await load('../../' + f);
+      await window.showSidebarExtended({ force: true });
+      document.documentElement.setAttribute('data-preview-ready', '1');
+    })().catch(e => { document.body.insertAdjacentHTML('beforeend', '<pre style="color:red">' + e + '</pre>'); });
+  </script>
+</body>
+</html>

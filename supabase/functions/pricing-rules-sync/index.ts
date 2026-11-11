@@ -51,7 +51,12 @@ Deno.serve(async (req) => {
       .eq('user_id', user.id)
       .order('supplier_key');
 
-    if (fetchErr) return json({ error: 'Failed to fetch rules' }, 500);
+    if (fetchErr) {
+      // Log + surface the database error code: a bare "Failed to fetch rules"
+      // left the extension unpriced with nothing to diagnose.
+      console.error('pricing-rules-sync: rule query failed', fetchErr);
+      return json({ error: `Failed to fetch rules (${fetchErr.code || 'no-code'}: ${String(fetchErr.message || '').slice(0, 140)})` }, 500);
+    }
 
     // Supabase infers a GenericStringError union for the select; the query is
     // valid at runtime, so treat the rows as plain records for typing purposes.

@@ -113,6 +113,106 @@ function _saveExtEdits() {
 
 // ─── Upload from extended editor ──────────────────────────────────────────────
 
+// ─── Upload validation ────────────────────────────────────────────────────────
+// Pure: decides whether the editor may start an upload. Previously a missing
+// eBay price was only console.warn'ed — the editor opened eBay, and the
+// uploader failed there with "eBay Final Price is missing". The seller now gets
+// the problem in the editor, on the field that needs fixing.
+function ssxValidateUpload(input) {
+    const i = input || {};
+    const errors = [];
+    if (!String(i.title || '').trim()) errors.push({ field: 'title', message: 'Add a title before uploading.' });
+    if (!String(i.sku || '').trim()) errors.push({ field: 'sku', message: 'Add a SKU before uploading.' });
+
+    if (i.isSingle) {
+        const price = _ssxCleanFloat(i.finalPrice) || 0;
+        const cost = _ssxCleanFloat(i.supplierPrice) || 0;
+        if (!(price > 0)) {
+            errors.push({
+                field: 'price',
+                message: i.pricingMessage
+                    ? `${i.pricingMessage}. You can also type the eBay price here.`
+                    : 'Enter an eBay price — none was calculated for this product.'
+            });
+        } else if (cost > 0 && price <= cost && i.priceSource !== 'manual') {
+            errors.push({ field: 'price', message: `eBay price $${price.toFixed(2)} is not above the supplier price $${cost.toFixed(2)}.` });
+        }
+    } else {
+        const all = Array.isArray(i.variants) ? i.variants : [];
+        const rows = [];
+        let sellable = 0;
+        all.forEach((v, idx) => {
+            if (!v || v.isDeleted === true || v.deleted === true || v.inStock === false || v.priceVerified === false) return;
+            sellable++;
+            const price = _ssxCleanFloat(v.ebayFinalPrice) || _ssxCleanFloat(v.ebayPrice) || _ssxCleanFloat(v.finalPrice) || 0;
+            if (!(price > 0)) rows.push(idx);
+        });
+        if (sellable === 0) {
+            errors.push({ field: 'variants', rows: [], message: 'No variation can be listed — each one is out of stock, removed, or has no verified price.' });
+        } else if (rows.length) {
+            errors.push({
+                field: 'variants',
+                rows,
+                message: `${rows.length} variation${rows.length === 1 ? ' has' : 's have'} no eBay price` +
+                    (i.pricingMessage ? ` (${i.pricingMessage})` : '') + '. Enter the price in the highlighted rows.'
+            });
+        }
+    }
+    return { ok: errors.length === 0, errors };
+}
+
+/** Why there is no calculated price, in the seller's words (null when unknown). */
+function _ssxPricingMessage(p) {
+    try {
+        if (p && p.pricingIssue && window.SSListingReadiness && window.SSListingReadiness.describePricingIssue) {
+            return window.SSListingReadiness.describePricingIssue(p.pricingIssue);
+        }
+    } catch (_) { /* fall through */ }
+    return null;
+}
+
+/** Show (or clear, when errors is empty) the editor's inline error banner + field highlights. */
+function _ssxShowUploadErrors(errors) {
+    const host = document.getElementById('ss-extended-editor');
+    if (!host) return;
+    let box = document.getElementById('ssx-upload-errors');
+    document.querySelectorAll('.ssx-field-error').forEach(el => el.classList.remove('ssx-field-error'));
+    document.querySelectorAll('.ssx-row-error').forEach(el => el.classList.remove('ssx-row-error'));
+    if (!errors || !errors.length) { if (box) box.remove(); return; }
+    if (!box) {
+        box = document.createElement('div');
+        box.id = 'ssx-upload-errors';
+        box.className = 'ssx-inline-alert';
+        box.setAttribute('role', 'alert');
+        const topbar = host.querySelector('.ssx-topbar');
+        if (topbar && topbar.nextSibling) host.insertBefore(box, topbar.nextSibling); else host.prepend(box);
+    }
+    box.textContent = '';
+    const title = document.createElement('strong');
+    title.textContent = 'Not uploaded — fix this first:';
+    box.appendChild(title);
+    const list = document.createElement('ul');
+    errors.forEach(e => { const li = document.createElement('li'); li.textContent = e.message; list.appendChild(li); });
+    box.appendChild(list);
+
+    const mark = id => { const el = document.getElementById(id); if (el) el.classList.add('ssx-field-error'); return el; };
+    let focusEl = null;
+    errors.forEach(e => {
+        if (e.field === 'price') focusEl = focusEl || mark('ssx-single-ebay');
+        if (e.field === 'sku') focusEl = focusEl || mark('ssx-single-sku');
+        if (e.field === 'title') mark('ai-generated-title');
+        if (e.field === 'variants') {
+            const trs = document.querySelectorAll('#ssx-var-rows tr');
+            (e.rows || []).forEach(idx => {
+                const tr = Array.from(trs).find(r => String(r.dataset.index) === String(idx)) || trs[idx];
+                if (tr) tr.classList.add('ssx-row-error');
+            });
+        }
+    });
+    try { box.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) { /* older engines */ }
+    if (focusEl && typeof focusEl.focus === 'function') focusEl.focus();
+}
+
 async function _handleSidebarUpload() {
     const btn = document.getElementById('opti-list-btn') || document.querySelector('[id="opti-list-btn"]');
     if (btn) { btn.disabled = true; btn.textContent = 'Uploading…'; }
@@ -200,10 +300,22 @@ async function _handleSidebarUpload() {
         console.log('[SS Upload] description_source:', descSource, '| desc length:', description.length);
         console.log('[SS Upload] images count:', images.length);
 
-        if (!finalTitle) { alert('No title set. Fill title first.'); if (btn) { btn.disabled = false; btn.textContent = 'Upload'; } return; }
-        if (!sku) { alert('No SKU. Fill SKU first.'); if (btn) { btn.disabled = false; btn.textContent = 'Upload'; } return; }
-        if (finalPrice <= 0) {
-            console.warn('[SS Upload] finalPrice is 0 — raw price may not have been calculated yet');
+        const _isSingleUpload = p.isSingleMode || p.mode === 'single' || !Array.isArray(p.variants) || p.variants.length <= 1;
+        const _check = ssxValidateUpload({
+            title: finalTitle,
+            sku,
+            isSingle: _isSingleUpload,
+            finalPrice,
+            supplierPrice: _ssxCleanFloat(p.raw_supplier_price) || _ssxCleanFloat(p.price) || 0,
+            priceSource,
+            variants: p.variants,
+            pricingMessage: _ssxPricingMessage(p)
+        });
+        _ssxShowUploadErrors(_check.errors);
+        if (!_check.ok) {
+            console.warn('[SS Upload] blocked in editor:', _check.errors.map(e => e.message).join(' | '));
+            if (btn) { btn.disabled = false; btn.textContent = 'Upload'; }
+            return;
         }
 
         const uploadProduct = {
@@ -258,7 +370,7 @@ function _ssxRenderVariantRows(variants, p) {
     const tbody = document.getElementById('ssx-var-rows');
     if (!tbody) return;
     tbody.innerHTML = '';
-    variants.forEach(v => {
+    variants.forEach((v, idx) => {
         const det = _ssxVariantDetails(v.attrs);
         const supplier = _ssxCleanFloat(v.raw_supplier_price ?? v.price) || 0;
         const ebay = _ssxCleanFloat(v.finalPrice) || 0;
@@ -271,6 +383,7 @@ function _ssxRenderVariantRows(variants, p) {
             : (_skuParent + (Object.values(v.attrs || {}).map(a => (a && typeof a === 'object' ? a.productName : a) || '').join('-') || '') || '—'));
 
         const tr = document.createElement('tr');
+        tr.dataset.index = String(idx);
 
         const tdImg = document.createElement('td');
         const img = document.createElement('img');
@@ -493,13 +606,28 @@ async function _ssxRenderExtended(p) {
         const singleEbay = _ssxCleanFloat(v0.finalPrice ?? baseEbay) || 0;
         if (ebayEl && ebayEl.tagName === 'INPUT') {
             ebayEl.value = singleEbay ? singleEbay.toFixed(2) : '';
+            // No calculated price → say why, right under the field.
+            let hint = document.getElementById('ssx-single-price-hint');
+            if (!hint && ebayEl.parentElement) {
+                hint = document.createElement('div');
+                hint.id = 'ssx-single-price-hint';
+                hint.className = 'ssx-field-hint';
+                ebayEl.parentElement.appendChild(hint);
+            }
+            if (hint) {
+                hint.textContent = singleEbay ? '' : (_ssxPricingMessage(p) || 'No price calculated — type the eBay price');
+                hint.style.display = singleEbay ? 'none' : 'block';
+            }
             if (!ebayEl._ssxBound) {
                 ebayEl._ssxBound = true;
                 ebayEl.addEventListener('input', () => {
                     const val = _ssxCleanFloat(ebayEl.value) || 0;
                     const extPrice = document.getElementById('ext-price');
                     if (extPrice) extPrice.value = ebayEl.value.trim();
-                    _ssxText('ssx-single-profit', _ssxMoney(val - singleCost));
+                    _ssxText('ssx-single-profit', val > 0 ? _ssxMoney(val - singleCost) : '—');
+                    const h = document.getElementById('ssx-single-price-hint');
+                    if (h && val > 0) h.style.display = 'none';
+                    if (val > 0) ebayEl.classList.remove('ssx-field-error');
                     _saveExtEdits();
                 });
             }
@@ -507,7 +635,8 @@ async function _ssxRenderExtended(p) {
             ebayEl.textContent = _ssxMoney(singleEbay);
         }
         const sProfit = singleEbay - singleCost;
-        _ssxText('ssx-single-profit', _ssxMoney(sProfit));
+        // A profit of "-$109.99" when there is simply no price yet is misleading.
+        _ssxText('ssx-single-profit', singleEbay > 0 ? _ssxMoney(sProfit) : '—');
         const skuEl = document.getElementById('ssx-single-sku');
         if (skuEl) {
             const skuVal = p.ebaySku || v0.sku || '';
@@ -940,3 +1069,4 @@ window.showSidebarExtended = showSidebarExtended;
 window._ssxRenderExtended = _ssxRenderExtended;
 window._saveExtEdits = _saveExtEdits;
 window._handleSidebarUpload = _handleSidebarUpload;
+window.ssxValidateUpload = ssxValidateUpload;

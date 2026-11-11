@@ -3190,3 +3190,100 @@ body.ss-panel-page {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Full editor — inline validation + responsive layout
+   The editor lives inside .ss-panel-shell (container-type: inline-size), so
+   these are CONTAINER queries: the layout follows the width the panel
+   actually has on the host page, not the browser viewport.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.ssx-inline-alert {
+  margin: 12px 20px 0;
+  padding: 10px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 12.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.ssx-inline-alert strong { display: block; font-weight: 700; }
+.ssx-inline-alert ul { margin: 4px 0 0; padding-left: 18px; list-style: disc; }
+.ssx-inline-alert li { margin: 2px 0; }
+
+.ssx .ssx-field-error,
+.ssx input.ssx-readout-input.ssx-field-error {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14) !important;
+}
+.ssx .ssx-row-error > td { background: #fef2f2; }
+
+.ssx-field-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #b45309;
+  overflow-wrap: anywhere;
+}
+
+/* Long product titles: two lines instead of a hard one-line cut. */
+.ssx-head-title { -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+.ssx-single-grid > .ssx-field,
+.ssx-stats > * { min-width: 0; }
+.ssx .ssx-readout,
+.ssx input.ssx-readout-input { max-width: 100%; }
+
+@container (max-width: 960px) {
+  .ssx-single-grid,
+  .ssx-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@container (max-width: 720px) {
+  .ssx-topbar { padding: 12px 14px; gap: 10px; }
+  .ssx-topbar-left { flex: 1 1 100%; }
+  .ssx-topbar-right { width: 100%; justify-content: flex-start; gap: 8px; }
+  .ssx-topbar-right > #ssx-upload-top,
+  .ssx-topbar-right > .ssx-upload-group { margin-left: auto; }
+
+  /* Title and description stack; the vertical divider becomes a rule. */
+  .ssx .ssx-ai-block { grid-template-columns: minmax(0, 1fr); padding: 6px 14px; }
+  .ssx-ai-divider-wrap { width: 100%; height: 12px; }
+  .ssx-ai-divider { width: 100%; height: 1px; top: 50%; left: 0; transform: translateY(-50%); }
+
+  .ssx-two-col { grid-template-columns: minmax(0, 1fr); padding: 0 14px; }
+  .ssx-single-grid,
+  .ssx-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .ssx-stats { padding: 0 14px; }
+  .ssx-inline-alert { margin: 10px 14px 0; }
+
+  .ssx-var-head { flex-direction: column; align-items: stretch; }
+  .ssx-var-toolbar { flex-wrap: wrap; }
+  .ssx-var-toolbar .ssx-search-wrap { flex: 1 1 100%; }
+  /* The variations table already collapses to cards at narrow widths (rules
+     above) — it must NOT get a min-width here or the cards overflow. */
+}
+
+@container (max-width: 460px) {
+  .ssx-topbar-right > * { flex: 1 1 auto; }
+  .ssx-topbar-right .ssx-mode-seg { flex: 1 1 100%; }
+  .ssx-topbar-right .ssx-mode-seg .ssx-mode-btn { flex: 1 1 0; justify-content: center; }
+  .ssx-single-grid,
+  .ssx-stats { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* The description "Copy" button is absolutely positioned; a narrow-container
+   rule elsewhere stretched it across the text. Keep it a compact corner chip. */
+.ssx .ssx-mount > #copy-description-btn {
+  width: auto !important;
+  left: auto;
+  right: 0;
+  max-width: max-content;
+}
+@container (max-width: 460px) {
+  .ssx .ssx-mount > #copy-description-btn { padding: 4px 8px; font-size: 11px; }
+}
+
+/* Keep description text clear of the corner Copy chip at every width. */
+.ssx .ssx-mount > #description-preview { padding-right: 78px; }

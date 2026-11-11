@@ -255,7 +255,11 @@
         delete product.pricingIssue;
       } else {
         product.pricingIssue = { reason: outcome.reason };
-        if (outcome.reason === 'no_rule_synced') product.pricingIssue.sync = await _getSyncStatus();
+        if (outcome.reason === 'no_rule_synced') {
+          product.pricingIssue.sync = await _getSyncStatus();
+          // Readable from the page console — the background's own log is not.
+          console.warn('[SSPricingApply] rule sync status:', JSON.stringify(product.pricingIssue.sync));
+        }
       }
     }
     if (!outcome.priced && outcome.reason === 'no_rule_synced') {
