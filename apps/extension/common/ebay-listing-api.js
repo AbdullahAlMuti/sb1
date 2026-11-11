@@ -276,56 +276,82 @@ window.EbayListingApiHelper = (() => {
     }, 3, 1000);
   }
 
+  // ── resolveAttributes ────────────────────────────────────────────────────
+  // Pure: product specs + eBay attribute schema → item specifics.
+  //   attributes  values taken from the product's own data
+  //   unresolved  REQUIRED specifics the product gives no value for. They are
+  //               left empty so eBay's draft editor asks the seller — the old
+  //               code filled them with the first option in eBay's list, which
+  //               put false item specifics on live listings.
+  //   assumed     honest defaults: product identifiers we do not hold
+  //               ("Does not apply") and Brand "Unbranded" when the supplier
+  //               page states no brand at all.
+  const IDENTIFIER_ASPECTS = new Set(['upc', 'ean', 'isbn', 'mpn', 'gtin', 'manufacturerpartnumber']);
+
+  function _isRequiredAttr(attr) {
+    return attr.required === true ||
+      attr.isRequired === true ||
+      attr.usage === 'REQUIRED' ||
+      attr.usageConstraint === 'REQUIRED' ||
+      (attr.minValues && attr.minValues > 0) ||
+      (Array.isArray(attr.groups) && attr.groups.includes('REQUIRED'));
+  }
+
+  function resolveAttributes(prodSpecs, attributeList) {
+    const list = Array.isArray(attributeList) ? attributeList : [];
+    const specs = prodSpecs && typeof prodSpecs === 'object' ? prodSpecs : {};
+    const attributes = {};
+    const unresolved = [];
+    const assumed = [];
+    const aspectNames = list.map(a => a.attributeName);
+
+    for (const specKey in specs) {
+      const raw = specs[specKey];
+      if (raw === null || raw === undefined || String(raw).trim() === '') continue;
+      const matchedName = matchAspectName(specKey, aspectNames);
+      const attr = list.find(a => a.attributeName === matchedName);
+      if (attr && attr.multiSelectEnabled) {
+        attributes[matchedName] = String(raw).split(',').map(s => s.trim()).filter(Boolean);
+      } else {
+        attributes[matchedName] = [raw];
+      }
+    }
+
+    list.filter(_isRequiredAttr).forEach(attr => {
+      const name = attr.attributeName;
+      const hasValue =
+        (attr.value && attr.value.length > 0) ||
+        (attr.values && attr.values.length > 0) ||
+        (attr.currentValues && attr.currentValues.length > 0);
+      if (hasValue || attributes[name]) return;
+      const key = String(name || '').toLowerCase().replace(/[\s_-]/g, '');
+      if (IDENTIFIER_ASPECTS.has(key)) {
+        attributes[name] = ['Does not apply'];
+        assumed.push(name);
+      } else if (key === 'brand' && (attr.customValuesAllowed || !attr.options?.length)) {
+        attributes[name] = ['Unbranded'];
+        assumed.push(name);
+      } else {
+        unresolved.push(name);
+      }
+    });
+
+    return { attributes, unresolved, assumed };
+  }
+
   // ── updateListing ────────────────────────────────────────────────────────
   // Uploads all images to EPS, builds the draft payload, calls saveListing.
   async function updateListing(draftId, csrfToken, epsData, listingModel, product) {
     window._ssLastSkuConfirmation = null; // reset so a stale result can't leak into this call
     const attributeList = listingModel?.ATTRIBUTES?.attributeList || [];
 
-    // Map product specs onto eBay attribute schema
-    const attributes = {};
-    const aspectNames = attributeList.map(a => a.attributeName);
-    for (const specKey in (product.prod_specs || {})) {
-      const matchedName = matchAspectName(specKey, aspectNames);
-      const attr = attributeList.find(a => a.attributeName === matchedName);
-      if (attr) {
-        if (attr.multiSelectEnabled) {
-          attributes[matchedName] = String(product.prod_specs[specKey]).split(',').map(s => s.trim());
-        } else {
-          attributes[matchedName] = [product.prod_specs[specKey]];
-        }
-      } else {
-        attributes[matchedName] = [product.prod_specs[specKey]];
-      }
+    // Map product specs onto eBay's attribute schema. Required specifics we
+    // cannot source from the product are REPORTED (unresolved), never filled
+    // with an arbitrary option.
+    const { attributes, unresolved, assumed } = resolveAttributes(product.prod_specs, attributeList);
+    if (unresolved.length) {
+      console.warn('[SS Uploader] Required item specifics left for review:', unresolved.join(', '));
     }
-
-    // Auto-fill empty REQUIRED attributes
-    attributeList
-      .filter(attr => {
-        const isRequired = 
-          attr.required === true ||
-          attr.isRequired === true ||
-          attr.usage === 'REQUIRED' ||
-          attr.usageConstraint === 'REQUIRED' ||
-          (attr.minValues && attr.minValues > 0) ||
-          (attr.groups && (attr.groups.includes('REQUIRED') || attr.groups[0] === 'REQUIRED'));
-        const hasValue = 
-          (attr.value && attr.value.length > 0) || 
-          (attr.values && attr.values.length > 0) ||
-          (attr.currentValues && attr.currentValues.length > 0);
-        return isRequired && !hasValue;
-      })
-      .forEach(attr => {
-        const name = attr.attributeName;
-        if (attributes[name]) return;
-        if (name.toLowerCase() === 'brand' && (attr.customValuesAllowed || !attr.options?.length)) {
-          attributes[name] = ['Unbranded'];
-        } else if (attr.options && attr.options.length > 0) {
-          attributes[name] = [attr.options[0].value];
-        } else {
-          attributes[name] = ['Does not apply'];
-        }
-      });
 
     // Pre-upload all product images to eBay EPS
     let uploadedImages = [];
@@ -359,6 +385,7 @@ window.EbayListingApiHelper = (() => {
       
       await Promise.all(workers);
       uploadedImages = results.filter(Boolean);
+      product.__review = { ...(product.__review || {}), imagesAttempted: imageUrls.length, imagesUploaded: uploadedImages.length };
       console.log(`[SS EPS] ${uploadedImages.length}/${imageUrls.length} images uploaded`);
       if (uploadedImages.length === 0 && imageUrls.length > 0) {
         // Abort instead of saving an image-less draft. Proceeding here silently
@@ -373,6 +400,12 @@ window.EbayListingApiHelper = (() => {
       }
     }
 
+    product.__review = {
+      ...(product.__review || {}),
+      unresolvedSpecifics: unresolved,
+      assumedSpecifics: assumed
+    };
+
     const descEditorMode =
       listingModel?.meta?.descriptionEditorMode === 'RICH_TEXT_EDITOR'
         ? 'RTE_EDITOR'
@@ -383,7 +416,7 @@ window.EbayListingApiHelper = (() => {
       pictures:              uploadedImages,
       attributes,
       itemLocationCountry:   product.meta?.country || 'US',
-      itemLocationCityState: 'Multiple locations',
+      itemLocationCityState: 'United States', // owner decision: item location is always United States
       description:           product.prod_desc || '',
       meta:                  { descriptionEditorMode: descEditorMode },
       condition:             1000,
@@ -1148,13 +1181,13 @@ window.EbayListingApiHelper = (() => {
       <h3 style="color: #1e3a8a; font-size: 14px; margin: 0 0 8px 0; font-weight: 600; display: flex; items-center: center; gap: 6px;">
         <span>📦</span> Shipping & Handling
       </h3>
-      <p style="color: #64748b; font-size: 13px; margin: 0; line-height: 1.5;">Fast and free shipping on all orders. We package professionally and ship within 1 business day.</p>
+      <p style="color: #64748b; font-size: 13px; margin: 0; line-height: 1.5;">Shipping cost, handling time and the delivery estimate are shown in the Shipping section of this listing.</p>
     </div>
     <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #f1f5f9;">
       <h3 style="color: #1e3a8a; font-size: 14px; margin: 0 0 8px 0; font-weight: 600; display: flex; items-center: center; gap: 6px;">
-        <span>🔄</span> 30-Day Returns Policy
+        <span>🔄</span> Returns
       </h3>
-      <p style="color: #64748b; font-size: 13px; margin: 0; line-height: 1.5;">Shop with confidence. If you're not completely satisfied, return the item within 30 days for a full refund.</p>
+      <p style="color: #64748b; font-size: 13px; margin: 0; line-height: 1.5;">Our return policy for this item is shown in the Returns section of this listing.</p>
     </div>
   </footer>
 </div>`
@@ -1268,7 +1301,8 @@ window.EbayListingApiHelper = (() => {
     aiGenerateTitle,
     aiGenerateDescription,
     compileTemplate,
-    getSelectedListingTemplate
+    getSelectedListingTemplate,
+    resolveAttributes
   };
 })();
 
@@ -1284,7 +1318,10 @@ function _buildSummary(adapted) {
     .filter(n => !isNaN(n) && n > 0);
   const lo = prices.length ? Math.min(...prices) : null;
   const hi = prices.length ? Math.max(...prices) : null;
+  const review = adapted.__review || {};
   return {
+    unresolvedSpecifics: review.unresolvedSpecifics || [],
+    imagesFailed: Math.max(0, (review.imagesAttempted || 0) - (review.imagesUploaded || 0)),
     photos:     Array.isArray(adapted.prod_images) ? adapted.prod_images.length : 0,
     variations: adapted.prod_variations.length,
     priceLow:   lo,
@@ -1342,7 +1379,16 @@ function _syncListingToDashboard(adapted, product, draftId) {
           image_url:         [v.img, ...(adapted.prod_images || [])].find(u => u && u.startsWith('http')) || null,
         })),
         ...(mainImage ? {
-          amazon_data: { mainImage, imageUrl: mainImage, allImages: adapted.prod_images, source: 'extension', draftId }
+          amazon_data: {
+            mainImage, imageUrl: mainImage, allImages: adapted.prod_images, source: 'extension', draftId,
+            // What still needs a human before publishing — shown on the dashboard row.
+            listing_review: {
+              unresolved_specifics: (adapted.__review && adapted.__review.unresolvedSpecifics) || [],
+              images_attempted: (adapted.__review && adapted.__review.imagesAttempted) ?? null,
+              images_uploaded: (adapted.__review && adapted.__review.imagesUploaded) ?? null,
+              unverified_variants: Number(product.unverifiedVariantCount) || 0
+            }
+          }
         } : {}),
         // Server-side proof of whether eBay's draft response echoed back the SKU/Custom
         // Label we sent. Lets us confirm the field-name fix from real usage — queryable

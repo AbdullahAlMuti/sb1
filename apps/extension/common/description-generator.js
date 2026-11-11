@@ -642,13 +642,13 @@ const DescriptionGenerator = (() => {
       <h3 style="color: #1e3a8a; font-size: 14px; margin: 0 0 8px 0; font-weight: 600; display: flex; items-center: center; gap: 6px;">
         <span>📦</span> Shipping & Handling
       </h3>
-      <p style="color: #64748b; font-size: 13px; margin: 0; line-height: 1.5;">Fast and free shipping on all orders. We package professionally and ship within 1 business day.</p>
+      <p style="color: #64748b; font-size: 13px; margin: 0; line-height: 1.5;">Shipping cost, handling time and the delivery estimate are shown in the Shipping section of this listing.</p>
     </div>
     <div style="background-color: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #f1f5f9;">
       <h3 style="color: #1e3a8a; font-size: 14px; margin: 0 0 8px 0; font-weight: 600; display: flex; items-center: center; gap: 6px;">
-        <span>🔄</span> 30-Day Returns Policy
+        <span>🔄</span> Returns
       </h3>
-      <p style="color: #64748b; font-size: 13px; margin: 0; line-height: 1.5;">Shop with confidence. If you're not completely satisfied, return the item within 30 days for a full refund.</p>
+      <p style="color: #64748b; font-size: 13px; margin: 0; line-height: 1.5;">Our return policy for this item is shown in the Returns section of this listing.</p>
     </div>
   </footer>
 </div>`
