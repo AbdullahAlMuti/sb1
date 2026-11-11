@@ -270,25 +270,25 @@ describe('adaptProduct — Amazon quick-import (injector Upload button) payload'
 });
 
 describe('adaptProduct — missing/invalid price safety', () => {
-  test('missing price and finalPrice falls back to 0.99, never throws', () => {
+  test('missing price and finalPrice stays 0 (payload builder refuses it) — never a guessed 0.99', () => {
     const rawProd = { ...AMAZON_SINGLE, price: undefined, finalPrice: undefined, ebayFinalPrice: undefined };
     const out = loadAdapt()(rawProd);
-    assert.equal(out.prod_variations[0].price, 0.99);
+    assert.equal(out.prod_variations[0].price, 0);
   });
 
-  test('negative price falls back to 0.99', () => {
+  test('negative price stays 0, never a guessed 0.99', () => {
     const rawProd = { ...AMAZON_SINGLE, price: -5, finalPrice: -5, ebayFinalPrice: undefined };
     const out = loadAdapt()(rawProd);
-    assert.equal(out.prod_variations[0].price, 0.99);
+    assert.equal(out.prod_variations[0].price, 0);
   });
 
-  test('non-numeric price string ("N/A") falls back to 0.99', () => {
+  test('non-numeric price string ("N/A") stays 0, never a guessed 0.99', () => {
     const rawProd = { ...AMAZON_SINGLE, price: 'N/A', finalPrice: 'N/A', ebayFinalPrice: undefined };
     const out = loadAdapt()(rawProd);
-    assert.equal(out.prod_variations[0].price, 0.99);
+    assert.equal(out.prod_variations[0].price, 0);
   });
 
-  test('missing price on a variant falls back to parent price, never NaN', () => {
+  test('variant without a calculated price is never listed at supplier cost', () => {
     const rawProd = {
       ...AMAZON_VARIATION,
       variants: [
@@ -297,7 +297,7 @@ describe('adaptProduct — missing/invalid price safety', () => {
     };
     const out = loadAdapt()(rawProd);
     assert.ok(!Number.isNaN(out.prod_variations[0].price));
-    assert.equal(out.prod_variations[0].price, 12); // AMAZON_VARIATION.price fallback (basePrice)
+    assert.equal(out.prod_variations[0].price, 0); // no selling price → 0, upload refuses
   });
 });
 

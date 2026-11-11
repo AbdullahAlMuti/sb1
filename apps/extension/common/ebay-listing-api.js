@@ -6,6 +6,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Private helpers ─────────────────────────────────────────────────────────
+const EBAY_MIN_PRICE = 0.99;   // eBay fixed-price minimum
+const EBAY_MAX_IMAGES = 24;    // eBay allows 24 photos per listing
+
 // Robust float cleaning helper
 function _cleanFloat(val) {
   if (val === null || val === undefined) return 0;
@@ -396,8 +399,10 @@ window.EbayListingApiHelper = (() => {
 
     // Single-variation listing: set price + quantity directly
     if ((product.prod_variations || []).length <= 1) {
-      let price = product.prod_variations?.[0]?.price || 0.99;
-      if (price < 1) price = 0.99;
+      const price = _cleanFloat(product.prod_variations?.[0]?.price);
+      if (!(price >= EBAY_MIN_PRICE)) {
+        throw new Error('Listing price is missing or below eBay\'s minimum — calculate the price before uploading.');
+      }
       payload.price    = Number(price).toFixed(2);
       payload.quantity = product.prod_qty || 1;
     }
@@ -632,7 +637,9 @@ window.EbayListingApiHelper = (() => {
 
     for (let idx = 0; idx < processedVariations.length; idx++) {
       const variation = { ...processedVariations[idx] }; // shallow copy — don't mutate source
-      if (!variation.price || variation.price < 1) variation.price = 0.99;
+      if (!(_cleanFloat(variation.price) >= EBAY_MIN_PRICE)) {
+        throw new Error(`Variation ${idx + 1} has no valid price — it was not uploaded with a guessed one.`);
+      }
 
       const attrs = variation.attrs;
       // Ensure all variations have the exact same set of aspect keys (symmetric dimensions)
@@ -787,7 +794,7 @@ window.EbayListingApiHelper = (() => {
       seenCombosCheck.add(comboKey);
 
       const price = parseFloat(item.listingVariation.price);
-      if (isNaN(price) || price < 0.99) {
+      if (isNaN(price) || price < EBAY_MIN_PRICE) {
         throw new Error(`Assertion failed: Variation SKU ${sku} has an invalid price: ${item.listingVariation.price}`);
       }
     }
@@ -872,10 +879,10 @@ window.EbayListingApiHelper = (() => {
     }
     if (!descHtml.trim()) descHtml = '<p>Quality product.</p>';
 
-    // `|| 0.99` alone only guards falsy/zero — a negative price (e.g. bad scrape,
-    // manual override typo) is truthy in JS and would slip through unclamped.
+    // A missing/negative base price stays 0 — the payload builder refuses to
+    // upload without a real price; nothing is defaulted here.
     const rawBasePrice = _cleanFloat(product.price);
-    const basePrice = rawBasePrice > 0 ? rawBasePrice : 0.99;
+    const basePrice = rawBasePrice > 0 ? rawBasePrice : 0;
     const hasRealVariants = product.hasVariants &&
                             Array.isArray(product.variants) &&
                             product.variants.length > 1;
@@ -894,6 +901,7 @@ window.EbayListingApiHelper = (() => {
         const hasSpecs  = v.specs  && Object.keys(v.specs).length  > 0;
         if (!hasAttrs && !hasSpecs) return;
         if (v.inStock === false) return;
+        if (v.priceVerified === false) return; // scraper could not read its own price
         
         // Compute canonical combination key
         let combo = '';
@@ -922,7 +930,12 @@ window.EbayListingApiHelper = (() => {
         validVariants.push(v);
       });
       
-      const sourceVariants = validVariants.length > 0 ? validVariants : product.variants;
+      if (validVariants.length === 0) {
+        // Never fall back to the unfiltered list — that uploaded out-of-stock
+        // and unpriced variations.
+        throw new Error('No sellable variations: every variation is out of stock, deleted, or has no verified price.');
+      }
+      const sourceVariants = validVariants;
 
       // imgProp: the attr key that groups variation images (e.g. "Color").
       // Scraper sets v.imgProp directly; fall back to color-regex on attr keys.
@@ -959,8 +972,11 @@ window.EbayListingApiHelper = (() => {
           : (skuRoot + (Object.values(attrs).map(a => a?.productName || '').join('-') || '')));
         const ebayFinalPrice = _cleanFloat(v.ebayFinalPrice) || _cleanFloat(v.ebayPrice) || _cleanFloat(v.finalPrice);
         const rawVariantPrice = _cleanFloat(v.price);
-        const priceValue = ebayFinalPrice > 0 ? ebayFinalPrice : (rawVariantPrice > 0 ? rawVariantPrice : basePrice);
-        const supplierPrice = _cleanFloat(v.supplierPrice) || _cleanFloat(v.price) || basePrice;
+        // No calculated selling price → 0. Never list at supplier cost; the
+        // payload builder refuses a price below eBay's minimum.
+        const priceValue = ebayFinalPrice > 0 ? ebayFinalPrice : 0;
+        const supplierPrice = _cleanFloat(v.supplierPrice) || _cleanFloat(v.raw_supplier_price) || _cleanFloat(v.price) ||
+          (v.priceVerified === undefined ? basePrice : 0);
         return {
           price:             priceValue,
           raw_supplier_price: supplierPrice,
@@ -975,7 +991,7 @@ window.EbayListingApiHelper = (() => {
       });
     } else {
       const ebayFinalPrice = _cleanFloat(product.ebayFinalPrice) || _cleanFloat(product.finalPrice);
-      const finalPrice = ebayFinalPrice > 0 ? ebayFinalPrice : basePrice;
+      const finalPrice = ebayFinalPrice > 0 ? ebayFinalPrice : 0;
       const supplierPrice = _cleanFloat(product.supplierPrice) || _cleanFloat(product.raw_supplier_price) || _cleanFloat(product.price) || basePrice;
       // User-edited SKU (panel ebaySku) wins; otherwise generate from sourceId
       // (or the title-hash fallback root when the supplier ID is missing).
@@ -993,15 +1009,17 @@ window.EbayListingApiHelper = (() => {
 
     return {
       prod_title:      _enforceEbayTitle(product.title || sourceId || 'Product'),
-      prod_images:     Array.isArray(product.images) ? product.images.slice(0, 12) : [],
+      prod_images:     Array.isArray(product.images) ? product.images.slice(0, EBAY_MAX_IMAGES) : [],
       prod_specs:      product.specs || product.specifications || {},
       prod_desc:       descHtml,
       prod_id:         sourceId,
       prod_qty:        1, // always 1 for dropshipping — never use supplier stock count
       prod_variations,
       supplier:        product.supplier || product.marketplace || 'amazon',
+      shipping_cost:   Math.max(0, _cleanFloat(product.shippingCost)),
+      currency:        product.currency || 'USD',
       meta:            {
-        country:        'US',
+        country:        'US', // item location is always United States (owner decision)
         promoteListing: !!product.promoteListing,
         promotePercent: product.promotePercent || null
       }
@@ -1301,6 +1319,8 @@ function _syncListingToDashboard(adapted, product, draftId) {
         supplier_id:         product.sourceId || product.asin || product.parentAsin || null,
         supplier_url:        product.url || null,
         supplier_price:      _cleanFloat(product.price) || null,
+        supplier_shipping_cost: adapted.shipping_cost || 0,
+        supplier_currency:   (/^[A-Za-z]{3}$/.test(String(product.currency || '')) ? String(product.currency).toUpperCase() : 'USD'),
         // Legacy Amazon-named fields — kept until backend/DB migrates
         amazon_price:        _cleanFloat(product.price) || null,
         amazon_url:          product.url || null,
@@ -1320,7 +1340,7 @@ function _syncListingToDashboard(adapted, product, draftId) {
           final_price:       v.price || 0,
           raw_supplier_price: v.raw_supplier_price || 0,
           price_source:      v.price_source || null,
-          currency:          product.currency || 'USD',
+          currency:          (/^[A-Za-z]{3}$/.test(String(product.currency || '')) ? String(product.currency).toUpperCase() : 'USD'),
           stock_quantity:    1,
           variant_asin:      v.variant_asin || v.supplierVariantId || null,
           parent_asin:       product.parentAsin || product.asin || null,
@@ -1409,6 +1429,7 @@ function validateProductPricing(product) {
       const hasSpecs = v.specs && Object.keys(v.specs).length > 0;
       if (!hasAttrs && !hasSpecs) return;
       if (v.inStock === false) return;
+      if (v.priceVerified === false) return;
       activeVariants.push(v);
     });
     
@@ -1441,7 +1462,7 @@ window.SellerSuitUploader = {
     validateProductPricing(product);
 
     // Mock upload option for local e2e/QA automation testing
-    if (product.mockUpload || product.asin === 'B08KT2Z93D') {
+    if (product.mockUpload === true) {
       console.log('[SS Uploader] MOCK UPLOAD MODE ACTIVE.');
       const adapted = api.adaptProduct(product);
       const draftId = 'mock-draft-' + crypto.randomUUID();

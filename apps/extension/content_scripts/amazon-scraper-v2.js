@@ -276,6 +276,19 @@
     return null;
   }
 
+  // A price node that is NOT what the buyer pays: struck-through list/"was"
+  // price, "typical price" basis, or a per-unit price ($0.50/Count).
+  function _isNonPayablePrice(el) {
+    try {
+      const cls = ' ' + (el.className && typeof el.className === 'string' ? el.className : '') + ' ';
+      const isToPay = cls.includes(' priceToPay ') || cls.includes(' apexPriceToPay ');
+      if (el.getAttribute && el.getAttribute('data-a-strike') === 'true') return true;
+      if (cls.includes(' a-text-price ') && !isToPay) return true;
+      if (el.closest && el.closest('.basisPrice, .pricePerUnit, [data-a-strike="true"], #listPrice, .a-text-strike')) return true;
+    } catch (_) {}
+    return false;
+  }
+
   function _getBuyboxFromDom(targetAsin, root) {
     root = root || document;
     try {
@@ -295,37 +308,49 @@
           }
         } catch (_) {}
       }
+      // Priority order matters: querySelectorAll(list.join(',')) returns DOM
+      // order, which let a struck-through list price or a per-unit price win.
+      // Each selector is tried in turn; non-payable prices are skipped; the
+      // generic `.a-price` is only trusted inside a known buybox container.
+      const BUYBOX_ROOTS =
+        '#corePrice_feature_div, #corePriceDisplay_desktop_feature_div, #corePrice_desktop, ' +
+        '#apex_desktop, #apex_price, #buybox, #desktop_buybox, #tp_price_block_total_price_ww';
       const selectors = [
         '.priceToPay',
         '.apexPriceToPay',
-        '#apex_price .a-price',        // 2025+ apex layout (no .priceToPay)
+        '#price_inside_buybox',
+        '#priceblock_dealprice',
+        '#priceblock_saleprice',
+        '#priceblock_ourprice',
+        '#priceblock_businessprice',
+        '#newBuyBoxPrice',
+        '#sns-base-price',
+        '.reinventPricePriceToPayMargin .a-price',
+        '#tp_price_block_total_price_ww .a-price',
+        '#apex_price .a-price',
         '#apex_desktop .a-price',
         '#corePrice_feature_div .a-price',
         '#corePriceDisplay_desktop_feature_div .a-price',
         '#corePrice_desktop .a-price',
-        '#price_inside_buybox',
-        '#priceblock_ourprice',
-        '#priceblock_dealprice',
-        '#priceblock_saleprice',
-        '#priceblock_businessprice',
-        '#newBuyBoxPrice',
-        '#sns-base-price',
-        '#tp_price_block_total_price_ww .a-price',
-        '.reinventPricePriceToPayMargin .a-price',
-        '.a-price .a-offscreen'
+        '.a-price'
       ];
-      const priceEls = Array.from(root.querySelectorAll(selectors.join(', ')));
-      for (const priceEl of priceEls) {
-        const sym = (priceEl.querySelector?.('.a-price-symbol')?.textContent || '$').trim();
-        const rawText = priceEl.querySelector?.('.a-offscreen')?.textContent || priceEl.textContent || '';
-        const parsed = _cleanPriceText(rawText);
-        if (parsed && parsed.price > 0) {
-          return { priceAmount: parsed.price, currencySymbol: parsed.symbol || sym };
+      for (const selector of selectors) {
+        let priceEls = [];
+        try { priceEls = Array.from(root.querySelectorAll(selector)); } catch (_) { continue; }
+        for (const priceEl of priceEls) {
+          if (_isNonPayablePrice(priceEl)) continue;
+          if (selector === '.a-price' && !(priceEl.closest && priceEl.closest(BUYBOX_ROOTS))) continue;
+          const sym = (priceEl.querySelector?.('.a-price-symbol')?.textContent || '$').trim();
+          const rawText = priceEl.querySelector?.('.a-offscreen')?.textContent || priceEl.textContent || '';
+          const parsed = _cleanPriceText(rawText);
+          if (parsed && parsed.price > 0) {
+            return { priceAmount: parsed.price, currencySymbol: parsed.symbol || sym };
+          }
+          const whole = (priceEl.querySelector?.('.a-price-whole')?.textContent || '').replace(/[^\d]/g, '');
+          const frac  = (priceEl.querySelector?.('.a-price-fraction')?.textContent || '00').trim().replace(/[^\d]/g, '').slice(0, 2);
+          const price = parseFloat(`${whole || 0}.${frac || '00'}`);
+          if (price > 0) return { priceAmount: price, currencySymbol: sym };
         }
-        const whole = (priceEl.querySelector?.('.a-price-whole')?.textContent || '').replace(/[^\d]/g, '');
-        const frac  = (priceEl.querySelector?.('.a-price-fraction')?.textContent || '00').trim().replace(/[^\d]/g, '').slice(0, 2);
-        const price = parseFloat(`${whole || 0}.${frac || '00'}`);
-        if (price > 0) return { priceAmount: price, currencySymbol: sym };
       }
     } catch (_) {}
     return null;
@@ -341,8 +366,40 @@
     } catch (_) { return 1; }
   }
 
+  // A bare "$" is ambiguous: amazon.ca and amazon.com.au print CAD/AUD with it.
+  // The storefront host decides; an explicit symbol (C$, £, €) still wins.
+  function _currencyForHost(host) {
+    const h = String(host || '').toLowerCase();
+    if (/(^|\.)amazon\.ca$/.test(h)) return 'CAD';
+    if (/(^|\.)amazon\.com\.au$/.test(h)) return 'AUD';
+    if (/(^|\.)amazon\.co\.uk$/.test(h)) return 'GBP';
+    if (/(^|\.)amazon\.de$/.test(h)) return 'EUR';
+    return 'USD';
+  }
+
   function _resolveCurrency(sym) {
-    return { '$': 'USD', '£': 'GBP', '€': 'EUR', '¥': 'JPY', 'A$': 'AUD', 'C$': 'CAD', '₹': 'INR', 'R$': 'BRL' }[sym] || 'USD';
+    let host = '';
+    try { host = location.hostname || location.host || ''; } catch (_) {}
+    const hostCurrency = _currencyForHost(host);
+    if (!sym || sym === '$') return hostCurrency;
+    return { '£': 'GBP', '€': 'EUR', '¥': 'JPY', 'A$': 'AUD', 'C$': 'CAD', '₹': 'INR', 'R$': 'BRL' }[sym] || hostCurrency;
+  }
+
+  /**
+   * Supplier-side shipping charge from the delivery message.
+   * "FREE delivery ..." -> 0, "$6.99 delivery ..." -> 6.99, unknown -> null
+   * (null means "not stated" — callers must not treat it as free).
+   */
+  function _parseShippingCost(text) {
+    const t = String(text || '').replace(/\s+/g, ' ');
+    if (!t) return null;
+    const paid = t.match(/(?:A\$|C\$|\$|£|€)\s*(\d+(?:[.,]\d{1,2})?)\s*(?:delivery|shipping)/i);
+    if (paid) {
+      const n = parseFloat(paid[1].replace(',', '.'));
+      return n >= 0 ? n : null;
+    }
+    if (/\bfree\b[^.]{0,40}\b(delivery|shipping)\b/i.test(t)) return 0;
+    return null;
   }
 
   function _checkStock(root) {
@@ -501,11 +558,19 @@
     const title = _decodeText((document.querySelector('#productTitle')?.textContent || '').trim());
     const brandEl = document.querySelector('#bylineInfo');
     const brand = brandEl ? _normalizeBrandText(brandEl.textContent) : '';
-    const bulletPoints = Array.from(
-      document.querySelectorAll('#feature-bullets li span.a-list-item')
-    ).map(el => el.textContent.trim()).filter(t => t.length > 5);
+    const _texts = sel => Array.from(document.querySelectorAll(sel))
+      .map(el => (el.textContent || '').replace(/\s+/g, ' ').trim()).filter(t => t.length > 5);
+    let bulletPoints = _texts('#feature-bullets li span.a-list-item');
+    // Newer "product facts" layout has no #feature-bullets block.
+    if (bulletPoints.length === 0) bulletPoints = _texts('#productFactsDesktopExpander li span.a-list-item, #productFactsDesktop_feature_div li span.a-list-item');
     const descEl = document.querySelector('#productDescription');
-    const description = descEl ? descEl.textContent.trim().replace(/\s+/g, ' ') : '';
+    let description = descEl ? descEl.textContent.trim().replace(/\s+/g, ' ') : '';
+    // Many listings carry their description only as A+ content.
+    if (!description) {
+      const seen = new Set();
+      description = _texts('#aplus p, #aplus h3, #aplus h4, #aplus li')
+        .filter(t => !seen.has(t) && seen.add(t)).join(' ').slice(0, 4000);
+    }
     const category = Array.from(
       document.querySelectorAll('#wayfinding-breadcrumbs_container li a, .a-breadcrumb a')
     ).map(el => el.textContent.trim()).filter(Boolean).join(' > ');
@@ -519,6 +584,7 @@
       category,
       condition: 'New',
       shippingInfo: _getShippingInfoDom(),
+      shippingCost: _parseShippingCost(_getShippingInfoDom()),
       rating: ratingReviews.rating,
       reviewCount: ratingReviews.reviewCount,
     };
@@ -558,19 +624,26 @@
       let colorKey = '';
       labels.forEach(label => { if (attrs[label]) colorKey += attrs[label].productName + ' '; });
       colorKey = colorKey.trimEnd();
-      if (!colorKey) return { img: undefined, imgProp: undefined };
+      if (!colorKey) return { img: undefined, images: [], imgProp: undefined };
       const lower = {};
       Object.keys(colorImagesMap || {}).forEach(k => { lower[k.toLowerCase()] = colorImagesMap[k]; });
-      const lk = colorKey.toLowerCase();
-      const matchKey = lower[lk] ? lk : Object.keys(lower).find(k =>
-        k.startsWith(lk.split(' ')[0]) || lk.startsWith(k.split(' ')[0])
-      );
-      const first = matchKey && lower[matchKey] && lower[matchKey][0];
+      // EXACT (case/whitespace-insensitive) key match only. The previous
+      // first-word prefix match gave "Light Blue" the "Light Green" photos.
+      const norm = k => String(k).toLowerCase().replace(/\s+/g, ' ').trim();
+      const lk = norm(colorKey);
+      const matchKey = Object.keys(lower).find(k => norm(k) === lk);
+      const set = (matchKey && lower[matchKey]) || [];
+      const urls = [];
+      set.forEach(im => {
+        const u = _stripSizeModifier(im && (im.hiRes || im.large || im.thumb));
+        if (u && !urls.includes(u)) urls.push(u);
+      });
       return {
-        img: first ? _stripSizeModifier(first.hiRes || first.large || first.thumb || null) : undefined,
+        img: urls[0] || undefined,
+        images: urls,
         imgProp: labels[labels.length - 1],
       };
-    } catch (_) { return { img: undefined, imgProp: undefined }; }
+    } catch (_) { return { img: undefined, images: [], imgProp: undefined }; }
   }
 
   // ─── Direct DOM selection and scraping (click tier — optional) ──────────────
@@ -609,8 +682,10 @@
       document.body.appendChild(fr);
       const t0 = Date.now();
       let asinMatched = false;
+      let firstPoll = true;
       while (Date.now() - t0 < budgetMs) {
-        await _sleep(400);
+        if (!firstPoll) await _sleep(400);
+        firstPoll = false;
         let doc;
         try { doc = fr.contentDocument; } catch (_) { continue; }
         if (!doc || !doc.body) continue;
@@ -842,8 +917,9 @@
       // Single product — v1 threw "Cannot find buybox" here; v2 degrades.
       variants = [{
         attrs: {},
-        price: basePrice,
-        currency: bb ? (bb.currencySymbol || '$') : '$',
+        price: bb ? basePrice : null,
+        priceVerified: !!bb,
+        currency: baseCurrency,
         quantity: _getQuantityFromDom() || 0,
         imgProp: undefined,
         img: undefined,
@@ -852,13 +928,18 @@
       // 1) Enumerate every available variant from data FIRST.
       variants = Object.keys(tw.dimensionValuesDisplayData).map(asin => {
         const attrs = _attrsForAsin(tw, asin);
-        const { img, imgProp } = _imageForVariant(tw, attrs, colorImagesMap);
+        const { img, images: variantImages, imgProp } = _imageForVariant(tw, attrs, colorImagesMap);
         return {
           attrs,
-          price: basePrice || 999,     // refined by enrichment below
+          // NEVER a placeholder: a variant has a price only once one of the
+          // tiers below read THAT variant's own price. Unverified variants
+          // stay price:null and are excluded from pricing + upload.
+          price: null,
+          priceVerified: false,
           currency: baseCurrency,
           quantity: 0,                 // refined by enrichment below
           img,
+          images: variantImages || [],
           imgProp,
           supplierVariantId: asin,
           _enriched: false,
@@ -873,6 +954,7 @@
         const hit = domPriceMap[(v.supplierVariantId || '').toUpperCase()];
         if (hit) {
           v.price = hit.price;
+          v.priceVerified = true;
           v.currency = _resolveCurrency(hit.symbol);
           v._priceFromDom = true;
         }
@@ -886,6 +968,7 @@
           const d = _getBuyboxAndQtyFromDom(v.supplierVariantId);
           if (d.price != null) {
             v.price = d.price;
+            v.priceVerified = true;
             if (d.currency) v.currency = d.currency;
             v.quantity = d.quantity;
             v._enriched = true;
@@ -926,6 +1009,7 @@
               const enr = await _clickAndScrapeVariant(tw, v.supplierVariantId, varContainers, o, s);
               if (enr.price != null) {
                 v.price = enr.price;
+                v.priceVerified = true;
                 v._enriched = true;
               }
               if (enr.currency) v.currency = enr.currency;
@@ -946,54 +1030,68 @@
         }
       }
 
-      // 3) Iframe tier: render each still-unpriced variant's own /dp/ page in a
-      // hidden same-origin iframe and read its hydrated buybox. Sequential and
-      // capped so giant twisters can't stall the scan indefinitely.
-      const IFRAME_CAP = 24;
+      // 3) Iframe tier: render each still-unverified variant's own /dp/ page in
+      // a hidden same-origin iframe and read its hydrated buybox. EVERY pending
+      // variant is attempted (the old cap of 24 left the rest on a guessed
+      // price); a small worker pool plus a total time budget bound the scan.
+      const IFRAME_CONCURRENCY = 2;
+      const totalBudgetMs = options.variantBudgetMs || 75000;
+      const perVariantMs = options.variantTimeoutMs || 9000;
       try {
         const pending = variants.filter(v => !v._enriched && v.supplierVariantId);
-        let processed = 0;
-        for (const v of pending) {
-          if (processed++ >= IFRAME_CAP) {
-            console.warn(`[SS ScraperV2] iframe tier cap (${IFRAME_CAP}) reached — ${pending.length - IFRAME_CAP} variants keep fallback price`);
-            break;
+        const tierStart = Date.now();
+        let cursor = 0;
+        const worker = async () => {
+          while (cursor < pending.length) {
+            const v = pending[cursor++];
+            const left = totalBudgetMs - (Date.now() - tierStart);
+            if (left <= 0) return;
+            const enr = await _iframeScrapeVariant(v.supplierVariantId, Math.min(perVariantMs, left));
+            if (enr && enr.price != null) {
+              v.price = enr.price;
+              v.priceVerified = true;
+              if (enr.currency) v.currency = enr.currency;
+              v.quantity = enr.quantity;
+              v._enriched = true;
+              v._viaIframe = true;
+            } else if (enr && enr.unavailable) {
+              v.quantity = 0;
+              v._unavailable = true;
+            }
           }
-          const enr = await _iframeScrapeVariant(v.supplierVariantId);
-          if (enr && enr.price != null) {
-            v.price = enr.price;
-            if (enr.currency) v.currency = enr.currency;
-            v.quantity = enr.quantity;
-            v._enriched = true;
-            v._viaIframe = true;
-          } else if (enr && enr.unavailable) {
-            v.quantity = 0;
-            v._unavailable = true;
-          }
-        }
+        };
+        await Promise.all(Array.from({ length: Math.min(IFRAME_CONCURRENCY, pending.length) }, worker));
       } catch (e) {
-        console.warn('[SS ScraperV2] iframe tier failed (variants keep fallback price):', e?.message || e);
+        console.warn('[SS ScraperV2] iframe tier failed (remaining variants stay unverified):', e?.message || e);
       }
 
-      // Variants no tier reached keep their swatch price (or base price) and
-      // qty 1 so a transient failure doesn't zero the listing — except variants
-      // whose own page said "unavailable": those stay at qty 0.
-      let nClick = 0, nIframe = 0, nSwatch = 0, nBase = 0;
+      // Swatch-priced variants carry their own printed price -> sellable, qty 1.
+      // Variants no tier reached stay price:null / priceVerified:false — they
+      // are reported, never priced from the parent.
+      let nClick = 0, nIframe = 0, nSwatch = 0, nUnverified = 0;
       variants.forEach(v => {
         if (v._viaIframe) nIframe++;
         else if (v._enriched) nClick++;
         else if (v._priceFromDom) nSwatch++;
-        else nBase++;
-        if (!v._enriched && !v._unavailable) v.quantity = (basePrice > 0 || v._priceFromDom) ? 1 : v.quantity;
+        else nUnverified++;
+        if (!v._enriched && v._priceFromDom && !v._unavailable) v.quantity = 1;
+        if (!v.priceVerified) { v.price = null; v.quantity = 0; }
         delete v._enriched;
         delete v._priceFromDom;
         delete v._viaIframe;
         delete v._unavailable;
       });
-      console.log(`[SS ScraperV2] variant pricing: ${variants.length} total — ${nClick} click/live-verified, ${nIframe} iframe-verified, ${nSwatch} swatch-priced, ${nBase} base-price fallback`);
+      console.log(`[SS ScraperV2] variant pricing: ${variants.length} total — ${nClick} click/live-verified, ${nIframe} iframe-verified, ${nSwatch} swatch-priced, ${nUnverified} UNVERIFIED (excluded from listing)`);
+
+      if (!variants.some(v => v.priceVerified)) {
+        throw new Error('Could not read a price for any variation — reload the Amazon page and scan again');
+      }
 
       // minQty filter — error messages preserved verbatim from v1 (panel UX).
-      const qualified = variants.filter(v => (v.quantity || 0) >= minQty);
-      if (qualified.length === 0) {
+      // Unverified variants are kept (so the panel can report them) but never
+      // count toward "is anything sellable".
+      const qualified = variants.filter(v => !v.priceVerified || (v.quantity || 0) >= minQty);
+      if (!qualified.some(v => v.priceVerified)) {
         if (variants.length > 0) {
           if (!allowLowQty) throw new Error('This product is low on quantity');
         } else {
@@ -1004,16 +1102,20 @@
       }
     }
 
-    const selected = variants.find(v => v.quantity > 0) || variants[0];
+    const verified = variants.filter(v => v.priceVerified);
+    const selected = verified.find(v => v.quantity > 0) || verified[0] || variants[0];
+    if (base.brand && !specs.Brand) specs.Brand = base.brand;
 
     return {
       asin: base.currentAsin,
       parentAsin,
       title: base.title,
       brand: base.brand,
-      price: selected ? selected.price : 0,
-      currency: selected ? (selected.currency.length === 3 ? selected.currency : _resolveCurrency(selected.currency)) : 'USD',
+      price: selected && selected.price != null ? selected.price : 0,
+      currency: selected ? (selected.currency.length === 3 ? selected.currency : _resolveCurrency(selected.currency)) : baseCurrency,
       quantity: selected ? selected.quantity : 0,
+      shippingCost: base.shippingCost,
+      unverifiedVariantCount: variants.length - verified.length,
       marketplace: 'amazon',
       url: window.location.href,
       images,
@@ -1080,8 +1182,9 @@
     const currency = bb ? _resolveCurrency(bb.currencySymbol || '$') : 'USD';
     const quantity = _getQuantityFromDom() || 0;
 
+    if (base.brand && !specs.Brand) specs.Brand = base.brand;
     const selectedVariant = {
-      attrs, price, currency, quantity,
+      attrs, price: bb ? price : null, priceVerified: !!bb, currency, quantity,
       img: images[0] || null,
       imgProp: undefined,
       supplierVariantId: base.currentAsin,
@@ -1095,6 +1198,8 @@
       price,
       currency,
       quantity,
+      shippingCost: base.shippingCost,
+      unverifiedVariantCount: bb ? 0 : 1,
       marketplace: 'amazon',
       url: window.location.href,
       images,
@@ -1132,5 +1237,11 @@
     _clickAndScrapeVariant,
     _harvestDomVariantPrices,
     _iframeScrapeVariant,
+    _isNonPayablePrice,
+    _currencyForHost,
+    _resolveCurrency,
+    _parseShippingCost,
+    _imageForVariant,
+    _baseFields,
   };
 })();

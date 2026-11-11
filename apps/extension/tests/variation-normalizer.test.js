@@ -153,12 +153,14 @@ describe('EbayListingApiHelper.adaptProduct — duplicate combo validation', () 
         {
           attrs: { Color: { productName: 'Blue' } },
           price: 12,
+          finalPrice: 18,
         }
       ]
     };
     const adapted = win.EbayListingApiHelper.adaptProduct(product);
     assert.equal(adapted.prod_variations.length, 1);
-    assert.equal(adapted.prod_variations[0].price, 12);
+    assert.equal(adapted.prod_variations[0].price, 18);
+    assert.equal(adapted.prod_variations[0].raw_supplier_price, 12);
   });
 });
 

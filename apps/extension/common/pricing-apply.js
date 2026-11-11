@@ -78,14 +78,15 @@
    * Compute one selling price from a RAW supplier price. Returns a number or
    * null (never throws, never invents input).
    */
-  function priceFromRaw(rawPrice, ruleEntry) {
+  function priceFromRaw(rawPrice, ruleEntry, shippingCost) {
     const raw = _cleanFloat(rawPrice);
+    const shipping = Math.max(0, _cleanFloat(shippingCost));
     if (!(raw > 0)) return null;
     if (!ruleEntry || !ruleEntry.calculationRule) return null;
     if (ruleEntry.isEnabled === false) return null;
     if (typeof root.SSPricingCore === 'undefined') return null;
     try {
-      const result = root.SSPricingCore.calculatePrice(ruleEntry.calculationRule, raw, 0);
+      const result = root.SSPricingCore.calculatePrice(ruleEntry.calculationRule, raw, shipping);
       return parseFloat(result.finalPrice);
     } catch (_) {
       return null;
@@ -128,6 +129,16 @@
       return { priced: false, reason: 'pricing_core_unavailable', ruleVersion: null };
     }
 
+    // Currency conversion is not implemented — a CAD/GBP/EUR cost priced as if
+    // it were USD is a wrong price. Refuse (same rule as the server).
+    const currency = String(product.currency || 'USD').toUpperCase();
+    if (/^[A-Z]{3}$/.test(currency) && currency !== 'USD') {
+      return { priced: false, reason: 'unsupported_currency', ruleVersion: ruleEntry.ruleVersion ?? null };
+    }
+
+    // Supplier-side shipping is part of the cost of every unit sold.
+    const shipping = Math.max(0, _cleanFloat(product.shippingCost));
+
     // RAW price only — price/raw_supplier_price hold the scraped supplier cost.
     // finalPrice/ebayPrice are outputs and must never feed back in (rule 2).
     const baseRaw = _cleanFloat(product.raw_supplier_price) || _cleanFloat(product.price);
@@ -137,7 +148,7 @@
 
     const topIsManual = product.price_source === 'manual' && _cleanFloat(product.finalPrice) > 0;
     if (baseRaw > 0 && !topIsManual) {
-      const finalPrice = priceFromRaw(baseRaw, ruleEntry);
+      const finalPrice = priceFromRaw(baseRaw, ruleEntry, shipping);
       if (finalPrice !== null) {
         product.finalPrice = finalPrice;
         // Refresh ebayPrice when we own it ('calculated') or it's empty;
@@ -153,7 +164,20 @@
     if (Array.isArray(product.variants)) {
       product.variants.forEach((v) => {
         if (!v) return;
-        const raw = _cleanFloat(v.raw_supplier_price) || _cleanFloat(v.price) || baseRaw;
+        // The scraper could not read THIS variant's own price: leave it
+        // unpriced (rule 1). It is excluded from upload downstream.
+        if (v.priceVerified === false) {
+          if (v.price_source !== 'manual') {
+            delete v.finalPrice;
+            delete v.ebayPrice;
+            delete v.raw_supplier_price;
+          }
+          return;
+        }
+        // Legacy shapes without a priceVerified flag (older drafts, suppliers
+        // whose variants share one price) may still inherit the parent cost.
+        const raw = _cleanFloat(v.raw_supplier_price) || _cleanFloat(v.price) ||
+          (v.priceVerified === undefined ? baseRaw : 0);
         if (raw > 0) v.raw_supplier_price = raw;
         // Manual edits win: explicit manual flag, or an ebayPrice this engine
         // did not stamp (old drafts / editor edits without provenance).
@@ -161,7 +185,7 @@
           v.price_source === 'manual' ||
           (_cleanFloat(v.ebayPrice) > 0 && v.price_source !== 'calculated');
         if (raw > 0 && !manualVariant) {
-          const vFinal = priceFromRaw(raw, ruleEntry);
+          const vFinal = priceFromRaw(raw, ruleEntry, shipping);
           if (vFinal !== null) {
             v.finalPrice = vFinal;
             v.ebayPrice = vFinal;
@@ -196,6 +220,11 @@
       console.warn(
         `[SSPricingApply] No synced pricing rule for "${product && product.supplierKey}". ` +
         'Log in and configure Supplier Pricing in the dashboard — products are NOT priced with defaults.'
+      );
+    } else if (!outcome.priced && outcome.reason === 'unsupported_currency') {
+      console.warn(
+        `[SSPricingApply] Product currency "${product && product.currency}" is not USD — ` +
+        'left unpriced (currency conversion is not supported).'
       );
     } else if (!outcome.priced && outcome.reason === 'no_supplier_key') {
       console.warn(
