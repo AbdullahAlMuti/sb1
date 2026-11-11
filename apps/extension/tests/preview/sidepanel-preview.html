@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<!--
+  Dev-only STATIC preview of the side panel markup + stylesheet (no scripts run):
+  shows the main view with a sample product so styling can be checked at any
+  width.   http://127.0.0.1:8766/tests/preview/sidepanel-preview.html?state=ready|blocked|empty
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SellerSuit side panel preview</title>
+  <link rel="stylesheet" href="../../sidepanel/side-panel.css">
+</head>
+<body>
+<script>
+(async () => {
+  const state = new URLSearchParams(location.search).get('state') || 'blocked';
+  const html = await (await fetch('../../sidepanel/side-panel.html')).text();
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('script').forEach(s => s.remove());
+  document.body.append(...Array.from(doc.body.childNodes).map(n => document.importNode(n, true)));
+  const $ = (id) => document.getElementById(id);
+  const show = (el) => el && el.classList.remove('hidden');
+  const hide = (el) => el && el.classList.add('hidden');
+  hide($('view-loading')); hide($('view-auth')); show($('view-main'));
+  document.querySelectorAll('#view-main [id]').forEach(el => {
+    if (/supplier|indicator/i.test(el.id)) { show(el); if (!el.textContent.trim()) el.textContent = 'Amazon'; }
+  });
+  if (state !== 'empty') {
+    show($('scan-preview'));
+    document.querySelectorAll('#view-main .hidden').forEach(el => { if (!/stale|toast|auth|loading/i.test(el.id + el.className)) show(el); });
+    const empty = document.querySelector('[id*="empty"]'); if (empty) hide(empty);
+    $('preview-img').src = 'https://picsum.photos/seed/ss1/200/200';
+    $('preview-title').textContent = 'Instant Pot Duo 6 Qt 7-in-1 Electric Pressure Cooker, Stainless Steel';
+    $('preview-asin').textContent = 'ASIN: B0GXKV5FHP';
+    $('preview-vars').textContent = state === 'ready' ? '5 variations' : '1 variant';
+    $('preview-price').textContent = state === 'ready' ? '$159.99 eBay · $109.99 supplier' : '';
+    const items = state === 'ready'
+      ? [['ok', 'Ready to list — title, images and prices check out']]
+      : [['block', 'No eBay price — pricing rules could not be loaded (HTTP 500: Failed to fetch rules)'],
+         ['warn', 'Supplier shipping cost was not shown on the page — it is not included in the price']];
+    const list = $('preview-readiness');
+    items.forEach(([lvl, msg]) => {
+      const li = document.createElement('li');
+      li.className = 'readiness-item' + (lvl === 'warn' ? ' is-warn' : lvl === 'block' ? ' is-block' : '');
+      li.textContent = msg; list.appendChild(li);
+    });
+  }
+  const stale = document.querySelector('[id*="stale"]'); if (stale) hide(stale);
+  document.documentElement.setAttribute('data-preview-ready', '1');
+})();
+</script>
+</body>
+</html>
