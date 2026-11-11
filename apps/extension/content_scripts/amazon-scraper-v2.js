@@ -713,6 +713,44 @@
     return null;
   }
 
+  // Fetch tier: Amazon server-renders each variant page's own buybox
+  // (.twister-plus-buying-options-price-data + #corePrice…), so a plain
+  // same-origin fetch + DOMParser reads the variant's real price in ~2-3s with
+  // no script execution — verified live on a 91-variant listing. Much cheaper
+  // than rendering a hidden iframe per variant.
+  // Returns {price,currency,quantity} | {unavailable:true} | {captcha:true} | null.
+  async function _fetchScrapeVariant(asin, timeoutMs) {
+    if (typeof fetch !== 'function' || typeof DOMParser === 'undefined') return null;
+    let timer;
+    try {
+      const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      if (ctrl) timer = setTimeout(() => ctrl.abort(), timeoutMs || 9000);
+      const resp = await fetch(`${location.origin}/dp/${encodeURIComponent(asin)}?th=1&psc=1`, {
+        credentials: 'include',
+        signal: ctrl ? ctrl.signal : undefined,
+      });
+      if (!resp || !resp.ok) return resp && (resp.status === 503 || resp.status === 429) ? { captcha: true } : null;
+      const doc = new DOMParser().parseFromString(await resp.text(), 'text/html');
+      if (doc.querySelector('form[action*="validateCaptcha"]')) return { captcha: true };
+      const cur = doc.querySelector('input#ASIN, input#asin')?.value || '';
+      if (cur.toUpperCase() !== String(asin).toUpperCase()) return null; // redirected to a sibling — not this variant's data
+      const bb = _getBuyboxFromDom(asin, doc);
+      if (bb && bb.priceAmount > 0) {
+        const avail = _checkStock(doc);
+        return {
+          price: bb.priceAmount,
+          currency: _resolveCurrency(bb.currencySymbol || '$'),
+          quantity: avail ? (_getQuantityFromDom(doc) || 1) : 0,
+        };
+      }
+      return { price: null, currency: null, quantity: 0, unavailable: true };
+    } catch (_) {
+      return null;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   // Data-first per-variant prices with ZERO clicking: inline-twister swatches
   // carry data-asin and (on many pages) render that variant's own price right
   // on the swatch. Harvest ASIN → price for every such element.
@@ -913,6 +951,7 @@
     const baseCurrency = bb ? _resolveCurrency(bb.currencySymbol || '$') : 'USD';
 
     let variants;
+    let variantScanBlocked = false;
     if (!hasTwister) {
       // Single product — v1 threw "Cannot find buybox" here; v2 degrades.
       variants = [{
@@ -1035,11 +1074,46 @@
       // variant is attempted (the old cap of 24 left the rest on a guessed
       // price); a small worker pool plus a total time budget bound the scan.
       const IFRAME_CONCURRENCY = 2;
+      const FETCH_CONCURRENCY = 3;
       const totalBudgetMs = options.variantBudgetMs || 75000;
       const perVariantMs = options.variantTimeoutMs || 9000;
+      const scanStart = Date.now();
+
+      // 2.5) Fetch tier — first choice for everything the click tier left.
+      // A CAPTCHA/throttle response stops ALL further variant requests: more
+      // requests only deepen the block, and the rest stay unverified.
       try {
-        const pending = variants.filter(v => !v._enriched && v.supplierVariantId);
-        const tierStart = Date.now();
+        const pendingFetch = variants.filter(v => !v._enriched && !v._unavailable && v.supplierVariantId);
+        let fc = 0;
+        const fetchWorker = async () => {
+          while (fc < pendingFetch.length && !variantScanBlocked) {
+            const v = pendingFetch[fc++];
+            const left = totalBudgetMs - (Date.now() - scanStart);
+            if (left <= 0) return;
+            const enr = await _fetchScrapeVariant(v.supplierVariantId, Math.min(perVariantMs, left));
+            if (!enr) continue;
+            if (enr.captcha) { variantScanBlocked = true; return; }
+            if (enr.price != null) {
+              v.price = enr.price;
+              v.priceVerified = true;
+              if (enr.currency) v.currency = enr.currency;
+              v.quantity = enr.quantity;
+              v._enriched = true;
+              v._viaIframe = true; // counted with the page-verified group
+            } else if (enr.unavailable) {
+              v.quantity = 0;
+              v._unavailable = true;
+            }
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(FETCH_CONCURRENCY, pendingFetch.length) }, fetchWorker));
+      } catch (e) {
+        console.warn('[SS ScraperV2] fetch tier failed (iframe tier will retry):', e?.message || e);
+      }
+
+      try {
+        const pending = variantScanBlocked ? [] : variants.filter(v => !v._enriched && !v._unavailable && v.supplierVariantId);
+        const tierStart = scanStart;
         let cursor = 0;
         const worker = async () => {
           while (cursor < pending.length) {
@@ -1116,6 +1190,7 @@
       quantity: selected ? selected.quantity : 0,
       shippingCost: base.shippingCost,
       unverifiedVariantCount: variants.length - verified.length,
+      variantScanBlocked,
       marketplace: 'amazon',
       url: window.location.href,
       images,

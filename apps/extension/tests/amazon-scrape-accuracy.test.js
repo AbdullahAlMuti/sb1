@@ -246,3 +246,56 @@ describe('_baseFields — description fallbacks', () => {
     assert.equal(base.description, 'Built from recycled aluminium. Fits most 15 inch laptops.');
   });
 });
+
+// ── fetch tier: server-rendered variant pages carry their own buybox ─────────
+describe('fetch tier — variant prices without iframes', () => {
+  function withFetchStubs(pageFor, fn) {
+    const prevFetch = globalThis.fetch;
+    const prevParser = globalThis.DOMParser;
+    let calls = 0;
+    globalThis.fetch = async (url) => {
+      calls++;
+      const asin = String(url).match(/\/dp\/([A-Z0-9]+)/)[1];
+      return { ok: true, status: 200, text: async () => asin };
+    };
+    globalThis.DOMParser = class { parseFromString(asin) { return pageFor(asin); } };
+    return fn(() => calls).finally(() => {
+      globalThis.fetch = prevFetch;
+      globalThis.DOMParser = prevParser;
+    });
+  }
+  const page = (asin, price, { captcha = false } = {}) => ({
+    body: {},
+    querySelector(sel) {
+      if (sel.includes('validateCaptcha')) return captcha ? {} : null;
+      if (sel.includes('input#ASIN')) return { value: asin };
+      if (sel === '.twister-plus-buying-options-price-data') {
+        return price == null ? null
+          : { textContent: JSON.stringify({ desktop_buybox_group_1: [{ priceAmount: price, currencySymbol: '$' }] }) };
+      }
+      return null;
+    },
+    querySelectorAll: () => [],
+  });
+
+  test('prices every variant by fetch and never opens an iframe', async () => {
+    const { doc, frameCount } = scanDoc({ n: 30, pageBuybox: 10, iframePrice: () => null });
+    await withFetchStubs((asin) => page(asin, 40 + Number(asin.slice(-2))), async (calls) => {
+      const p = await load(doc).scrapeProductWithVariants({ allowLowQty: true });
+      assert.equal(calls(), 30);
+      assert.equal(frameCount(), 0);
+      assert.ok(p.variants.every(v => v.priceVerified));
+      assert.equal(p.variants[29].price, 69);
+    });
+  });
+
+  test('a CAPTCHA response stops the tier — remaining variants stay unverified', async () => {
+    const { doc } = scanDoc({ n: 8, pageBuybox: 10, iframePrice: () => null });
+    let served = 0;
+    await withFetchStubs((asin) => (++served > 2 ? page(asin, null, { captcha: true }) : page(asin, 33)), async () => {
+      const p = await load(doc).scrapeProductWithVariants({ allowLowQty: true, variantTimeoutMs: 300, variantBudgetMs: 700 });
+      assert.equal(p.variants.filter(v => v.priceVerified).length, 2);
+      assert.equal(p.variantScanBlocked, true);
+    });
+  });
+});
