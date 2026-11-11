@@ -534,7 +534,26 @@
       priceEl.textContent = fp ? `$${parseFloat(fp).toFixed(2)} eBay` + (rp ? ` · $${parseFloat(rp).toFixed(2)} supplier` : '') : '';
     }
 
+    renderReadiness(product);
     wrap.classList.remove('hidden');
+  }
+
+  /* ── Readiness checklist — what is (not) ready before upload ── */
+  function renderReadiness(product) {
+    const list = document.getElementById('preview-readiness');
+    if (!list || !window.SSListingReadiness) return null;
+    const result = window.SSListingReadiness.check(product);
+    list.textContent = '';
+    // Problems first; a fully clean product shows one compact confirmation.
+    const shown = result.items.filter(i => i.level !== 'ok');
+    const rows = shown.length ? shown : [{ level: 'ok', message: 'Ready to list — title, images and prices check out' }];
+    rows.forEach(i => {
+      const li = document.createElement('li');
+      li.className = 'readiness-item' + (i.level === 'warn' ? ' is-warn' : i.level === 'block' ? ' is-block' : '');
+      li.textContent = i.message;
+      list.appendChild(li);
+    });
+    return result;
   }
 
   /* ── Upload — triggers eBay lister ─────────── */
@@ -544,6 +563,17 @@
 
     // Stale guard: never upload a product the active page no longer shows
     if (!(await assertFreshForUpload())) return;
+
+    // Readiness gate: say exactly what is wrong instead of failing on eBay.
+    // Price blocks are left to the uploader, which validates the final merged
+    // product (manual price edits live in the draft, not in this snapshot).
+    const readiness = renderReadiness(product);
+    const hardBlocks = readiness ? readiness.items.filter(i => i.level === 'block' && i.key !== 'price') : [];
+    if (hardBlocks.length) {
+      const first = hardBlocks[0];
+      showToast('Not ready to list: ' + (first ? first.message : 'see the checklist'), 5000);
+      return;
+    }
 
     try {
       // Phase 6: read draft for source-flagged fields

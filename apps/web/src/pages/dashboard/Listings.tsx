@@ -974,7 +974,8 @@ export default function Listings() {
         'Amazon ASIN',
         'Amazon Price',
         'eBay Price',
-        'Profit',
+        // eBay price minus supplier price — eBay fees are NOT deducted here.
+        'Gross margin (before eBay fees)',
         'Status',
         'Created At',
         'Auto Order',
@@ -1011,7 +1012,7 @@ export default function Listings() {
         [],
         ['Total Sourcing Cost', `$${stats.totalSourcingCost.toFixed(2)}`],
         ['Total Inventory Value', `$${stats.totalInventoryValue.toFixed(2)}`],
-        ['Net Profit Forecast', `$${stats.netProfitForecast.toFixed(2)}`],
+        ['Gross margin forecast (before eBay fees)',`$${stats.netProfitForecast.toFixed(2)}`],
         [],
         ['Active Listings', listings.filter(l => l.status === 'active').length.toString()],
         ['Paused Listings', listings.filter(l => l.status === 'paused').length.toString()],
