@@ -73,3 +73,12 @@ describe('SSListingReadiness.check', () => {
     assert.match(item(check({ ...SINGLE, shippingCost: 6.99 }), 'shipping').message, /6\.99/);
   });
 });
+
+describe('condition', () => {
+  test('a refurbished or used supplier item is blocked — the uploader lists as New only', () => {
+    const r = check({ ...SINGLE, condition: 'Refurbished' });
+    assert.equal(item(r, 'condition').level, 'block');
+    assert.equal(r.ready, false);
+    assert.equal(item(check({ ...SINGLE, condition: 'New' }), 'condition'), undefined);
+  });
+});

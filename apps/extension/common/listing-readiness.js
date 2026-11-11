@@ -47,6 +47,12 @@
     else if (images.length < 3) add('images', 'warn', `Only ${images.length} image${images.length === 1 ? '' : 's'} found`);
     else add('images', 'ok', `${images.length} images`);
 
+    // condition — the uploader can only list as "New"
+    const condition = String(product.condition || 'New');
+    if (!/^new$/i.test(condition)) {
+      add('condition', 'block', `This supplier item is ${condition} — SellerSuit lists items as New only`);
+    }
+
     // currency
     const currency = String(product.currency || 'USD').toUpperCase();
     if (/^[A-Z]{3}$/.test(currency) && currency !== 'USD') {

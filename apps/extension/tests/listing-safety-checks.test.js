@@ -96,3 +96,13 @@ describe('safety checks — fail closed', () => {
     assert.equal(calls, 0);
   });
 });
+
+describe('condition guard', () => {
+  test('a non-new item is refused before any check, and cannot be overridden', async () => {
+    const win = loadWithBackground(() => ({ checked: true, flagged: false, matches: [], duplicate: false }));
+    await assert.rejects(
+      () => win.SellerSuitUploader._runSafetyChecks({ ...PRODUCT, condition: 'Refurbished', forceVeroOverride: true, forceDuplicateOverride: true }),
+      /Refurbished.*New/s
+    );
+  });
+});

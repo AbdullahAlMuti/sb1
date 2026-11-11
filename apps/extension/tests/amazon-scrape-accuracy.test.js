@@ -299,3 +299,65 @@ describe('fetch tier — variant prices without iframes', () => {
     });
   });
 });
+
+// Live finding (iPhone 11 Renewed, 4 dimensions): colorImages keys are
+// "<Size> <Color>" ("128GB (PRODUCT) RED") and visualDimensions is absent, so
+// a colour-only key matched nothing and NO variant got an image.
+describe('_imageForVariant — compound colorImages keys', () => {
+  const tw = {
+    dimensions: ['size_name', 'color_name', 'service_provider', 'product_grade'],
+    visualDimensions: null,
+    variationDisplayLabels: { size_name: 'Size', color_name: 'Color', service_provider: 'Service provider', product_grade: 'Product grade' },
+  };
+  const map = {
+    initial: [{ hiRes: 'https://m.media-amazon.com/images/I/init.jpg' }],
+    '128GB (PRODUCT) RED': [{ hiRes: 'https://m.media-amazon.com/images/I/red128.jpg' }],
+    '256GB Black': [{ hiRes: 'https://m.media-amazon.com/images/I/black256.jpg' }],
+  };
+  const attrs = (size, color) => ({
+    Size: { productName: size }, Color: { productName: color },
+    'Service provider': { productName: 'Unlocked' }, 'Product grade': { productName: 'Renewed' },
+  });
+
+  test('matches the size+colour key exactly and groups pictures by Color', () => {
+    const { _imageForVariant } = load(docWithPrices({}))._internals;
+    const r = _imageForVariant(tw, attrs('128GB', '(PRODUCT) RED'), map);
+    assert.equal(r.img, 'https://m.media-amazon.com/images/I/red128.jpg');
+    assert.equal(r.imgProp, 'Color');
+  });
+
+  test('a combination with no key gets no image (never a neighbour\'s)', () => {
+    const { _imageForVariant } = load(docWithPrices({}))._internals;
+    const r = _imageForVariant(tw, attrs('64GB', 'Black'), map);
+    assert.equal(r.img, undefined);
+  });
+});
+
+describe('parent price follows the page the user is on', () => {
+  test('product.price is the CURRENT asin variant, not the first verified one', async () => {
+    const { doc } = scanDoc({ n: 4, pageBuybox: 10, iframePrice: (asin) => 50 + Number(asin.slice(-1)) });
+    // make variant #2 the page's current ASIN
+    const origQS = doc.querySelector.bind(doc);
+    doc.querySelector = (sel) => (sel.includes('input#ASIN') ? { value: 'B0VAR00002' } : origQS(sel));
+    const p = await load(doc).scrapeProductWithVariants({ allowLowQty: true });
+    assert.equal(p.asin, 'B0VAR00002');
+    assert.equal(p.price, 10); // the live buybox of the page being viewed
+  });
+});
+
+// Live finding: an "Amazon Renewed" (refurbished) item was scraped with
+// condition 'New' and would be listed on eBay as New.
+describe('_detectCondition', () => {
+  test('renewed / refurbished / used signals are detected', () => {
+    const { _detectCondition } = load(docWithPrices({}))._internals;
+    assert.equal(_detectCondition('Apple iPhone 11, 64GB, PRODUCT RED - Unlocked (Renewed)', 'Visit the Amazon Renewed Store', ''), 'Refurbished');
+    assert.equal(_detectCondition('Dell Latitude Laptop (Refurbished)', '', ''), 'Refurbished');
+    assert.equal(_detectCondition('Kindle Paperwhite', '', 'Used - Like New'), 'Used');
+    assert.equal(_detectCondition('Kindle Paperwhite', '', 'Refurbished - Excellent'), 'Refurbished');
+  });
+  test('ordinary new items stay New (no false positives on the word "new")', () => {
+    const { _detectCondition } = load(docWithPrices({}))._internals;
+    assert.equal(_detectCondition('Stainless Steel Water Bottle 24oz', 'Visit the Acme Store', 'In Stock'), 'New');
+    assert.equal(_detectCondition('Renewal Serum for Used Look Jeans Dye', 'Brand: Acme', ''), 'New');
+  });
+});

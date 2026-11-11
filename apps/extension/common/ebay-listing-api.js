@@ -1500,6 +1500,18 @@ function validateProductPricing(product) {
 async function _runSafetyChecks(product) {
   const api = window.EbayListingApiHelper;
 
+  // The draft is created with eBay condition "New" (1000). A renewed /
+  // refurbished / used supplier item listed as New is a misrepresentation —
+  // refuse, with no override.
+  const condition = String(product.condition || 'New');
+  if (!/^new$/i.test(condition)) {
+    const err = new Error(
+      `This supplier item is ${condition}, but SellerSuit can only list items as New. It was not uploaded.`
+    );
+    err.isConditionBlock = true;
+    throw err;
+  }
+
   if (!product.forceVeroOverride) {
     console.log('[SS Uploader] Running VeRO brand check...');
     const vero = await api.checkVero(product.title || '');

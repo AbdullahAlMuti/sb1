@@ -545,6 +545,22 @@
     return images;
   }
 
+  // The uploader lists as eBay condition "New". A renewed / refurbished /
+  // used supplier item must be recognised so it is never listed as New.
+  // Signals: the "(Renewed)" / "(Refurbished)" title suffix Amazon adds, the
+  // "Amazon Renewed" store byline, and the selected buying-option label
+  // ("Refurbished - Excellent", "Used - Like New").
+  function _detectCondition(title, byline, buyingOptionText) {
+    const t = String(title || '');
+    const b = String(byline || '');
+    const o = String(buyingOptionText || '');
+    if (/^\s*used\b/i.test(o) || /\(\s*used\s*\)\s*$/i.test(t)) return 'Used';
+    if (/^\s*(refurbished|renewed)\b/i.test(o) ||
+        /\(\s*(renewed|refurbished|certified refurbished)(\s+premium)?\s*\)/i.test(t) ||
+        /\bamazon renewed\b/i.test(b)) return 'Refurbished';
+    return 'New';
+  }
+
   function _captchaGuard() {
     if (
       document.querySelector('form[action*="validateCaptcha"]') ||
@@ -582,7 +598,11 @@
       bulletPoints,
       description,
       category,
-      condition: 'New',
+      condition: _detectCondition(
+        title,
+        brandEl ? brandEl.textContent : '',
+        (document.querySelector('#newAccordionRow_0 .a-accordion-row-a11y, #newAccordionRow_0 h5, #usedAccordionRow h5, #buybox .a-accordion-active h5')?.textContent || '').trim()
+      ),
       shippingInfo: _getShippingInfoDom(),
       shippingCost: _parseShippingCost(_getShippingInfoDom()),
       rating: ratingReviews.rating,
@@ -609,41 +629,60 @@
   }
 
   function _imageForVariant(tw, attrs, colorImagesMap) {
+    const none = { img: undefined, images: [], imgProp: undefined };
     try {
       const dims = Array.isArray(tw.dimensions) ? tw.dimensions : [];
-      const visual = Array.isArray(tw.visualDimensions) && tw.visualDimensions.length
-        ? tw.visualDimensions
-        : (dims.length === 1 ? dims : dims.filter(d => /colou?r/i.test(d)));
-      const labels = visual
-        .map(v => {
-          const i = dims.indexOf(v);
-          return (tw.variationDisplayLabels && tw.variationDisplayLabels[v]) ||
-                 (Array.isArray(tw.dimensionsDisplay) && i >= 0 && tw.dimensionsDisplay[i]) || v;
-        })
-        .filter(Boolean);
-      let colorKey = '';
-      labels.forEach(label => { if (attrs[label]) colorKey += attrs[label].productName + ' '; });
-      colorKey = colorKey.trimEnd();
-      if (!colorKey) return { img: undefined, images: [], imgProp: undefined };
-      const lower = {};
-      Object.keys(colorImagesMap || {}).forEach(k => { lower[k.toLowerCase()] = colorImagesMap[k]; });
-      // EXACT (case/whitespace-insensitive) key match only. The previous
-      // first-word prefix match gave "Light Blue" the "Light Green" photos.
-      const norm = k => String(k).toLowerCase().replace(/\s+/g, ' ').trim();
-      const lk = norm(colorKey);
-      const matchKey = Object.keys(lower).find(k => norm(k) === lk);
-      const set = (matchKey && lower[matchKey]) || [];
-      const urls = [];
-      set.forEach(im => {
-        const u = _stripSizeModifier(im && (im.hiRes || im.large || im.thumb));
-        if (u && !urls.includes(u)) urls.push(u);
-      });
-      return {
-        img: urls[0] || undefined,
-        images: urls,
-        imgProp: labels[labels.length - 1],
+      const labelOf = (d) => {
+        const i = dims.indexOf(d);
+        return (tw.variationDisplayLabels && tw.variationDisplayLabels[d]) ||
+               (Array.isArray(tw.dimensionsDisplay) && i >= 0 && tw.dimensionsDisplay[i]) || d;
       };
-    } catch (_) { return { img: undefined, images: [], imgProp: undefined }; }
+      const norm = k => String(k).toLowerCase().replace(/\s+/g, ' ').trim();
+      const byKey = {};
+      Object.keys(colorImagesMap || {}).forEach(k => { if (k !== 'initial') byKey[norm(k)] = colorImagesMap[k]; });
+      if (Object.keys(byKey).length === 0) return none;
+
+      // This variant's values in twister dimension order.
+      const parts = dims
+        .map(d => ({ dim: d, label: labelOf(d), value: attrs[labelOf(d)] && attrs[labelOf(d)].productName }))
+        .filter(x => x.value != null && String(x.value).trim() !== '');
+      if (parts.length === 0) return none;
+
+      // colorImages keys are the values of the "visual" dimensions joined by a
+      // space — sometimes just the colour, sometimes "<Size> <Color>" (seen
+      // live on a 4-dimension listing where visualDimensions was absent).
+      // Try every in-order subset of this variant's values and accept only an
+      // EXACT key match — never a prefix/first-word guess, which gave
+      // "Light Blue" the "Light Green" photos. Prefer the declared visual
+      // dimensions, then the most specific (longest) subset.
+      const candidates = [];
+      const declared = Array.isArray(tw.visualDimensions) ? tw.visualDimensions : [];
+      if (declared.length) candidates.push(parts.filter(x => declared.includes(x.dim)));
+      const n = parts.length;
+      const subsets = [];
+      for (let mask = 1; mask < (1 << n); mask++) {
+        subsets.push(parts.filter((_, i) => mask & (1 << i)));
+      }
+      subsets.sort((x, y) => y.length - x.length);
+      candidates.push(...subsets);
+
+      for (const subset of candidates) {
+        if (!subset.length) continue;
+        const set = byKey[norm(subset.map(x => x.value).join(' '))];
+        if (!set || !set.length) continue;
+        const urls = [];
+        set.forEach(im => {
+          const u = _stripSizeModifier(im && (im.hiRes || im.large || im.thumb));
+          if (u && !urls.includes(u)) urls.push(u);
+        });
+        if (!urls.length) continue;
+        // eBay groups variation pictures by ONE aspect: the colour-like
+        // dimension of the match, else the last matched dimension.
+        const colorPart = subset.find(x => /colou?r/i.test(x.dim) || /colou?r/i.test(x.label));
+        return { img: urls[0], images: urls, imgProp: (colorPart || subset[subset.length - 1]).label };
+      }
+      return none;
+    } catch (_) { return none; }
   }
 
   // ─── Direct DOM selection and scraping (click tier — optional) ──────────────
@@ -1075,7 +1114,7 @@
       // price); a small worker pool plus a total time budget bound the scan.
       const IFRAME_CONCURRENCY = 2;
       const FETCH_CONCURRENCY = 3;
-      const totalBudgetMs = options.variantBudgetMs || 75000;
+      const totalBudgetMs = options.variantBudgetMs || 90000; // ~90 variants at 3 parallel fetches (measured live)
       const perVariantMs = options.variantTimeoutMs || 9000;
       const scanStart = Date.now();
 
@@ -1177,7 +1216,12 @@
     }
 
     const verified = variants.filter(v => v.priceVerified);
-    const selected = verified.find(v => v.quantity > 0) || verified[0] || variants[0];
+    // The parent price is the variant the user is LOOKING AT (its buybox is
+    // what they saw); only fall back to another verified variant when the
+    // current one has no readable price.
+    const curId = String(base.currentAsin || '').toUpperCase();
+    const current = verified.find(v => String(v.supplierVariantId || '').toUpperCase() === curId);
+    const selected = current || verified.find(v => v.quantity > 0) || verified[0] || variants[0];
     if (base.brand && !specs.Brand) specs.Brand = base.brand;
 
     return {
@@ -1318,5 +1362,6 @@
     _parseShippingCost,
     _imageForVariant,
     _baseFields,
+    _detectCondition,
   };
 })();

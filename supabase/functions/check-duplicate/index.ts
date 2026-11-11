@@ -3,8 +3,9 @@
 //
 // POST { asin, supplier? } → { duplicate: boolean, listing?: { id, title, status, ebay_item_id, created_at } }
 //
-// Only rows that reached eBay (draft created or published) count — a row that
-// was merely scanned is not a duplicate. Always scoped to the caller's user id.
+// Any dashboard row for this product counts (draft or active) — the response
+// carries its status so the client can tell the seller which it is.
+// Always scoped to the caller's user id.
 
 import { resolveExtensionCors } from "../_shared/cors.ts";
 import { createServiceClient, resolveExtensionOrLegacyAuth } from "../_shared/extension-session.ts";
