@@ -7,7 +7,15 @@ type RateLimitOptions = {
 
 type SupabaseLike = {
   from: (table: string) => any;
+  rpc?: (fn: string, args: Record<string, unknown>) => any;
 };
+
+/** PostgREST/Postgres codes meaning "the function is not deployed yet". */
+function isMissingFunction(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  return error.code === "PGRST202" || error.code === "42883" ||
+    /could not find the function|does not exist/i.test(error.message || "");
+}
 
 type RateLimitResult = {
   allowed: boolean;
@@ -49,6 +57,33 @@ export async function checkRateLimit(
   const expiresAt = new Date(windowStartMs + windowMs * 2).toISOString();
   const key = options.key?.trim() || "unknown";
   const subjectHash = await sha256(`${options.bucket}:${key}`);
+
+  // Atomic path: one INSERT … ON CONFLICT DO UPDATE … RETURNING. The legacy
+  // SELECT-then-UPDATE below let N concurrent requests all read the same count
+  // and all pass. Used only as a fallback until the migration
+  // 20261112090000_atomic_rate_limit.sql is applied.
+  if (typeof supabase.rpc === "function") {
+    const { data: count, error: rpcError } = await supabase.rpc("increment_rate_limit", {
+      p_bucket: options.bucket,
+      p_subject_hash: subjectHash,
+      p_window_start: windowStart,
+      p_expires_at: expiresAt,
+    });
+    if (!rpcError && typeof count === "number") {
+      const allowed = count <= options.limit;
+      return {
+        allowed,
+        remaining: Math.max(0, options.limit - count),
+        resetAt,
+        status: allowed ? 200 : 429,
+        ...(allowed ? {} : { error: "Rate limit exceeded" }),
+      };
+    }
+    if (rpcError && !isMissingFunction(rpcError)) {
+      console.error("[rate-limit] rpc failed", rpcError);
+      return { allowed: false, remaining: 0, resetAt, status: 503, error: "Rate limit check unavailable" };
+    }
+  }
 
   const { data: existing, error: selectError } = await supabase
     .from("function_rate_limits")

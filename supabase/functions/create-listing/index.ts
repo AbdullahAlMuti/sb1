@@ -8,6 +8,29 @@ import {
   resolvePricingRule,
 } from '../_shared/pricing-service.ts';
 import { VALID_SUPPLIER_KEYS } from '../_shared/pricing-validation.ts';
+import { checkRateLimit, rateLimitResponse } from '../_shared/rate-limit.ts';
+
+/** Map an auth/account error message to the HTTP status the extension acts on:
+ *  401 → refresh the token and retry; 402 → billing; 403 → account blocked. */
+export function statusForAuthError(message: string): number {
+  if (/subscription required|paid subscription/i.test(message)) return 402;
+  if (/not active|not approved|suspended|banned/i.test(message)) return 403;
+  if (/authorization|token|session|missing|expired|invalid/i.test(message)) return 401;
+  return 500;
+}
+
+/** Stock sent by the client: 0 is a real value (out of stock) and must survive. */
+export function normalizeStock(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 1;
+}
+
+/** Lowest/highest price over the variations that actually HAVE a price. */
+export function priceRange(prices: number[]): { low: number | null; high: number | null } {
+  const priced = prices.filter((p) => Number.isFinite(p) && p > 0);
+  if (!priced.length) return { low: null, high: null };
+  return { low: Math.min(...priced), high: Math.max(...priced) };
+}
 
 // ── cors / helpers ────────────────────────────────────────────────────────────
 
@@ -28,25 +51,6 @@ function getClientIp(req: Request): string {
 function isExpired(v: string | null | undefined): boolean { if (!v) return true; return new Date(v).getTime() <= Date.now(); }
 function base64Url(bytes: Uint8Array): string { let b = ''; for (const x of bytes) b += String.fromCharCode(x); return btoa(b).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,''); }
 async function sha256h(value: string): Promise<string> { const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)); return base64Url(new Uint8Array(d)); }
-
-// ── rate limit ────────────────────────────────────────────────────────────────
-async function checkRateLimit(supabase: SupabaseClient, bucket: string, key: string | null | undefined, limit: number, windowSeconds: number) {
-  const wMs = windowSeconds * 1000;
-  const wStartMs = Math.floor(Date.now() / wMs) * wMs;
-  const windowStart = new Date(wStartMs).toISOString();
-  const resetAt = new Date(wStartMs + wMs).toISOString();
-  const expiresAt = new Date(wStartMs + wMs * 2).toISOString();
-  const hash = await sha256h(`${bucket}:${key?.trim() || 'unknown'}`);
-  const { data: ex } = await supabase.from('function_rate_limits').select('id,request_count').eq('bucket', bucket).eq('subject_hash', hash).eq('window_start', windowStart).maybeSingle();
-  if (ex) {
-    const count = Number(ex.request_count ?? 0);
-    if (count >= limit) return { allowed: false, resetAt };
-    await supabase.from('function_rate_limits').update({ request_count: count + 1, expires_at: expiresAt }).eq('id', ex.id);
-    return { allowed: true, resetAt };
-  }
-  await supabase.from('function_rate_limits').insert({ bucket, subject_hash: hash, window_start: windowStart, request_count: 1, expires_at: expiresAt });
-  return { allowed: true, resetAt };
-}
 
 // ── auth ──────────────────────────────────────────────────────────────────────
 async function resolveAuth(supabase: SupabaseClient, req: Request) {
@@ -398,16 +402,27 @@ Deno.serve(async (req) => {
   try {
     const svc = createServiceClient();
 
-    const ipOk = await checkRateLimit(svc, 'create-listing:ip', getClientIp(req), 60, 60);
-    if (!ipOk.allowed) return json({ success: false, error: 'Rate limit exceeded' }, 429);
+    // Per-IP limit only when the platform gave us an IP — otherwise every
+    // caller would share one "unknown" bucket and throttle each other.
+    const clientIp = getClientIp(req);
+    if (clientIp !== 'unknown') {
+      const ipOk = await checkRateLimit(svc, { bucket: 'create-listing:ip', key: clientIp, limit: 60, windowSeconds: 60 });
+      if (!ipOk.allowed) return rateLimitResponse(ipOk, corsHeaders);
+    }
 
-    const auth = await resolveAuth(svc, req);
+    let auth;
+    try {
+      auth = await resolveAuth(svc, req);
+    } catch (authErr) {
+      const msg = authErr instanceof Error ? authErr.message : 'Unauthorized';
+      return json({ success: false, error: msg }, statusForAuthError(msg));
+    }
     const userId = auth.userId;
 
     console.log(`[create-listing] User authenticated: ${userId} (${auth.authMode})`);
 
-    const userOk = await checkRateLimit(svc, 'create-listing:user', userId, 120, 60);
-    if (!userOk.allowed) return json({ success: false, error: 'Rate limit exceeded' }, 429);
+    const userOk = await checkRateLimit(svc, { bucket: 'create-listing:user', key: userId, limit: 120, windowSeconds: 60 });
+    if (!userOk.allowed) return rateLimitResponse(userOk, corsHeaders);
 
     const hasAccess = await requireFeatureEntitlement(svc, userId, auth.workspaceId, 'ebay_listing_create');
     if (!hasAccess) return json({ success: false, error: 'Feature not entitled or subscription inactive' }, 403);
@@ -471,7 +486,7 @@ Deno.serve(async (req) => {
         final_price:        cleanPrice(v.final_price) || 0,
         raw_supplier_price: cleanPrice(v.raw_supplier_price) || 0,
         currency:           v.currency || 'USD',
-        stock_quantity:     Number(v.stock_quantity) || 1,
+        stock_quantity:     normalizeStock(v.stock_quantity),
         variant_asin:       v.variant_asin || null,
         parent_asin:        v.parent_asin || normAsin,
         attributes:         v.attributes || {},
@@ -567,7 +582,9 @@ Deno.serve(async (req) => {
             const vComp = computeFromRule(rule, {
               supplierKey,
               supplierPrice: v.raw_supplier_price,
-              supplierShippingCost: 0,
+              // Same cost basis as the parent and as the extension: supplier
+              // shipping is paid per order whichever variation sells.
+              supplierShippingCost: supplierShipping ?? 0,
               sourceCurrency: v.currency || supplierCurrency,
             });
             const vServer = vComp.finalPriceCents / 100;
@@ -611,8 +628,10 @@ Deno.serve(async (req) => {
     }
 
     const varCount  = normVars.length;
-    const priceLow  = varCount > 1 ? Math.min(...normVars.map(v => v.final_price)) : (ebayPrice ?? null);
-    const priceHigh = varCount > 1 ? Math.max(...normVars.map(v => v.final_price)) : (ebayPrice ?? null);
+    // Unpriced variations (final_price 0) must not drag the range down to 0.
+    const range     = priceRange(normVars.map(v => v.final_price));
+    const priceLow  = varCount > 1 ? (range.low ?? ebayPrice ?? null) : (ebayPrice ?? null);
+    const priceHigh = varCount > 1 ? (range.high ?? ebayPrice ?? null) : (ebayPrice ?? null);
 
     // Phase 7: source flags (nullable text fields)
     const titleSource       = typeof (body as any).title_source       === 'string' ? (body as any).title_source.substring(0, 50)       : null;
@@ -682,7 +701,8 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('[create-listing] Error:', error);
     const msg = error instanceof Error ? error.message : 'Unknown error';
-    const status = /(authorization|auth token|session|missing)/i.test(msg) ? 401 : 500;
+    // Auth failures are answered above; anything reaching here is unexpected.
+    const status = /(authorization|auth token|missing authorization)/i.test(msg) ? 401 : 500;
     return new Response(JSON.stringify({ success: false, error: msg }), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
