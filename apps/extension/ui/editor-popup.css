@@ -2377,3 +2377,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--ds-brand); }
 /* The header title is text only (an emoji was injected via ::before). */
 .editor-header h3 { white-space: nowrap; }
 .editor-header h3::before, .editor-header h3::after { content: none !important; display: none !important; }
+
+/* Narrow frames: the rail opens as an overlay with a close button in its top
+   right corner — keep the rail's own header actions clear of it. */
+@media (max-width: 560px) {
+  .side-head { padding-right: 44px; }
+}
