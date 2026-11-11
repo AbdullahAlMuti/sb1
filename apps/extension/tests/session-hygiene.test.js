@@ -61,8 +61,7 @@ describe('ebay_success draftId resolution', () => {
     assert.match(src, /candidates\.size === 1/, 'must require a single unambiguous candidate');
     assert.match(src, /entry\.stagedAt \|\| 0/, 'must only consider recently staged drafts');
     assert.ok(!/at > latest\.at/.test(src), 'newest-staging guess must be gone');
-    assert.ok(!/latestDraftId = entry\.draftId;\s*?
-\s*break;/.test(src),
+    assert.ok(!src.includes('latestDraftId = entry.draftId'),
       'first-match break must be gone');
   });
 });
