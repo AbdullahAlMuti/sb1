@@ -8,12 +8,12 @@
 -- calculation. Raw supplier prices are NEVER overwritten by calculated values.
 --
 -- Safety: strictly additive (ADD COLUMN IF NOT EXISTS, new indexes, CREATE OR
--- REPLACE of one RPC). No column drops, no type changes, no destructive
+-- REPLACE of one RPC, credit/auth logic kept verbatim). No column drops, no type changes, no destructive
 -- backfill. Existing rows keep working unchanged.
 --
 -- Rollback: drop the added columns and indexes, and restore the previous
 -- create_listing_with_variations body from migration
--- 20260608140000_create_listing_with_variations_rpc.sql:
+-- 20260703083802_credit_ledger_listing_gates.sql (the credit-ledger version):
 --   ALTER TABLE public.listings
 --     DROP COLUMN IF EXISTS supplier, DROP COLUMN IF EXISTS supplier_product_id,
 --     DROP COLUMN IF EXISTS supplier_url, DROP COLUMN IF EXISTS supplier_price,
@@ -25,6 +25,10 @@
 --   ALTER TABLE public.listing_variations
 --     DROP COLUMN IF EXISTS price_source, DROP COLUMN IF EXISTS pricing_rule_version;
 --   DROP INDEX IF EXISTS idx_listings_user_supplier_pid;
+--
+-- NOTE: on prod, listings.price_source / title_source / description_source /
+-- sku_source already existed (text, added outside migrations) before this file
+-- ran; leave those four out of any rollback so their data is not lost.
 
 -- ── listings: supplier-neutral raw data ──────────────────────────────────────
 ALTER TABLE public.listings
@@ -81,63 +85,73 @@ CREATE INDEX IF NOT EXISTS idx_listings_user_supplier_pid
   WHERE supplier_product_id IS NOT NULL;
 
 -- ── RPC: persist the new fields + supplier-neutral idempotent upsert ─────────
--- Replaces the 20260608150000 version. Changes (strict superset — the ON
--- CONFLICT clause, return shape, and all existing column writes are preserved
--- verbatim):
---   * dedupe key extended: (user_id, amazon_asin) first (unchanged), then
---     (user_id, supplier, supplier_product_id) for non-Amazon suppliers
---   * new supplier/pricing columns written on insert and update
---   * raw supplier fields are only ever COALESCE'd — a later write without
+-- Built from the LIVE body introduced by 20260703083802_credit_ledger_listing_gates
+-- (verified against pg_get_functiondef on prod 2026-11-15). Everything in that
+-- body is preserved verbatim: the auth.uid() forbidden check, the credit gate +
+-- deduction (profiles FOR UPDATE, INSUFFICIENT_CREDITS, app.listing_credit_handled,
+-- user_plans.credits_used, credit_transactions usage row with
+-- credits_before/credits_after), SECURITY DEFINER, SET search_path, the return
+-- shape, and the service_role-only grants. Additions only:
+--   * dedupe lookup also matches (user_id, supplier, supplier_product_id)
+--   * new supplier/pricing/provenance columns written on insert and update
+--   * raw supplier fields are only ever COALESCE'd: a later write without
 --     supplier data can never null them out
+--   * listing_variations.price_source / pricing_rule_version written
 CREATE OR REPLACE FUNCTION public.create_listing_with_variations(
   p_user_id   uuid,
   p_listing   jsonb,
   p_variations jsonb
 ) RETURNS jsonb
-LANGUAGE plpgsql SECURITY DEFINER AS $$
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   v_listing    public.listings;
   v_count      int := COALESCE(jsonb_array_length(p_variations), 0);
   v_existing   uuid;
+  v_credits    int;
 BEGIN
-  -- Idempotent parent lookup: ASIN key (legacy) then supplier-neutral key
+  IF auth.uid() IS NOT NULL AND auth.uid() <> p_user_id THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+
   SELECT id INTO v_existing
   FROM public.listings
   WHERE user_id = p_user_id
-    AND amazon_asin = p_listing->>'amazon_asin'
-    AND (p_listing->>'amazon_asin') IS NOT NULL
+    AND (
+      (NULLIF(p_listing->>'amazon_asin', '') IS NOT NULL AND amazon_asin = NULLIF(p_listing->>'amazon_asin', ''))
+      OR (NULLIF(p_listing->>'sku', '') IS NOT NULL AND sku = NULLIF(p_listing->>'sku', ''))
+      OR (NULLIF(p_listing->>'amazon_url', '') IS NOT NULL AND amazon_url = NULLIF(p_listing->>'amazon_url', ''))
+      OR (NULLIF(p_listing->>'supplier', '') IS NOT NULL
+          AND NULLIF(p_listing->>'supplier_product_id', '') IS NOT NULL
+          AND supplier = NULLIF(p_listing->>'supplier', '')
+          AND supplier_product_id = NULLIF(p_listing->>'supplier_product_id', ''))
+    )
+  ORDER BY created_at DESC
   LIMIT 1;
-
-  IF v_existing IS NULL
-     AND (p_listing->>'supplier') IS NOT NULL
-     AND (p_listing->>'supplier_product_id') IS NOT NULL THEN
-    SELECT id INTO v_existing
-    FROM public.listings
-    WHERE user_id = p_user_id
-      AND supplier = p_listing->>'supplier'
-      AND supplier_product_id = p_listing->>'supplier_product_id'
-    LIMIT 1;
-  END IF;
 
   IF v_existing IS NOT NULL THEN
     UPDATE public.listings SET
-      title          = COALESCE(p_listing->>'title', title),
-      sku            = COALESCE(p_listing->>'sku', sku),
-      ebay_price     = COALESCE((p_listing->>'ebay_price')::numeric, ebay_price),
-      amazon_price   = COALESCE((p_listing->>'amazon_price')::numeric, amazon_price),
-      amazon_url     = COALESCE(p_listing->>'amazon_url', amazon_url),
-      has_variations = (v_count > 1),
+      title           = COALESCE(p_listing->>'title', title),
+      sku             = COALESCE(p_listing->>'sku', sku),
+      ebay_price      = COALESCE((p_listing->>'ebay_price')::numeric, ebay_price),
+      amazon_price    = COALESCE((p_listing->>'amazon_price')::numeric, amazon_price),
+      amazon_url      = COALESCE(p_listing->>'amazon_url', amazon_url),
+      amazon_asin     = COALESCE(p_listing->>'amazon_asin', amazon_asin),
+      status          = COALESCE(p_listing->>'status', status),
+      has_variations  = (v_count > 1),
       variation_count = GREATEST(v_count, variation_count),
-      price_low      = COALESCE((p_listing->>'price_low')::numeric, price_low),
-      price_high     = COALESCE((p_listing->>'price_high')::numeric, price_high),
-      amazon_data    = COALESCE(p_listing->'amazon_data', amazon_data),
-      ebay_data      = COALESCE(p_listing->'ebay_data', ebay_data),
+      price_low       = COALESCE((p_listing->>'price_low')::numeric, price_low),
+      price_high      = COALESCE((p_listing->>'price_high')::numeric, price_high),
+      amazon_data     = COALESCE(p_listing->'amazon_data', amazon_data),
+      ebay_data       = COALESCE(p_listing->'ebay_data', ebay_data),
       -- Supplier-neutral raw data (never nulled by later writes)
-      supplier               = COALESCE(p_listing->>'supplier', supplier),
-      supplier_product_id    = COALESCE(p_listing->>'supplier_product_id', supplier_product_id),
-      supplier_url           = COALESCE(p_listing->>'supplier_url', supplier_url),
+      supplier               = COALESCE(NULLIF(p_listing->>'supplier', ''), supplier),
+      supplier_product_id    = COALESCE(NULLIF(p_listing->>'supplier_product_id', ''), supplier_product_id),
+      supplier_url           = COALESCE(NULLIF(p_listing->>'supplier_url', ''), supplier_url),
       supplier_price         = COALESCE((p_listing->>'supplier_price')::numeric, supplier_price),
-      supplier_currency      = COALESCE(NULLIF(p_listing->>'supplier_currency',''), supplier_currency),
+      supplier_currency      = COALESCE(NULLIF(p_listing->>'supplier_currency', ''), supplier_currency),
       supplier_shipping_cost = COALESCE((p_listing->>'supplier_shipping_cost')::numeric, supplier_shipping_cost),
       -- Pricing audit trail (updated whenever a fresh calculation arrives)
       pricing_breakdown    = COALESCE(p_listing->'pricing_breakdown', pricing_breakdown),
@@ -149,10 +163,31 @@ BEGIN
       title_source       = COALESCE(p_listing->>'title_source', title_source),
       description_source = COALESCE(p_listing->>'description_source', description_source),
       sku_source         = COALESCE(p_listing->>'sku_source', sku_source),
-      updated_at     = now()
+      updated_at      = now()
     WHERE id = v_existing
     RETURNING * INTO v_listing;
   ELSE
+    SELECT COALESCE(credits, 0)
+    INTO v_credits
+    FROM public.profiles
+    WHERE id = p_user_id
+    FOR UPDATE;
+
+    IF v_credits IS NULL THEN
+      RAISE EXCEPTION 'User profile not found.' USING ERRCODE = 'P0002';
+    END IF;
+
+    IF v_credits < 1 THEN
+      RAISE EXCEPTION 'INSUFFICIENT_CREDITS'
+        USING ERRCODE = 'P0001',
+              DETAIL = 'You do not have enough credits to create a listing.',
+              HINT = 'credits';
+    END IF;
+
+    -- This function gates + deducts itself; tell the listings insert trigger
+    -- not to charge a second credit (same pattern as app.ledger_sync).
+    PERFORM set_config('app.listing_credit_handled', 'true', true);
+
     INSERT INTO public.listings (
       user_id, title, sku, ebay_price, amazon_price, amazon_url, amazon_asin,
       status, amazon_data, ebay_data, has_variations, variation_count,
@@ -176,11 +211,11 @@ BEGIN
       v_count,
       (p_listing->>'price_low')::numeric,
       (p_listing->>'price_high')::numeric,
-      p_listing->>'supplier',
-      p_listing->>'supplier_product_id',
-      p_listing->>'supplier_url',
+      NULLIF(p_listing->>'supplier', ''),
+      NULLIF(p_listing->>'supplier_product_id', ''),
+      NULLIF(p_listing->>'supplier_url', ''),
       (p_listing->>'supplier_price')::numeric,
-      COALESCE(NULLIF(p_listing->>'supplier_currency',''), 'USD'),
+      COALESCE(NULLIF(p_listing->>'supplier_currency', ''), 'USD'),
       (p_listing->>'supplier_shipping_cost')::numeric,
       p_listing->'pricing_breakdown',
       (p_listing->>'pricing_rule_version')::integer,
@@ -192,13 +227,36 @@ BEGIN
       p_listing->>'sku_source'
     )
     RETURNING * INTO v_listing;
+
+    PERFORM set_config('app.listing_credit_handled', 'false', true);
+
+    UPDATE public.user_plans
+    SET credits_used = COALESCE(credits_used, 0) + 1,
+        updated_at = now()
+    WHERE user_id = p_user_id;
+
+    INSERT INTO public.credit_transactions (
+      user_id, amount, transaction_type, balance_after, description, metadata
+    ) VALUES (
+      p_user_id,
+      -1,
+      'usage',
+      v_credits - 1,
+      'Created eBay listing',
+      jsonb_build_object(
+        'listing_id', v_listing.id,
+        'action', 'create_listing_with_variations',
+        'credits_before', v_credits,
+        'credits_after', v_credits - 1
+      )
+    );
   END IF;
 
   IF v_count > 0 THEN
     INSERT INTO public.listing_variations (
       listing_id, user_id, parent_asin, variant_asin, sku, ebay_sku_encoded,
-      raw_supplier_price, final_price, currency, stock_quantity, attributes,
-      image_url, price_source, pricing_rule_version
+      raw_supplier_price, final_price, currency, stock_quantity, attributes, image_url,
+      price_source, pricing_rule_version
     )
     SELECT
       v_listing.id,
@@ -229,8 +287,16 @@ BEGIN
   END IF;
 
   RETURN jsonb_build_object(
-    'listing',         row_to_json(v_listing),
+    'listing', row_to_json(v_listing),
     'variation_count', v_count,
-    'action',          CASE WHEN v_existing IS NOT NULL THEN 'updated' ELSE 'created' END
+    'action', CASE WHEN v_existing IS NOT NULL THEN 'updated' ELSE 'created' END
   );
-END $$;
+END;
+$$;
+
+-- CREATE OR REPLACE keeps the existing ACL; re-assert it anyway so this file is
+-- correct on its own (service_role only, same as 20260703083802).
+REVOKE EXECUTE ON FUNCTION public.create_listing_with_variations(uuid, jsonb, jsonb)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.create_listing_with_variations(uuid, jsonb, jsonb)
+  TO service_role;
