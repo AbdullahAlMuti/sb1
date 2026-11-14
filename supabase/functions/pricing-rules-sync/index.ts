@@ -1,6 +1,14 @@
 import { resolveExtensionCors } from "../_shared/cors.ts";
 import { createServiceClient, resolveExtensionOrLegacyAuth } from "../_shared/extension-session.ts";
 import { enforceActiveSubscription } from "../_shared/plan-middleware.ts";
+import { defaultRuleForSupplier } from "../_shared/pricing-service.ts";
+import { SUPPLIER_DEFAULTS } from "../_shared/pricing-validation.ts";
+
+const RULE_COLUMNS =
+  'supplier_key, supplier_name, is_enabled, supplier_domains, rule_version, ' +
+  'profit_margin_percent, minimum_profit, shipping_buffer, fixed_handling_fee, ' +
+  'marketplace_fee_percent, currency_buffer_percent, rounding_rule, updated_at, ' +
+  'formula_version, per_order_fee';
 
 async function sha256hex(text: string): Promise<string> {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -40,22 +48,45 @@ Deno.serve(async (req) => {
     if (block) return block;
 
     // Fetch only the fields the extension needs — no user_id, no billing data
-    const { data: rowsData, error: fetchErr } = await supabase
+    const fetchRules = () => supabase
       .from('user_pricing_settings')
-      .select(
-        'supplier_key, supplier_name, is_enabled, supplier_domains, rule_version, ' +
-        'profit_margin_percent, minimum_profit, shipping_buffer, fixed_handling_fee, ' +
-        'marketplace_fee_percent, currency_buffer_percent, rounding_rule, updated_at, ' +
-        'formula_version, per_order_fee'
-      )
+      .select(RULE_COLUMNS)
       .eq('user_id', user.id)
       .order('supplier_key');
+
+    let { data: rowsData, error: fetchErr } = await fetchRules();
 
     if (fetchErr) {
       // Log + surface the database error code: a bare "Failed to fetch rules"
       // left the extension unpriced with nothing to diagnose.
       console.error('pricing-rules-sync: rule query failed', fetchErr);
       return json({ error: `Failed to fetch rules (${fetchErr.code || 'no-code'}: ${String(fetchErr.message || '').slice(0, 140)})` }, 500);
+    }
+
+    // Seed default rules for any supplier the user has never configured.
+    // Defaults used to be created only by pricing-settings (the dashboard
+    // Calculator page), so a user who never opened it synced an empty rule
+    // list and every scan showed "No eBay price". Same defaults as the
+    // dashboard; ignoreDuplicates never overwrites a row the user saved.
+    const existingKeys = new Set(((rowsData ?? []) as any[]).map((r) => r.supplier_key));
+    const missingKeys = Object.keys(SUPPLIER_DEFAULTS).filter((k) => !existingKeys.has(k));
+    if (missingKeys.length > 0) {
+      const { error: seedErr } = await supabase
+        .from('user_pricing_settings')
+        .upsert(
+          missingKeys.map((k) => defaultRuleForSupplier(user.id, k)),
+          { onConflict: 'user_id,supplier_key', ignoreDuplicates: true },
+        );
+      if (seedErr) {
+        // Serve whatever rules exist rather than failing the whole sync.
+        console.error('pricing-rules-sync: default rule seed failed', seedErr);
+      } else {
+        ({ data: rowsData, error: fetchErr } = await fetchRules());
+        if (fetchErr) {
+          console.error('pricing-rules-sync: rule re-query failed', fetchErr);
+          return json({ error: `Failed to fetch rules (${fetchErr.code || 'no-code'}: ${String(fetchErr.message || '').slice(0, 140)})` }, 500);
+        }
+      }
     }
 
     // Supabase infers a GenericStringError union for the select; the query is
