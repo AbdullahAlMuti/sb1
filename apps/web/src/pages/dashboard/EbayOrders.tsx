@@ -336,10 +336,17 @@ export default function EbayOrders() {
     } catch (error: any) {
       console.error("Error fetching eBay orders:", error);
       if (!silent) {
-        const msg =
+        let msg =
           typeof error?.message === "string" && error.message.length
             ? error.message
             : "Failed to load eBay orders";
+        // supabase-js hides the real reason in error.context (the Response).
+        try {
+          const body = await error?.context?.json?.();
+          if (body?.error && typeof body.error === "string") msg = body.error;
+        } catch {
+          /* keep generic message */
+        }
         toast.error(msg);
       }
     } finally {
