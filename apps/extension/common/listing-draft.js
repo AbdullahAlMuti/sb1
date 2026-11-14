@@ -93,11 +93,82 @@
    * @param {object} patch
    * @returns {Promise<object>} merged draft
    */
+  //
+  // Why patchDraft folds in currentProduct: saveDraft re-mirrors
+  // `currentProduct` FROM the draft. Re-pricing (dashboard Supplier Pricing
+  // sync) and extended-editor edits (manual prices, deleted variations) write
+  // `currentProduct` directly, so any later patch — e.g. an AI title — used to
+  // overwrite them with the draft's scan-time pricing. currentProduct is the
+  // edited truth for the same item; explicit fields in `patch` still win.
   async function patchDraft(patch) {
     const existing = (await getDraft()) || {};
-    const merged = { ...existing, ...patch, lastScannedAt: Date.now() };
+    const current = await _getCurrentProduct();
+    const fold = _sameItem(existing, current) ? _pricingPatchFrom(current, existing) : {};
+    const merged = { ...existing, ...fold, ...patch, lastScannedAt: Date.now() };
     await saveDraft(merged);
     return merged;
+  }
+
+  /**
+   * Write a freshly (re)priced product back into the draft — top-level price,
+   * pricing metadata AND variants together. Use after every re-price.
+   * @param {object} product  re-priced product (currentProduct shape)
+   * @returns {Promise<object>} merged draft
+   */
+  async function syncPricingFromProduct(product) {
+    if (!product) return getDraft();
+    const existing = (await getDraft()) || {};
+    return patchDraft(_pricingPatchFrom(product, existing));
+  }
+
+  /** Draft fields that carry a product's price state (currentProduct → draft). */
+  function _pricingPatchFrom(product, existing) {
+    const rawPrice = _num(product.raw_supplier_price) ?? _num(product.price);
+    const variants = Array.isArray(product.variants) ? product.variants : (existing.variants || []);
+    return {
+      variants,
+      variationCount: variants.length,
+      pricing: {
+        ...(existing.pricing || {}),
+        ...(rawPrice != null ? { rawPrice } : {}),
+        finalPrice: _num(product.finalPrice),
+        ebayPrice: _num(product.ebayPrice),
+        currency: product.currency || (existing.pricing && existing.pricing.currency) || 'USD',
+      },
+      price_source: product.price_source || existing.price_source || 'calculated',
+      pricingRuleVersion: product.pricingRuleVersion ?? null,
+      pricingIssue: product.pricingIssue || null,
+      supplierKey: product.supplierKey || existing.supplierKey || null,
+      shippingCost: product.shippingCost ?? existing.shippingCost ?? null,
+    };
+  }
+
+  function _getCurrentProduct() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get('currentProduct', (r) => {
+          void chrome.runtime.lastError;
+          resolve((r && r.currentProduct) || null);
+        });
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  }
+
+  /** True only when draft and product describe the same supplier item. */
+  function _sameItem(draft, product) {
+    if (!draft || !product) return false;
+    const idOf = (o) => o.sourceId || o.parentAsin || o.asin || null;
+    const a = idOf(draft);
+    const b = idOf(product);
+    return !!a && a === b;
+  }
+
+  function _num(v) {
+    if (v === null || v === undefined || v === '') return null;
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : null;
   }
 
   /**
@@ -138,6 +209,13 @@
       finalPrice:   d.pricing && d.pricing.finalPrice != null ? d.pricing.finalPrice : null,
       raw_supplier_price: d.pricing && d.pricing.rawPrice != null ? d.pricing.rawPrice : null,
       currency:     (d.pricing && d.pricing.currency) || 'USD',
+      // Pricing metadata — dropping these on every mirror made a re-priced
+      // product look unpriced/unversioned to the uploader and readiness checks.
+      ebayPrice:          d.pricing && d.pricing.ebayPrice != null ? d.pricing.ebayPrice : null,
+      pricingRuleVersion: d.pricingRuleVersion ?? null,
+      supplierKey:        d.supplierKey  || null,
+      shippingCost:       d.shippingCost ?? null,
+      ...(d.pricingIssue ? { pricingIssue: d.pricingIssue } : {}),
 
       // SKU
       ebaySku:      d.sku          || null,
@@ -198,8 +276,12 @@
       pricing: {
         rawPrice,
         finalPrice,
+        ebayPrice: _num(product.ebayPrice),
         currency: product.currency || 'USD',
       },
+      pricingRuleVersion: product.pricingRuleVersion ?? null,
+      supplierKey:  product.supplierKey  || null,
+      shippingCost: product.shippingCost ?? null,
       sku:         product.ebaySku     || null,
       specs:       product.specs       || product.specifications || {},
       price_source: 'calculated',
@@ -213,6 +295,7 @@
   window.SSListingDraft = {
     saveDraft,
     getDraft,
+    syncPricingFromProduct,
     patchDraft,
     clearDraft,
     productToDraft,

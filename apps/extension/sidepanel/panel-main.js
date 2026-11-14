@@ -153,10 +153,7 @@
           await chrome.storage.local.set({ currentProduct: updatedProduct });
           
           if (typeof window.SSListingDraft !== 'undefined') {
-            await window.SSListingDraft.patchDraft({
-              variants: updatedProduct.variants || [],
-              variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
-            });
+            await window.SSListingDraft.syncPricingFromProduct(updatedProduct);
           }
           renderPreviewCard(updatedProduct);
         }
@@ -679,7 +676,8 @@
           description_source: descSource,
           sku,
           sku_source: skuSource,
-          pricing: { ...(draft && draft.pricing), finalPrice },
+          // ebayPrice from the product being uploaded, never the draft's older copy.
+          pricing: { ...(draft && draft.pricing), finalPrice, ebayPrice: ebayProduct.ebayPrice ?? null },
           price_source: priceSource,
           variants: ebayProduct.variants || [],
           variationCount: ebayProduct.variants ? ebayProduct.variants.length : 0
@@ -960,10 +958,7 @@
           if (JSON.stringify(updatedProduct) !== before) {
             await chrome.storage.local.set({ currentProduct: updatedProduct });
             if (typeof window.SSListingDraft !== 'undefined') {
-              await window.SSListingDraft.patchDraft({
-                variants: updatedProduct.variants || [],
-                variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
-              });
+              await window.SSListingDraft.syncPricingFromProduct(updatedProduct);
             }
           }
         }
@@ -991,10 +986,7 @@
           if (JSON.stringify(updatedProduct) === before) return;
           await chrome.storage.local.set({ currentProduct: updatedProduct });
           if (typeof window.SSListingDraft !== 'undefined') {
-            await window.SSListingDraft.patchDraft({
-              variants: updatedProduct.variants || [],
-              variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
-            });
+            await window.SSListingDraft.syncPricingFromProduct(updatedProduct);
           }
         }
       }
@@ -1016,10 +1008,7 @@
           await chrome.storage.local.set({ currentProduct: updatedProduct });
           
           if (typeof window.SSListingDraft !== 'undefined') {
-            await window.SSListingDraft.patchDraft({
-              variants: updatedProduct.variants || [],
-              variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
-            });
+            await window.SSListingDraft.syncPricingFromProduct(updatedProduct);
           }
           renderPreviewCard(updatedProduct);
           
@@ -1069,10 +1058,7 @@
           await chrome.storage.local.set({ currentProduct: updatedProduct });
           
           if (typeof window.SSListingDraft !== 'undefined') {
-            await window.SSListingDraft.patchDraft({
-              variants: updatedProduct.variants || [],
-              variationCount: updatedProduct.variants ? updatedProduct.variants.length : 0
-            });
+            await window.SSListingDraft.syncPricingFromProduct(updatedProduct);
           }
           renderPreviewCard(updatedProduct);
         } else {
