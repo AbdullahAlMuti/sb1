@@ -708,7 +708,7 @@ export async function requireFeatureEntitlement(
   // Enforce active paid subscription for non-admins
   const isPaid = profile?.payment_status === "paid" || profile?.payment_status === "succeeded";
   const isSubscriptionActive = profile?.subscription_status === "active" || profile?.subscription_status === "trialing";
-  if (!profile?.selected_plan_id || !isPaid || !isSubscriptionActive) {
+  if ((!profile?.selected_plan_id && !profile?.plan_id) || !isPaid || !isSubscriptionActive) {
     return false;
   }
 

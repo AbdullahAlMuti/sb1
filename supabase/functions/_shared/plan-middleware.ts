@@ -90,7 +90,7 @@ export async function verifySaaSAccess(
 
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("selected_plan_id, payment_status, subscription_status")
+    .select("selected_plan_id, plan_id, payment_status, subscription_status")
     .eq("id", userId)
     .maybeSingle();
 
@@ -98,7 +98,8 @@ export async function verifySaaSAccess(
     return { allowed: false, reason: "Profile not found" };
   }
 
-  if (!profile.selected_plan_id) {
+  // selected_plan_id can be left null for paid users; plan_id is the fallback.
+  if (!profile.selected_plan_id && !profile.plan_id) {
     return { allowed: false, reason: "No active paid plan selected" };
   }
 
