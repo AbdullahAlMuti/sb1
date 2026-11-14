@@ -26,6 +26,39 @@ window.SSPricingRuleSync = (() => {
   }
 
   /**
+   * Refresh the session once, using whichever refresh token is in storage.
+   * LOGOUT removes both saasRefreshToken and extensionRefreshToken, so a
+   * logged-out user has nothing to refresh with and is never revived
+   * (EXT-P1-001). `type` picks the matching path after a 401; without it
+   * (expired token, type 'none') new-auth is tried first, then legacy.
+   *
+   * @returns {Promise<'refreshed'|'failed'|'no_refresh_token'>}
+   */
+  async function _refreshSession(type) {
+    let stored = {};
+    try {
+      stored = await chrome.storage.local.get(['saasRefreshToken', 'extensionRefreshToken']);
+    } catch (_) { /* treat as no refresh token */ }
+
+    const attempts = [];
+    if (stored.extensionRefreshToken && type !== 'legacy') attempts.push('new');
+    if (stored.saasRefreshToken && type !== 'new') attempts.push('legacy');
+    if (attempts.length === 0) return 'no_refresh_token';
+
+    for (const kind of attempts) {
+      try {
+        const ok = kind === 'new'
+          ? await AuthHelper.refreshExtensionToken()
+          : await AuthHelper.refreshLegacyToken();
+        if (ok) return 'refreshed';
+      } catch (err) {
+        console.warn('[SSPricingRuleSync] token refresh error:', err?.message || err);
+      }
+    }
+    return 'failed';
+  }
+
+  /**
    * Sync pricing rules from the backend.
    *
    * @param {boolean} [forceRefresh=false]  Skip TTL and always fetch.
@@ -45,11 +78,24 @@ window.SSPricingRuleSync = (() => {
         return cache;
       }
 
-      // Need a valid token before hitting the endpoint
-      const { token, isValid } = await AuthHelper.getAuthToken();
-      if (!token || !isValid) {
-        await _recordStatus({ ok: false, reason: 'not_logged_in' });
-        return cache;
+      // Need a valid token before hitting the endpoint. The legacy Supabase
+      // JWT lives ~1h; once it expires try one refresh (like
+      // AuthHelper.callEdgeFunction does) instead of silently going stale.
+      // At most one refresh per sync() call — never loop.
+      let refreshed = false;
+      let auth = await AuthHelper.getAuthToken();
+      if (!auth.token || !auth.isValid) {
+        const outcome = await _refreshSession(null);
+        if (outcome === 'no_refresh_token') {
+          await _recordStatus({ ok: false, reason: 'not_logged_in' });
+          return cache;
+        }
+        refreshed = true;
+        if (outcome === 'refreshed') auth = await AuthHelper.getAuthToken();
+        if (outcome !== 'refreshed' || !auth.token || !auth.isValid) {
+          await _recordStatus({ ok: false, reason: 'refresh_failed' });
+          return cache;
+        }
       }
 
       const urls = getUrls();
@@ -59,22 +105,42 @@ window.SSPricingRuleSync = (() => {
         return cache;
       }
 
-      const headers = {
-        'Authorization': `Bearer ${token}`,
-        'apikey': apiKeys.SUPABASE_ANON || '',
-        'Content-Type': 'application/json'
-      };
-
-      if (cache && cache.etag) {
-        headers['If-None-Match'] = cache.etag;
-      }
-
-      let response;
-      try {
-        response = await fetch(
+      const doGet = (token) => {
+        const headers = {
+          'Authorization': `Bearer ${token}`,
+          'apikey': apiKeys.SUPABASE_ANON || '',
+          'Content-Type': 'application/json'
+        };
+        if (cache && cache.etag) {
+          headers['If-None-Match'] = cache.etag;
+        }
+        return fetch(
           `${urls.SUPABASE_FUNCTIONS}/pricing-rules-sync`,
           { method: 'GET', headers }
         );
+      };
+
+      let response;
+      try {
+        response = await doGet(auth.token);
+
+        // Token rejected server-side (revoked or expired early): refresh once
+        // and retry the GET once, unless we already refreshed above.
+        if (response.status === 401 && !refreshed) {
+          const outcome = await _refreshSession(auth.type);
+          if (outcome === 'refreshed') {
+            auth = await AuthHelper.getAuthToken();
+            if (!auth.token || !auth.isValid) {
+              await _recordStatus({ ok: false, reason: 'refresh_failed', status: 401 });
+              return cache;
+            }
+            response = await doGet(auth.token);
+          } else if (outcome === 'failed') {
+            await _recordStatus({ ok: false, reason: 'refresh_failed', status: 401 });
+            return cache;
+          }
+          // 'no_refresh_token' → fall through and record the 401 below.
+        }
       } catch (networkErr) {
         console.warn('[SSPricingRuleSync] network error:', networkErr?.message || networkErr);
         await _recordStatus({ ok: false, reason: 'network', message: String(networkErr?.message || networkErr).slice(0, 200) });
