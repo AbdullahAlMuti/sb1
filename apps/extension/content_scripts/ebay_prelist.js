@@ -810,23 +810,11 @@ function _ssShowDuplicateBlock(listing, onOverride) {
 
     await chrome.storage.local.set({ [storageKey]: { ...entry, product: productToRun, isImported: true } });
 
-    // Immediate dashboard sync — fire the instant the upload starts, not after
-    // the eBay draft/image/SKU pipeline succeeds. Users clicking "Upload to
-    // eBay"/"List on eBay" expect to see the listing in their dashboard right
-    // away; waiting on the full multi-step eBay round trip meant a slow or
-    // failed upload left the dashboard looking like nothing happened at all.
-    // Best-effort and non-blocking — the authoritative post-upload sync (with
-    // final images/price/SKU) still runs later and upserts the same row by
-    // sku/asin/url, so this is superseded rather than duplicated.
-    if (!isBulkRun) {
-      try {
-        const adaptedForQuickSync = window.EbayListingApiHelper.adaptProduct(productToRun);
-        window._syncListingToDashboard(adaptedForQuickSync, productToRun, null)
-          .catch(e => console.warn('[SS] Immediate dashboard sync failed (non-blocking):', e?.message || e));
-      } catch (e) {
-        console.warn('[SS] Immediate dashboard sync could not start (non-blocking):', e?.message || e);
-      }
-    }
+    // No dashboard write here. The row is written by the uploader only once
+    // the eBay draft exists (SellerSuitUploader.run for single items,
+    // ebay_bulkedit.js for variations). Writing it at this point left rows for
+    // uploads that later failed and made a retry look like a duplicate of
+    // itself. See tests/dashboard-sync-after-upload.test.js.
 
     _ssShowOverlay('Preparing your eBay listing…');
 
@@ -845,7 +833,7 @@ function _ssShowDuplicateBlock(listing, onOverride) {
       // Non-bulk: run() navigates away on success — execution stops here.
       // Bulk single-variation: run() returns a terminal result instead.
       if (isBulkRun && runResult && runResult.ssBulk) {
-        _ssUpdateOverlay('Listed! Moving to the next item…');
+        _ssUpdateOverlay('Saved to eBay, not yet published. Moving to the next item…');
         _ssReportBulkResult({
           success: true,
           listingId: runResult.listingId || null,
