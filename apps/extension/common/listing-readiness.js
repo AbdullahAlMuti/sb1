@@ -107,10 +107,20 @@
           ? describePricingIssue(product.pricingIssue)
           : `${unpriced} variation${unpriced === 1 ? ' has' : 's have'} no eBay price — check Supplier Pricing in the dashboard`);
       } else if (sellable.length > 0) {
-        add('price', 'ok', 'All listed variations are priced');
+        const underCost = sellable.filter(v => {
+          if (v.price_source === 'manual' || product.price_source === 'manual') return false;
+          const cost = _num(v.raw_supplier_price) || _num(v.price);
+          const sell = _num(v.ebayPrice) || _num(v.finalPrice);
+          return cost > 0 && sell <= cost;
+        }).length;
+        if (underCost > 0) {
+          add('price', 'block', `${underCost} variation${underCost === 1 ? ' is' : 's are'} priced at or below the supplier price — recalculate or set the price manually`);
+        } else {
+          add('price', 'ok', 'All listed variations are priced');
+        }
       }
     } else {
-      const supplier = _num(product.raw_supplier_price) || _num(product.price);
+      const supplier = _num(product.raw_supplier_price) || _num(product.supplierPrice) || _num(product.price);
       const final = _num(product.ebayFinalPrice) || _num(product.finalPrice);
       if (!(supplier > 0)) add('price', 'block', 'Supplier price could not be read from the page');
       else if (!(final > 0)) add('price', 'block', describePricingIssue(product.pricingIssue));
@@ -132,7 +142,12 @@
     return { ready: !items.some(i => i.level === 'block'), items };
   }
 
-  const api = { check, describePricingIssue, EBAY_TITLE_MAX };
+  /** First blocking item for a product, or null when it is ready to list. */
+  function firstBlock(product) {
+    return check(product).items.find(i => i.level === 'block') || null;
+  }
+
+  const api = { check, firstBlock, describePricingIssue, EBAY_TITLE_MAX };
   root.SSListingReadiness = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

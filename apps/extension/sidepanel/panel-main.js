@@ -666,6 +666,16 @@
         if (descSource === 'scraped') ebayProduct.useAiDescription = true;
       }
 
+      // Final gate on the merged product (manual edits + draft price included):
+      // a price or data problem stops here, before an eBay tab is opened.
+      const finalBlock = window.SSListingReadiness
+        ? window.SSListingReadiness.firstBlock(ebayProduct)
+        : null;
+      if (finalBlock) {
+        showToast('Not ready to list: ' + finalBlock.message, 6000);
+        return;
+      }
+
       // Mirror to storage so panel stays in sync
       await chrome.storage.local.set({ currentProduct: ebayProduct });
       if (typeof window.SSListingDraft !== 'undefined') {

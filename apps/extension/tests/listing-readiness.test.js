@@ -95,3 +95,41 @@ describe('pricing issue explanation', () => {
     assert.match(msg({ reason: 'no_rule_synced' }), /Supplier Pricing/);
   });
 });
+
+describe('variation priced at or below its supplier cost', () => {
+  const v = (name, extra) => ({ attrs: { Color: { productName: name } }, price: 20, finalPrice: 30, priceVerified: true, ...extra });
+
+  test('blocks and says how many variations are affected', () => {
+    const r = check({ ...SINGLE, hasVariants: true, variants: [v('Red'), v('Blue', { finalPrice: 12 }), v('Green', { ebayPrice: 20, finalPrice: undefined })] });
+    assert.equal(r.ready, false);
+    assert.equal(item(r, 'price').level, 'block');
+    assert.match(item(r, 'price').message, /2 variations are priced at or below the supplier price/);
+  });
+
+  test('a manually priced variation is the seller\'s choice and does not block', () => {
+    const r = check({ ...SINGLE, hasVariants: true, variants: [v('Red'), v('Blue', { finalPrice: 12, price_source: 'manual' })] });
+    assert.equal(item(r, 'price').level, 'ok');
+  });
+});
+
+describe('firstBlock — the gate the panel runs on the final product before opening eBay', () => {
+  function firstBlock(product) {
+    const win = makeWindow();
+    loadInto(win, 'common/listing-readiness.js');
+    return win.SSListingReadiness.firstBlock(product);
+  }
+
+  test('a ready product has no block', () => {
+    assert.equal(firstBlock(SINGLE), null);
+  });
+
+  test('a price problem is returned (it is no longer left for the eBay tab to discover)', () => {
+    const b = firstBlock({ ...SINGLE, finalPrice: 0, pricingIssue: { reason: 'rule_disabled' } });
+    assert.equal(b.key, 'price');
+    assert.match(b.message, /disabled in Supplier Pricing/);
+  });
+
+  test('the merged upload shape (ebayFinalPrice + supplierPrice) is understood', () => {
+    assert.equal(firstBlock({ ...SINGLE, finalPrice: undefined, ebayFinalPrice: 31.99, supplierPrice: 20 }), null);
+  });
+});
