@@ -1461,6 +1461,9 @@ function validateProductPricing(product) {
     if (ebayFinalPrice === supplierPrice && !isManual) {
       throw new Error('eBay Final Price is equal to the original Supplier Price. Please calculate your markup profit rules before listing.');
     }
+    if (supplierPrice > 0 && ebayFinalPrice < supplierPrice && !isManual) {
+      throw new Error(`eBay Final Price ($${ebayFinalPrice}) is below the Supplier Price ($${supplierPrice}). Recalculate the price or set it manually before listing.`);
+    }
   } else {
     // Collect active variations exactly like adaptProduct does
     const activeVariants = [];
@@ -1489,6 +1492,9 @@ function validateProductPricing(product) {
       const isManual = v.price_source === 'manual' || product.price_source === 'manual';
       if (ebayFinalPrice === supplierPrice && !isManual) {
         throw new Error(`eBay Final Price is equal to the original Supplier Price for variation ${idx + 1} unless intentionally set.`);
+      }
+      if (supplierPrice > 0 && ebayFinalPrice < supplierPrice && !isManual) {
+        throw new Error(`eBay Final Price ($${ebayFinalPrice}) is below the Supplier Price for variation ${idx + 1} ($${supplierPrice}). Recalculate the price or set it manually.`);
       }
     });
   }
@@ -1568,6 +1574,7 @@ async function _runSafetyChecks(product) {
 
 window.SellerSuitUploader = {
   _runSafetyChecks,
+  _validateProductPricing: validateProductPricing,
   async run(product) {
     const api = window.EbayListingApiHelper;
     console.log('[SS Uploader] Starting programmatic upload for:', product.title?.substring(0, 60));

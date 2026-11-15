@@ -121,11 +121,19 @@ describe('SsWalmartVariantScraper — pure parsing', () => {
     assert.equal(v1.imgProp, 'Color');
   });
 
-  test('variant without own price falls back to parent price', () => {
+  test('variant without own price is unpriced and flagged, never given the parent price', () => {
     const v3 = I.parseVariants(WALMART_PRODUCT_JSON).find(
       (v) => v.supplierVariantId === '333333333'
     );
-    assert.equal(v3.price, '19.98');
+    assert.equal(v3.price, null);
+    assert.equal(v3.priceVerified, false);
+  });
+
+  test('variant with its own price is flagged verified', () => {
+    const v1 = I.parseVariants(WALMART_PRODUCT_JSON).find(
+      (v) => v.supplierVariantId === '14952553464'
+    );
+    assert.equal(v1.priceVerified, true);
   });
 
   test('OUT_OF_STOCK variant gets quantity 0', () => {
@@ -179,7 +187,9 @@ describe('Walmart variation → universal pipeline (end-to-end, no DOM)', () => 
     const out = win.EbayListingApiHelper.adaptProduct(product);
     assert.equal(out.prod_id, '14952553464');
     assert.equal(out.supplier, 'walmart');
-    assert.equal(out.prod_variations.length, 3);
+    // v3 has no price of its own, so it is not uploaded with the parent's price
+    assert.equal(out.prod_variations.length, 2);
+    assert.equal(out.prod_variations.some((x) => x.supplierVariantId === '333333333'), false);
     const v = out.prod_variations.find((x) => x.supplierVariantId === '222222222');
     assert.deepEqual(v.attrs, {
       Color: { productName: 'Black' },

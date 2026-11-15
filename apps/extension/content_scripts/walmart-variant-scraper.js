@@ -94,7 +94,6 @@ window.SsWalmartVariantScraper = (() => {
       dims[c.id] = { label, values };
     }
 
-    const parentPrice = parseProduct(p)?.price || '';
     const imgProp = (() => {
       const colorDim = Object.values(dims).find((d) => /colou?r/i.test(d.label));
       return colorDim ? colorDim.label : Object.values(dims)[0]?.label || null;
@@ -118,7 +117,10 @@ window.SsWalmartVariantScraper = (() => {
       const rawPrice = entry.priceInfo?.currentPrice?.price;
       variants.push({
         attrs,
-        price: rawPrice != null ? String(rawPrice) : parentPrice,
+        // A variant with no price of its own is NOT given the parent's price:
+        // it stays unpriced and is excluded from pricing + upload downstream.
+        price: rawPrice != null ? String(rawPrice) : null,
+        priceVerified: rawPrice != null,
         currency: entry.priceInfo?.currentPrice?.currencyUnit || 'USD',
         quantity: entry.availabilityStatus === 'OUT_OF_STOCK' ? 0 : 1,
         img,

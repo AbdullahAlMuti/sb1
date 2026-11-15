@@ -328,8 +328,46 @@
     mo.disconnect();
   }
 
+  // A bare "$" is ambiguous (amazon.ca / amazon.com.au print CAD / AUD with
+  // it), so the storefront host decides. Mirrors amazon-scraper-v2.js.
+  function currencyForHost(host) {
+    const h = String(host || '').toLowerCase();
+    if (/(^|\.)amazon\.ca$/.test(h)) return 'CAD';
+    if (/(^|\.)amazon\.com\.au$/.test(h)) return 'AUD';
+    if (/(^|\.)amazon\.co\.uk$/.test(h)) return 'GBP';
+    if (/(^|\.)amazon\.de$/.test(h)) return 'EUR';
+    return 'USD';
+  }
+
+  // Symbol OR already-resolved ISO code -> ISO code. Idempotent: callers
+  // resolve at different layers, and re-resolving "GBP" used to yield "USD".
   function resolveCurrency(sym) {
-    return { '$': 'USD', '£': 'GBP', '€': 'EUR', '¥': 'JPY', 'A$': 'AUD', 'C$': 'CAD', '₹': 'INR', 'R$': 'BRL' }[sym] || 'USD';
+    if (/^[A-Z]{3}$/.test(sym || '')) return sym;
+    let host = '';
+    try { host = location.hostname || location.host || ''; } catch (_) {}
+    const hostCurrency = currencyForHost(host);
+    if (!sym || sym === '$') return hostCurrency;
+    return { '£': 'GBP', '€': 'EUR', '¥': 'JPY', 'A$': 'AUD', 'C$': 'CAD', '₹': 'INR', 'R$': 'BRL' }[sym] || hostCurrency;
+  }
+
+  // A variant is priced ONLY from a reading of its own price: the buybox once
+  // the page has switched to it, or its own twister entry. Anything else is
+  // price:null + priceVerified:false, which pricing and upload both exclude.
+  // Never a placeholder, never the parent's price.
+  function variantPrice({ matched, bb, hit }) {
+    const own = matched ? bb : hit;
+    if (own && own.priceAmount > 0) {
+      return { price: own.priceAmount, currency: resolveCurrency(own.currencySymbol), priceVerified: true };
+    }
+    return { price: null, currency: resolveCurrency(''), priceVerified: false };
+  }
+
+  // Product-level price/currency/quantity: from a variant whose price was read.
+  function baseFromVariants(variants) {
+    const priced = (variants || []).filter(v => v && v.priceVerified !== false && v.price > 0);
+    const selected = priced.find(v => v.quantity > 0) || priced[0];
+    if (!selected) return { price: 0, currency: resolveCurrency(''), quantity: 0 };
+    return { price: selected.price, currency: resolveCurrency(selected.currency), quantity: selected.quantity };
   }
 
   // ─── Stock check ───────────────────────────────────────────────────────────────
@@ -393,7 +431,8 @@
       return [{
         attrs: {},
         price: bb.priceAmount,
-        currency: bb.currencySymbol,
+        priceVerified: true,
+        currency: resolveCurrency(bb.currencySymbol),
         quantity: qty,
         imgProp: undefined,
         img: undefined
@@ -480,12 +519,6 @@
       .map(v => dims.findIndex(d => d === v))
       .filter(i => i >= 0);
 
-    // Parent/base price captured once before any clicking — the honest fallback
-    // for variants whose real price can't be reached (never mislabeled as such).
-    const baseBb = getBuyboxFromDom();
-    const basePrice = baseBb ? baseBb.priceAmount : 0;
-    const baseCurrency = baseBb ? resolveCurrency(baseBb.currencySymbol || '$') : 'USD';
-
     // Inline-twister pages have NO div[id*="variation_"] containers and their
     // swatch clicks NAVIGATE to the sibling's /dp/ page, which would destroy
     // this content script mid-scan — never click there.
@@ -494,7 +527,8 @@
 
     for (const asin in t.dimensionValuesDisplayData) {
       try {
-        let price = 999, currency = 'USD', quantity = 0;
+        let priced = variantPrice({ matched: false, hit: null });
+        let quantity = 0;
 
         try {
           const alreadySelected =
@@ -515,30 +549,18 @@
           const isAvailable = checkStock();
           if (matched) {
             if (!alreadySelected) await waitForBuyboxSettle(prevSig);
-            const bb = getBuyboxFromDom(asin);
+            priced = variantPrice({ matched: true, bb: getBuyboxFromDom(asin) });
             quantity = isAvailable ? (getQuantityFromDom() || 1) : 0;
-            if (bb) {
-              if (bb.priceAmount) price = bb.priceAmount;
-              if (bb.currencySymbol) currency = resolveCurrency(bb.currencySymbol);
-            }
           } else {
             // Page never switched to this ASIN — the visible buybox belongs to
-            // a DIFFERENT variant. Stamping it here was the
-            // parent-price-on-every-variant bug. Trust only an explicit
-            // per-ASIN twister-plus entry; else keep the base price, honestly.
-            console.warn(`[SS Scraper] ASIN never selected: ${asin} — using per-ASIN data or base price`);
-            const hit = twisterPlusEntryFor(asin);
-            if (hit && hit.priceAmount > 0) {
-              price = hit.priceAmount;
-              currency = resolveCurrency(hit.currencySymbol || '$');
-              quantity = isAvailable ? (getQuantityFromDom() || 1) : 0;
-            } else if (basePrice > 0) {
-              price = basePrice;
-              currency = baseCurrency;
-              quantity = isAvailable ? 1 : 0;
-            }
+            // a DIFFERENT variant. Trust only an explicit per-ASIN twister-plus
+            // entry; otherwise the variant stays unpriced (priceVerified:false).
+            console.warn(`[SS Scraper] ASIN never selected: ${asin} — using per-ASIN data or leaving unpriced`);
+            priced = variantPrice({ matched: false, hit: twisterPlusEntryFor(asin) });
+            quantity = !isAvailable ? 0 : (priced.priceVerified ? (getQuantityFromDom() || 1) : 1);
           }
         } catch (_) {}
+        const { price, currency, priceVerified } = priced;
 
         // Build attrs: { "Color": { productName: "Red" }, "Size": { productName: "Large" } }
         const displayData = t.dimensionValuesDisplayData[asin];
@@ -576,7 +598,7 @@
         }
 
         if (!img) console.warn('[SS Scraper] No img for ASIN', asin, 'colorKey:', colorKey, 'available keys:', Object.keys(colorImages).slice(0, 5));
-        results.push({ attrs, price, currency, quantity, img, imgProp, supplierVariantId: asin });
+        results.push({ attrs, price, priceVerified, currency, quantity, img, imgProp, supplierVariantId: asin });
       } catch (asinErr) {
         console.warn('[SS Scraper] Skipped ASIN', asin, ':', asinErr.message);
       }
@@ -844,11 +866,11 @@
 
     const variants = await getVariations(windowData, minQty, allowLowQty);
 
-    // Base price from first in-stock variant or first variant
-    const selected = variants.find(v => v.quantity > 0) || variants[0];
-    const basePrice    = selected ? selected.price    : 0;
-    const baseCurrency = selected ? resolveCurrency(selected.currency || '$') : 'USD';
-    const baseQty      = selected ? selected.quantity : 0;
+    // Base price from a variant whose own price was actually read
+    const base = baseFromVariants(variants);
+    const basePrice    = base.price;
+    const baseCurrency = base.currency;
+    const baseQty      = base.quantity;
 
     return {
       asin,
@@ -879,5 +901,6 @@
   // are the same function references used by the scraper; nothing is altered.
   window.SsAmazonVariantScraper._internals = {
     _fixQuotes, _robustParse, _removeKey, _balanceBraces, _prepareJson, _parseWindowJson, _cleanPriceText, normalizeBrandText,
+    _resolveCurrency: resolveCurrency, _variantPrice: variantPrice, _baseFromVariants: baseFromVariants,
   };
 })();
